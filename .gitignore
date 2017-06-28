@@ -1,0 +1,18 @@
+### JetBrains template
+.idea/
+## File-based project format:
+*.iws
+# IntelliJ
+/out/
+### SBT template
+target/
+lib_managed/
+src_managed/
+project/target/
+.history
+.cache
+### Scala template
+*.class
+*.log
+.lib/
+dist/*
