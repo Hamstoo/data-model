@@ -17,7 +17,7 @@ import scala.concurrent.Future
 /** Data access object for usage stats. */
 class MongoStatsDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedQB, digestWriteResult}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, digestWriteResult}
 
   // database collections
   private val futStatsCol: Future[BSONCollection] = db map (_ collection "userstats")
@@ -28,7 +28,9 @@ class MongoStatsDao(db: Future[DefaultDB]) {
   private val TIME = "time"
   private val USR = "user"
   /* Ensure the mongo collection has proper index: */
-  futStatsCol map (_.indexesManager ensure Index(USR -> Ascending :: TIME -> Ascending :: Nil))
+  private val indxs: Map[String, Index] =
+    Map(Index(USR -> Ascending :: TIME -> Ascending :: Nil) % s"bin-$USR-1-$TIME-1")
+  futStatsCol map (_.indexesManager ensure indxs)
 
   /** Adds a timestamp record for the user. */
   def punch(userId: UUID): Future[Either[String, UUID]] = for {

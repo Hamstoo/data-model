@@ -3,6 +3,7 @@ package com.hamstoo
 import reactivemongo.api.BSONSerializationPack.Reader
 import reactivemongo.api.collections.GenericQueryBuilder
 import reactivemongo.api.commands.WriteResult
+import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
 import reactivemongo.api.{BSONSerializationPack, Cursor}
 
 import scala.collection.generic.CanBuildFrom
@@ -36,11 +37,25 @@ package object utils {
     field.name.decodedName.toString
   }
 
-  implicit class ExtendedQB(qb: GenericQueryBuilder[BSONSerializationPack.type]) {
-    /** */
+  implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
+    /** Short for `.cursor` with `.collect` consecutive calls with default error handler. */
     def coll[E, C[_] <: Iterable[_]](n: Int = -1)
                                     (implicit r: Reader[E], cbf: CanBuildFrom[C[_], E, C[E]]): Future[C[E]] = {
       qb.cursor[E]().collect[C](n, Cursor.FailOnError[C[E]]())
+    }
+  }
+
+  implicit class ExtendedIndex(private val i: Index) extends AnyVal {
+    /** */
+    def %(name: String): (String, Index) = name -> i.copy(name = Some(name))
+  }
+
+  implicit class ExtendedIM(private val im: CollectionIndexesManager) extends AnyVal {
+    /** */
+    def ensure(indxs: Map[String, Index]): Unit = for (is <- im.list) {
+      val exIs = is.flatMap[String, Set[String]](_.name)
+      exIs -- indxs.keySet - "_id_" foreach im.drop
+      indxs.keySet -- exIs foreach { n => im.ensure(indxs(n)) }
     }
   }
 
@@ -54,7 +69,7 @@ package object utils {
     def prefx(): Array[Byte] = s.getBytes take URL_PREFIX_LENGTH
   }
 
-  /** */
+  /** Checks reactivemongo's update functions results for errors and forms a unified return. */
   def digestWriteResult[T]: (WriteResult, T) => Either[String, T] = (r, o) =>
     if (r.ok) Right(o) else Left(r.writeErrors mkString "; ")
 }

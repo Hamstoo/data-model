@@ -17,12 +17,13 @@ import scala.concurrent.Future
 class MongoUserTokenDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.models.UserToken.tokenHandler
-  import com.hamstoo.utils.digestWriteResult
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, digestWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "tokens")
   private val d = BSONDocument.empty
   /* Ensure mongo collection has proper index: */
-  futCol map (_.indexesManager ensure Index(ID -> Ascending :: Nil))
+  private val indxs = Map(Index(ID -> Ascending :: Nil) % s"bin-$ID-1")
+  futCol map (_.indexesManager ensure indxs)
 
   /** Retrieves a token by id. */
   def find(id: UUID): Future[Option[UserToken]] = for {

@@ -7,8 +7,6 @@ import com.mohiva.play.silhouette.impl.providers.OAuth2Info
 import com.mohiva.play.silhouette.persistence.daos.DelegableAuthInfoDAO
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
-import reactivemongo.api.indexes.Index
-import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.BSONDocument
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -21,8 +19,6 @@ class MongoOAuth2InfoDao(db: Future[DefaultDB]) extends DelegableAuthInfoDAO[OAu
 
   private val futCol: Future[BSONCollection] = db map (_ collection "users")
   private val d = BSONDocument.empty
-  /* Ensure mongo collection has proper index: */
-  futCol map (_.indexesManager ensure Index(PLGNF -> Ascending :: Nil))
 
   /** Retrieves auth for a given login. */
   def find(loginInfo: LoginInfo): Future[Option[OAuth2Info]] = for {

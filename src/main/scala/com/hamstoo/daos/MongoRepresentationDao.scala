@@ -14,7 +14,7 @@ import scala.concurrent.Future
 
 class MongoRepresentationDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedQB, StrWithBinaryPrefix, digestWriteResult}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, StrWithBinaryPrefix, digestWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "representations")
   private val d = BSONDocument.empty
@@ -24,21 +24,18 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
 
   // Ensure that mongo collection has proper `text` index for relevant fields.  Note that (apparently) the
   // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
-  // Also, if the weights change, the index will not be re-ensured; that would have to be done manually.
-  for {
-    c <- futCol
-    im = c.indexesManager
-  } {
-    im ensure Index(
-      key = DTXT -> Text :: OTXT -> Text :: KWORDS -> Text :: LNK -> Text :: Nil,
-      options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WEIGHT :~ KWORDS -> 4 :~ LNK -> 10))
-    im ensure Index(LPREF -> Ascending :: Nil)
-  }
+  private val indxs: Map[String, Index] = Index(
+    key = DTXT -> Text :: OTXT -> Text :: KWORDS -> Text :: LNK -> Text :: Nil,
+    options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WEIGHT :~ KWORDS -> 4 :~ LNK -> 10)) %
+    s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
+    Index(LPREF -> Ascending :: Nil) % s"bin-$LPREF-1" ::
+    Nil toMap;
+  futCol map (_.indexesManager ensure indxs)
 
   /** */
   def save(repr: Representation): Future[Either[String, String]] = for {
     c <- futCol
-    wr <- c update (d :~ LNK -> repr.link, repr, upsert = true)
+    wr <- c update(d :~ LNK -> repr.link, repr, upsert = true)
   } yield digestWriteResult(wr, repr._id)
 
   /** Retrieves a `Representation` by id. */

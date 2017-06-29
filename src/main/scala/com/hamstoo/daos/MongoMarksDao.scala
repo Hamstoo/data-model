@@ -16,25 +16,21 @@ import scala.concurrent.Future
 
 class MongoMarksDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedQB, StrWithBinaryPrefix, digestWriteResult}
+  import com.hamstoo.utils.{ExtendedQB, ExtendedIM, ExtendedIndex, StrWithBinaryPrefix, digestWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "entries")
   private val d = BSONDocument.empty
-  /* Ensure this mongo collection has proper indexes: */
-  for {
-    col <- futCol
-    im = col.indexesManager
-  } { // TODO: check indexes list
-    im ensure Index(USER -> Ascending :: MILS -> Ascending :: Nil)
-    im ensure Index(USER -> Ascending :: ID -> Ascending :: Nil)
-    im ensure Index(USER -> Ascending :: s"$MARK.$UPRFX" -> Ascending :: Nil)
-    im ensure Index(USER -> Ascending :: s"$MARK.$UPRFX" -> Ascending :: Nil)
-    im ensure
-      Index(USER -> Ascending :: s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMMENT" -> Text :: Nil)
-    im ensure Index(s"$MARK.$TAGS" -> Ascending :: Nil)
-    im ensure Index(USER -> Ascending :: s"$MARK.$UPRFX" -> Ascending :: Nil)
-    im ensure Index(s"$MARK.$UPRFX" -> Ascending :: s"$MARK.$REPR" -> Ascending :: Nil)
-  }
+  /* Indexes with names for this mongo collection: */
+  private val indxs: Map[String, Index] =
+    Index(USER -> Ascending :: Nil) % s"bin-$USER-1" ::
+      Index(MILS -> Ascending :: Nil) % s"bin-$MILS-1" ::
+      Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
+      Index(s"$MARK.$UPRFX" -> Ascending :: s"$MARK.$REPR" -> Ascending :: Nil) % s"bin-$MARK.$UPRFX-1-$MARK.$REPR-1" ::
+      Index(s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMMENT" -> Text :: Nil) %
+        s"txt-$MARK.$SUBJ-$MARK.$TAGS-$MARK.$COMMENT" ::
+      Index(s"$MARK.$TAGS" -> Ascending :: Nil) % s"bin-$MARK.$TAGS-1" ::
+      Nil toMap;
+  futCol map (_.indexesManager ensure indxs)
 
   /** Saves an entry to the storage. */
   def create(entry: Entry): Future[Either[String, Entry]] = for {

@@ -19,21 +19,19 @@ import scala.concurrent.Future
 class MongoUserDao(db: Future[DefaultDB]) extends IdentityService[User] {
 
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}
-  import com.hamstoo.utils.digestWriteResult
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, digestWriteResult}
 
   // get the "users" collection (in the future); the `map` is `Future.map`
   // http://reactivemongo.org/releases/0.12/api/#reactivemongo.api.DefaultDB
   private val futCol: Future[BSONCollection] = db map (_ collection "users")
   private val d = BSONDocument.empty
-  /* Ensure the mongo collection has proper indexes: */
-  for {
-    c <- futCol
-    im = c.indexesManager
-  } {
-    im ensure Index(PLGNF -> Ascending :: Nil)
-    im ensure Index(ID -> Ascending :: Nil)
-    im ensure Index(s"$PROF.$EMAIL" -> Ascending :: Nil)
-  }
+  /* Ensure mongo collection has proper indexes: */
+  private val indxs: Map[String, Index] =
+    Index(PLGNF -> Ascending :: Nil, unique = true) % s"bin-$PLGNF-1-uniq" ::
+      Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
+      Index(s"$PROF.$EMAIL" -> Ascending :: Nil) % s"bin-$PROF.$EMAIL-1" ::
+      Nil toMap;
+  futCol map (_.indexesManager ensure indxs)
 
   /** Saves or updates user account data by matching provided `User`'s `.id`. */
   def save(u: User): Future[Either[String, User]] = for {

@@ -15,18 +15,16 @@ import scala.concurrent.Future
 /** Data access object for conceptnet vectors mongo-based storage. */
 class MongoVectorsDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.digestWriteResult
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, digestWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "vectors")
   private val d = BSONDocument.empty
   // ensure mongo collection has proper indexes
-  for {
-    c <- futCol
-    im = c.indexesManager
-  } {
-    im ensure Index(TERMS -> Ascending :: Nil)
-    im ensure Index(URI -> Ascending :: Nil)
-  }
+  private val indxs: Map[String, Index] =
+    Index(TERMS -> Ascending :: Nil) % s"bin-$TERMS-1" ::
+      Index(URI -> Ascending :: Nil) % s"bin-$URI-1" ::
+      Nil toMap;
+  futCol map (_.indexesManager ensure indxs)
 
   /**
     * Saves or updates term-uri pair. If uri is None, then the term is added to a mongo document containing all
