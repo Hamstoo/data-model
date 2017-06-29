@@ -1,9 +1,12 @@
 package com.hamstoo
 
+import reactivemongo.api.BSONSerializationPack.Reader
 import reactivemongo.api.collections.GenericQueryBuilder
 import reactivemongo.api.commands.WriteResult
 import reactivemongo.api.{BSONSerializationPack, Cursor}
 
+import scala.collection.generic.CanBuildFrom
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.language.higherKinds
 import scala.reflect.runtime.universe
@@ -23,18 +26,22 @@ package object utils {
     */
   def fieldName[T](expectedFieldName: String)(implicit tag: TypeTag[T]): String = {
     val symbol = universe.typeOf[T] decl (universe TermName expectedFieldName)
-    val field = try { symbol.asTerm }
-      catch {
-        case e: ScalaReflectionException =>
-          throw new RuntimeException(s"`$expectedFieldName` is not a field of `${tag.tpe.toString}`", e)
-      }
+    val field = try {
+      symbol.asTerm
+    }
+    catch {
+      case e: ScalaReflectionException =>
+        throw new RuntimeException(s"`$expectedFieldName` is not a field of `${tag.tpe.toString}`", e)
+    }
     field.name.decodedName.toString
   }
 
   implicit class ExtendedQB(qb: GenericQueryBuilder[BSONSerializationPack.type]) {
     /** */
-    def coll[E, C[_] <: Iterable[E]](n: Int = -1): Future[C[E]] =
+    def coll[E, C[_] <: Iterable[_]](n: Int = -1)
+                                    (implicit r: Reader[E], cbf: CanBuildFrom[C[_], E, C[E]]): Future[C[E]] = {
       qb.cursor[E]().collect[C](n, Cursor.FailOnError[C[E]]())
+    }
   }
 
   private val URL_PREFIX_LENGTH = 1000

@@ -9,7 +9,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.BSONDocument
+import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
@@ -49,26 +49,26 @@ class MongoStatsDao(db: Future[DefaultDB]) {
     cI <- futImportsCol
     cE <- futEntriesCol
     marks <- cE count Some(d :~ USER -> userId.toString)
-    imports <- cI.find(d :~ "_id" -> userId.toString).one
+    imports <- cI.find(d :~ "_id" -> userId.toString).one[BSONDocument]
     /* Count total number of times user added a mark: */
     total <- cS count Some(d :~ USR -> userId.toString)
     /* Query all records in past four weeks, correcting for user's current timezone: */
     sel = d :~ USR -> userId.toString :~ TIME -> (d :~ "$gt" -> (DateTime.now minusWeeks 4 getMillis))
-    seq <- cS.find(sel, d :~ TIME -> 1).coll[BSONDocument, Seq]()
+    seq <- (cS find sel projection d :~ TIME -> 1).coll[BSONDocument, Seq]()
   } yield {
     val firstDay = DateTime.now minusMinutes offsetMinutes + 38880
     /* == 60 * 24 * 27 minutes or 27 days */
     val format = "dd MMM"
     /* Group timestamps into collections by day string and take the number of records for each day: */
     val values: Map[String, Int] = seq groupBy { d =>
-      new DateTime(d.get(TIME).get.as[Long]) minusMinutes offsetMinutes toString format
+      new DateTime(d.getAs[Long](TIME).get) minusMinutes offsetMinutes toString format
     } mapValues (_.size) withDefaultValue 0
     /* Get last 28 dates in user's timezone and pair them with numbers of marks: */
     val days: Seq[StatsDay] = for (i <- 0 to 27) yield {
       val s = firstDay plusDays i toString format
       StatsDay(s, values(s))
     }
-    val imported = imports map (_.get(IMPT).get.as[Int]) getOrElse 0
+    val imported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
     Stats(marks, imported, total, days, (0 /: days) (_ + _.marks), days.reverse maxBy (_.marks))
   }
 }

@@ -48,8 +48,8 @@ class MongoVectorsDao(db: Future[DefaultDB]) {
   /** Retrieves a `VectorEntry` by provided key-value. */
   private def get(key: String, s: String): Future[Option[VectorEntry]] = for {
     c <- futCol
-    optVE <- c.find(d :~ key -> s).one[VectorEntry]
-  } yield optVE
+    optVecEnt <- c.find(d :~ key -> s).one[VectorEntry]
+  } yield optVecEnt
 
   /** Retrieves a `VectorEntry` by term. */
   def getTerm(term: String): Future[Option[VectorEntry]] = get(TERMS, term)

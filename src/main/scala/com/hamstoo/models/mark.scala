@@ -9,11 +9,7 @@ import com.hamstoo.utils.StrWithBinaryPrefix
 
 import scala.util.Random
 
-object Types {
-  type Mils = Long
-}
-
-case class RangeMils(begin: Types.Mils, end: Types.Mils)
+case class RangeMils(begin: Long, end: Long)
 
 /**
   * Data model of a text highlight. The fields are:
@@ -22,10 +18,9 @@ case class RangeMils(begin: Types.Mils, end: Types.Mils)
   * - indx - the number of the first character in the selection relative to the whole string in HTML element;
   * - mils - timestamp.
   */
-case class Highlight(path: String, text: String, indx: Int, mils: Types.Mils)
+case class Highlight(path: String, text: String, indx: Int, mils: Long)
 
 object Highlight {
-  // JSON deserialization field names
   val PATH: String = fieldName[Highlight]("path")
   val TEXT: String = fieldName[Highlight]("text")
   val INDX: String = fieldName[Highlight]("indx")
@@ -91,6 +86,8 @@ object Mark {
   val HLGTS: String = fieldName[Mark]("hlights")
   val TABVIS: String = fieldName[Mark]("tabVisible")
   val TABBG: String = fieldName[Mark]("tabBground")
+  implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
+  implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
   implicit val markBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
 
   /** This auxiliary factory is used for the purpose of importing bookmarks only. */
@@ -105,7 +102,7 @@ object Mark {
   * `score` is not part of the documents in the database, but it is returned from
   * `MongoMarksDao.search` so it is easier to have it included here.
   */
-case class Entry(userId: UUID, id: String, mils: Types.Mils, mark: Mark, score: Option[Double] = None)
+case class Entry(userId: UUID, id: String, mils: Long, mark: Mark, score: Option[Double] = None)
 
 object Entry {
   val ID_LENGTH = 16
@@ -116,8 +113,10 @@ object Entry {
   val MARK: String = fieldName[Entry]("mark")
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = fieldName[Entry]("score")
+  private implicit val uuidHandler = com.hamstoo.models.User.uuidBsonHandler
+  implicit val entryBsonHandler: BSONDocumentHandler[Entry] = Macros.handler[Entry]
 
-  /** Auto-generates an ID and timestamp for the new `Entry`. */
+  /** Factory with ID and timestamp generation. */
   def apply(userId: UUID, mark: Mark): Entry =
     Entry(userId, Random.alphanumeric.take(Entry.ID_LENGTH).mkString, DateTime.now.getMillis, mark)
 }

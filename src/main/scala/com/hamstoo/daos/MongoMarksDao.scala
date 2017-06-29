@@ -16,8 +16,7 @@ import scala.concurrent.Future
 
 class MongoMarksDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedQB, digestWriteResult}
-  import com.hamstoo.utils.StrWithBinaryPrefix
+  import com.hamstoo.utils.{ExtendedQB, StrWithBinaryPrefix, digestWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "entries")
   private val d = BSONDocument.empty
@@ -46,8 +45,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Retrieves an entry by user and id, None if not found. */
   def receive(user: UUID, id: String): Future[Option[Entry]] = for {
     c <- futCol
-    e <- (c find d :~ USER -> user.toString :~ ID -> id).one[Entry]
-  } yield e
+    optEnt <- (c find d :~ USER -> user.toString :~ ID -> id).one[Entry]
+  } yield optEnt
 
   /** Retrieves all entries for the user. */
   def receive(user: UUID): Future[Seq[Entry]] = for {
@@ -58,7 +57,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Retrieves an entry by user and url, None if not found. */
   def receive(url: String, user: UUID): Future[Option[Entry]] = for {
     c <- futCol
-    set <- (c find d :~ USER -> user.toString :~ s"$MARK.$UPRFX" -> url.prefx).coll[Entry, Set]()
+    set <- (c find d :~ USER -> user.toString :~ s"$MARK.$UPRFX" -> url.prefx).coll[Entry, Seq]()
   } yield set collectFirst { case e if e.mark.url.get == url => e }
 
   /** Retrieves all entries for the user, constrained by a list of tags. Entry must have all tags to qualify. */
@@ -73,21 +72,18 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def receiveRepred(user: UUID, tags: Set[String]): Future[Seq[Entry]] = for {
     c <- futCol
-    selBase = d :~ USER -> user.toString :~ s"$MARK.$REPR" -> (d :~ "$exists" -> true :~ "$ne" -> "")
-    sel = if (tags.isEmpty) selBase else selBase :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
-    seq <- (c find sel).coll[Entry, Seq]()
+    sel0 = d :~ USER -> user.toString :~ s"$MARK.$REPR" -> (d :~ "$exists" -> true :~ "$ne" -> "")
+    sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
+    seq <- (c find sel1).coll[Entry, Seq]()
   } yield seq
 
   /** Retrieves all existing tags for the user. */
   def receiveTags(user: UUID): Future[Set[String]] = for {
     c <- futCol
-    set <- (c find(d :~ USER -> user.toString, d :~ s"$MARK.$TAGS" -> 1)).coll[BSONDocument, Set]()
+    set <- (c find d :~ USER -> user.toString projection d :~ s"$MARK.$TAGS" -> 1).coll[BSONDocument, Set]()
   } yield for {
     d <- set
-    ts <- (for {
-      mark <- d get MARK
-      tags <- mark.asInstanceOf[BSONDocument] get TAGS
-    } yield tags.as[Set[String]]) getOrElse Set.empty
+    ts <- d.getAs[BSONDocument](MARK).get.getAs[Set[String]](TAGS) getOrElse Set.empty
   } yield ts
 
   // TODO: receiveCorrelated -- given a vecrepr find (extremely) highly correlated others (i.e. same URL/content)
@@ -98,10 +94,10 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def search(user: UUID, query: String, tags: Set[String]): Future[Seq[Entry]] = for {
     c <- futCol
-    selBase = d :~ USER -> user.toString :~ "$text" -> (d :~ "$search" -> query)
-    sel = if (tags.isEmpty) selBase else selBase :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
-    proj = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-    seq <- (c find(sel, proj) sort d :~ SCORE -> (d :~ "$meta" -> "textScore")).coll[Entry, Seq]()
+    sel0 = d :~ USER -> user.toString :~ "$text" -> (d :~ "$search" -> query)
+    sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
+    pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
+    seq <- (c find sel1 projection pjn sort d :~ SCORE -> (d :~ "$meta" -> "textScore")).coll[Entry, Seq]()
   } yield seq
 
   /** Updates one entry by user and id, if it exists. */
@@ -159,10 +155,9 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futCol
     sel = d :~ s"$MARK.$UPRFX" -> (d :~ "$exists" -> true) :~ s"$MARK.$UPRFX" -> (d :~ "$ne" -> "".getBytes) :~
       s"$MARK.$REPR" -> (d :~ "$exists" -> false)
-    seq <- c.find(sel, d :~ s"$MARK.$URL" -> 1).coll[BSONDocument, Seq](n)
-  } yield seq.map { d =>
-    d.get(ID).get.asInstanceOf[BSONObjectID] ->
-      d.get(MARK).get.asInstanceOf[BSONDocument].get(URL).get.asInstanceOf[BSONString].value
+    seq <- (c find sel projection d :~ s"$MARK.$URL" -> 1).coll[BSONDocument, Seq]()
+  } yield seq.map {
+    d => d.getAs[BSONObjectID](ID).get -> d.getAs[BSONDocument](MARK).get.getAs[String](URL).get
   }(collection.breakOut[Seq[BSONDocument], (BSONObjectID, String), Map[BSONObjectID, String]])
 
   /** Updates entries from a list of ids with provided representation id. */

@@ -50,8 +50,8 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   /** Retrieves a `Representation` by URL. */
   def retrieveUrl(url: String): Future[Option[String]] = for {
     c <- futCol
-    seq <- c.find(d :~ LPREF -> url.prefx, d :~ LNK -> 1).coll[BSONDocument, Seq]()
-  } yield seq collectFirst { case doc if doc.get(LNK).get.as[String] == url => doc.get(ID).get.as[String] }
+    seq <- (c find d :~ LPREF -> url.prefx projection d :~ LNK -> 1).coll[BSONDocument, Seq]()
+  } yield seq collectFirst { case doc if doc.getAs[String](LNK).get == url => doc.getAs[String](ID).get }
 
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
@@ -66,11 +66,9 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   def search(ids: Set[String], query: String): Future[Map[String, (String, Option[Seq[Double]], Double)]] = for {
     c <- futCol
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ "$text" -> (d :~ "$search" -> query)
-    seq <- c.find(sel, d :~ DTXT -> 1 :~ VECR -> 1 :~ SCORE -> (d :~ "$meta" -> "textScore")).coll[BSONDocument, Seq]()
+    pjn = d :~ DTXT -> 1 :~ VECR -> 1 :~ SCORE -> (d :~ "$meta" -> "textScore")
+    seq <- (c find sel projection pjn).coll[BSONDocument, Seq]()
   } yield seq.map { doc =>
-    doc.get(ID).get.as[String] -> (
-      doc.get(DTXT).get.as[String],
-      doc.get(VECR).map(_.as[Seq[Double]]),
-      doc.get(SCORE).get.as[Double])
+    doc.getAs[String](ID).get -> (doc.getAs[String](DTXT).get, doc.getAs[Vec](VECR), doc.getAs[Double](SCORE).get)
   }(breakOut[Seq[BSONDocument], (String, (String, Option[Vec], Double)), Map[String, (String, Option[Vec], Double)]])
 }
