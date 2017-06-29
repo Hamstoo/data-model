@@ -18,7 +18,6 @@ import scala.concurrent.Future
 class MongoPasswordInfoDao(db: Future[DefaultDB]) extends DelegableAuthInfoDAO[PasswordInfo] {
 
   import com.hamstoo.models.Profile.{loginInfHandler, paswdInfHandler}
-  import com.hamstoo.utils.digestWriteResult
 
   private val futCol: Future[BSONCollection] = db map (_ collection "users")
   private val d = BSONDocument.empty
@@ -36,22 +35,22 @@ class MongoPasswordInfoDao(db: Future[DefaultDB]) extends DelegableAuthInfoDAO[P
   } yield passInf
 
   /** Updates user entry's auth for a given login. */
-  def add(loginInfo: LoginInfo, authInfo: PasswordInfo): Future[Either[String, PasswordInfo]] = for {
+  override def add(loginInfo: LoginInfo, authInfo: PasswordInfo): Future[PasswordInfo] = for {
     c <- futCol
     wr <- c update(d :~ PLGNF -> loginInfo, d :~ "$set" -> (d :~ s"$PROF.$$.$PSWNF" -> authInfo))
-  } yield digestWriteResult(wr, authInfo)
+    if wr.ok
+  } yield authInfo
 
   /** Updates user entry's auth for a given login. */
-  def save(loginInfo: LoginInfo, authInfo: PasswordInfo): Future[Either[String, PasswordInfo]] =
-    add(loginInfo, authInfo)
+  override def save(loginInfo: LoginInfo, authInfo: PasswordInfo): Future[PasswordInfo] = add(loginInfo, authInfo)
 
   /** Updates user entry's auth for a given login. */
-  def update(loginInfo: LoginInfo, authInfo: PasswordInfo): Future[Either[String, PasswordInfo]] =
-    add(loginInfo, authInfo)
+  override def update(loginInfo: LoginInfo, authInfo: PasswordInfo): Future[PasswordInfo] = add(loginInfo, authInfo)
 
   /** Removes user entry's auth for a given login. */
-  def remove(loginInfo: LoginInfo): Future[Either[String, LoginInfo]] = for {
+  override def remove(loginInfo: LoginInfo): Future[Unit] = for {
     c <- futCol
     wr <- c update(d :~ PLGNF -> loginInfo, d :~ "$pull" -> (d :~ s"$PROF.loginInfo" -> loginInfo))
-  } yield digestWriteResult(wr, loginInfo)
+    if wr.ok
+  } yield ()
 }
