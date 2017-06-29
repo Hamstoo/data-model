@@ -53,7 +53,7 @@ package object utils {
   implicit class ExtendedIM(private val im: CollectionIndexesManager) extends AnyVal {
     /** */
     def ensure(indxs: Map[String, Index]): Unit = for (is <- im.list) {
-      val exIs = is.flatMap[String, Set[String]](_.name)
+      val exIs = is.flatMap(_.name).toSet
       exIs -- indxs.keySet - "_id_" foreach im.drop
       indxs.keySet -- exIs foreach { n => im.ensure(indxs(n)) }
     }

@@ -11,7 +11,8 @@ lazy val root = project in file(".")
 
 resolvers ++= Seq(
   "sonatype-snapshots" at "http://oss.sonatype.org/content/repositories/snapshots",
-  "sonatype-releases" at "http://oss.sonatype.org/content/repositories/releases")
+  "sonatype-releases" at "http://oss.sonatype.org/content/repositories/releases",
+  "Atlassian Releases" at "https://maven.atlassian.com/public/")
 
 libraryDependencies ++= Seq(
   "com.mohiva" %% "play-silhouette" % "4.0.0",
