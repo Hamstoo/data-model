@@ -56,7 +56,7 @@ case class Mark(
                  hlights: Option[Seq[Highlight]],
                  tabVisible: Option[Seq[RangeMils]],
                  tabBground: Option[Seq[RangeMils]]) {
-  urlPrfx = url.map(_.prefx())
+  urlPrfx = url.map(_.prefx)
 
   /** Fairly standard equals definition. */
   override def equals(other: Any): Boolean = other match {

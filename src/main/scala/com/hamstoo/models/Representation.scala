@@ -77,7 +77,7 @@ object Representation {
     Representation(
       Random.alphanumeric take 12 mkString,
       lnk,
-      Array.emptyByteArray,
+      None,
       hdr,
       dtxt,
       otxt,
@@ -103,12 +103,29 @@ object Representation {
 case class Representation(
                            _id: String,
                            link: String,
-                           var lprefx: Array[Byte],
-                           header: String,
+                           var lprefx: Option[Array[Byte]], // must be an Option so that it can be None for hashCode
+                           header: String,                            // Array.emptyByteArray will *not* suffice
                            doctext: String,
                            othtext: String,
                            keywords: String,
                            vecrepr: Option[Representation.Vec],
                            timestamp: Long) {
-  lprefx = link.prefx()
+
+  lprefx = if (link.isEmpty) None else Some(link.prefx)
+
+  /** Fairly standard equals definition. */
+  override def equals(other: Any): Boolean = other match {
+    case other: Representation => other.canEqual(this) && this.hashCode == other.hashCode
+    case _ => false
+  }
+
+  /** Avoid incorporating Java byte array (i.e. memory address) `lprefx` into the hash code. */
+  override def hashCode: Int = this.link match {
+    // note that when `hashCode` is overridden `super.hashCode` appears to have different behavior than
+    // what is implemented here, see the test in RepresentationSpec regarding this, and more at the following
+    // link: https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
+    // And an explanation here: https://stackoverflow.com/a/44708937/2030627
+    case x if x.isEmpty => scala.runtime.ScalaRunTime._hashCode(this) // NOT super.hashCode!
+    case _ => 31 * (31 + this.copy(link = "").hashCode) + this.link.hashCode
+  }
 }

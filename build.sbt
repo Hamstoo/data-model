@@ -19,7 +19,8 @@ libraryDependencies ++= Seq(
   "com.mohiva" %% "play-silhouette-persistence" % "4.0.0",
   "org.scala-lang" % "scala-reflect" % "2.13.0-M1",
   "joda-time" % "joda-time" % "2.9.9",
-  "org.reactivemongo" %% "reactivemongo" % "0.12.3")
+  "org.reactivemongo" %% "reactivemongo" % "0.12.3",
+  "org.specs2" %% "specs2-core" % "3.8.9" % "test")
 
 pomIncludeRepository := { _ => false }
 pomExtra :=
