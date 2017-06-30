@@ -1,9 +1,11 @@
 package com.hamstoo.models
 
-import com.hamstoo.utils.fieldName
+import com.hamstoo.utils.{StrWithBinaryPrefix, fieldName}
+import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.annotation.tailrec
+import scala.util.Random
 
 object Representation {
   type VecElem = Double
@@ -69,6 +71,19 @@ object Representation {
   val VECR: String = fieldName[Representation]("vecrepr")
   val TSTAMP: String = fieldName[Representation]("timestamp")
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
+
+  /** Factory with id and timestamp generation. */
+  def apply(lnk: String, hdr: String, dtxt: String, otxt: String, kwords: String, vec: Option[Vec]): Representation =
+    Representation(
+      Random.alphanumeric take 12 mkString,
+      lnk,
+      Array.emptyByteArray,
+      hdr,
+      dtxt,
+      otxt,
+      kwords,
+      vec,
+      DateTime.now.getMillis)
 }
 
 /**
@@ -88,10 +103,12 @@ object Representation {
 case class Representation(
                            _id: String,
                            link: String,
-                           lprefx: Array[Byte],
+                           var lprefx: Array[Byte],
                            header: String,
                            doctext: String,
                            othtext: String,
                            keywords: String,
                            vecrepr: Option[Representation.Vec],
-                           timestamp: Long)
+                           timestamp: Long) {
+  lprefx = link.prefx()
+}

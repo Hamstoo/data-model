@@ -45,10 +45,10 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   } yield optRep
 
   /** Retrieves a `Representation` by URL. */
-  def retrieveUrl(url: String): Future[Option[String]] = for {
+  def retrieveUrl(url: String): Future[Option[Representation]] = for {
     c <- futCol
-    seq <- (c find d :~ LPREF -> url.prefx projection d :~ LNK -> 1).coll[BSONDocument, Seq]()
-  } yield seq collectFirst { case doc if doc.getAs[String](LNK).get == url => doc.getAs[String](ID).get }
+    seq <- (c find d :~ LPREF -> url.prefx projection d :~ LNK -> 1).coll[Representation, Seq]()
+  } yield seq collectFirst { case rep if rep.link == url => rep }
 
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
