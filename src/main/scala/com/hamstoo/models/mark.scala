@@ -2,7 +2,7 @@ package com.hamstoo.models
 
 import java.util.UUID
 
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, BSONHandler, BSONString, Macros}
 import com.hamstoo.utils.fieldName
 import org.joda.time.DateTime
 import com.hamstoo.utils.StrWithBinaryPrefix
@@ -113,7 +113,8 @@ object Entry {
   val MARK: String = fieldName[Entry]("mark")
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = fieldName[Entry]("score")
-  private implicit val uuidHandler = com.hamstoo.models.User.uuidBsonHandler
+  implicit val uuidBsonHandler: BSONHandler[BSONString, UUID] =
+    BSONHandler[BSONString, UUID](UUID fromString _.value, BSONString apply _.toString)
   implicit val entryBsonHandler: BSONDocumentHandler[Entry] = Macros.handler[Entry]
 
   /** Factory with ID and timestamp generation. */

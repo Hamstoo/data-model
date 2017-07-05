@@ -16,10 +16,19 @@ import scala.concurrent.Future
 
 class MongoMarksDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedQB, ExtendedIM, ExtendedIndex, StrWithBinaryPrefix, digestWriteResult}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, StrWithBinaryPrefix, digestWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "entries")
   private val d = BSONDocument.empty
+
+  /* Data migration to 0.7.1 that adds `mark.urlPrfx` field to documents which should have it. */
+  for {
+    c <- futCol
+    sel = d :~ s"$MARK.$URL" -> (d :~ "$exists" -> true) :~ s"$MARK.$UPRFX" -> (d :~ "$exist" -> false)
+    n <- c count Some(sel)
+    if n > 0
+  } for { seq <- (c find sel).coll[Entry, Seq]() } for { e <- seq } c update (d :~ ID -> e.id, e)
+
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
     Index(USER -> Ascending :: Nil) % s"bin-$USER-1" ::
@@ -147,17 +156,17 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   } yield digestWriteResult(wr, tags)
 
   /** Retrieves a number of ids with URLs that belong to entries without representations. */
-  def findMissingReprs(n: Int): Future[Map[BSONObjectID, String]] = for {
+  def findMissingReprs(n: Int): Future[Map[String, String]] = for {
     c <- futCol
     sel = d :~ s"$MARK.$UPRFX" -> (d :~ "$exists" -> true) :~ s"$MARK.$UPRFX" -> (d :~ "$ne" -> "".getBytes) :~
       s"$MARK.$REPR" -> (d :~ "$exists" -> false)
-    seq <- (c find sel projection d :~ s"$MARK.$URL" -> 1).coll[BSONDocument, Seq]()
+    seq <- (c find sel projection d :~ ID -> 1 :~ s"$MARK.$URL" -> 1).coll[BSONDocument, Seq]()
   } yield seq.map {
-    d => d.getAs[BSONObjectID](ID).get -> d.getAs[BSONDocument](MARK).get.getAs[String](URL).get
-  }(collection.breakOut[Seq[BSONDocument], (BSONObjectID, String), Map[BSONObjectID, String]])
+    d => d.getAs[String](ID).get -> d.getAs[BSONDocument](MARK).get.getAs[String](URL).get
+  }(collection.breakOut[Seq[BSONDocument], (String, String), Map[String, String]])
 
   /** Updates entries from a list of ids with provided representation id. */
-  def updateMarkReprId(ids: Set[BSONObjectID], repr: String): Future[Either[String, String]] = for {
+  def updateMarkReprId(ids: Set[String], repr: String): Future[Either[String, String]] = for {
     c <- futCol
     wr <- c update(d :~ ID -> (d :~ "$in" -> ids), d :~ "$set" -> (d :~ s"$MARK.$REPR" -> repr), multi = true)
   } yield digestWriteResult(wr, repr)

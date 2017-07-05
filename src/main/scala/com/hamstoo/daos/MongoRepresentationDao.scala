@@ -22,6 +22,14 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   private val SCORE = "score"
   private val CONTENT_WEIGHT = 8
 
+  /* Data migration to 0.7.1 that adds `lprefx` field to documents which should have it. */
+  for {
+    c <- futCol
+    sel = d :~ LNK -> (d :~ "$exists" -> true) :~ LPREF -> (d :~ "$exist" -> false)
+    n <- c count Some(sel)
+    if n > 0
+  } for { seq <- (c find sel).coll[Representation, Seq]() } for { r <- seq } c update (d :~ ID -> r._id, r)
+
   // Ensure that mongo collection has proper `text` index for relevant fields.  Note that (apparently) the
   // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
   private val indxs: Map[String, Index] = Index(
@@ -47,8 +55,8 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   /** Retrieves a `Representation` by URL. */
   def retrieveUrl(url: String): Future[Option[Representation]] = for {
     c <- futCol
-    seq <- (c find d :~ LPREF -> url.prefx projection d :~ LNK -> 1).coll[Representation, Seq]()
-  } yield seq collectFirst { case rep if rep.link == url => rep }
+    seq <- (c find d :~ LPREF -> url.prefx).coll[Representation, Seq]()
+  } yield seq collectFirst { case rep if rep.link contains url => rep }
 
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
