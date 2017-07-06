@@ -8,8 +8,7 @@ import scala.annotation.tailrec
 import scala.util.Random
 
 object Representation {
-  type VecElem = Double
-  type Vec = Seq[VecElem]
+  type Vec = Seq[Double]
 
   implicit class DblWithPow(private val d: Double) extends AnyVal {
     def **(n: Double): Double = Math pow(d, n)
@@ -36,32 +35,32 @@ object Representation {
     }
 
     // scalar arithmetic
-    def /(divisor: VecElem): Vec = vec.map(_ / divisor)
+    def /(divisor: Double): Vec = vec.map(_ / divisor)
 
-    def *(multiplicand: VecElem): Vec = vec.map(_ * multiplicand)
+    def *(multiplicand: Double): Vec = vec.map(_ * multiplicand)
 
-    def mean: VecElem = vec.sum / vec.length
+    def mean: Double = vec.sum / vec.length
 
-    def stdev: VecElem = {
+    def stDev: Double = {
       val mean = vec.mean
       Math sqrt (0.0 /: vec) (_ + _.-(mean) ** 2) / (vec.length - 1)
     }
 
-    def dot(other: Vec): VecElem = {
+    def dot(other: Vec): Double = {
       @tailrec
       def rec(a: Vec, b: Vec, sum: Double): Double = if (a.isEmpty) sum else rec(a.tail, b.tail, sum + a.head * b.head)
 
       rec(vec, other, 0.0)
     }
 
-    def l2Norm: VecElem = Math sqrt (0.0 /: vec) (_ + _ ** 2)
+    def l2Norm: Double = Math sqrt (0.0 /: vec) (_ + _ ** 2)
 
-    def cosine(other: Vec): VecElem = (vec dot other) / vec.l2Norm / other.l2Norm
+    def cosine(other: Vec): Double = (vec dot other) / vec.l2Norm / other.l2Norm
 
     def l2Normalize: Vec = vec / vec.l2Norm
   }
 
-  val ID: String = fieldName[Representation]("_id")
+  val ID: String = fieldName[Representation]("id")
   val LNK: String = fieldName[Representation]("link")
   val LPREF: String = fieldName[Representation]("lprefx")
   val HEADR: String = fieldName[Representation]("header")
@@ -69,7 +68,8 @@ object Representation {
   val OTXT: String = fieldName[Representation]("othtext")
   val KWORDS: String = fieldName[Representation]("keywords")
   val VECR: String = fieldName[Representation]("vecrepr")
-  val TSTAMP: String = fieldName[Representation]("timestamp")
+  val TSTAMP: String = fieldName[Representation]("from")
+  val CURRNT: String = fieldName[Representation]("thru")
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 
   /** Factory with id and timestamp generation. */
@@ -89,7 +89,8 @@ object Representation {
       otxt,
       kwords,
       vec,
-      DateTime.now.getMillis)
+      DateTime.now.getMillis,
+      Long.MaxValue)
 }
 
 /**
@@ -97,17 +98,17 @@ object Representation {
   * representations of URLs.  The scraping and parsing are performed by an
   * instance of a Cruncher.
   *
-  * @param _id       Unique alphanumeric ID.
+  * @param id       Unique alphanumeric ID.
   * @param link      URL link used to generate this Representation.
   * @param header    Title and `h1` headers concatenated.
   * @param doctext   Document text.
   * @param othtext   Other text not included in document text.
   * @param keywords  Keywords from meta tags.
   * @param vecrepr   Array[Double] vector embedding of the texts.
-  * @param timestamp Time of construction.
+  * @param from Time of construction.
   */
 case class Representation(
-                           _id: String,
+                           id: String,
                            link: Option[String],
                            var lprefx: Option[Array[Byte]],
                            header: String,
@@ -115,7 +116,8 @@ case class Representation(
                            othtext: String,
                            keywords: String,
                            vecrepr: Option[Representation.Vec],
-                           timestamp: Long) {
+                           from: Long,
+                           thru: Long) {
   lprefx = link.map(_.prefx)
 
   /** Fairly standard equals definition. */

@@ -11,8 +11,8 @@ class RepresentationSpec extends Specification {
 
   "Representation" should {
     "* be consistently hashable" in {
-      val a = Representation("", Some("xyz"), None, "", "", "", "", None, 0)
-      val b = Representation("", Some("xyz"), None, "", "", "", "", None, 0)
+      def rep = Representation("", Some("xyz"), None, "", "", "", "", None, 0, Long.MaxValue)
+      val (a, b) = (rep, rep)
       a.hashCode mustEqual b.hashCode
       a mustEqual b
     }

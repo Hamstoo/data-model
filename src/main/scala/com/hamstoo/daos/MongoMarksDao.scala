@@ -21,7 +21,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   private val futCol: Future[BSONCollection] = db map (_ collection "entries")
   private val d = BSONDocument.empty
-  private val maxT = Long.MaxValue
+  private val curnt: Producer[BSONElement] = THRU -> Long.MaxValue
 
   /* Data migration to 0.7.1 that adds `mark.urlPrfx` field to documents which should have it. */
   for {
@@ -40,7 +40,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   } for {seq <- (c find sel).coll[BSONDocument, Seq]()} for {e <- seq} {
     val usr = e.getAs[String](USER).get
     val id = e.getAs[String](ID).get
-    val upd = Entry(UUID fromString usr, id, e.getAs[Long]("mils").get, maxT, e.getAs[Mark](MARK).get)
+    val upd = Entry(UUID fromString usr, id, e.getAs[Long]("mils").get, Long.MaxValue, e.getAs[Mark](MARK).get)
     c update(d :~ USER -> usr :~ ID -> id, d :~ "$unset" -> (d :~ "mils" -> 1) :~ "$set" -> upd)
   }
 
@@ -67,25 +67,25 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Retrieves a current entry by user and id, None if not found. */
   def receive(user: UUID, id: String): Future[Option[Entry]] = for {
     c <- futCol
-    optEnt <- (c find d :~ USER -> user.toString :~ ID -> id :~ THRU -> maxT).one[Entry]
+    optEnt <- (c find d :~ USER -> user.toString :~ ID -> id :~ curnt).one[Entry]
   } yield optEnt
 
   /** Retrieves all current entries for the user, sorted by 'from' time. */
   def receive(user: UUID): Future[Seq[Entry]] = for {
     c <- futCol
-    seq <- (c find d :~ USER -> user.toString :~ THRU -> maxT sort d :~ MILS -> 1).coll[Entry, Seq]()
+    seq <- (c find d :~ USER -> user.toString :~ curnt sort d :~ MILS -> 1).coll[Entry, Seq]()
   } yield seq
 
   /** Retrieves a current entry by user and url, None if not found. */
   def receive(url: String, user: UUID): Future[Option[Entry]] = for {
     c <- futCol
-    set <- (c find d :~ USER -> user.toString :~ s"$MARK.$UPRFX" -> url.prefx :~ THRU -> maxT).coll[Entry, Seq]()
+    set <- (c find d :~ USER -> user.toString :~ s"$MARK.$UPRFX" -> url.prefx :~ curnt).coll[Entry, Seq]()
   } yield set collectFirst { case e if e.mark.url.get == url => e }
 
   /** Retrieves all current entries for the user, constrained by a list of tags. Entry must have all tags to qualify. */
   def receiveTagged(user: UUID, tags: Set[String]): Future[Seq[Entry]] = for {
     c <- futCol
-    sel = d :~ USER -> user.toString :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ THRU -> maxT
+    sel = d :~ USER -> user.toString :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ curnt
     seq <- (c find sel).coll[Entry, Seq]()
   } yield seq
 
@@ -95,7 +95,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def receiveRepred(user: UUID, tags: Set[String]): Future[Seq[Entry]] = for {
     c <- futCol
-    sel0 = d :~ USER -> user.toString :~ s"$MARK.$REPR" -> (d :~ "$exists" -> true :~ "$ne" -> "") :~ THRU -> maxT
+    sel0 = d :~ USER -> user.toString :~ s"$MARK.$REPR" -> (d :~ "$exists" -> true :~ "$ne" -> "") :~ curnt
     sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
     seq <- (c find sel1).coll[Entry, Seq]()
   } yield seq
@@ -103,7 +103,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Retrieves all tags existing in current entries for the user. */
   def receiveTags(user: UUID): Future[Set[String]] = for {
     c <- futCol
-    sel = d :~ USER -> user.toString :~ THRU -> maxT
+    sel = d :~ USER -> user.toString :~ curnt
     set <- (c find sel projection d :~ s"$MARK.$TAGS" -> 1).coll[BSONDocument, Set]()
   } yield for {
     d <- set
@@ -118,21 +118,21 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def search(user: UUID, query: String, tags: Set[String]): Future[Seq[Entry]] = for {
     c <- futCol
-    sel0 = d :~ USER -> user.toString :~ THRU -> maxT :~ "$text" -> (d :~ "$search" -> query)
+    sel0 = d :~ USER -> user.toString :~ curnt :~ "$text" -> (d :~ "$search" -> query)
     sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
     pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
     seq <- (c find sel1 projection pjn sort d :~ SCORE -> (d :~ "$meta" -> "textScore")).coll[Entry, Seq]()
   } yield seq
 
   /**
-    * Updates current state of an entry with provided mark, looking up the entry up by user and id. Make sure to omit
-    * a repr id in the update mark if changes were made to key fields of the mark.
+    * Updates current state of an entry with provided mark, looking up the entry up by user and id. Make sure to omit a
+    * repr id in the update mark if changes were made to key fields of the mark.
     */
   def update(user: UUID, id: String, mark: Mark): Future[Either[String, Mark]] = for {
     c <- futCol
     now = DateTime.now.getMillis
-    wr0 <- c update(d :~ USER -> user.toString :~ ID -> id :~ THRU -> maxT, d :~ "$set" -> (d :~ THRU -> now))
-    wr1 <- c insert d :~ USER -> user.toString :~ ID -> id :~ MILS -> now :~ THRU -> maxT :~ MARK -> mark
+    wr0 <- c update(d :~ USER -> user.toString :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ THRU -> now))
+    wr1 <- c insert d :~ USER -> user.toString :~ ID -> id :~ MILS -> now :~ curnt :~ MARK -> mark
   } yield digestWriteResult(wr1, mark)
 
   /** Renames one tag in all user's entries and their states that have it. */
@@ -167,7 +167,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Adds a set of tags to each current entry from a list of ids. */
   def tag(user: UUID, ids: Seq[String], tags: Set[String]): Future[Either[String, Set[String]]] = for {
     c <- futCol
-    sel = d :~ USER -> user.toString :~ ID -> (d :~ "$in" -> ids) :~ THRU -> maxT
+    sel = d :~ USER -> user.toString :~ ID -> (d :~ "$in" -> ids) :~ curnt
     upd = d :~ "$push" -> (d :~ s"$MARK.$TAGS" -> (d :~ "$each" -> tags))
     wr <- c update(sel, upd, multi = true)
   } yield digestWriteResult(wr, tags)
