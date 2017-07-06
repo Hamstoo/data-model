@@ -18,13 +18,15 @@ case class RangeMils(begin: Long, end: Long)
   * - indx - the number of the first character in the selection relative to the whole string in HTML element;
   * - mils - timestamp.
   */
-case class Highlight(path: String, text: String, indx: Int, mils: Long)
+case class Highlight(id: String, path: String, text: String, indx: Int, from: Long, thru: Long)
 
 object Highlight {
+  val HID: String = fieldName[Highlight]("id")
   val PATH: String = fieldName[Highlight]("path")
   val TEXT: String = fieldName[Highlight]("text")
   val INDX: String = fieldName[Highlight]("indx")
-  val TSTMP: String = fieldName[Highlight]("mils")
+  val TSTMP: String = fieldName[Highlight]("from")
+  val TILL: String = fieldName[Highlight]("thru")
 }
 
 /**
@@ -102,14 +104,15 @@ object Mark {
   * `score` is not part of the documents in the database, but it is returned from
   * `MongoMarksDao.search` so it is easier to have it included here.
   */
-case class Entry(userId: UUID, id: String, mils: Long, mark: Mark, score: Option[Double] = None)
+case class Entry(userId: UUID, id: String, from: Long, thru: Long, mark: Mark, score: Option[Double] = None)
 
 object Entry {
   val ID_LENGTH = 16
   // JSON deserialization field names
   val USER: String = fieldName[Entry]("userId")
   val ID: String = fieldName[Entry]("id")
-  val MILS: String = fieldName[Entry]("mils")
+  val MILS: String = fieldName[Entry]("from")
+  val THRU: String = fieldName[Entry]("thru")
   val MARK: String = fieldName[Entry]("mark")
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = fieldName[Entry]("score")
@@ -119,5 +122,5 @@ object Entry {
 
   /** Factory with ID and timestamp generation. */
   def apply(userId: UUID, mark: Mark): Entry =
-    Entry(userId, Random.alphanumeric.take(Entry.ID_LENGTH).mkString, DateTime.now.getMillis, mark)
+    Entry(userId, Random.alphanumeric.take(ID_LENGTH).mkString, DateTime.now.getMillis, Long.MaxValue, mark)
 }
