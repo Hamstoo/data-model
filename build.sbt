@@ -9,6 +9,19 @@ scalacOptions in ThisBuild ++= Seq("-feature", "-language:postfixOps", "-languag
 
 lazy val root = project in file(".")
 
+val gitBranch = settingKey[String]("Determines current git branch")
+gitBranch := Process("git rev-parse --abbrev-ref HEAD").lines.head
+val releaseGitBranch = settingKey[Boolean]("Determines current git branch is release")
+releaseGitBranch := gitBranch.value.startsWith("release")
+isSnapshot := !releaseGitBranch.value
+publishTo := {
+  if (releaseGitBranch.value)
+    Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
+  else
+    Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-dev-local;build.timestamp=" + new java.util.Date().getTime)
+}
+credentials += Credentials("Artifactory Realm", "ec2-54-236-36-52.compute-1.amazonaws.com", "admin", "SePhA5Q6wuEAXDWfy5VjuGpyS9yZLmRN")
+
 resolvers ++= Seq(
   "sonatype-snapshots" at "http://oss.sonatype.org/content/repositories/snapshots",
   "sonatype-releases" at "http://oss.sonatype.org/content/repositories/releases",
