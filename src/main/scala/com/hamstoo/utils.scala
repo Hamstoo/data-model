@@ -7,6 +7,7 @@ import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
 import reactivemongo.api.{BSONSerializationPack, Cursor}
 
 import scala.collection.generic.CanBuildFrom
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.language.higherKinds
@@ -74,44 +75,11 @@ package object utils {
 
   private val URL_PREFIX_LENGTH = 1000
 
-  implicit class StrWithBinaryPrefix(private val s: String) extends AnyVal {
+  implicit class ExtendedString(private val s: String) extends AnyVal {
     /**
       * Retrieves first chars of a string as binary sequence. This method exists as a means of constructing
       * binary prefixes of string fields for binary indexes in MongoDB.
       */
-    def prefx: Array[Byte] = s.getBytes take URL_PREFIX_LENGTH
+    def prefx: mutable.WrappedArray[Byte] = s.getBytes take URL_PREFIX_LENGTH
   }
-
-  /* Rather than overriding `equals` and `hashCode` for every case class that has a Java.Array member, it
-   * might be better to have a HashableArray class that would just do that for us, but I can't get it working.
-    */
-  /**
-    * This implicit class cannot be used implicitly because it overrides methods that are already
-    * defined for Array[T], but it can be used explicitly to override said methods.  In particular
-    * Array[T] inherits its hashCode method from Object/Any, so Array[T] instances are insufficient
-    * as members of case classes.
-    * See also:
-    *   https://stackoverflow.com/questions/20699105/using-implicit-class-to-override-method
-    * /
-  implicit class HashableArray[T](val ary: Array[T]) {
-
-    /** Fairly standard equals definition. */
-    override def equals(other: Any): Boolean = other match {
-      case other: Array[T] => other.canEqual(this) && this.hashCode == new HashableArray(other).hashCode
-      case _ => false
-    }
-
-    /**
-      * Same implementation as Java.List per here:
-      *   https://stackoverflow.com/questions/15576009/how-to-make-hashmap-work-with-arrays-as-key
-      */
-    override def hashCode(): Int = ary.foldLeft(1) { case (acc, elem) => 31 * acc + elem.hashCode }
-  }
-
-  /** Does this require scala.collection.generic.GenericCompanion? */
-  object HashableArray {
-    implicit val hashableByteArrayHandler: BSONDocumentHandler[HashableArray[T]] = Macros.handler[HashableArray[T]]
-    def apply[T](ary: Array[T]) = new HashableArray(ary)
-    def unapply[T](h: HashableArray[T]): Array[T] = h.ary
-  }*/
 }

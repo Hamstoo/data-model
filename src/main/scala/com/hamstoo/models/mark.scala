@@ -2,11 +2,12 @@ package com.hamstoo.models
 
 import java.util.UUID
 
-import reactivemongo.bson.{BSONDocumentHandler, BSONHandler, BSONString, Macros}
+import reactivemongo.bson.{BSONBinary, BSONDocumentHandler, BSONHandler, BSONString, Macros, Subtype}
 import com.hamstoo.utils.fieldName
 import org.joda.time.DateTime
-import com.hamstoo.utils.StrWithBinaryPrefix
+import com.hamstoo.utils.ExtendedString
 
+import scala.collection.mutable
 import scala.util.Random
 
 case class RangeMils(begin: Long, end: Long)
@@ -50,7 +51,7 @@ object Highlight {
 case class Mark(
                  subj: String,
                  url: Option[String],
-                 var urlPrfx: Option[Array[Byte]],
+                 var urlPrfx: Option[mutable.WrappedArray[Byte]],
                  repId: Option[String],
                  rating: Option[Double],
                  tags: Option[Set[String]],
@@ -59,21 +60,6 @@ case class Mark(
                  tabVisible: Option[Seq[RangeMils]],
                  tabBground: Option[Seq[RangeMils]]) {
   urlPrfx = url.map(_.prefx)
-
-  /** Fairly standard equals definition. */
-  override def equals(other: Any): Boolean = other match {
-    case other: Mark => other.canEqual(this) && this.hashCode == other.hashCode
-    case _ => false
-  }
-
-  /** Avoid incorporating Java byte array (i.e. memory address) `urlPrfx` into the hash code. */
-  override def hashCode: Int = this.url match {
-    // note that when `hashCode` is overridden `super.hashCode` appears to have different behavior than
-    // what is implemented here, see the test in MarksDaoSpec regarding this, and more at the following
-    // link: https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
-    case None => scala.runtime.ScalaRunTime._hashCode(this) // NOT super.hashCode!
-    case Some(_) => 31 * (31 + this.copy(url = None).hashCode) + this.url.get.hashCode
-  }
 }
 
 object Mark {
@@ -88,6 +74,10 @@ object Mark {
   val HLGTS: String = fieldName[Mark]("hlights")
   val TABVIS: String = fieldName[Mark]("tabVisible")
   val TABBG: String = fieldName[Mark]("tabBground")
+  implicit val arrayBsonHandler: BSONHandler[BSONBinary, mutable.WrappedArray[Byte]] =
+    BSONHandler[BSONBinary, mutable.WrappedArray[Byte]](
+      _.byteArray,
+      a => BSONBinary(a.array, Subtype.GenericBinarySubtype))
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
   implicit val markBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]

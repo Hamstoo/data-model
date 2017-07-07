@@ -1,10 +1,11 @@
 package com.hamstoo.models
 
-import com.hamstoo.utils.{StrWithBinaryPrefix, fieldName}
+import com.hamstoo.utils.{ExtendedString, fieldName}
 import org.joda.time.DateTime
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONBinary, BSONDocumentHandler, BSONHandler, Macros, Subtype}
 
 import scala.annotation.tailrec
+import scala.collection.mutable
 import scala.util.Random
 
 object Representation {
@@ -70,6 +71,10 @@ object Representation {
   val VECR: String = fieldName[Representation]("vecrepr")
   val TSTAMP: String = fieldName[Representation]("from")
   val CURRNT: String = fieldName[Representation]("thru")
+  implicit val arrayBsonHandler: BSONHandler[BSONBinary, mutable.WrappedArray[Byte]] =
+    BSONHandler[BSONBinary, mutable.WrappedArray[Byte]](
+      _.byteArray,
+      a => BSONBinary(a.array, Subtype.GenericBinarySubtype))
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 
   /** Factory with id and timestamp generation. */
@@ -99,18 +104,18 @@ object Representation {
   * instance of a Cruncher.
   *
   * @param id       Unique alphanumeric ID.
-  * @param link      URL link used to generate this Representation.
-  * @param header    Title and `h1` headers concatenated.
-  * @param doctext   Document text.
-  * @param othtext   Other text not included in document text.
-  * @param keywords  Keywords from meta tags.
-  * @param vecrepr   Array[Double] vector embedding of the texts.
-  * @param from Time of construction.
+  * @param link     URL link used to generate this Representation.
+  * @param header   Title and `h1` headers concatenated.
+  * @param doctext  Document text.
+  * @param othtext  Other text not included in document text.
+  * @param keywords Keywords from meta tags.
+  * @param vecrepr  Array[Double] vector embedding of the texts.
+  * @param from     Time of construction.
   */
 case class Representation(
                            id: String,
                            link: Option[String],
-                           var lprefx: Option[Array[Byte]],
+                           var lprefx: Option[mutable.WrappedArray[Byte]],
                            header: String,
                            doctext: String,
                            othtext: String,
@@ -119,20 +124,4 @@ case class Representation(
                            from: Long,
                            thru: Long) {
   lprefx = link.map(_.prefx)
-
-  /** Fairly standard equals definition. */
-  override def equals(other: Any): Boolean = other match {
-    case other: Representation => other.canEqual(this) && this.hashCode == other.hashCode
-    case _ => false
-  }
-
-  /** Avoid incorporating Java byte array (i.e. memory address) `lprefx` into the hash code. */
-  override def hashCode: Int = this.link match {
-    // note that when `hashCode` is overridden `super.hashCode` appears to have different behavior than
-    // what is implemented here, see the test in RepresentationSpec regarding this, and more at the following
-    // link: https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
-    // And an explanation here: https://stackoverflow.com/a/44708937/2030627
-    case x if x.isEmpty => scala.runtime.ScalaRunTime._hashCode(this) // NOT super.hashCode!
-    case _ => 31 * (31 + this.copy(link = None).hashCode) + this.link.hashCode
-  }
 }

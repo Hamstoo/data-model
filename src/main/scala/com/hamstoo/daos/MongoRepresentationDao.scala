@@ -15,7 +15,7 @@ import scala.concurrent.Future
 
 class MongoRepresentationDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedWriteResult, StrWithBinaryPrefix}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedWriteResult, ExtendedString}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "representations")
   private val d = BSONDocument.empty

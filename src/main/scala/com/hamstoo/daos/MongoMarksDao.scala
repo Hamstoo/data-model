@@ -17,7 +17,7 @@ import scala.concurrent.Future
 
 class MongoMarksDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, StrWithBinaryPrefix, ExtendedWriteResult}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedString, ExtendedWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "entries")
   private val d = BSONDocument.empty
