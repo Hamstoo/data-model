@@ -17,7 +17,7 @@ import scala.concurrent.Future
 class MongoUserTokenDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.models.UserToken.tokenHandler
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, digestWriteResult}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "tokens")
   private val d = BSONDocument.empty
@@ -32,14 +32,16 @@ class MongoUserTokenDao(db: Future[DefaultDB]) {
   } yield optTkn
 
   /** Saves provided token. */
-  def save(token: UserToken): Future[Either[String, UserToken]] = for {
+  def save(token: UserToken): Future[Unit] = for {
     c <- futCol
     wr <- c insert token
-  } yield digestWriteResult(wr, token)
+    _ <- wr failIfError
+  } yield ()
 
   /** Removes a token by id. */
-  def remove(id: UUID): Future[Either[String, UUID]] = for {
+  def remove(id: UUID): Future[Unit] = for {
     c <- futCol
     wr <- c remove d :~ ID -> id.toString
-  } yield digestWriteResult(wr, id)
+    _ <- wr failIfError
+  } yield ()
 }

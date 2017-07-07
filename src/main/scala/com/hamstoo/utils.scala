@@ -59,6 +59,19 @@ package object utils {
     }
   }
 
+  implicit class ExtendedWriteResult[R <: WriteResult](private val wr: R) extends AnyVal {
+    /**
+      * Function to be used in Future for-comprehensions or when a Future needs to be
+      * Checks reactivemongo's update functions result for errors and returns a new future, failed if errors
+      * encountered.
+      */
+    def ifOk[T](f: => Future[T]): Future[T] =
+      if (wr.ok) f else Future failed new Exception(wr.writeErrors mkString "; ")
+
+    def failIfError: Future[Unit] =
+      if (wr.ok) Future.successful() else Future failed new Exception(wr.writeErrors mkString "; ")
+  }
+
   private val URL_PREFIX_LENGTH = 1000
 
   implicit class StrWithBinaryPrefix(private val s: String) extends AnyVal {
@@ -68,10 +81,6 @@ package object utils {
       */
     def prefx: Array[Byte] = s.getBytes take URL_PREFIX_LENGTH
   }
-
-  /** Checks reactivemongo's update functions results for errors and forms a unified return. */
-  def digestWriteResult[T]: (WriteResult, T) => Either[String, T] = (r, o) =>
-    if (r.ok) Right(o) else Left(r.writeErrors mkString "; ")
 
   /* Rather than overriding `equals` and `hashCode` for every case class that has a Java.Array member, it
    * might be better to have a HashableArray class that would just do that for us, but I can't get it working.

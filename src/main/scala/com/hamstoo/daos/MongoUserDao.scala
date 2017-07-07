@@ -19,7 +19,7 @@ import scala.concurrent.Future
 class MongoUserDao(db: Future[DefaultDB]) extends IdentityService[User] {
 
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, digestWriteResult}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedWriteResult}
 
   // get the "users" collection (in the future); the `map` is `Future.map`
   // http://reactivemongo.org/releases/0.12/api/#reactivemongo.api.DefaultDB
@@ -34,10 +34,11 @@ class MongoUserDao(db: Future[DefaultDB]) extends IdentityService[User] {
   futCol map (_.indexesManager ensure indxs)
 
   /** Saves or updates user account data by matching provided `User`'s `.id`. */
-  def save(u: User): Future[Either[String, User]] = for {
+  def save(u: User): Future[Unit] = for {
     c <- futCol
     wr <- c update(d :~ ID -> u.id.toString, u, upsert = true)
-  } yield digestWriteResult(wr, u)
+    _ <- wr failIfError
+  } yield ()
 
   /** Retrieves user account data by login. */
   def retrieve(loginInfo: LoginInfo): Future[Option[User]] = for {
@@ -58,36 +59,36 @@ class MongoUserDao(db: Future[DefaultDB]) extends IdentityService[User] {
   } yield optUsr
 
   /** Attaches provided `Profile` to user account by user id. */
-  def link(userId: UUID, profile: Profile): Future[Either[String, User]] = for {
+  def link(userId: UUID, profile: Profile): Future[User] = for {
     c <- futCol
-    wr <- c findAndUpdate(d :~ ID -> userId.toString, d :~ "$push" -> (d :~ PROF -> profile))
-  } yield if (wr.lastError.isDefined || wr.value.isEmpty) Left(wr.lastError.flatMap(_.err) getOrElse "")
-  else Right(wr.value.get.as[User])
+    wr <- c findAndUpdate(d :~ ID -> userId.toString, d :~ "$push" -> (d :~ PROF -> profile), fetchNewObject = true)
+  } yield wr.result[User].get
 
   /** Detaches provided login from user account by id. */
-  def unlink(userId: UUID, loginInfo: LoginInfo): Future[Either[String, User]] = for {
+  def unlink(userId: UUID, loginInfo: LoginInfo): Future[User] = for {
     c <- futCol
-    wr <- c findAndUpdate(d :~ ID -> userId.toString, d :~ "$pull" -> (d :~ s"$PROF.$LGNF" -> loginInfo))
-  } yield if (wr.lastError.isDefined || wr.value.isEmpty) Left(wr.lastError.flatMap(_.err) getOrElse "")
-  else Right(wr.value.get.as[User])
+    upd = d :~ "$pull" -> (d :~ s"$PROF.$LGNF" -> loginInfo)
+    wr <- c findAndUpdate(d :~ ID -> userId.toString, upd, fetchNewObject = true)
+  } yield wr.result[User].get
 
   /** Updates one of user account's profiles by login. */
-  def update(profile: Profile): Future[Either[String, User]] = for {
+  def update(profile: Profile): Future[User] = for {
     c <- futCol
-    wr <- c findAndUpdate(d :~ PLGNF -> profile.loginInfo, d :~ "$set" -> (d :~ s"$PROF.$$" -> profile))
-  } yield if (wr.lastError.isDefined || wr.value.isEmpty) Left(wr.lastError.flatMap(_.err) getOrElse "")
-  else Right(wr.value.get.as[User])
+    upd = d :~ "$set" -> (d :~ s"$PROF.$$" -> profile)
+    wr <- c findAndUpdate(d :~ PLGNF -> profile.loginInfo, upd, fetchNewObject = true)
+  } yield wr.result[User].get
 
   /** Sets one of user account profiles to 'confirmed' by login. */
-  def confirm(loginInfo: LoginInfo): Future[Either[String, User] with Product with Serializable] = for {
+  def confirm(loginInfo: LoginInfo): Future[User] = for {
     c <- futCol
-    wr <- c findAndUpdate(d :~ PLGNF -> loginInfo, d :~ "$set" -> (d :~ s"$PROF.$$.$CONF" -> true))
-  } yield if (wr.lastError.isDefined || wr.value.isEmpty) Left(wr.lastError.flatMap(_.err) getOrElse "")
-  else Right(wr.value.get.as[User])
+    upd = d :~ "$set" -> (d :~ s"$PROF.$$.$CONF" -> true)
+    wr <- c findAndUpdate(d :~ PLGNF -> loginInfo, upd, fetchNewObject = true)
+  } yield wr.result[User].get
 
   /** Removes user account by id. */
-  def delete(userId: UUID): Future[Either[String, UUID]] = for {
+  def delete(userId: UUID): Future[Unit] = for {
     c <- futCol
     wr <- c remove d :~ ID -> userId.toString
-  } yield digestWriteResult(wr, userId)
+    _ <- wr failIfError
+  } yield ()
 }

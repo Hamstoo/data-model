@@ -17,7 +17,7 @@ import scala.concurrent.Future
 /** Data access object for usage stats. */
 class MongoStatsDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, digestWriteResult}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedWriteResult}
 
   // database collections
   private val futStatsCol: Future[BSONCollection] = db map (_ collection "userstats")
@@ -33,17 +33,18 @@ class MongoStatsDao(db: Future[DefaultDB]) {
   futStatsCol map (_.indexesManager ensure indxs)
 
   /** Adds a timestamp record for the user. */
-  def punch(userId: UUID): Future[Either[String, UUID]] = for {
+  def punch(userId: UUID): Future[Unit] = for {
     c <- futStatsCol
-    wr <- c insert (d :~ USR -> userId.toString :~ TIME -> DateTime.now.getMillis)
-  } yield digestWriteResult(wr, userId)
+    wr <- c insert d :~ USR -> userId.toString :~ TIME -> DateTime.now.getMillis
+    _ <- wr failIfError
+  } yield ()
 
   /** Increments user's imports count by `n`. */
-  def imprt(userId: UUID, n: Int): Future[Either[String, UUID]] = for {
+  def imprt(userId: UUID, n: Int): Future[Unit] = for {
     c <- futImportsCol
-    wr <- c findAndUpdate(d :~ "_id" -> userId.toString, d :~ "$inc" -> (d :~ IMPT -> n), upsert = true)
-  } yield if (wr.lastError.isDefined || wr.value.isEmpty) Left(wr.lastError.flatMap(_.err) getOrElse "")
-  else Right(userId)
+    wr <- c update(d :~ "_id" -> userId.toString, d :~ "$inc" -> (d :~ IMPT -> n), upsert = true)
+    _ <- wr failIfError
+  } yield ()
 
   /** Retrieves user's usage stats. */
   def stats(userId: UUID, offsetMinutes: Int): Future[Stats] = for {

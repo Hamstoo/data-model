@@ -15,7 +15,7 @@ import scala.concurrent.Future
 /** Data access object for conceptnet vectors mongo-based storage. */
 class MongoVectorsDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, digestWriteResult}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "vectors")
   private val d = BSONDocument.empty
@@ -30,18 +30,20 @@ class MongoVectorsDao(db: Future[DefaultDB]) {
     * Saves or updates term-uri pair. If uri is None, then the term is added to a mongo document containing all
     * terms that couldn't be resolved to a conceptnet-vectors uri.
     */
-  def addTerm(term: String, uri: Option[String]): Future[Either[String, String]] = for {
+  def addTerm(term: String, uri: Option[String]): Future[Unit] = for {
     c <- futCol
     wr <- c.update(d :~ URI -> uri.orElse(Some("")), d :~ "$addToSet" -> (d :~ TERMS -> term), upsert = true)
-  } yield digestWriteResult(wr, term)
+    _ <- wr failIfError
+  } yield ()
 
   /** Saves or updates term-uri-vector tuple. */
-  def addUri(term: Option[String], uri: String, vec: Option[Vec]): Future[Either[String, String]] = for {
+  def addUri(term: Option[String], uri: String, vec: Option[Vec]): Future[Unit] = for {
     c <- futCol
     upd = (if (term.isDefined) d :~ "$addToSet" -> (d :~ TERMS -> term.get) else d) :~
       "$set" -> (if (vec.isDefined) d :~ VEC -> vec else d :~ URI -> uri)
     wr <- c.update(d :~ URI -> uri, upd, upsert = true)
-  } yield digestWriteResult(wr, uri)
+    _ <- wr failIfError
+  } yield ()
 
   /** Retrieves a `VectorEntry` by provided key-value. */
   private def get(key: String, s: String): Future[Option[VectorEntry]] = for {

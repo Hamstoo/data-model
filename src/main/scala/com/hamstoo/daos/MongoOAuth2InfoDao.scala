@@ -16,6 +16,7 @@ import scala.concurrent.Future
 class MongoOAuth2InfoDao(db: Future[DefaultDB]) extends DelegableAuthInfoDAO[OAuth2Info] {
 
   import com.hamstoo.models.Profile.{auth2InfHandler, loginInfHandler}
+  import com.hamstoo.utils.ExtendedWriteResult
 
   private val futCol: Future[BSONCollection] = db map (_ collection "users")
   private val d = BSONDocument.empty
@@ -34,7 +35,7 @@ class MongoOAuth2InfoDao(db: Future[DefaultDB]) extends DelegableAuthInfoDAO[OAu
   override def add(loginInfo: LoginInfo, authInfo: OAuth2Info): Future[OAuth2Info] = for {
     c <- futCol
     wr <- c update(d :~ PLGNF -> loginInfo, d :~ "$set" -> (d :~ s"$PROF.$$.$OA1NF" -> authInfo))
-    if wr.ok
+    _ <- wr failIfError
   } yield authInfo
 
   /** Updates user entry's auth for a given login. */
@@ -47,6 +48,6 @@ class MongoOAuth2InfoDao(db: Future[DefaultDB]) extends DelegableAuthInfoDAO[OAu
   override def remove(loginInfo: LoginInfo): Future[Unit] = for {
     c <- futCol
     wr <- c update(d :~ PLGNF -> loginInfo, d :~ "$pull" -> (d :~ PROF -> (d :~ "loginInfo" -> loginInfo)))
-    if wr.ok
+    _ <- wr failIfError
   } yield ()
 }

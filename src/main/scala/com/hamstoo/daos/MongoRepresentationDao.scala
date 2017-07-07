@@ -15,7 +15,7 @@ import scala.concurrent.Future
 
 class MongoRepresentationDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, StrWithBinaryPrefix, digestWriteResult}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedWriteResult, StrWithBinaryPrefix}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "representations")
   private val d = BSONDocument.empty
@@ -66,8 +66,9 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     * Stores provided representation, optionally updating current state if repr id or link already exists in storage,
     * but not if provided repr id and link belong to different representations. Note that `id` and `link` are never
     * updated and returned id may initially belong to existing repr.
+    * Returns a future id of either updated or inserted repr.
     */
-  def save(repr: Representation): Future[Either[String, String]] = for {
+  def save(repr: Representation): Future[String] = for {
     c <- futCol
     /* Check if id and link exist in the db, failing on conflict. */
     optRepr0 <- (c find d :~ ID -> repr.id :~ curnt).one[Representation]
@@ -78,13 +79,16 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     /* Insert new repr either as is or as an update, conserving id and link in the latter case. */
     id = optRepr map (_.id) getOrElse repr.id
     wr <- optRepr match {
-      case None => c insert repr
       case Some(r) =>
         val now = DateTime.now.getMillis
-        c update(d :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ CURRNT -> now))
-        c insert repr.copy(id = id, link = r.link, from = now, thru = Long.MaxValue)
+        for {
+          wr <- c update(d :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ CURRNT -> now))
+          wr <- wr.ifOk(c insert repr.copy(id = id, link = r.link, from = now, thru = Long.MaxValue))
+        } yield wr
+      case _ => c insert repr
     }
-  } yield digestWriteResult(wr, id)
+    _ <- wr failIfError
+  } yield id
 
   /** Retrieves a current representation by id. */
   def retrieveId(id: String): Future[Option[Representation]] = for {
