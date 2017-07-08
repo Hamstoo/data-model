@@ -1,0 +1,30 @@
+machine:
+  timezone: UTC
+  java:
+    version: oraclejdk8
+
+dependencies:
+  pre:
+#  install fresh sbt version:
+    - wget -q https://dl.bintray.com/sbt/debian/sbt-0.13.13.deb
+    - sudo dpkg -i sbt-0.13.13.deb
+
+  override:
+#  compile with test cases:
+    - sbt test:compile
+  cache_directories:
+#  cache project dependencies and compiled packages:
+    - "~/.ivy2"
+    - "~/.sbt"
+    - "target"
+    - "project/target"
+    - "public"
+
+test:
+  override:
+    - sbt test
+
+deployment:
+  artifactory:
+    commands:
+      - sbt publish
