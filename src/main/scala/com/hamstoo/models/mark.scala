@@ -2,33 +2,28 @@ package com.hamstoo.models
 
 import java.util.UUID
 
-import reactivemongo.bson.{BSONBinary, BSONDocumentHandler, BSONHandler, BSONString, Macros, Subtype}
-import com.hamstoo.utils.fieldName
+import com.hamstoo.utils.{ExtendedString, fieldName}
 import org.joda.time.DateTime
-import com.hamstoo.utils.ExtendedString
+import reactivemongo.bson.{BSONBinary, BSONDocumentHandler, BSONHandler, BSONString, Macros, Subtype}
 
 import scala.collection.mutable
 import scala.util.Random
 
 case class RangeMils(begin: Long, end: Long)
 
+case class HLPos(path: String, text: String, indx: Int)
+
 /**
   * Data model of a text highlight. The fields are:
-  * - path - the CSS XPath of HTML element used to locate the highlight;
-  * - text - the highlighted piece of text;
-  * - indx - the number of the first character in the selection relative to the whole string in HTML element;
-  * - mils - timestamp.
+  * - id - highlight id;
+  * - pos - array of positioning data with these fields:
+  *   - path - the CSS XPath of HTML element used to locate the highlight;
+  *   - text - the highlighted piece of text;
+  *   - indx - the number of the first character in the selection relative to the whole string in HTML element;
+  * - from - timestamp;
+  * - thru - version validity time.
   */
-case class Highlight(id: String, path: String, text: String, indx: Int, from: Long, thru: Long)
-
-object Highlight {
-  val HID: String = fieldName[Highlight]("id")
-  val PATH: String = fieldName[Highlight]("path")
-  val TEXT: String = fieldName[Highlight]("text")
-  val INDX: String = fieldName[Highlight]("indx")
-  val TSTMP: String = fieldName[Highlight]("from")
-  val TILL: String = fieldName[Highlight]("thru")
-}
+case class Highlight(id: String, pos: Seq[HLPos], from: Long, thru: Long)
 
 /**
   * Ratee data model. The fields are:
@@ -48,44 +43,21 @@ object Highlight {
   * so it has been removed and the `urlPrfx` must now be set explicitly with the
   * `computeUrlPrefix` method.
   */
-case class Mark(
-                 subj: String,
-                 url: Option[String],
-                 var urlPrfx: Option[mutable.WrappedArray[Byte]],
-                 repId: Option[String],
-                 rating: Option[Double],
-                 tags: Option[Set[String]],
-                 comment: Option[String],
-                 hlights: Option[Seq[Highlight]],
-                 tabVisible: Option[Seq[RangeMils]],
-                 tabBground: Option[Seq[RangeMils]]) {
-  urlPrfx = url.map(_.prefx)
+case class MarkData(
+                     subj: String,
+                     url: Option[String],
+                     rating: Option[Double],
+                     tags: Option[Set[String]],
+                     comment: Option[String])
+
+object MarkData {
+    /** This auxiliary factory is used for the purpose of importing bookmarks only. */
+  def apply(subj: String, url: String, tags: Set[String]): MarkData = MarkData(subj, Some(url), None, Some(tags), None)
 }
 
-object Mark {
-  // JSON deserialization field names
-  val SUBJ: String = fieldName[Mark]("subj")
-  val URL: String = fieldName[Mark]("url")
-  val UPRFX: String = fieldName[Mark]("urlPrfx")
-  val REPR: String = fieldName[Mark]("repId")
-  val STARS: String = fieldName[Mark]("rating")
-  val TAGS: String = fieldName[Mark]("tags")
-  val COMMENT: String = fieldName[Mark]("comment")
-  val HLGTS: String = fieldName[Mark]("hlights")
-  val TABVIS: String = fieldName[Mark]("tabVisible")
-  val TABBG: String = fieldName[Mark]("tabBground")
-  implicit val arrayBsonHandler: BSONHandler[BSONBinary, mutable.WrappedArray[Byte]] =
-    BSONHandler[BSONBinary, mutable.WrappedArray[Byte]](
-      _.byteArray,
-      a => BSONBinary(a.array, Subtype.GenericBinarySubtype))
-  implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
-  implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
-  implicit val markBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
-
-  /** This auxiliary factory is used for the purpose of importing bookmarks only. */
-  def apply(subj: String, url: String, tags: Set[String]): Mark =
-    Mark(subj, Some(url), None, None, None, Some(tags), None, None, None, None)
-}
+case class MarkAux(hlights: Option[Seq[Highlight]],
+                   tabVisible: Option[Seq[RangeMils]],
+                   tabBground: Option[Seq[RangeMils]])
 
 /**
   * User history (list) entry data model. An `Entry` is a `Mark` that belongs to a
@@ -94,23 +66,59 @@ object Mark {
   * `score` is not part of the documents in the database, but it is returned from
   * `MongoMarksDao.search` so it is easier to have it included here.
   */
-case class Entry(userId: UUID, id: String, from: Long, thru: Long, mark: Mark, score: Option[Double] = None)
+case class Mark(
+                 userId: UUID,
+                 id: String,
+                 mark: MarkData,
+                 aux: MarkAux,
+                 var urlPrfx: Option[mutable.WrappedArray[Byte]],
+                 repId: Option[String],
+                 from: Long,
+                 thru: Long,
+                 score: Option[Double] = None) {
+  urlPrfx = mark.url map (_.prefx)
+}
 
-object Entry {
-  val ID_LENGTH = 16
-  // JSON deserialization field names
-  val USER: String = fieldName[Entry]("userId")
-  val ID: String = fieldName[Entry]("id")
-  val MILS: String = fieldName[Entry]("from")
-  val THRU: String = fieldName[Entry]("thru")
-  val MARK: String = fieldName[Entry]("mark")
+object Mark {
+  val ID_LENGTH: Int = 16
+  val USER: String = fieldName[Mark]("userId")
+  val ID: String = fieldName[Mark]("id")
+  val MARK: String = fieldName[Mark]("mark")
+  val AUX: String = fieldName[Mark]("aux")
+  val UPRFX: String = fieldName[Mark]("urlPrfx")
+  val REPR: String = fieldName[Mark]("repId")
+  val MILS: String = fieldName[Mark]("from")
+  val THRU: String = fieldName[Mark]("thru")
   // `text` index search score <projectedFieldName>, not a field name of the collection
-  val SCORE: String = fieldName[Entry]("score")
+  val SCORE: String = fieldName[Mark]("score")
+  val SUBJ: String = fieldName[MarkData]("subj")
+  val URL: String = fieldName[MarkData]("url")
+  val STARS: String = fieldName[MarkData]("rating")
+  val TAGS: String = fieldName[MarkData]("tags")
+  val COMNT: String = fieldName[MarkData]("comment")
+  val HLGTS: String = fieldName[MarkAux]("hlights")
+  val TABVIS: String = fieldName[MarkAux]("tabVisible")
+  val TABBG: String = fieldName[MarkAux]("tabBground")
+  val HID: String = fieldName[Highlight]("id")
+  val POS: String = fieldName[Highlight]("pos")
+  val PATH: String = fieldName[HLPos]("path")
+  val TEXT: String = fieldName[HLPos]("text")
+  val INDX: String = fieldName[HLPos]("indx")
+  val TSTMP: String = fieldName[Highlight]("from")
+  val TILL: String = fieldName[Highlight]("thru")
+  implicit val hlposBsonHandler: BSONDocumentHandler[HLPos] = Macros.handler[HLPos]
+  implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
+  implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
+  implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
+  implicit val arrayBsonHandler: BSONHandler[BSONBinary, mutable.WrappedArray[Byte]] =
+    BSONHandler[BSONBinary, mutable.WrappedArray[Byte]](
+      _.byteArray,
+      a => BSONBinary(a.array, Subtype.GenericBinarySubtype))
   implicit val uuidBsonHandler: BSONHandler[BSONString, UUID] =
     BSONHandler[BSONString, UUID](UUID fromString _.value, BSONString apply _.toString)
-  implicit val entryBsonHandler: BSONDocumentHandler[Entry] = Macros.handler[Entry]
+  implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
 
   /** Factory with ID and timestamp generation. */
-  def apply(userId: UUID, mark: Mark): Entry =
-    Entry(userId, Random.alphanumeric.take(ID_LENGTH).mkString, DateTime.now.getMillis, Long.MaxValue, mark)
+  def apply(userId: UUID, mark: MarkData): Mark =
+    Mark(userId, Random.alphanumeric take ID_LENGTH mkString, mark, None, None, DateTime.now.getMillis, Long.MaxValue)
 }

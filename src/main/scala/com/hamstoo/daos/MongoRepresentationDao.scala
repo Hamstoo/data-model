@@ -11,11 +11,12 @@ import reactivemongo.bson.{BSONDocument, BSONElement, BSONObjectID, Producer}
 
 import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 
 class MongoRepresentationDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedWriteResult, ExtendedString}
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedString, ExtendedWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "representations")
   private val d = BSONDocument.empty
@@ -24,29 +25,17 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   private val SCORE = "score"
   private val CONTENT_WEIGHT = 8
 
-  /* Data migration to 0.7.1 that adds `lprefx` field to documents which should have it. */
-  for {
-    c <- futCol
-    sel = d :~ LNK -> (d :~ "$exists" -> true) :~ LPREF -> (d :~ "$exist" -> false)
-    n <- c count Some(sel)
-    if n > 0
-  } for {seq <- (c find sel).coll[BSONDocument, Seq]()} for {
-    r <- seq
-    upd = d :~ "$set" -> (d :~ LPREF -> r.getAs[String](LNK).get.prefx)
-  } c update(d :~ "_id" -> r.getAs[BSONObjectID]("_id").get, upd)
-
   /* Data migration to 0.8.0 that adds the fields for 'from-thru' model. */
-  for {
+  Await.ready(for {
     c <- futCol
     sel = d :~ CURRNT -> (d :~ "$exists" -> false)
     n <- c count Some(sel)
     if n > 0
-  } for {seq <- (c find sel).coll[BSONDocument, Seq]()} for {
+  } yield for {seq <- (c find sel).coll[BSONDocument, Seq]()} for {
     r <- seq
     id = r.getAs[BSONObjectID]("_id").get
-    upd = d :~ "$set" -> (d :~ ID -> id :~ TSTAMP -> r.getAs[Long]("timestamp").get :~ curnt) :~
-      "$unset" -> (d :~ "timestamp" -> 1)
-  } c update(d :~ "_id" -> id, upd)
+    u = d :~ ID -> id :~ LPREF -> r.getAs[String](LNK).map(_.prefx) :~ TSTAMP -> r.getAs[Long]("timestamp").get :~ curnt
+  } c update(d :~ "_id" -> id, d :~ "$set" -> u :~ "$unset" -> (d :~ "timestamp" -> 1)), Duration.Inf)
 
   /* Ensure that mongo collection has proper `text` index for relevant fields.  Note that (apparently) the
    weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
