@@ -26,5 +26,6 @@ test:
 
 deployment:
   artifactory:
+    branch: /.*?/
     commands:
       - sbt publish
