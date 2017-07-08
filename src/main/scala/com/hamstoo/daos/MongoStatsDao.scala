@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.Entry._
+import com.hamstoo.models.Mark._
 import com.hamstoo.models.{Stats, StatsDay}
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
