@@ -2,13 +2,13 @@ package com.hamstoo.models
 
 import com.hamstoo.utils.{ExtendedString, fieldName}
 import org.joda.time.DateTime
-import reactivemongo.bson.{BSONBinary, BSONDocumentHandler, BSONHandler, Macros, Subtype}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.util.Random
 
-object Representation {
+object Representation extends BSONHandlers {
   type Vec = Seq[Double]
 
   implicit class DblWithPow(private val d: Double) extends AnyVal {
@@ -71,10 +71,6 @@ object Representation {
   val VECR: String = fieldName[Representation]("vecrepr")
   val TSTAMP: String = fieldName[Representation]("from")
   val CURRNT: String = fieldName[Representation]("thru")
-  implicit val arrayBsonHandler: BSONHandler[BSONBinary, mutable.WrappedArray[Byte]] =
-    BSONHandler[BSONBinary, mutable.WrappedArray[Byte]](
-      _.byteArray,
-      a => BSONBinary(a.array, Subtype.GenericBinarySubtype))
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 
   /** Factory with id and timestamp generation. */

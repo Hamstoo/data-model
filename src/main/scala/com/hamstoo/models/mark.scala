@@ -79,7 +79,7 @@ case class Mark(
   urlPrfx = mark.url map (_.prefx)
 }
 
-object Mark {
+object Mark extends BSONHandlers {
   val ID_LENGTH: Int = 16
   val USER: String = fieldName[Mark]("userId")
   val ID: String = fieldName[Mark]("id")
@@ -111,12 +111,6 @@ object Mark {
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
   implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
-  implicit val arrayBsonHandler: BSONHandler[BSONBinary, mutable.WrappedArray[Byte]] =
-    BSONHandler[BSONBinary, mutable.WrappedArray[Byte]](
-      _.byteArray,
-      a => BSONBinary(a.array, Subtype.GenericBinarySubtype))
-  implicit val uuidBsonHandler: BSONHandler[BSONString, UUID] =
-    BSONHandler[BSONString, UUID](UUID fromString _.value, BSONString apply _.toString)
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
 
   /** Factory with ID and timestamp generation. */

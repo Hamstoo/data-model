@@ -6,7 +6,7 @@ import com.hamstoo.utils.fieldName
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
-import reactivemongo.bson.{BSONDocumentHandler, BSONHandler, BSONString, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 case class Profile(
                     loginInfo: LoginInfo,
@@ -52,7 +52,7 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
   def profileFor(loginInfo: LoginInfo): Option[Profile] = profiles find (_.loginInfo == loginInfo)
 }
 
-object User {
+object User extends BSONHandlers {
   val ID: String = fieldName[User]("id")
   val LGNF: String = fieldName[User]("loginInfo")
   val PROF: String = fieldName[User]("profiles")
@@ -64,7 +64,5 @@ object User {
   val EMAIL: String = fieldName[User]("email")
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
-  implicit val uuidBsonHandler: BSONHandler[BSONString, UUID] =
-    BSONHandler[BSONString, UUID](UUID fromString _.value, BSONString apply _.toString)
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]
 }
