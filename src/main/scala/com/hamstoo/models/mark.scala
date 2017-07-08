@@ -109,6 +109,7 @@ object Mark {
   implicit val hlposBsonHandler: BSONDocumentHandler[HLPos] = Macros.handler[HLPos]
   implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
+  implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
   implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
   implicit val arrayBsonHandler: BSONHandler[BSONBinary, mutable.WrappedArray[Byte]] =
     BSONHandler[BSONBinary, mutable.WrappedArray[Byte]](
@@ -119,6 +120,13 @@ object Mark {
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
 
   /** Factory with ID and timestamp generation. */
-  def apply(userId: UUID, mark: MarkData): Mark =
-    Mark(userId, Random.alphanumeric take ID_LENGTH mkString, mark, None, None, DateTime.now.getMillis, Long.MaxValue)
+  def apply(userId: UUID, mark: MarkData): Mark = Mark(
+    userId,
+    Random.alphanumeric take ID_LENGTH mkString,
+    mark,
+    MarkAux(None, None, None),
+    None,
+    None,
+    DateTime.now.getMillis,
+    Long.MaxValue)
 }
