@@ -7,7 +7,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocument, BSONElement, BSONObjectID, Producer}
+import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 
 import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -31,11 +31,17 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     sel = d :~ CURRNT -> (d :~ "$exists" -> false)
     n <- c count Some(sel)
     if n > 0
-  } yield for {seq <- (c find sel).coll[BSONDocument, Seq]()} for {
-    r <- seq
-    id = r.getAs[BSONObjectID]("_id").get
-    u = d :~ ID -> id :~ LPREF -> r.getAs[String](LNK).map(_.prefx) :~ TSTAMP -> r.getAs[Long]("timestamp").get :~ curnt
-  } c update(d :~ "_id" -> id, d :~ "$set" -> u :~ "$unset" -> (d :~ "timestamp" -> 1)), Duration.Inf)
+    seq <- (c find sel).coll[BSONDocument, Seq]()
+    _ <- Future sequence (for {
+      r <- seq
+      id = r.getAs[String]("_id").get
+      upd = d :~ ID -> id :~ LPREF -> r.getAs[String](LNK).map(_.prefx) :~ TSTAMP -> r.getAs[Long]("timestamp").get :~
+        curnt
+    } yield for {
+      _ <- c update(d :~ "_id" -> id, d :~ "$set" -> upd)
+      _ <- c update(d :~ "_id" -> id, d :~ "$unset" -> (d :~ "timestamp" -> 1))
+    } yield ())
+  } yield (), Duration.Inf)
 
   /* Ensure that mongo collection has proper `text` index for relevant fields.  Note that (apparently) the
    weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
