@@ -26,34 +26,39 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /* Data migration to 0.8.1 that brings in the new fields for from-thru model and refactored data structure. */
   Await.ready(for {
     c <- futCol
-    sel = d :~ THRU -> (d :~ "$exists" -> false)
+    sel = d :~ AUX -> (d :~ "$exists" -> false)
     n <- c count Some(sel)
     if n > 0
-  } yield for {seq <- (c find sel).coll[BSONDocument, Seq]()} for {e <- seq} {
-    val usr = e.getAs[UUID](USER).get
-    val id = e.getAs[String](ID).get
-    val bm = e.getAs[BSONDocument](MARK).get
-    val upd = Mark(
-      usr,
-      id,
-      MarkData(
-        bm.getAs[String](SUBJ).get,
-        bm.getAs[String](URL),
-        bm.getAs[Double](STARS),
-        bm.getAs[Set[String]](TAGS),
-        bm.getAs[String](COMNT)),
-      MarkAux(
+    seq <- (c find sel).coll[BSONDocument, Seq]()
+    _ <- Future sequence (for {
+      e <- seq
+      usr = e.getAs[UUID](USER).get
+      id = e.getAs[String](ID).get
+      bm = e.getAs[BSONDocument](MARK).get
+      upd = Mark(
+        usr,
+        id,
+        MarkData(
+          bm.getAs[String](SUBJ).get,
+          bm.getAs[String](URL),
+          bm.getAs[Double](STARS),
+          bm.getAs[Set[String]](TAGS),
+          bm.getAs[String](COMNT)),
+        MarkAux(
+          None,
+          bm.getAs[Seq[RangeMils]](TABVIS),
+          bm.getAs[Seq[RangeMils]](TABBG)),
         None,
-        bm.getAs[Seq[RangeMils]](TABVIS),
-        bm.getAs[Seq[RangeMils]](TABBG)),
-      None,
-      bm.getAs[String](REPR),
-      e.getAs[Long]("mils").get,
-      Long.MaxValue)
-    val erase =
-      d :~ "mils" -> 1 :~ s"$MARK.$UPRFX" -> 1 :~ s"$MARK.$REPR" -> 1 :~ s"$MARK.$TABVIS" -> 1 :~ s"$MARK.$TABBG" -> 1
-    c update(d :~ USER -> usr :~ ID -> id, d :~ "$unset" -> erase :~ "$set" -> upd)
-  }, Duration.Inf)
+        bm.getAs[String](REPR),
+        e.getAs[Long]("mils") orElse e.getAs[Long](TSTMP) get,
+        Long.MaxValue)
+      erase = d :~ "mils" -> 1 :~ s"$MARK.$UPRFX" -> 1 :~ s"$MARK.$REPR" -> 1 :~ s"$MARK.$TABVIS" -> 1 :~
+        s"$MARK.$TABBG" -> 1
+    } yield for {
+      _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$set" -> upd)
+      _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$unset" -> erase)
+    } yield ())
+  } yield (), Duration.Inf)
 
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
