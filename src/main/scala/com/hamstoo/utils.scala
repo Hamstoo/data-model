@@ -12,36 +12,11 @@ import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.language.higherKinds
-import scala.reflect.runtime.universe
-import scala.reflect.runtime.universe.TypeTag
 
 package object utils {
   /** */
   def createLink(endpoint: Call)(implicit request: Request[Any]): String =
     s"${if (request.secure) "https" else "http"}://${request.host}$endpoint"
-
-  /**
-    * This function uses the experimental Scala reflection API to obtain the name of a
-    * type's field.  Ideally the field wouldn't have to be passed in as a `String` but
-    * could rather be passed in as a first-class object, e.g. `Class::field`, which appears
-    * to be possible in Java 8 (http://openjdk.java.net/jeps/118)--as well as other
-    * languages.  What it does do successfully however is that it allows dependencies,
-    * particularly those required for JSON (de)serialization, to be type-checked at runtime.
-    *
-    * @see https://stackoverflow.com/questions/34060376/get-method-function-variable-name-as-string-in-scala
-    * @see http://docs.scala-lang.org/overviews/reflection/overview.html
-    */
-  def fieldName[T](expectedFieldName: String)(implicit tag: TypeTag[T]): String = {
-    val symbol = universe.typeOf[T] decl (universe TermName expectedFieldName)
-    val field = try {
-      symbol.asTerm
-    }
-    catch {
-      case e: ScalaReflectionException =>
-        throw new RuntimeException(s"`$expectedFieldName` is not a field of `${tag.tpe.toString}`", e)
-    }
-    field.name.decodedName.toString
-  }
 
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
     /** Short for `.cursor` with `.collect` consecutive calls with default error handler. */

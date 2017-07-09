@@ -1,7 +1,7 @@
 name := "data-model"
 organization := "com.hamstoo"
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
-version := "0.8.1-alpha-3"
+version := "0.8.1-alpha-6"
 
 scalaVersion := "2.11.11"
 crossScalaVersions := Seq("2.11.11", "2.11.7")
@@ -30,7 +30,7 @@ resolvers ++= Seq(
 libraryDependencies ++= Seq(
   "com.mohiva" %% "play-silhouette" % "4.0.0",
   "com.mohiva" %% "play-silhouette-persistence" % "4.0.0",
-  "org.scala-lang" % "scala-reflect" % "2.13.0-M1",
+  "com.github.dwickern" %% "scala-nameof" % "1.0.3" % "provided",
   "joda-time" % "joda-time" % "2.9.9",
   "org.reactivemongo" %% "reactivemongo" % "0.12.3",
   "org.specs2" %% "specs2-core" % "3.8.9" % "test")

@@ -1,6 +1,7 @@
 package com.hamstoo.models
 
-import com.hamstoo.utils.{ExtendedString, fieldName}
+import com.github.dwickern.macros.NameOf._
+import com.hamstoo.utils.ExtendedString
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -61,16 +62,16 @@ object Representation extends BSONHandlers {
     def l2Normalize: Vec = vec / vec.l2Norm
   }
 
-  val ID: String = fieldName[Representation]("id")
-  val LNK: String = fieldName[Representation]("link")
-  val LPREF: String = fieldName[Representation]("lprefx")
-  val HEADR: String = fieldName[Representation]("header")
-  val DTXT: String = fieldName[Representation]("doctext")
-  val OTXT: String = fieldName[Representation]("othtext")
-  val KWORDS: String = fieldName[Representation]("keywords")
-  val VECR: String = fieldName[Representation]("vecrepr")
-  val TSTAMP: String = fieldName[Representation]("from")
-  val CURRNT: String = fieldName[Representation]("thru")
+  val ID: String = nameOf[Representation](_.id)
+  val LNK: String = nameOf[Representation](_.link)
+  val LPREF: String = nameOf[Representation](_.lprefx)
+  val HEADR: String = nameOf[Representation](_.header)
+  val DTXT: String = nameOf[Representation](_.doctext)
+  val OTXT: String = nameOf[Representation](_.othtext)
+  val KWORDS: String = nameOf[Representation](_.keywords)
+  val VECR: String = nameOf[Representation](_.vecrepr)
+  val TSTAMP: String = nameOf[Representation](_.from)
+  val CURRNT: String = nameOf[Representation](_.thru)
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 
   /** Factory with id and timestamp generation. */

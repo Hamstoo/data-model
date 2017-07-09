@@ -2,7 +2,7 @@ package com.hamstoo.models
 
 import java.util.UUID
 
-import com.hamstoo.utils.fieldName
+import com.github.dwickern.macros.NameOf._
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
@@ -53,15 +53,15 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
 }
 
 object User extends BSONHandlers {
-  val ID: String = fieldName[User]("id")
-  val LGNF: String = fieldName[Profile]("loginInfo")
-  val PROF: String = fieldName[User]("profiles")
+  val ID: String = nameOf[User](_.id)
+  val LGNF: String = nameOf[Profile](_.loginInfo)
+  val PROF: String = nameOf[User](_.profiles)
   val PLGNF: String = s"$PROF.$LGNF"
-  val CONF: String = fieldName[Profile]("confirmed")
-  val PSWNF: String = fieldName[Profile]("passwordInfo")
-  val OA1NF: String = fieldName[Profile]("oAuth1Info")
-  val OA2NF: String = fieldName[Profile]("oAuth2Info")
-  val EMAIL: String = fieldName[Profile]("email")
+  val CONF: String = nameOf[Profile](_.confirmed)
+  val PSWNF: String = nameOf[Profile](_.passwordInfo)
+  val OA1NF: String = nameOf[Profile](_.oAuth1Info)
+  val OA2NF: String = nameOf[Profile](_.oAuth2Info)
+  val EMAIL: String = nameOf[Profile](_.email)
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]
