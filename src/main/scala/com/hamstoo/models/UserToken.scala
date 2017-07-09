@@ -2,7 +2,7 @@ package com.hamstoo.models
 
 import java.util.UUID
 
-import com.hamstoo.utils.fieldName
+import com.github.dwickern.macros.NameOf._
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -16,6 +16,6 @@ case class UserToken(
 }
 
 object UserToken extends BSONHandlers {
-  val ID: String = fieldName[UserToken]("id")
+  val ID: String = nameOf[UserToken](_.id)
   implicit val tokenHandler: BSONDocumentHandler[UserToken] = Macros.handler[UserToken]
 }

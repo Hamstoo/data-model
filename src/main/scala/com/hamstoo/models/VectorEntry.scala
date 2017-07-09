@@ -1,6 +1,6 @@
 package com.hamstoo.models
 
-import com.hamstoo.utils.fieldName
+import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Representation.Vec
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -8,8 +8,8 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
 case class VectorEntry(terms: Option[Set[String]], uri: Option[String], vector: Option[Vec])
 
 object VectorEntry {
-  val TERMS: String = fieldName[VectorEntry]("terms")
-  val URI: String = fieldName[VectorEntry]("uri")
-  val VEC: String = fieldName[VectorEntry]("vector")
+  val TERMS: String = nameOf[VectorEntry](_.terms)
+  val URI: String = nameOf[VectorEntry](_.uri)
+  val VEC: String = nameOf[VectorEntry](_.vector)
   implicit val vecEntryHandler: BSONDocumentHandler[VectorEntry] = Macros.handler[VectorEntry]
 }

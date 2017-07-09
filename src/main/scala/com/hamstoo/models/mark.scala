@@ -2,7 +2,8 @@ package com.hamstoo.models
 
 import java.util.UUID
 
-import com.hamstoo.utils.{ExtendedString, fieldName}
+import com.github.dwickern.macros.NameOf._
+import com.hamstoo.utils.ExtendedString
 import org.joda.time.DateTime
 import play.api.libs.json.{JsValue, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
@@ -84,37 +85,37 @@ case class Mark(
     Json.obj(
       Mark.ID -> id,
       "date" -> s"${d.year.getAsString}-${d.monthOfYear.getAsString}-${d.dayOfMonth.getAsString}",
-      "rating" -> (Json toJson mark)(Mark.markDataJsonFormat))
+      "rating" -> (Json toJson mark) (Mark.markDataJsonFormat))
   }
 }
 
 object Mark extends BSONHandlers {
   val ID_LENGTH: Int = 16
-  val USER: String = fieldName[Mark]("userId")
-  val ID: String = fieldName[Mark]("id")
-  val MARK: String = fieldName[Mark]("mark")
-  val AUX: String = fieldName[Mark]("aux")
-  val UPRFX: String = fieldName[Mark]("urlPrfx")
-  val REPR: String = fieldName[Mark]("repId")
-  val MILS: String = fieldName[Mark]("from")
-  val THRU: String = fieldName[Mark]("thru")
+  val USER: String = nameOf[Mark](_.userId)
+  val ID: String = nameOf[Mark](_.id)
+  val MARK: String = nameOf[Mark](_.mark)
+  val AUX: String = nameOf[Mark](_.aux)
+  val UPRFX: String = nameOf[Mark](_.urlPrfx)
+  val REPR: String = nameOf[Mark](_.repId)
+  val MILS: String = nameOf[Mark](_.from)
+  val THRU: String = nameOf[Mark](_.thru)
   // `text` index search score <projectedFieldName>, not a field name of the collection
-  val SCORE: String = fieldName[Mark]("score")
-  val SUBJ: String = fieldName[MarkData]("subj")
-  val URL: String = fieldName[MarkData]("url")
-  val STARS: String = fieldName[MarkData]("rating")
-  val TAGS: String = fieldName[MarkData]("tags")
-  val COMNT: String = fieldName[MarkData]("comment")
-  val HLGTS: String = fieldName[MarkAux]("hlights")
-  val TABVIS: String = fieldName[MarkAux]("tabVisible")
-  val TABBG: String = fieldName[MarkAux]("tabBground")
-  val HID: String = fieldName[Highlight]("id")
-  val POS: String = fieldName[Highlight]("pos")
-  val PATH: String = fieldName[HLPos]("path")
-  val TEXT: String = fieldName[HLPos]("text")
-  val INDX: String = fieldName[HLPos]("indx")
-  val TSTMP: String = fieldName[Highlight]("from")
-  val TILL: String = fieldName[Highlight]("thru")
+  val SCORE: String = nameOf[Mark](_.score)
+  val SUBJ: String = nameOf[MarkData](_.subj)
+  val URL: String = nameOf[MarkData](_.url)
+  val STARS: String = nameOf[MarkData](_.rating)
+  val TAGS: String = nameOf[MarkData](_.tags)
+  val COMNT: String = nameOf[MarkData](_.comment)
+  val HLGTS: String = nameOf[MarkAux](_.hlights)
+  val TABVIS: String = nameOf[MarkAux](_.tabVisible)
+  val TABBG: String = nameOf[MarkAux](_.tabBground)
+  val HID: String = nameOf[Highlight](_.id)
+  val POS: String = nameOf[Highlight](_.pos)
+  val PATH: String = nameOf[HLPos](_.path)
+  val TEXT: String = nameOf[HLPos](_.text)
+  val INDX: String = nameOf[HLPos](_.indx)
+  val TSTMP: String = nameOf[Highlight](_.from)
+  val TILL: String = nameOf[Highlight](_.thru)
   implicit val hlposBsonHandler: BSONDocumentHandler[HLPos] = Macros.handler[HLPos]
   implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
