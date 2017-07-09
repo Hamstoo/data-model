@@ -1,5 +1,6 @@
 package com.hamstoo
 
+import play.api.mvc.{Call, Request}
 import reactivemongo.api.BSONSerializationPack.Reader
 import reactivemongo.api.collections.GenericQueryBuilder
 import reactivemongo.api.commands.WriteResult
@@ -15,6 +16,10 @@ import scala.reflect.runtime.universe
 import scala.reflect.runtime.universe.TypeTag
 
 package object utils {
+  /** */
+  def createLink(endpoint: Call)(implicit request: Request[Any]): String =
+    s"${if (request.secure) "https" else "http"}://${request.host}$endpoint"
+
   /**
     * This function uses the experimental Scala reflection API to obtain the name of a
     * type's field.  Ideally the field wouldn't have to be passed in as a `String` but

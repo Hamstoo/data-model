@@ -54,14 +54,14 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
 
 object User extends BSONHandlers {
   val ID: String = fieldName[User]("id")
-  val LGNF: String = fieldName[User]("loginInfo")
+  val LGNF: String = fieldName[Profile]("loginInfo")
   val PROF: String = fieldName[User]("profiles")
   val PLGNF: String = s"$PROF.$LGNF"
-  val CONF: String = fieldName[User]("confirmed")
-  val PSWNF: String = fieldName[User]("passwordInfo")
-  val OA1NF: String = fieldName[User]("oAuth1Info")
-  val OA2NF: String = fieldName[User]("oAuth2Info")
-  val EMAIL: String = fieldName[User]("email")
+  val CONF: String = fieldName[Profile]("confirmed")
+  val PSWNF: String = fieldName[Profile]("passwordInfo")
+  val OA1NF: String = fieldName[Profile]("oAuth1Info")
+  val OA2NF: String = fieldName[Profile]("oAuth2Info")
+  val EMAIL: String = fieldName[Profile]("email")
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]
