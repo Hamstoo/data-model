@@ -4,7 +4,8 @@ import java.util.UUID
 
 import com.hamstoo.utils.{ExtendedString, fieldName}
 import org.joda.time.DateTime
-import reactivemongo.bson.{BSONBinary, BSONDocumentHandler, BSONHandler, BSONString, Macros, Subtype}
+import play.api.libs.json.{JsValue, Json, OFormat}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
 import scala.util.Random
@@ -51,7 +52,7 @@ case class MarkData(
                      comment: Option[String])
 
 object MarkData {
-    /** This auxiliary factory is used for the purpose of importing bookmarks only. */
+  /** This auxiliary factory is used for the purpose of importing bookmarks only. */
   def apply(subj: String, url: String, tags: Set[String]): MarkData = MarkData(subj, Some(url), None, Some(tags), None)
 }
 
@@ -77,6 +78,14 @@ case class Mark(
                  thru: Long,
                  score: Option[Double] = None) {
   urlPrfx = mark.url map (_.prefx)
+
+  def toJson: JsValue = {
+    val d = new DateTime(from)
+    Json.obj(
+      Mark.ID -> id,
+      "date" -> s"${d.year.getAsString}-${d.monthOfYear.getAsString}-${d.dayOfMonth.getAsString}",
+      "rating" -> (Json toJson mark)(Mark.markDataJsonFormat))
+  }
 }
 
 object Mark extends BSONHandlers {
@@ -112,15 +121,16 @@ object Mark extends BSONHandlers {
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
   implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
+  implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
 
   /** Factory with ID and timestamp generation. */
-  def apply(userId: UUID, mark: MarkData): Mark = Mark(
+  def apply(userId: UUID, mark: MarkData, rep: Option[String]): Mark = Mark(
     userId,
     Random.alphanumeric take ID_LENGTH mkString,
     mark,
     MarkAux(None, None, None),
     None,
-    None,
+    rep,
     DateTime.now.getMillis,
     Long.MaxValue)
 }
