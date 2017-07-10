@@ -83,7 +83,7 @@ case class Mark(
   def toJson: JsValue = {
     val d = new DateTime(from)
     Json.obj(
-      Mark.ID -> id,
+      "id" -> id,
       "date" -> s"${d.year.getAsString}-${d.monthOfYear.getAsString}-${d.dayOfMonth.getAsString}",
       "rating" -> (Json toJson mark) (Mark.markDataJsonFormat))
   }
