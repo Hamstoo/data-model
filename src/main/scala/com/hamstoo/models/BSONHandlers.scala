@@ -19,5 +19,5 @@ trait BSONHandlers {
   implicit val uuidBsonHandler: BSONHandler[BSONString, UUID] =
     BSONHandler[BSONString, UUID](UUID fromString _.value, BSONString apply _.toString)
   implicit val dateTimeBsonHandler: BSONHandler[BSONLong, DateTime] =
-    BSONHandler[BSONLong, DateTime](new DateTime(_), BSONLong apply _.getMillis)
+    BSONHandler[BSONLong, DateTime](b => new DateTime(b.value), BSONLong apply _.getMillis)
 }
