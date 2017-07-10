@@ -13,4 +13,4 @@
 ### Connect to Mongo DB with external client
 In order to connect to Mongo DB, please, download any client (for example [Compass](example https://www.mongodb.com/products/compass)) and set `mongodb://localhost:27017/hamstoo` as URL. There is no need to change other settings as for now.
 
-In order to connect to Staging Mongo DB, please, apply `open-mongo-security-group` and set URL with the ec2 instance as a host name. For example, `mongodb://ec2-34-204-10-46.compute-1.amazonaws.com/hamstoo`. **Note** there is no Mongo DB is not protected with auth so it is not a good idea to open its port.
+In order to connect to Staging Mongo DB, please, apply `open-mongo-security-group` and set URL with the ec2 instance as a host name. For example, `mongodb://ec2-34-204-10-46.compute-1.amazonaws.com/hamstoo`. **Note** Mongo DB is not protected with auth as for now so it is not a good idea to open its port.
