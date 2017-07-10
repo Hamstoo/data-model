@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.utils.ExtendedString
 import org.joda.time.DateTime
-import play.api.libs.json.{JsValue, Json, OFormat}
+import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
@@ -29,15 +29,11 @@ case class Highlight(id: String, pos: Seq[HLPos], from: Long, thru: Long)
 
 /**
   * Ratee data model. The fields are:
-  * - subj - the rated element as a string of text; either a header of the bookmarked
-  * page, or the rated string itself;
-  * - url - an optional url for bookmark;
-  * - urlPrfx - first characters of the url for indexing purpose;
-  * - repId - a String identifier of the representation equivalent of the ratee;
-  * - rating - the value assigned to the ratee by the user, from 0.0 to 5.0;
-  * - tags - a set of tags assigned to the ratee by the user;
-  * - comment - an optional text comment assigned to the ratee by the user;
-  * - highlights - a set of highlighted pieces of text from the webpage.
+  * - subj - the rated element as a string of text; either a header of the bookmarked page, or the rated string itself
+  * - url - an optional url for bookmark
+  * - rating - the value assigned to the ratee by the user, from 0.0 to 5.0
+  * - tags - a set of tags assigned to the ratee by the user
+  * - comment - an optional text comment assigned to the ratee by the user
   *
   * An interesting side effect of the former implementation of `copy` (removed in commit
   * '681a1af' on 2017-06-12) was that it called `Mark.apply` which would set the `urlPrfx`
@@ -65,6 +61,19 @@ case class MarkAux(hlights: Option[Seq[Highlight]],
   * User history (list) entry data model. An `Entry` is a `Mark` that belongs to a
   * particular user along with an ID and timestamp.
   *
+  * The fields are:
+  * - userId - owning user's UUID
+  * - id - the mark's alphanumerical string, used as an identifier common with all the marks versions
+  * - mark - user-provided content
+  * - aux - additional fields holding satellite data
+  *   - hlights - the array of all highlights made by user on the webpage and their evolutions
+  *   - tabVisible - browser tab timing data
+  *   - tabBground - browser tab timing data
+  * - urlPrfx - binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init
+  * - repId - id of a representation for this mark
+  * - from - timestamp of last edit
+  * - thru - the moment of time until which this version is latest
+  *
   * `score` is not part of the documents in the database, but it is returned from
   * `MongoMarksDao.search` so it is easier to have it included here.
   */
@@ -79,14 +88,6 @@ case class Mark(
                  thru: Long,
                  score: Option[Double] = None) {
   urlPrfx = mark.url map (_.prefx)
-
-  def toJson: JsValue = {
-    val d = new DateTime(from)
-    Json.obj(
-      "id" -> id,
-      "date" -> s"${d.year.getAsString}-${d.monthOfYear.getAsString}-${d.dayOfMonth.getAsString}",
-      "rating" -> (Json toJson mark) (Mark.markDataJsonFormat))
-  }
 }
 
 object Mark extends BSONHandlers {
