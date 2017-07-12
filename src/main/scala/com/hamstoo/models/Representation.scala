@@ -12,9 +12,12 @@ import scala.util.Random
 object Representation extends BSONHandlers {
   type Vec = Seq[Double]
 
-  implicit class DblWithPow(private val d: Double) extends AnyVal {
-    def **(n: Double): Double = Math pow(d, n)
-  }
+  // FWC - I'm afraid that someone with fairly typical assumptions about typical mathematical order of
+  // operations (PEMDAS) would improperly and/or inadvertently use this method leading to a fairly tricky
+  // bug to track down (see commented out test in RepresentationSpec.scala).
+  /*implicit class DblWithPow(private val d: Double) extends AnyVal {
+    def **(n: Double): Double = math pow(d, n)
+  }*/
 
   implicit class VecFunctions(private val vec: Vec) extends AnyVal {
 
@@ -25,14 +28,12 @@ object Representation extends BSONHandlers {
     def -(other: Vec): Vec = {
       @tailrec
       def rec(a: Vec, b: Vec, c: Vec): Vec = if (a.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head - b.head) +: c)
-
       rec(vec, other, Nil)
     }
 
     def +(other: Vec): Vec = {
       @tailrec
       def rec(a: Vec, b: Vec, c: Vec): Vec = if (a.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head + b.head) +: c)
-
       rec(vec, other, Nil)
     }
 
@@ -43,19 +44,19 @@ object Representation extends BSONHandlers {
 
     def mean: Double = vec.sum / vec.length
 
-    def stDev: Double = {
-      val mean = vec.mean
-      Math sqrt (0.0 /: vec) (_ + _.-(mean) ** 2) / (vec.length - 1)
+    def stdev: Double = {
+      val mean = vec.mean // see `l2Norm` for a more implicit similar `foldLeft` implementation
+      math.sqrt( vec.foldLeft(0.0) { case (s, x) => s + math.pow(x - mean, 2) } ) / (vec.length - 1)
     }
 
     def dot(other: Vec): Double = {
       @tailrec
       def rec(a: Vec, b: Vec, sum: Double): Double = if (a.isEmpty) sum else rec(a.tail, b.tail, sum + a.head * b.head)
-
       rec(vec, other, 0.0)
     }
 
-    def l2Norm: Double = Math sqrt (0.0 /: vec) (_ + _ ** 2)
+    // see `stdev` for a more explicit similar `foldLeft` implementation
+    def l2Norm: Double = Math sqrt (0.0 /: vec) (_ + math.pow(_, 2))
 
     def cosine(other: Vec): Double = (vec dot other) / vec.l2Norm / other.l2Norm
 
@@ -112,7 +113,7 @@ object Representation extends BSONHandlers {
 case class Representation(
                            id: String,
                            link: Option[String],
-                           var lprefx: Option[mutable.WrappedArray[Byte]],
+                           var lprefx: Option[mutable.WrappedArray[Byte]], // using hashable WrappedArray here
                            header: String,
                            doctext: String,
                            othtext: String,
