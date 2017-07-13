@@ -3,7 +3,7 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
-import com.hamstoo.models.{Mark, MarkAux, MarkData, RangeMils}
+import com.hamstoo.models.{Mark, MarkData}
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -44,19 +44,35 @@ class MongoMarksDao(db: Future[DefaultDB]) {
           bm.getAs[Double](STARS),
           bm.getAs[Set[String]](TAGS),
           bm.getAs[String](COMNT)),
-        MarkAux(
-          None,
-          bm.getAs[Seq[RangeMils]](TABVIS),
-          bm.getAs[Seq[RangeMils]](TABBG)),
+        MarkAux(None, None),
         None,
         bm.getAs[String](REPR),
-        e.getAs[Long]("mils") orElse e.getAs[Long](TSTMP) get,
+        e.getAs[Long]("mils") orElse e.getAs[Long](MILS) get,
         Long.MaxValue)
       erase = d :~ "mils" -> 1 :~ s"$MARK.$UPRFX" -> 1 :~ s"$MARK.$REPR" -> 1 :~ s"$MARK.$TABVIS" -> 1 :~
         s"$MARK.$TABBG" -> 1
     } yield for {
       _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$set" -> upd)
       _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$unset" -> erase)
+    } yield ())
+  } yield (), Duration.Inf)
+
+  /* Data migration to 0.8.4 that renames fields. */
+  Await.ready(for {
+    c <- futCol
+    sel = d :~ "from" -> (d :~ "$exists" -> true)
+    n <- c count Some(sel)
+    if n > 0
+    seq <- (c find sel).coll[BSONDocument, Seq]()
+    _ <- Future sequence (for {
+      e <- seq
+      usr = e.getAs[UUID](USER).get
+      id = e.getAs[String](ID).get
+      frm = e.getAs[Long]("from")
+      thr = e.getAs[Long]("thru")
+    } yield for {
+      _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$set" -> (d :~ MILS -> frm :~ THRU -> thr))
+      _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$unset" -> (d :~ "from" -> 1 :~ "thru" -> 1))
     } yield ())
   } yield (), Duration.Inf)
 
@@ -90,20 +106,20 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Retrieves all current marks for the user, sorted by 'from' time. */
   def receive(user: UUID): Future[Seq[Mark]] = for {
     c <- futCol
-    seq <- (c find d :~ USER -> user :~ curnt sort d :~ MILS -> 1).coll[Mark, Seq]()
+    seq <- (c find d :~ USER -> user :~ curnt sort d :~ MILS -> -1).coll[Mark, Seq]()
   } yield seq
 
   /** Retrieves a current mark by user and url, None if not found. */
   def receive(url: String, user: UUID): Future[Option[Mark]] = for {
     c <- futCol
-    set <- (c find d :~ USER -> user :~ UPRFX -> url.prefx :~ curnt).coll[Mark, Seq]()
-  } yield set collectFirst { case e if e.mark.url contains url => e }
+    seq <- (c find d :~ USER -> user :~ UPRFX -> url.prefx :~ curnt).coll[Mark, Seq]()
+  } yield seq collectFirst { case e if e.mark.url contains url => e }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
   def receiveTagged(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
     c <- futCol
     sel = d :~ USER -> user :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ curnt
-    seq <- (c find sel).coll[Mark, Seq]()
+    seq <- (c find sel sort d :~ MILS -> -1).coll[Mark, Seq]()
   } yield seq
 
   /**
@@ -150,7 +166,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     now = DateTime.now.getMillis
     sel = d :~ USER -> user :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ THRU -> now), fetchNewObject = true)
-    mark = wr.result[Mark].get.copy(mark = mdata, urlPrfx = None, repId = None, from = now, thru = Long.MaxValue)
+    mark = wr.result[Mark].get.copy(mark = mdata, repId = None, timeFrom = now, timeThru = Long.MaxValue)
     wr <- c insert mark
     _ <- wr failIfError
   } yield mark

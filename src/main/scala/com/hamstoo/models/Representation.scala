@@ -12,13 +12,6 @@ import scala.util.Random
 object Representation extends BSONHandlers {
   type Vec = Seq[Double]
 
-  // FWC - I'm afraid that someone with fairly typical assumptions about typical mathematical order of
-  // operations (PEMDAS) would improperly and/or inadvertently use this method leading to a fairly tricky
-  // bug to track down (see commented out test in RepresentationSpec.scala).
-  /*implicit class DblWithPow(private val d: Double) extends AnyVal {
-    def **(n: Double): Double = math pow(d, n)
-  }*/
-
   implicit class VecFunctions(private val vec: Vec) extends AnyVal {
 
     // vector arithmetic
@@ -45,8 +38,10 @@ object Representation extends BSONHandlers {
     def mean: Double = vec.sum / vec.length
 
     def stdev: Double = {
-      val mean = vec.mean // see `l2Norm` for a more implicit similar `foldLeft` implementation
-      math.sqrt( vec.foldLeft(0.0) { case (s, x) => s + math.pow(x - mean, 2) } ) / (vec.length - 1)
+      val mean = vec.mean
+      // see `l2Norm` for a more implicit similar `foldLeft` notation
+      val fold = vec.foldLeft(0.0) { case (s, x) => s + math.pow(x - mean, 2) }
+      math.sqrt(fold) / (vec.length - 1)
     }
 
     def dot(other: Vec): Double = {
@@ -55,7 +50,7 @@ object Representation extends BSONHandlers {
       rec(vec, other, 0.0)
     }
 
-    // see `stdev` for a more explicit similar `foldLeft` implementation
+    // see `stdev` for a more explicit similar `foldLeft` notation
     def l2Norm: Double = Math sqrt (0.0 /: vec) (_ + math.pow(_, 2))
 
     def cosine(other: Vec): Double = (vec dot other) / vec.l2Norm / other.l2Norm
@@ -71,8 +66,8 @@ object Representation extends BSONHandlers {
   val OTXT: String = nameOf[Representation](_.othtext)
   val KWORDS: String = nameOf[Representation](_.keywords)
   val VECR: String = nameOf[Representation](_.vecrepr)
-  val TSTAMP: String = nameOf[Representation](_.from)
-  val CURRNT: String = nameOf[Representation](_.thru)
+  val TSTAMP: String = nameOf[Representation](_.timeFrom)
+  val CURRNT: String = nameOf[Representation](_.timeThru)
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 
   /** Factory with id and timestamp generation. */
@@ -103,12 +98,14 @@ object Representation extends BSONHandlers {
   *
   * @param id       Unique alphanumeric ID.
   * @param link     URL link used to generate this Representation.
+  * @param lprefx   Binary URL prefix for indexing by mongodb. Gets overwritten by class init.
   * @param header   Title and `h1` headers concatenated.
   * @param doctext  Document text.
   * @param othtext  Other text not included in document text.
   * @param keywords Keywords from meta tags.
   * @param vecrepr  Array[Double] vector embedding of the texts.
-  * @param from     Time of construction.
+  * @param timeFrom Time of construction/modification.
+  * @param timeThru Time of validity.
   */
 case class Representation(
                            id: String,
@@ -119,7 +116,7 @@ case class Representation(
                            othtext: String,
                            keywords: String,
                            vecrepr: Option[Representation.Vec],
-                           from: Long,
-                           thru: Long) {
+                           timeFrom: Long,
+                           timeThru: Long) {
   lprefx = link.map(_.prefx)
 }
