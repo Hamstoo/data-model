@@ -3,6 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
+import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.utils.ExtendedString
 import org.joda.time.DateTime
 import play.api.libs.json.{Json, OFormat}
@@ -10,22 +11,6 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
 import scala.util.Random
-
-case class RangeMils(begin: Long, end: Long)
-
-case class HLPos(path: String, text: String, indx: Int)
-
-/**
-  * Data model of a text highlight. The fields are:
-  * - id - highlight id;
-  * - pos - array of positioning data with these fields:
-  *   - path - the CSS XPath of HTML element used to locate the highlight;
-  *   - text - the highlighted piece of text;
-  *   - indx - the number of the first character in the selection relative to the whole string in HTML element;
-  * - from - timestamp;
-  * - thru - version validity time.
-  */
-case class Highlight(id: String, pos: Seq[HLPos], from: Long, thru: Long)
 
 /**
   * Ratee data model. The fields are:
@@ -53,10 +38,6 @@ object MarkData {
   def apply(subj: String, url: String, tags: Set[String]): MarkData = MarkData(subj, Some(url), None, Some(tags), None)
 }
 
-case class MarkAux(hlights: Option[Seq[Highlight]],
-                   tabVisible: Option[Seq[RangeMils]],
-                   tabBground: Option[Seq[RangeMils]])
-
 /**
   * User history (list) entry data model. An `Entry` is a `Mark` that belongs to a
   * particular user along with an ID and timestamp.
@@ -66,7 +47,7 @@ case class MarkAux(hlights: Option[Seq[Highlight]],
   * - id - the mark's alphanumerical string, used as an identifier common with all the marks versions
   * - mark - user-provided content
   * - aux - additional fields holding satellite data
-  *   - hlights - the array of all highlights made by user on the webpage and their evolutions
+  *   - hlights - the array of IDs of all highlights made by user on the webpage and their evolutions
   *   - tabVisible - browser tab timing data
   *   - tabBground - browser tab timing data
   * - urlPrfx - binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init
@@ -84,13 +65,18 @@ case class Mark(
                  aux: MarkAux,
                  var urlPrfx: Option[mutable.WrappedArray[Byte]],
                  repId: Option[String],
-                 from: Long,
-                 thru: Long,
+                 timeFrom: Long,
+                 timeThru: Long,
                  score: Option[Double] = None) {
   urlPrfx = mark.url map (_.prefx)
 }
 
 object Mark extends BSONHandlers {
+
+  case class RangeMils(begin: Long, end: Long)
+
+  case class MarkAux(tabVisible: Option[Seq[RangeMils]], tabBground: Option[Seq[RangeMils]])
+
   val ID_LENGTH: Int = 16
   val USER: String = nameOf[Mark](_.userId)
   val ID: String = nameOf[Mark](_.id)
@@ -98,8 +84,8 @@ object Mark extends BSONHandlers {
   val AUX: String = nameOf[Mark](_.aux)
   val UPRFX: String = nameOf[Mark](_.urlPrfx)
   val REPR: String = nameOf[Mark](_.repId)
-  val MILS: String = nameOf[Mark](_.from)
-  val THRU: String = nameOf[Mark](_.thru)
+  val MILS: String = nameOf[Mark](_.timeFrom)
+  val THRU: String = nameOf[Mark](_.timeThru)
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)
   val SUBJ: String = nameOf[MarkData](_.subj)
@@ -107,18 +93,8 @@ object Mark extends BSONHandlers {
   val STARS: String = nameOf[MarkData](_.rating)
   val TAGS: String = nameOf[MarkData](_.tags)
   val COMNT: String = nameOf[MarkData](_.comment)
-  val HLGTS: String = nameOf[MarkAux](_.hlights)
   val TABVIS: String = nameOf[MarkAux](_.tabVisible)
   val TABBG: String = nameOf[MarkAux](_.tabBground)
-  val HID: String = nameOf[Highlight](_.id)
-  val POS: String = nameOf[Highlight](_.pos)
-  val PATH: String = nameOf[HLPos](_.path)
-  val TEXT: String = nameOf[HLPos](_.text)
-  val INDX: String = nameOf[HLPos](_.indx)
-  val TSTMP: String = nameOf[Highlight](_.from)
-  val TILL: String = nameOf[Highlight](_.thru)
-  implicit val hlposBsonHandler: BSONDocumentHandler[HLPos] = Macros.handler[HLPos]
-  implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
   implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
@@ -130,7 +106,7 @@ object Mark extends BSONHandlers {
     userId,
     Random.alphanumeric take ID_LENGTH mkString,
     mark,
-    MarkAux(None, None, None),
+    MarkAux(None, None),
     None,
     rep,
     DateTime.now.getMillis,

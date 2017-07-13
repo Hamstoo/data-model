@@ -43,6 +43,24 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     } yield ())
   } yield (), Duration.Inf)
 
+  /* Data migration to 0.8.4 that renames fields. */
+  Await.ready(for {
+    c <- futCol
+    sel = d :~ "from" -> (d :~ "$exists" -> true)
+    n <- c count Some(sel)
+    if n > 0
+    seq <- (c find sel).coll[BSONDocument, Seq]()
+    _ <- Future sequence (for {
+      e <- seq
+      id = e.getAs[String](ID).get
+      frm = e.getAs[Long]("from")
+      thr = e.getAs[Long]("thru")
+    } yield for {
+      _ <- c update(d :~ ID -> id, d :~ "$set" -> (d :~ TSTAMP -> frm :~ CURRNT -> thr))
+      _ <- c update(d :~ ID -> id, d :~ "$unset" -> (d :~ "from" -> 1 :~ "thru" -> 1))
+    } yield ())
+  } yield (), Duration.Inf)
+
   /* Ensure that mongo collection has proper `text` index for relevant fields.  Note that (apparently) the
    weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
   private val indxs: Map[String, Index] =
@@ -78,7 +96,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
         val now = DateTime.now.getMillis
         for {
           wr <- c update(d :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ CURRNT -> now))
-          wr <- wr.ifOk(c insert repr.copy(id = id, link = r.link, from = now, thru = Long.MaxValue))
+          wr <- wr.ifOk(c insert repr.copy(id = id, link = r.link, timeFrom = now, timeThru = Long.MaxValue))
         } yield wr
       case _ => c insert repr
     }
