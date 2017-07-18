@@ -182,6 +182,14 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     _ <- wr failIfError
   } yield wr.nModified
 
+  /** Appends `time` to either `.tabVisible` or `.tabBground` array of a mark. */
+  def addTiming(user: UUID, id: String, time: RangeMils, foreground: Boolean): Future[Unit] = for {
+    c <- futCol
+    sel = d :~ USER -> user :~ ID -> id :~ curnt
+    wr <- c update(sel, d :~ "$push" -> (d :~ s"$AUX.${if (foreground) TABVIS else TABBG}" -> time))
+    _ <- wr failIfError
+  } yield ()
+
   /**
     * Updates all user's marks with new user id, effectively moving them to another user.
     * Returns the number of mark states moved.
