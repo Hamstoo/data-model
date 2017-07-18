@@ -1,7 +1,7 @@
 name := "data-model"
 organization := "com.hamstoo"
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
-version := "0.8.4"
+version := "0.8.5"
 
 scalaVersion := "2.11.11"
 crossScalaVersions := Seq("2.11.11", "2.11.7")
@@ -15,12 +15,17 @@ val releaseGitBranch = settingKey[Boolean]("Determines current git branch is rel
 releaseGitBranch := gitBranch.value.startsWith("release")
 isSnapshot := !releaseGitBranch.value
 publishTo := {
-  if (releaseGitBranch.value)
-    Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
-  else
-    Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-dev-local;build.timestamp=" + new java.util.Date().getTime)
+  if (releaseGitBranch.value) Some("Artifactory Realm" at
+    "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
+  else Some("Artifactory Realm" at
+    "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-dev-local;build.timestamp=" +
+    new java.util.Date().getTime)
 }
-credentials += Credentials("Artifactory Realm", "ec2-54-236-36-52.compute-1.amazonaws.com", "admin", "SePhA5Q6wuEAXDWfy5VjuGpyS9yZLmRN")
+credentials += Credentials(
+  "Artifactory Realm",
+  "ec2-54-236-36-52.compute-1.amazonaws.com",
+  "admin",
+  sys.env.getOrElse("ARTIFACTORY_PSW", ""))
 
 resolvers ++= Seq(
   "sonatype-snapshots" at "http://oss.sonatype.org/content/repositories/snapshots",
@@ -28,11 +33,11 @@ resolvers ++= Seq(
   "Atlassian Releases" at "https://maven.atlassian.com/public/")
 
 libraryDependencies ++= Seq(
-  "com.mohiva" %% "play-silhouette" % "4.0.0",
-  "com.mohiva" %% "play-silhouette-persistence" % "4.0.0",
+  "com.mohiva" %% "play-silhouette" % "5.0.0-RC2",
+  "com.mohiva" %% "play-silhouette-persistence" % "5.0.0-RC2",
   "com.github.dwickern" %% "scala-nameof" % "1.0.3" % "provided",
   "joda-time" % "joda-time" % "2.9.9",
-  "org.reactivemongo" %% "reactivemongo" % "0.12.3",
+  "org.reactivemongo" %% "reactivemongo" % "0.12.5",
   "org.specs2" %% "specs2-core" % "3.8.9" % "test")
 
 pomIncludeRepository := { _ => false }
