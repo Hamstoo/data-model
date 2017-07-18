@@ -15,12 +15,17 @@ val releaseGitBranch = settingKey[Boolean]("Determines current git branch is rel
 releaseGitBranch := gitBranch.value.startsWith("release")
 isSnapshot := !releaseGitBranch.value
 publishTo := {
-  if (releaseGitBranch.value)
-    Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
-  else
-    Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-dev-local;build.timestamp=" + new java.util.Date().getTime)
+  if (releaseGitBranch.value) Some("Artifactory Realm" at
+    "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
+  else Some("Artifactory Realm" at
+    "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-dev-local;build.timestamp=" +
+    new java.util.Date().getTime)
 }
-credentials += Credentials("Artifactory Realm", "ec2-54-236-36-52.compute-1.amazonaws.com", "admin", "SePhA5Q6wuEAXDWfy5VjuGpyS9yZLmRN")
+credentials += Credentials(
+  "Artifactory Realm",
+  "ec2-54-236-36-52.compute-1.amazonaws.com",
+  "admin",
+  sys.env.getOrElse("ARTIFACTORY_PSW", ""))
 
 resolvers ++= Seq(
   "sonatype-snapshots" at "http://oss.sonatype.org/content/repositories/snapshots",
