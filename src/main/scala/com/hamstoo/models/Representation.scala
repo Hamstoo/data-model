@@ -58,6 +58,20 @@ object Representation extends BSONHandlers {
     def l2Normalize: Vec = vec / vec.l2Norm
   }
 
+  /**
+    * Enumeration of various types of vectors that can end up in the `Representation.vectors` map.
+    * On scala.Enumeration: http://underscore.io/blog/posts/2014/09/03/enumerations.html
+    */
+  object VecEnum extends Enumeration {
+    //type VecEnum = Value
+    val IDF,       // document vectors constructed by IDF weighted average of word vectors
+        IDF3,      // IDF^3 weighted (e.g. IDFs of 5 and 10, 2x difference, converted to 8x difference)
+        CRPv2_max, // most significant cluster per here: https://medium.com/kifi-engineering/from-word2vec-to-doc2vec-an-approach-driven-by-chinese-restaurant-process-93d3602eaa31
+        CRPv2_2nd  // second most significant cluster (i.e. don't combine 1st and 2nd at point of construction)
+      = Value
+  }
+  //implicit val vecEnumHandler: BSONDocumentHandler[VecEnum.Value] = Macros.handler[VecEnum.Value]
+
   val ID: String = nameOf[Representation](_.id)
   val LNK: String = nameOf[Representation](_.link)
   val LPREF: String = nameOf[Representation](_.lprefx)
@@ -65,9 +79,9 @@ object Representation extends BSONHandlers {
   val DTXT: String = nameOf[Representation](_.doctext)
   val OTXT: String = nameOf[Representation](_.othtext)
   val KWORDS: String = nameOf[Representation](_.keywords)
-  val VECR: String = nameOf[Representation](_.vecrepr)
-  val TSTAMP: String = nameOf[Representation](_.timeFrom)
-  val CURRNT: String = nameOf[Representation](_.timeThru)
+  val VECS: String = nameOf[Representation](_.vectors)
+  val TIMEFROM: String = nameOf[Representation](_.timeFrom)
+  val TIMETHRU: String = nameOf[Representation](_.timeThru)
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 
   /** Factory with id and timestamp generation. */
@@ -77,7 +91,7 @@ object Representation extends BSONHandlers {
              dtxt: String,
              otxt: String,
              kwords: String,
-             vec: Option[Vec]): Representation =
+             vec: Map[String, Vec]): Representation =
     Representation(
       Random.alphanumeric take 12 mkString,
       lnk,
@@ -94,7 +108,7 @@ object Representation extends BSONHandlers {
 /**
   * This Representation class is used to store scraped and parsed textual
   * representations of URLs.  The scraping and parsing are performed by an
-  * instance of a Cruncher.
+  * instance of a RepresentationFactory.
   *
   * @param id       Unique alphanumeric ID.
   * @param link     URL link used to generate this Representation.
@@ -103,7 +117,7 @@ object Representation extends BSONHandlers {
   * @param doctext  Document text.
   * @param othtext  Other text not included in document text.
   * @param keywords Keywords from meta tags.
-  * @param vecrepr  Array[Double] vector embedding of the texts.
+  * @param vectors  Map from vector computation methods to Array[Double] vector embeddings of the texts.
   * @param timeFrom Time of construction/modification.
   * @param timeThru Time of validity.
   */
@@ -115,7 +129,7 @@ case class Representation(
                            doctext: String,
                            othtext: String,
                            keywords: String,
-                           vecrepr: Option[Representation.Vec],
+                           vectors: Map[String, Representation.Vec],
                            timeFrom: Long,
                            timeThru: Long) {
   lprefx = link.map(_.prefx)

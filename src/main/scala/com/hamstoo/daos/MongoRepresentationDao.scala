@@ -14,28 +14,36 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 
+object MongoRepresentationDao {
+  // Mongo `text` index search score <projectedFieldName>, not a field name of the collection
+  val SCORE = "score"
+
+  // Mongo `text` index weights, `othtext` has implicit weight of 1 (also used as vector weights)
+  val CONTENT_WGT = 8
+  val KWORDS_WGT = 4
+  val LNK_WGT = 10
+}
+
 class MongoRepresentationDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedString, ExtendedWriteResult}
+  import MongoRepresentationDao._
 
   private val futCol: Future[BSONCollection] = db map (_ collection "representations")
   private val d = BSONDocument.empty
-  private val curnt: Producer[BSONElement] = CURRNT -> Long.MaxValue
-  // `text` index search score <projectedFieldName>, not a field name of the collection
-  private val SCORE = "score"
-  val CONTENT_WEIGHT = 8
+  private val curnt: Producer[BSONElement] = TIMETHRU -> Long.MaxValue
 
   /* Data migration to 0.8.0 that adds the fields for 'from-thru' model. */
   Await.ready(for {
     c <- futCol
-    sel = d :~ CURRNT -> (d :~ "$exists" -> false)
+    sel = d :~ TIMETHRU -> (d :~ "$exists" -> false)
     n <- c count Some(sel)
     if n > 0
     seq <- (c find sel).coll[BSONDocument, Seq]()
     _ <- Future sequence (for {
       r <- seq
       id = r.getAs[String]("_id").get
-      upd = d :~ ID -> id :~ LPREF -> r.getAs[String](LNK).map(_.prefx) :~ TSTAMP -> r.getAs[Long]("timestamp").get :~
+      upd = d :~ ID -> id :~ LPREF -> r.getAs[String](LNK).map(_.prefx) :~ TIMEFROM -> r.getAs[Long]("timestamp").get :~
         curnt
     } yield for {
       _ <- c update(d :~ "_id" -> id, d :~ "$set" -> upd)
@@ -56,21 +64,41 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
       frm = e.getAs[Long]("from")
       thr = e.getAs[Long]("thru")
     } yield for {
-      _ <- c update(d :~ ID -> id, d :~ "$set" -> (d :~ TSTAMP -> frm :~ CURRNT -> thr))
+      _ <- c update(d :~ ID -> id, d :~ "$set" -> (d :~ TIMEFROM -> frm :~ TIMETHRU -> thr))
       _ <- c update(d :~ ID -> id, d :~ "$unset" -> (d :~ "from" -> 1 :~ "thru" -> 1))
     } yield ())
+  } yield (), Duration.Inf)
+
+  /* Data migration to 0.8.5 that allows for multiple vector representations per URL being represented. */
+  Await.ready(for {
+    c <- futCol
+    sel = d :~ "vecrepr" -> (d :~ "$exists" -> true)
+    n <- c count Some(sel)
+    if n > 0
+    seq <- (c find sel).coll[BSONDocument, Seq]()
+    _ <- Future sequence (
+      for {
+        e <- seq
+        id = e.getAs[String](ID).get
+        opVec: Option[Representation.Vec] = e.getAs[Representation.Vec]("vecrepr")
+      } yield for {
+        _ <- c update(d :~ ID -> id,
+                      d :~ "$set" -> (d :~ VECS -> opVec.map(d :~ VecEnum.IDF.toString -> _).getOrElse(d)))
+        _ <- c update(d :~ ID -> id, d :~ "$unset" -> (d :~ "vecrepr" -> 1))
+      } yield ()
+    )
   } yield (), Duration.Inf)
 
   /* Ensure that mongo collection has proper `text` index for relevant fields.  Note that (apparently) the
    weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
   private val indxs: Map[String, Index] =
-    Index(ID -> Ascending :: TSTAMP -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TSTAMP-1-uniq" ::
-      Index(ID -> Ascending :: CURRNT -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$CURRNT-1-uniq" ::
-      Index(CURRNT -> Ascending :: Nil) % s"bin-$CURRNT-1" ::
+    Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
+      Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
+      Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
       Index(LPREF -> Ascending :: Nil) % s"bin-$LPREF-1" ::
       Index(
         key = DTXT -> Text :: OTXT -> Text :: KWORDS -> Text :: LNK -> Text :: Nil,
-        options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WEIGHT :~ KWORDS -> 4 :~ LNK -> 10)) %
+        options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
         s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
       Nil toMap;
   futCol map (_.indexesManager ensure indxs)
@@ -95,7 +123,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
       case Some(r) =>
         val now = DateTime.now.getMillis
         for {
-          wr <- c update(d :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ CURRNT -> now))
+          wr <- c update(d :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now))
           wr <- wr.ifOk(c insert repr.copy(id = id, link = r.link, timeFrom = now, timeThru = Long.MaxValue))
         } yield wr
       case _ => c insert repr
@@ -125,12 +153,14 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     * WHERE ANY(SPLIT(doctext) IN @query)
     * --ORDER BY score DESC -- actually this is not happening, would require `.sort` after `.find`
     */
-  def search(ids: Set[String], query: String): Future[Map[String, (String, Option[Seq[Double]], Double)]] = for {
+  def search(ids: Set[String], query: String): Future[Map[String, (String, Option[Map[String, Vec]], Double)]] = for {
     c <- futCol
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
-    pjn = d :~ ID -> 1 :~ DTXT -> 1 :~ VECR -> 1 :~ SCORE -> (d :~ "$meta" -> "textScore")
+    pjn = d :~ ID -> 1 :~ DTXT -> 1 :~ VECS -> 1 :~ SCORE -> (d :~ "$meta" -> "textScore")
     seq <- (c find sel projection pjn).coll[BSONDocument, Seq]()
   } yield seq.map { doc =>
-    doc.getAs[String](ID).get -> (doc.getAs[String](DTXT).get, doc.getAs[Vec](VECR), doc.getAs[Double](SCORE).get)
-  }(breakOut[Seq[BSONDocument], (String, (String, Option[Vec], Double)), Map[String, (String, Option[Vec], Double)]])
+    doc.getAs[String](ID).get -> (doc.getAs[String](DTXT).get, doc.getAs[Map[String, Vec]](VECS), doc.getAs[Double](SCORE).get)
+  }(breakOut[Seq[BSONDocument],
+             (   String, (String, Option[Map[String, Vec]], Double)),
+             Map[String, (String, Option[Map[String, Vec]], Double)]])
 }

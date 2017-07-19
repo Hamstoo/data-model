@@ -63,7 +63,7 @@ case class Mark(
                  id: String,
                  mark: MarkData,
                  aux: MarkAux,
-                 var urlPrfx: Option[mutable.WrappedArray[Byte]],
+                 var urlPrfx: Option[mutable.WrappedArray[Byte]], // using hashable WrappedArray here
                  repId: Option[String],
                  timeFrom: Long,
                  timeThru: Long,
