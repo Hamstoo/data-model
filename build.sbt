@@ -38,7 +38,8 @@ libraryDependencies ++= Seq(
   "com.github.dwickern" %% "scala-nameof" % "1.0.3" % "provided",
   "joda-time" % "joda-time" % "2.9.9",
   "org.reactivemongo" %% "reactivemongo" % "0.12.5",
-  "org.specs2" %% "specs2-core" % "3.8.9" % "test")
+  "org.specs2" %% "specs2-core" % "3.8.9" % "test",
+  "io.spray" %% "spray-caching" % "1.3.4")
 
 pomIncludeRepository := { _ => false }
 pomExtra :=
