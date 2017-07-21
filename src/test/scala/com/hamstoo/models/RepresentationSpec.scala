@@ -5,6 +5,8 @@ import com.hamstoo.models.Representation._
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
 
+import scala.util.Random
+
 
 /**
   * Representation model tests.
@@ -53,7 +55,25 @@ class RepresentationSpec extends Specification {
     }
 
     "* be stdev-able" in new system {
-      v0.stdev mustEqual math.sqrt(2) / 2
+      v0.stdev mustEqual math.sqrt((math.pow(1-2, 2) + math.pow(3-2, 2)) / (3 - 1))
+    }
+
+    "* be skew-able" in new system {
+      val randGen = new Random(0)
+      val v: Vec = (0 until 1000).map(i => randGen.nextGaussian)
+      v.skew must beCloseTo(-0.0361, 1e-3) // normal distribution should be 0.0
+      v0.skew mustEqual 0.0
+    }
+
+    "* be kurt-able" in new system {
+      val randGen = new Random(0)
+      val v: Vec = (0 until 1000).map(i => randGen.nextGaussian)
+      v.kurt must beBetween(2.95, 2.96) // normal distribution should be 3.0
+      v0.kurt must beCloseTo(0.666667, 1e-5)
+    }
+
+    "* be covar-able" in new system {
+      v0.covar(v1) must beCloseTo(((1-2)*(4-5) + (3-2)*(6-5)).toDouble / 3, 1e-15)
     }
 
     "* be dot-product-able" in new system {

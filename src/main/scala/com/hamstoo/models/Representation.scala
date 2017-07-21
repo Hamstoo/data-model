@@ -31,18 +31,28 @@ object Representation extends BSONHandlers {
     }
 
     // scalar arithmetic
+    def -(subtrahend: Double): Vec = vec.map(_ - subtrahend)
     def /(divisor: Double): Vec = vec.map(_ / divisor)
-
     def *(multiplicand: Double): Vec = vec.map(_ * multiplicand)
 
     def mean: Double = vec.sum / vec.length
 
-    def stdev: Double = {
+    def variance: Double = {
       val mean = vec.mean
       // see `l2Norm` for a more implicit similar `foldLeft` notation
       val fold = vec.foldLeft(0.0) { case (s, x) => s + math.pow(x - mean, 2) }
-      math.sqrt(fold) / (vec.length - 1)
+      fold / (vec.size - 1)
     }
+
+    def stdev: Double = math.sqrt(variance) // this was formerly wrong: math.sqrt(fold) / (vec.length - 1)
+
+    def centralMoment(moment: Double): Double = {
+      val mean = vec.mean
+      vec.foldLeft(0.0) { case (s, x) => s + math.pow(x - mean, moment) } / vec.size
+    }
+
+    def skew: Double = vec.centralMoment(3) / math.pow(vec.stdev, 3)
+    def kurt: Double = vec.centralMoment(4) / math.pow(vec.stdev, 4)
 
     def dot(other: Vec): Double = {
       @tailrec
@@ -51,9 +61,19 @@ object Representation extends BSONHandlers {
     }
 
     // see `stdev` for a more explicit similar `foldLeft` notation
-    def l2Norm: Double = Math sqrt (0.0 /: vec) (_ + math.pow(_, 2))
+    def l2Norm: Double = math.sqrt( (0.0 /: vec) (_ + math.pow(_, 2)) )
 
     def cosine(other: Vec): Double = (vec dot other) / vec.l2Norm / other.l2Norm
+
+    def covar(other: Vec): Double = (vec dot other)/vec.size - vec.sum/vec.size * other.sum/other.size
+
+    def corr(other: Vec): Double = {
+      // https://en.wikipedia.org/wiki/Correlation_and_dependence
+      val correctedCovar = (vec covar other) * vec.size / (vec.size - 1)
+      correctedCovar / vec.stdev / other.stdev
+    }
+
+    def beta(x: Vec): Double = (vec covar x) / x.variance
 
     def l2Normalize: Vec = vec / vec.l2Norm
   }
@@ -67,7 +87,10 @@ object Representation extends BSONHandlers {
     val IDF,       // document vectors constructed by IDF weighted average of word vectors
         IDF3,      // IDF^3 weighted (e.g. IDFs of 5 and 10, 2x difference, converted to 8x difference)
         CRPv2_max, // most significant cluster per here: https://medium.com/kifi-engineering/from-word2vec-to-doc2vec-an-approach-driven-by-chinese-restaurant-process-93d3602eaa31
-        CRPv2_2nd  // second most significant cluster (i.e. don't combine 1st and 2nd at point of construction)
+        CRPv2_2nd, // second most significant cluster (i.e. don't combine 1st and 2nd at point of construction)
+        PC1,       // first principal direction/axis (not a principal component b/c not a reconstructed repr of orig. X)
+        PC2,       // second
+        PC3        // third
       = Value
   }
   //implicit val vecEnumHandler: BSONDocumentHandler[VecEnum.Value] = Macros.handler[VecEnum.Value]
