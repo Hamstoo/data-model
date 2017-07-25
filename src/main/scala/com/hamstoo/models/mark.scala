@@ -69,6 +69,23 @@ case class Mark(
                  timeThru: Long,
                  score: Option[Double] = None) {
   urlPrfx = mark.url map (_.prefx)
+
+  /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
+  override def equals(other: Any): Boolean = other match {
+    case other: Mark => other.canEqual(this) && this.hashCode == other.hashCode
+    case _ => false
+  }
+
+  /** Avoid incorporating `score: Option[Double]` into the hash code. */
+  override def hashCode: Int = this.score match {
+    // `Product` does not define its own `hashCode` so `super.hashCode` comes from `Any` and so
+    // the implementation of `hashCode` that is automatically generated for case classes has to
+    // be copy and pasted here.  More at the following link:
+    //   https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
+    // And an explanation here: https://stackoverflow.com/a/44708937/2030627
+    case None => scala.runtime.ScalaRunTime._hashCode(this)
+    case Some(_) => this.copy(score = None).hashCode
+  }
 }
 
 object Mark extends BSONHandlers {
