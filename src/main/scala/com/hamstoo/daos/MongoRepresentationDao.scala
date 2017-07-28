@@ -11,8 +11,7 @@ import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 
 import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 
 object MongoRepresentationDao {
   // Mongo `text` index search score <projectedFieldName>, not a field name of the collection
@@ -26,76 +25,20 @@ object MongoRepresentationDao {
 
 class MongoRepresentationDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedString, ExtendedWriteResult}
   import MongoRepresentationDao._
+  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedString, ExtendedWriteResult}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "representations")
   private val d = BSONDocument.empty
   private val curnt: Producer[BSONElement] = TIMETHRU -> Long.MaxValue
 
-  /* Data migration to 0.8.0 that adds the fields for 'from-thru' model. */
-  Await.ready(for {
-    c <- futCol
-    sel = d :~ TIMETHRU -> (d :~ "$exists" -> false)
-    n <- c count Some(sel)
-    if n > 0
-    seq <- (c find sel).coll[BSONDocument, Seq]()
-    _ <- Future sequence (for {
-      r <- seq
-      id = r.getAs[String]("_id").get
-      upd = d :~ ID -> id :~ LPREF -> r.getAs[String](LNK).map(_.prefx) :~ TIMEFROM -> r.getAs[Long]("timestamp").get :~
-        curnt
-    } yield for {
-      _ <- c update(d :~ "_id" -> id, d :~ "$set" -> upd)
-      _ <- c update(d :~ "_id" -> id, d :~ "$unset" -> (d :~ "timestamp" -> 1))
-    } yield ())
-  } yield (), Duration.Inf)
-
-  /* Data migration to 0.8.4 that renames fields. */
-  Await.ready(for {
-    c <- futCol
-    sel = d :~ "from" -> (d :~ "$exists" -> true)
-    n <- c count Some(sel)
-    if n > 0
-    seq <- (c find sel).coll[BSONDocument, Seq]()
-    _ <- Future sequence (for {
-      e <- seq
-      id = e.getAs[String](ID).get
-      frm = e.getAs[Long]("from")
-      thr = e.getAs[Long]("thru")
-    } yield for {
-      _ <- c update(d :~ ID -> id, d :~ "$set" -> (d :~ TIMEFROM -> frm :~ TIMETHRU -> thr))
-      _ <- c update(d :~ ID -> id, d :~ "$unset" -> (d :~ "from" -> 1 :~ "thru" -> 1))
-    } yield ())
-  } yield (), Duration.Inf)
-
-  /* Data migration to 0.8.5 that allows for multiple vector representations per URL being represented. */
-  Await.ready(for {
-    c <- futCol
-    sel = d :~ "vecrepr" -> (d :~ "$exists" -> true)
-    n <- c count Some(sel)
-    if n > 0
-    seq <- (c find sel).coll[BSONDocument, Seq]()
-    _ <- Future sequence (
-      for {
-        e <- seq
-        id = e.getAs[String](ID).get
-        opVec: Option[Representation.Vec] = e.getAs[Representation.Vec]("vecrepr")
-      } yield for {
-        _ <- c update(d :~ ID -> id,
-                      d :~ "$set" -> (d :~ VECS -> opVec.map(d :~ VecEnum.IDF.toString -> _).getOrElse(d)))
-        _ <- c update(d :~ ID -> id, d :~ "$unset" -> (d :~ "vecrepr" -> 1))
-      } yield ()
-    )
-  } yield (), Duration.Inf)
-
-  /* Ensure that mongo collection has proper `text` index for relevant fields.  Note that (apparently) the
+  /* Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
    weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
   private val indxs: Map[String, Index] =
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
       Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
       Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
-      Index(LPREF -> Ascending :: Nil) % s"bin-$LPREF-1" ::
+      Index(LPREF -> Ascending :: USRS -> Ascending :: Nil) % s"bin-$LPREF-1-$USRS-1" ::
       Index(
         key = DTXT -> Text :: OTXT -> Text :: KWORDS -> Text :: LNK -> Text :: Nil,
         options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
@@ -159,8 +102,12 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     pjn = d :~ ID -> 1 :~ DTXT -> 1 :~ VECS -> 1 :~ SCORE -> (d :~ "$meta" -> "textScore")
     seq <- (c find sel projection pjn).coll[BSONDocument, Seq]()
   } yield seq.map { doc =>
-    doc.getAs[String](ID).get -> (doc.getAs[String](DTXT).get, doc.getAs[Map[String, Vec]](VECS), doc.getAs[Double](SCORE).get)
-  }(breakOut[Seq[BSONDocument],
-             (   String, (String, Option[Map[String, Vec]], Double)),
-             Map[String, (String, Option[Map[String, Vec]], Double)]])
+    doc.getAs[String](ID).get -> (
+      doc.getAs[String](DTXT).get,
+      doc.getAs[Map[String, Vec]](VECS),
+      doc.getAs[Double](SCORE).get)
+  }(breakOut[
+    Seq[BSONDocument],
+    (String, (String, Option[Map[String, Vec]], Double)),
+    Map[String, (String, Option[Map[String, Vec]], Double)]])
 }
