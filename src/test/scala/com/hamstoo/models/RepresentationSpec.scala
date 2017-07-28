@@ -1,12 +1,10 @@
-package services
+package com.hamstoo.models
 
-import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
 
 import scala.util.Random
-
 
 /**
   * Representation model tests.
@@ -15,7 +13,16 @@ class RepresentationSpec extends Specification {
 
   "Representation" should {
     "* be consistently hashable" in {
-      def rep = Representation("", Some("xyz"), None, "", "", "", "", Map.empty[String, Vec], 0, Long.MaxValue)
+      def rep = Representation(
+        id = "",
+        link = Some("xyz"),
+        page = "",
+        header = "",
+        doctext = "",
+        othtext = "",
+        keywords = "",
+        vectors = Map.empty[String, Vec],
+        timeFrom = 0)
       val (a, b) = (rep, rep)
       a.hashCode mustEqual b.hashCode
       a mustEqual b
@@ -32,22 +39,26 @@ class RepresentationSpec extends Specification {
   "Vectors" should {
     "* be additive" in new system {
       val r: Vec = v0 + v1
-      (r, v0, v1).zipped.foreach { case (ri, v0i, v1i) => ri mustEqual v0i + v1i }
+      (r, v0, v1).zipped[Double, Vec, Double, Vec, Double, Vec].foreach {
+        case (ri, v0i, v1i) => ri mustEqual v0i + v1i
+      }
     }
 
     "* be subtractive" in new system {
       val r: Vec = v0 - v1
-      (r, v0, v1).zipped.foreach { case (ri, v0i, v1i) => ri mustEqual v0i - v1i }
+      (r, v0, v1).zipped[Double, Vec, Double, Vec, Double, Vec].foreach {
+        case (ri, v0i, v1i) => ri mustEqual v0i - v1i
+      }
     }
 
     "* be divisable by scalars" in new system {
       val r: Vec = v0 / s
-      (r, v0).zipped.foreach { case (ri, v0i) => ri mustEqual v0i / s }
+      (r, v0).zipped[Double, Vec, Double, Vec].foreach { case (ri, v0i) => ri mustEqual v0i / s }
     }
 
     "* be multiplicable by scalars" in new system {
       val r: Vec = v0 * s
-      (r, v0).zipped.foreach { case (ri, v0i) => ri mustEqual v0i * s }
+      (r, v0).zipped[Double, Vec, Double, Vec].foreach { case (ri, v0i) => ri mustEqual v0i * s }
     }
 
     "* be average-able" in new system {
@@ -60,14 +71,14 @@ class RepresentationSpec extends Specification {
 
     "* be skew-able" in new system {
       val randGen = new Random(0)
-      val v: Vec = (0 until 1000).map(i => randGen.nextGaussian)
+      val v: Vec = (0 until 1000).map(_ => randGen.nextGaussian)
       v.skew must beCloseTo(-0.0361, 1e-3) // normal distribution should be 0.0
       v0.skew mustEqual 0.0
     }
 
     "* be kurt-able" in new system {
       val randGen = new Random(0)
-      val v: Vec = (0 until 1000).map(i => randGen.nextGaussian)
+      val v: Vec = (0 until 1000).map(_ => randGen.nextGaussian)
       v.kurt must beBetween(2.95, 2.96) // normal distribution should be 3.0
       v0.kurt must beCloseTo(0.666667, 1e-5)
     }
@@ -92,9 +103,11 @@ class RepresentationSpec extends Specification {
 
     "* be PEMDAS-able (i.e. support proper mathematical order of operations)" in new system {
       var r: Vec = v0 + v1 / s // division must happen first
-      (r, v0, v1).zipped.foreach { case (ri, v0i, v1i) => ri mustEqual v0i + (v1i / s) }
+      (r, v0, v1).zipped[Double, Vec, Double, Vec, Double, Vec].foreach {
+        case (ri, v0i, v1i) => ri mustEqual v0i + (v1i / s)
+      }
       r = v0 / s * s // scalar multiplication must happen second
-      (r, v0).zipped.foreach { case (ri, v0i) => ri mustEqual (v0i / s) * s }
+      (r, v0).zipped[Double, Vec, Double, Vec].foreach { case (ri, v0i) => ri mustEqual (v0i / s) * s }
     }
   }
 
