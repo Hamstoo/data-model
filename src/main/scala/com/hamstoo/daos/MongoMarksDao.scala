@@ -44,11 +44,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
           bm.getAs[Double](STARS),
           bm.getAs[Set[String]](TAGS),
           bm.getAs[String](COMNT)),
-        MarkAux(None, None),
-        None,
-        bm.getAs[String](REPR),
-        e.getAs[Long]("mils") orElse e.getAs[Long](MILS) get,
-        Long.MaxValue)
+        repId = bm.getAs[String](REPR),
+        timeFrom = e.getAs[Long]("mils") orElse e.getAs[Long](MILS) get)
       erase = d :~ "mils" -> 1 :~ s"$MARK.$UPRFX" -> 1 :~ s"$MARK.$REPR" -> 1 :~ s"$MARK.$TABVIS" -> 1 :~
         s"$MARK.$TABBG" -> 1
     } yield for {
