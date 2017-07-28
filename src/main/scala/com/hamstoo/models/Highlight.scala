@@ -14,21 +14,26 @@ import scala.util.Random
 /**
   * Data model of a text highlight.
   *
-  * @param id       highlight id
+  * @param usrId    owner UUID
+  * @param id       highlight id, common for all versions
+  * @param url      URL of the web page where highlighting was done
+  * @param uPref    binary prefix of the URL for indexing; set by class init
   * @param pos      array of positioning data
+  * @param preview  highlight preview for full page view
+  * @param memeId   'highlight representation' id, to be implemented
   * @param timeFrom timestamp
   * @param timeThru version validity time
   */
 case class Highlight(
                       usrId: UUID,
-                      id: String,
+                      id: String = Random.alphanumeric take Highlight.ID_LENGTH mkString,
                       url: String,
-                      var uPref: Option[mutable.WrappedArray[Byte]],
+                      var uPref: Option[mutable.WrappedArray[Byte]] = None,
                       pos: Seq[HLPos],
                       preview: HLPreview,
-                      memeId: Option[String],
-                      timeFrom: Long,
-                      timeThru: Long) {
+                      memeId: Option[String] = None,
+                      timeFrom: Long = DateTime.now.getMillis,
+                      timeThru: Long = Long.MaxValue) {
   uPref = Some(url.prefx)
 }
 
@@ -57,16 +62,4 @@ object Highlight extends BSONHandlers {
   implicit val hlposBsonHandler: BSONDocumentHandler[HLPos] = Macros.handler[HLPos]
   implicit val hlprevBsonHandler: BSONDocumentHandler[HLPreview] = Macros.handler[HLPreview]
   implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
-
-  /** Factory with ID and timestamp generation. */
-  def apply(usr: UUID, pos: Seq[HLPos], url: String, preview: HLPreview): Highlight = Highlight(
-    usr,
-    Random.alphanumeric take ID_LENGTH mkString,
-    url,
-    None,
-    pos,
-    preview,
-    None,
-    DateTime.now.getMillis,
-    Long.MaxValue)
 }
