@@ -1,12 +1,10 @@
-package services
+package com.hamstoo.models
 
-import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
 
 import scala.util.Random
-
 
 /**
   * Representation model tests.
@@ -16,6 +14,7 @@ class RepresentationSpec extends Specification {
   "Representation" should {
     "* be consistently hashable" in {
       def rep = Representation("", Some("xyz"), None, "", "", "", "", Map.empty[String, Vec], 0, Long.MaxValue)
+
       val (a, b) = (rep, rep)
       a.hashCode mustEqual b.hashCode
       a mustEqual b
@@ -55,7 +54,7 @@ class RepresentationSpec extends Specification {
     }
 
     "* be stdev-able" in new system {
-      v0.stdev mustEqual math.sqrt((math.pow(1-2, 2) + math.pow(3-2, 2)) / (3 - 1))
+      v0.stdev mustEqual math.sqrt((math.pow(1 - 2, 2) + math.pow(3 - 2, 2)) / (3 - 1))
     }
 
     "* be skew-able" in new system {
@@ -73,12 +72,12 @@ class RepresentationSpec extends Specification {
     }
 
     "* be covar-able" in new system {
-      v0.covar(v1) must beCloseTo(((1-2)*(4-5) + (3-2)*(6-5)).toDouble / 3, 1e-15)
+      v0.covar(v1) must beCloseTo(((1 - 2) * (4 - 5) + (3 - 2) * (6 - 5)).toDouble / 3, 1e-15)
     }
 
     "* be dot-product-able" in new system {
       val r: Double = v0 dot v1
-      r mustEqual (v0.head * v1.head + v0(1) * v1(1) + v0(2) * v1(2) )
+      r mustEqual (v0.head * v1.head + v0(1) * v1(1) + v0(2) * v1(2))
     }
 
     "* be L2-norm-able" in new system {
