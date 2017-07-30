@@ -36,10 +36,10 @@ case class SearchStats(
 
   /** Produces incremented statistics with one more link click event. */
   def incUrl(url: String, id: String, weight: Double, index: Int): SearchStats = {
-    def statInc[T]: (Stat[T]) => Stat[T] = e2 => e2.copy(urlClicks = e2.urlClicks + 1)
+    def statInc[T]: (Stat[T]) => Stat[T] = e2 => e2.copy(urlClicks = e2.urlClicks.map(1 +) orElse Some(1))
 
     val statsInc: (ResultStats[String]) => ResultStats[String] = e1 => e1.copy(
-      urlClicksTotal = e1.urlClicksTotal + 1,
+      urlClicksTotal = e1.urlClicksTotal.map(1 +) orElse Some(1),
       weightsMap = mapUpdate[Double, Stat[Double], Seq](e1.weightsMap, weight, Stat(weight))(statInc),
       indexesMap = mapUpdate[Int, Stat[Int], Seq](e1.indexesMap, index, Stat(index))(statInc))
     copy(
@@ -49,10 +49,10 @@ case class SearchStats(
 
   /** Produces incremented statistics with one more full page view event. */
   def incFpv(url: String, id: String, weight: Double, index: Int): SearchStats = {
-    def statInc[T]: (Stat[T]) => Stat[T] = e2 => e2.copy(fpvClicks = e2.fpvClicks + 1)
+    def statInc[T]: (Stat[T]) => Stat[T] = e2 => e2.copy(fpvClicks = e2.fpvClicks.map(1 +) orElse Some(1))
 
     val statsInc: (ResultStats[String]) => ResultStats[String] = e1 => e1.copy(
-      fpvClicksTotal = e1.fpvClicksTotal + 1,
+      fpvClicksTotal = e1.fpvClicksTotal.map(1 +) orElse Some(1),
       weightsMap = mapUpdate[Double, Stat[Double], Seq](e1.weightsMap, weight, Stat(weight))(statInc),
       indexesMap = mapUpdate[Int, Stat[Int], Seq](e1.indexesMap, index, Stat(index))(statInc))
     copy(
@@ -77,8 +77,8 @@ object SearchStats {
     */
   case class ResultStats[T](
                              key: T,
-                             urlClicksTotal: Int = 0,
-                             fpvClicksTotal: Int = 0,
+                             urlClicksTotal: Option[Int] = None,
+                             fpvClicksTotal: Option[Int] = None,
                              weightsMap: Seq[Stat[Double]] = Seq.empty[Stat[Double]],
                              indexesMap: Seq[Stat[Int]] = Seq.empty[Stat[Int]]) extends MapEl[T]
 
@@ -87,7 +87,7 @@ object SearchStats {
     * @param urlClicks count of link clicks with this key
     * @param fpvClicks count of full page view visits with this key
     */
-  case class Stat[T](key: T, urlClicks: Int = 0, fpvClicks: Int = 0) extends MapEl[T]
+  case class Stat[T](key: T, urlClicks: Option[Int] = None, fpvClicks: Option[Int] = None) extends MapEl[T]
 
   val QUERY: String = nameOf[SearchStats](_.query)
   val MRKSMAP: String = nameOf[SearchStats](_.marksMap)
