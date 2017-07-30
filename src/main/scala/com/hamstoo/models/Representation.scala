@@ -86,7 +86,8 @@ object Representation extends BSONHandlers {
     //type VecEnum = Value
     val IDF,       // document vectors constructed by IDF weighted average of word vectors
         IDF3,      // IDF^3 weighted (e.g. IDFs of 5 and 10, 2x difference, converted to 8x difference)
-        CRPv2_max, // most significant cluster per here: https://medium.com/kifi-engineering/from-word2vec-to-doc2vec-an-approach-driven-by-chinese-restaurant-process-93d3602eaa31
+        CRPv2_max, /* most significant cluster per here: https://medium.com/kifi-engineering/from-word2vec-to-doc2vec-an
+                      -approach-driven-by-chinese-restaurant-process-93d3602eaa31 */
         CRPv2_2nd, // second most significant cluster (i.e. don't combine 1st and 2nd at point of construction)
         PC1,       // first principal direction/axis (not a principal component b/c not a reconstructed repr of orig. X)
         PC2,       // second

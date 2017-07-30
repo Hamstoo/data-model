@@ -1,10 +1,8 @@
-package services
+package com.hamstoo.models
 
 import java.util.UUID
 
-import com.hamstoo.models.{Mark, MarkData}
 import org.specs2.mutable.Specification
-
 
 /**
   * Mark model tests.
