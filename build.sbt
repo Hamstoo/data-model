@@ -1,7 +1,7 @@
 name := "data-model"
 organization := "com.hamstoo"
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
-version := "0.8.10"
+version := "0.8.11"
 
 scalaVersion := "2.11.11"
 crossScalaVersions := Seq("2.11.11", "2.11.7")
@@ -39,7 +39,9 @@ libraryDependencies ++= Seq(
   "joda-time" % "joda-time" % "2.9.9",
   "org.reactivemongo" %% "reactivemongo" % "0.12.5",
   "org.specs2" %% "specs2-core" % "3.8.9" % "test",
-  "io.spray" %% "spray-caching" % "1.3.4")
+  "io.spray" %% "spray-caching" % "1.3.4",
+  "org.apache.commons" % "commons-text" % "1.1",
+  "es.nitaur.markdown" % "txtmark" % "0.16") // https://stackoverflow.com/questions/19784525/markdown-to-html-with-java-scala
 
 pomIncludeRepository := { _ => false }
 pomExtra :=

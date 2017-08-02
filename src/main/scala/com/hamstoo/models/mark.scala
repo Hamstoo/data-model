@@ -5,37 +5,58 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.utils.ExtendedString
+import com.github.rjeschke.txtmark
+import org.apache.commons.text.StringEscapeUtils
 import org.joda.time.DateTime
 import play.api.libs.json.{Json, OFormat}
+import play.api.Logger
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
 import scala.util.Random
 
 /**
-  * Ratee data model. The fields are:
+  * Mark data model. The fields are:
   * - subj - the rated element as a string of text; either a header of the bookmarked page, or the rated string itself
   * - url - an optional url for bookmark
   * - rating - the value assigned to the ratee by the user, from 0.0 to 5.0
   * - tags - a set of tags assigned to the ratee by the user
-  * - comment - an optional text comment assigned to the ratee by the user
+  * - comment - an optional text comment (markdown syntax) authored by the user
+  * - commentEncoded - markdown converted to HTML; set by class init
   *
   * An interesting side effect of the former implementation of `copy` (removed in commit
   * '681a1af' on 2017-06-12) was that it called `Mark.apply` which would set the `urlPrfx`
   * field.  A `copy` wouldn't typically be expected to perform such a side effect however,
   * so it has been removed and the `urlPrfx` must now be set explicitly with the
-  * `computeUrlPrefix` method.
+  * `ExtendedString.prefx` method.
   */
 case class MarkData(
                      subj: String,
                      url: Option[String],
                      rating: Option[Double],
                      tags: Option[Set[String]],
-                     comment: Option[String])
+                     comment: Option[String],
+                     var commentEncoded: Option[String]) {
+
+  commentEncoded = comment.map { c: String => // e.g. hello <a name="n" href="javascript:alert('xss')">*you*</a>
+    //Logger.debug(s"*** COMMENT *** = *** $c ***")
+    // https://github.com/rjeschke/txtmark/issues/33
+    val extended = "\n[$PROFILE$]: extended"
+    // e.g. <p>hello &lt;a name=&ldquo;n&rdquo; href=&ldquo;javascript:alert('xss')&ldquo;><em>you</em></a></p>
+    // notice the first < gets converted to &ldquo; but the </p> is unchanged
+    val html = txtmark.Processor.process(c + extended)
+    //Logger.debug(s"*** HTML *** = *** $html ***")
+    // e.g.  <p>hello <a name=“n” href=“javascript:alert('xss')“><em>you</em></a></p>
+    // convert that &ldquo; back to a < character
+    val html2 = StringEscapeUtils.unescapeHtml4(html)
+    //Logger.debug(s"*** HTML2 *** = *** $html2 ***")
+    html2
+  }
+}
 
 object MarkData {
   /** This auxiliary factory is used for the purpose of importing bookmarks only. */
-  def apply(subj: String, url: String, tags: Set[String]): MarkData = MarkData(subj, Some(url), None, Some(tags), None)
+  def apply(subj: String, url: String, tags: Set[String]): MarkData = MarkData(subj, Some(url), None, Some(tags), None, None)
 }
 
 /**
@@ -110,6 +131,7 @@ object Mark extends BSONHandlers {
   val STARS: String = nameOf[MarkData](_.rating)
   val TAGS: String = nameOf[MarkData](_.tags)
   val COMNT: String = nameOf[MarkData](_.comment)
+  val COMNTENC: String = nameOf[MarkData](_.commentEncoded)
   val TABVIS: String = nameOf[MarkAux](_.tabVisible)
   val TABBG: String = nameOf[MarkAux](_.tabBground)
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
