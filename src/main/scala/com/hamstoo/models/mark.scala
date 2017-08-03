@@ -8,8 +8,9 @@ import com.hamstoo.utils.ExtendedString
 import com.github.rjeschke.txtmark
 import org.apache.commons.text.StringEscapeUtils
 import org.joda.time.DateTime
+import org.jsoup.Jsoup
+import org.jsoup.safety.Whitelist
 import play.api.libs.json.{Json, OFormat}
-import play.api.Logger
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
@@ -38,19 +39,22 @@ case class MarkData(
                      comment: Option[String],
                      var commentEncoded: Option[String]) {
 
-  commentEncoded = comment.map { c: String => // e.g. hello <a name="n" href="javascript:alert('xss')">*you*</a>
-    //Logger.debug(s"*** COMMENT *** = *** $c ***")
+  commentEncoded = comment.map { c: String => // example: hello <a name="n" href="javascript:alert('xss')">*you*</a>
+
     // https://github.com/rjeschke/txtmark/issues/33
     val extended = "\n[$PROFILE$]: extended"
-    // e.g. <p>hello &lt;a name=&ldquo;n&rdquo; href=&ldquo;javascript:alert('xss')&ldquo;><em>you</em></a></p>
+
+    // example: <p>hello &lt;a name=&ldquo;n&rdquo; href=&ldquo;javascript:alert('xss')&ldquo;><em>you</em></a></p>
     // notice the first < gets converted to &ldquo; but the </p> is unchanged
     val html = txtmark.Processor.process(c + extended)
-    //Logger.debug(s"*** HTML *** = *** $html ***")
-    // e.g.  <p>hello <a name=“n” href=“javascript:alert('xss')“><em>you</em></a></p>
+
+    // example: <p>hello <a name=“n” href=“javascript:alert('xss')“><em>you</em></a></p>
     // convert that &ldquo; back to a < character
     val html2 = StringEscapeUtils.unescapeHtml4(html)
-    //Logger.debug(s"*** HTML2 *** = *** $html2 ***")
-    html2
+
+    // example: <p>hello <a rel="nofollow"><em>you</em></a></p>
+    // https://jsoup.org/cookbook/cleaning-html/whitelist-sanitizer
+    Jsoup.clean(html2, Whitelist.basic())
   }
 }
 
