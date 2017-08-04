@@ -26,19 +26,19 @@ class MarkSpec extends Specification {
     "* try to prevent XSS attacks" in {
       // https://www.owasp.org/index.php/XSS_Filter_Evasion_Cheat_Sheet
       val a = MarkData("", None, None, None, Some("<SCRIPT SRC=http://xss.rocks/xss.js></SCRIPT>"), None)
-      a.commentEncoded.get mustEqual "<p></p>"
+      a.commentEncoded.get mustEqual ""
       val b = a.copy(comment = Some("<IMG SRC=JaVaScRiPt:alert('XSS')>"))
-      b.commentEncoded.get mustEqual "<p></p>"
+      b.commentEncoded.get mustEqual "<p><img></p>"
       val c = a.copy(comment = Some("<IMG SRC=`javascript:alert(\"RSnake says, 'XSS'\")`>"))
-      c.commentEncoded.get mustEqual "<p>javascript:alert(\"RSnake says, 'XSS'\")&gt;</p>"
+      c.commentEncoded.get mustEqual "<p><img>javascript:alert(\"RSnake says, 'XSS'\")&gt;</p>"
       val d = a.copy(comment = Some("<IMG SRC=javascript:alert(String.fromCharCode(88,83,83))>"))
-      d.commentEncoded.get mustEqual "<p></p>"
+      d.commentEncoded.get mustEqual "<img>"
       val e = a.copy(comment = Some("<IMG SRC=&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;&#97;&#108;&#101;&#114;&#116;&#40;&#39;&#88;&#83;&#83;&#39;&#41;>"))
-      e.commentEncoded.get mustEqual "<p></p>"
+      e.commentEncoded.get mustEqual "<img>"
       val f = a.copy(comment = Some("'';!--\"<XSS>=&{()}"))
-      f.commentEncoded.get mustEqual "<p>'';!–“=&amp;{()}</p>"
+      f.commentEncoded.get mustEqual "<p>'';!--\"=&amp;{()}</p>"
       val g = a.copy(comment = Some("hello <a name=\"n\" href=\"javascript:alert('xss')\">*you*</a>"))
-      g.commentEncoded.get mustEqual "<p>hello <a rel=\"nofollow\"><em>you</em></a></p>"
+      g.commentEncoded.get mustEqual "<p>hello <a rel=\"nofollow noopener noreferrer\" target=\"_blank\"><em>you</em></a></p>"
     }
   }
 }
