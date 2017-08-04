@@ -5,8 +5,10 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.utils.ExtendedString
-import com.github.rjeschke.txtmark
 import org.apache.commons.text.StringEscapeUtils
+import org.commonmark.node._
+import org.commonmark.parser.Parser
+import org.commonmark.renderer.html.HtmlRenderer
 import org.joda.time.DateTime
 import org.jsoup.Jsoup
 import org.jsoup.safety.Whitelist
@@ -39,28 +41,35 @@ case class MarkData(
                      comment: Option[String],
                      var commentEncoded: Option[String]) {
 
-  commentEncoded = comment.map { c: String => // example: hello <a name="n" href="javascript:alert('xss')">*you*</a>
+  commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
-    // https://github.com/rjeschke/txtmark/issues/33
-    val extended = "\n[$PROFILE$]: extended"
+    // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
+    // https://github.com/atlassian/commonmark-java
+    val document: Node = MarkData.parser.parse(c)
+    val html = MarkData.renderer.render(document)
 
-    // example: <p>hello &lt;a name=&ldquo;n&rdquo; href=&ldquo;javascript:alert('xss')&ldquo;><em>you</em></a></p>
-    // notice the first < gets converted to &ldquo; but the </p> is unchanged
-    val html = txtmark.Processor.process(c + extended)
-
-    // example: <p>hello <a name=“n” href=“javascript:alert('xss')“><em>you</em></a></p>
+    // example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
     // convert that &ldquo; back to a < character
     val html2 = StringEscapeUtils.unescapeHtml4(html)
 
-    // example: <p>hello <a rel="nofollow"><em>you</em></a></p>
-    // https://jsoup.org/cookbook/cleaning-html/whitelist-sanitizer
-    Jsoup.clean(html2, Whitelist.basic())
+    // example: <p><img></p>
+    Jsoup.clean(html2, MarkData.htmlTagsWhitelist)
   }
 }
 
 object MarkData {
   /** This auxiliary factory is used for the purpose of importing bookmarks only. */
   def apply(subj: String, url: String, tags: Set[String]): MarkData = MarkData(subj, Some(url), None, Some(tags), None, None)
+
+  // for markdown parsing/rendering
+  lazy val parser: Parser = Parser.builder().build()
+  lazy val renderer: HtmlRenderer = HtmlRenderer.builder().build()
+
+  // for XSS filtering (https://jsoup.org/cookbook/cleaning-html/whitelist-sanitizer)
+  lazy val htmlTagsWhitelist: Whitelist = Whitelist.relaxed()
+    .addTags("hr") // horizontal rule
+    .addEnforcedAttribute("a", "rel", "nofollow noopener noreferrer")
+    .addEnforcedAttribute("a", "target", "_blank") // https://medium.com/@jitbit/target-blank-the-most-underestimated-vulnerability-ever-96e328301f4c
 }
 
 /**
