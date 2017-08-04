@@ -41,7 +41,7 @@ libraryDependencies ++= Seq(
   "org.specs2" %% "specs2-core" % "3.8.9" % "test",
   "io.spray" %% "spray-caching" % "1.3.4",
   "org.apache.commons" % "commons-text" % "1.1",
-  "es.nitaur.markdown" % "txtmark" % "0.16", // https://stackoverflow.com/questions/19784525/markdown-to-html-with-java-scala
+  "com.atlassian.commonmark" % "commonmark" % "0.9.0",
   "org.jsoup" % "jsoup" % "1.10.3")
 
 pomIncludeRepository := { _ => false }
