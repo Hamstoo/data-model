@@ -12,8 +12,7 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 
 class MongoMarksDao(db: Future[DefaultDB]) {
 
@@ -22,43 +21,6 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   private val futCol: Future[BSONCollection] = db map (_ collection "entries")
   private val d = BSONDocument.empty
   private val curnt: Producer[BSONElement] = THRU -> Long.MaxValue
-
-  /* Data migration to 0.8.1 that brings in the new fields for from-thru model and refactored data structure. */
-  Await.ready(for {
-    c <- futCol
-    sel = d :~ "mils" -> (d :~ "$exists" -> true)
-    n <- c count Some(sel)
-    if n > 0
-    seq <- {
-      println(s"found $n entries to update")
-      (c find sel).coll[BSONDocument, Seq]()
-    }
-    _ <- Future sequence (for {
-      e <- seq
-      usr = e.getAs[UUID](USER).get
-      id = e.getAs[String](ID).get
-      bm = e.getAs[BSONDocument](MARK).get
-      upd = Mark(
-        usr,
-        id,
-        MarkData(
-          bm.getAs[String](SUBJ).get,
-          bm.getAs[String](URL),
-          bm.getAs[Double](STARS),
-          bm.getAs[Set[String]](TAGS),
-          bm.getAs[String](COMNT)),
-        repId = bm.getAs[String](REPR),
-        timeFrom = e.getAs[Long]("mils") orElse e.getAs[Long](MILS) get)
-      erase = d :~ "mils" -> 1 :~ s"$MARK.$UPRFX" -> 1 :~ s"$MARK.$REPR" -> 1 :~ s"$MARK.$TABVIS" -> 1 :~
-        s"$MARK.$TABBG" -> 1
-    } yield for {
-      _ <- {
-        println(s"updating entry $id")
-        c update(d :~ USER -> usr :~ ID -> id, upd)
-      }
-      _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$unset" -> erase)
-    } yield ())
-  } yield (), Duration.Inf)
 
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
