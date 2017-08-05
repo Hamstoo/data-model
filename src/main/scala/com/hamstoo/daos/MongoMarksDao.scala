@@ -26,10 +26,13 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /* Data migration to 0.8.1 that brings in the new fields for from-thru model and refactored data structure. */
   Await.ready(for {
     c <- futCol
-    sel = d :~ AUX -> (d :~ "$exists" -> false)
+    sel = d :~ "mils" -> (d :~ "$exists" -> true)
     n <- c count Some(sel)
     if n > 0
-    seq <- (c find sel).coll[BSONDocument, Seq]()
+    seq <- {
+      println(s"found $n entries to update")
+      (c find sel).coll[BSONDocument, Seq]()
+    }
     _ <- Future sequence (for {
       e <- seq
       usr = e.getAs[UUID](USER).get
@@ -53,27 +56,11 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       erase = d :~ "mils" -> 1 :~ s"$MARK.$UPRFX" -> 1 :~ s"$MARK.$REPR" -> 1 :~ s"$MARK.$TABVIS" -> 1 :~
         s"$MARK.$TABBG" -> 1
     } yield for {
-      _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$set" -> upd)
+      _ <- {
+        println(s"updating entry $id")
+        c update(d :~ USER -> usr :~ ID -> id, upd)
+      }
       _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$unset" -> erase)
-    } yield ())
-  } yield (), Duration.Inf)
-
-  /* Data migration to 0.8.4 that renames fields. */
-  Await.ready(for {
-    c <- futCol
-    sel = d :~ "from" -> (d :~ "$exists" -> true)
-    n <- c count Some(sel)
-    if n > 0
-    seq <- (c find sel).coll[BSONDocument, Seq]()
-    _ <- Future sequence (for {
-      e <- seq
-      usr = e.getAs[UUID](USER).get
-      id = e.getAs[String](ID).get
-      frm = e.getAs[Long]("from")
-      thr = e.getAs[Long]("thru")
-    } yield for {
-      _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$set" -> (d :~ MILS -> frm :~ THRU -> thr))
-      _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$unset" -> (d :~ "from" -> 1 :~ "thru" -> 1))
     } yield ())
   } yield (), Duration.Inf)
 
