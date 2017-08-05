@@ -77,6 +77,8 @@ object MarkData {
   * @param mark     - user-provided content
   * @param aux      - additional fields holding satellite data
   * @param urlPrfx  - binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init
+  *                 Binary prefix is used as filtering and 1st stage of urls equality estimation
+  *                 https://en.wikipedia.org/wiki/Binary_prefix
   * @param page     - temporary holder for page source, until a representation is constructed or assigned
   * @param repId    - optional representation id for this mark
   * @param timeFrom - timestamp of last edit
