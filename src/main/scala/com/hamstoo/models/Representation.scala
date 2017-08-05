@@ -141,7 +141,9 @@ object Representation extends BSONHandlers {
   * @param doctext  Document text.
   * @param othtext  Other text not included in document text.
   * @param keywords Keywords from meta tags.
-  * @param vectors  Map from vector computation methods to Array[Double] vector embeddings of the texts.
+  * @param vectors  Map from vector computation methods to Array[Double] vector embeddings of the texts. Vectors are necessary
+  *                 because the system estimates vectors for every empty DB vector entriy and stores them. This is done scheduled
+  *                 and asynchronously .
   * @param timeFrom Time of construction/modification.
   * @param timeThru Time of validity.
   */
