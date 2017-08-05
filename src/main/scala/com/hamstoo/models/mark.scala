@@ -35,7 +35,7 @@ case class MarkData(
                      rating: Option[Double] = None,
                      tags: Option[Set[String]] = None,
                      comment: Option[String] = None,
-                     var commentEncoded: Option[String]) {
+                     var commentEncoded: Option[String] = None) {
 
   commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
