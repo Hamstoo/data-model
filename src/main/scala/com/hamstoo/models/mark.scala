@@ -75,7 +75,9 @@ object MarkData {
   *   - hlights - the array of IDs of all highlights made by user on the webpage and their evolutions
   *   - tabVisible - browser tab timing data
   *   - tabBground - browser tab timing data
-  * - urlPrfx - binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init
+  * - urlPrfx - binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init.
+  *             Binary prefix is used as filtering and 1st stage of urls equality estimation
+  *             https://en.wikipedia.org/wiki/Binary_prefix
   * - repId - id of a representation for this mark
   * - from - timestamp of last edit
   * - thru - the moment of time until which this version is latest
