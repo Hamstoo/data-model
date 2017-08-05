@@ -19,22 +19,22 @@ import scala.collection.mutable
 import scala.util.Random
 
 /**
-  * - commentEncoded - markdown converted to HTML; set by class init
   * User content data model. This case class is also used for front-end JSON formatting.
   * The fields are:
-  * @param subj     - the rated element as a string of text; either a header of the marked page, or the rated string
-  *     itself
-  * @param url      - an optional url
-  * @param rating   - the value assigned to the mark by the user, from 0.0 to 5.0
-  * @param tags     - a set of tags assigned to the mark by the user
-  * @param comment  - an optional text comment assigned to the mark by the user
+  * @param subj           - the rated element as a string of text; either a header of the marked page, or the rated
+  *                       string itself
+  * @param url            - an optional url
+  * @param rating         - the value assigned to the mark by the user, from 0.0 to 5.0
+  * @param tags           - a set of tags assigned to the mark by the user
+  * @param comment        - an optional text comment assigned to the mark by the user
+  * @param commentEncoded - markdown converted to HTML; set by class init
   */
 case class MarkData(
                      subj: String,
                      url: Option[String],
                      rating: Option[Double] = None,
                      tags: Option[Set[String]] = None,
-                     comment: Option[String] = None)
+                     comment: Option[String] = None,
                      var commentEncoded: Option[String]) {
 
   commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
@@ -54,7 +54,8 @@ case class MarkData(
 }
 
 object MarkData {
-  // for markdown parsing/rendering
+  /* attention: mutable Java classes below.
+  for markdown parsing/rendering: */
   lazy val parser: Parser = Parser.builder().build()
   lazy val renderer: HtmlRenderer = HtmlRenderer.builder().build()
 
@@ -62,7 +63,8 @@ object MarkData {
   lazy val htmlTagsWhitelist: Whitelist = Whitelist.relaxed()
     .addTags("hr") // horizontal rule
     .addEnforcedAttribute("a", "rel", "nofollow noopener noreferrer")
-    .addEnforcedAttribute("a", "target", "_blank") // https://medium.com/@jitbit/target-blank-the-most-underestimated-vulnerability-ever-96e328301f4c
+    // https://medium.com/@jitbit/target-blank-the-most-underestimated-vulnerability-ever-96e328301f4c :
+    .addEnforcedAttribute("a", "target", "_blank")
 }
 
 /**
