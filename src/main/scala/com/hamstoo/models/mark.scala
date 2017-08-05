@@ -79,7 +79,7 @@ object MarkData {
   * @param urlPrfx  - binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init
   *                 Binary prefix is used as filtering and 1st stage of urls equality estimation
   *                 https://en.wikipedia.org/wiki/Binary_prefix
-  * @param page     - temporary holder for page source, until a representation is constructed or assigned
+  * @param page     - temporary holder for page sources, until a representation is constructed or assigned
   * @param repId    - optional representation id for this mark
   * @param timeFrom - timestamp of last edit
   * @param timeThru - the moment of time until which this version is latest
@@ -93,7 +93,7 @@ case class Mark(
                  mark: MarkData,
                  aux: MarkAux = MarkAux(None, None),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
-                 page: Option[String] = None,
+                 page: Option[Seq[String]] = None,
                  repId: Option[String] = None,
                  timeFrom: Long = DateTime.now.getMillis,
                  timeThru: Long = Long.MaxValue,
@@ -130,6 +130,7 @@ object Mark extends BSONHandlers {
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)
   val UPRFX: String = nameOf[Mark](_.urlPrfx)
+  val PAGE: String = nameOf[Mark](_.page)
   val REPR: String = nameOf[Mark](_.repId)
   val MILS: String = nameOf[Mark](_.timeFrom)
   val THRU: String = nameOf[Mark](_.timeThru)
