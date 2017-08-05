@@ -117,6 +117,13 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     _ <- wr failIfError
   } yield mark
 
+  /** Appends provided string to mark's array of page sources. */
+  def addPageSource(user: UUID, id: String, source: String): Future[Unit] = for {
+    c <- futCol
+    wr <- c update(d :~ USER -> user :~ ID -> id :~ curnt, d :~ "$push" -> (d :~ PAGE -> source))
+    _ <- wr failIfError
+  } yield ()
+
   /**
     * Renames one tag in all user's marks that have it.
     * Returns updated mark states number.
