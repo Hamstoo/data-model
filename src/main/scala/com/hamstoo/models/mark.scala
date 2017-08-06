@@ -80,7 +80,7 @@ object MarkData {
   *                 Binary prefix is used as filtering and 1st stage of urls equality estimation
   *                 https://en.wikipedia.org/wiki/Binary_prefix
   * @param page     - temporary holder for page sources, until a representation is constructed or assigned
-  * @param repId    - optional representation id for this mark
+  * @param repIds    - optional representation id for this mark
   * @param timeFrom - timestamp of last edit
   * @param timeThru - the moment of time until which this version is latest
   *
@@ -94,7 +94,7 @@ case class Mark(
                  aux: MarkAux = MarkAux(None, None),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
                  page: Option[Seq[String]] = None,
-                 repId: Option[String] = None,
+                 repIds: Option[Seq[String]] = None,
                  timeFrom: Long = DateTime.now.getMillis,
                  timeThru: Long = Long.MaxValue,
                  score: Option[Double] = None) {
@@ -131,7 +131,7 @@ object Mark extends BSONHandlers {
   val AUX: String = nameOf[Mark](_.aux)
   val UPRFX: String = nameOf[Mark](_.urlPrfx)
   val PAGE: String = nameOf[Mark](_.page)
-  val REPR: String = nameOf[Mark](_.repId)
+  val REPRS: String = nameOf[Mark](_.repIds)
   val MILS: String = nameOf[Mark](_.timeFrom)
   val THRU: String = nameOf[Mark](_.timeThru)
   // `text` index search score <projectedFieldName>, not a field name of the collection
