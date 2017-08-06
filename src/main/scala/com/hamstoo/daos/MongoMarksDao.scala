@@ -29,7 +29,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
       Index(ID -> Ascending :: MILS -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$MILS-1-uniq" ::
       Index(ID -> Ascending :: THRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$THRU-1-uniq" ::
-      Index(UPRFX -> Ascending :: REPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$REPR-1" ::
+      Index(UPRFX -> Ascending :: REPRS -> Ascending :: Nil) % s"bin-$UPRFX-1-$REPRS-1" ::
       Index(s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMNT" -> Text :: Nil) %
         s"txt-$MARK.$SUBJ-$MARK.$TAGS-$MARK.$COMNT" ::
       Index(s"$MARK.$TAGS" -> Ascending :: Nil) % s"bin-$MARK.$TAGS-1" ::
@@ -72,12 +72,26 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * Retrieves all current marks with representations for the user, constrained by a list of tags. Mark must have
     * all tags to qualify.
     */
+
+/*
+  Original
   def receiveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
     c <- futCol
-    sel0 = d :~ USER -> user :~ REPR -> (d :~ "$exists" -> true :~ "$ne" -> "") :~ curnt
+    sel0 = d :~ USER -> user :~ REPRS -> (d :~ "$exists" -> true :~ "$ne" -> "") :~ curnt
     sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
     seq <- (c find sel1).coll[Mark, Seq]()
   } yield seq
+*/
+
+
+  def receiveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
+    c <- futCol
+    //TODO Get last record from array because the latest repr is pushed to the end of array always
+    sel0  = d :~ USER -> user :~ REPRS -> (d :~ "$exists" -> true :~ "$ne" -> "")  :~ (d :~ "$last" -> REPRS) :~ curnt
+    sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
+    seq <- (c find sel1).coll[Mark, Seq]()
+  } yield seq
+
 
   /** Retrieves all tags existing in current marks for the user. */
   def receiveTags(user: UUID): Future[Set[String]] = for {
@@ -112,7 +126,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     now = DateTime.now.getMillis
     sel = d :~ USER -> user :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ THRU -> now), fetchNewObject = true)
-    mark = wr.result[Mark].get.copy(mark = mdata, repId = None, timeFrom = now, timeThru = Long.MaxValue)
+    mark = wr.result[Mark].get.copy(mark = mdata, repIds = None, timeFrom = now, timeThru = Long.MaxValue)
     wr <- c insert mark
     _ <- wr failIfError
   } yield mark
@@ -189,7 +203,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def findMissingReprs(n: Int): Future[Map[BSONObjectID, String]] = for {
     c <- futCol
     sel = d :~ UPRFX -> (d :~ "$exists" -> true) :~ UPRFX -> (d :~ "$ne" -> "".getBytes) :~
-      REPR -> (d :~ "$exists" -> false)
+      REPRS -> (d :~ "$exists" -> false)
     seq <- (c find sel projection d :~ "_id" -> 1 :~ s"$MARK.$URL" -> 1).coll[BSONDocument, Seq]()
   } yield seq.map {
     d => d.getAs[BSONObjectID]("_id").get -> d.getAs[BSONDocument](MARK).get.getAs[String](URL).get
@@ -198,7 +212,9 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Updates mark states from a list of _id values with provided representation id. */
   def updateMarkReprId(ids: Set[BSONObjectID], repr: String): Future[Int] = for {
     c <- futCol
-    wr <- c update(d :~ "_id" -> (d :~ "$in" -> ids), d :~ "$set" -> (d :~ REPR -> repr), multi = true)
+  // When update mark repId if repId exists in perIds array then it should be removed from array
+ // and be pushed to the end of array to become last. See def receiveRepred : ...  (d :~ "$last" -> REPRS)
+    wr <- c update(d :~ "_id" -> (d :~ "$in" -> ids), d :~ "$pull" -> (d :~ REPRS -> repr) :~ d :~ "$push" -> (d :~ REPRS -> repr), multi = true)
     _ <- wr failIfError
   } yield wr.nModified
 }
