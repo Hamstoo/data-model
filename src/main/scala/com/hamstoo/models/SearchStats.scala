@@ -23,10 +23,7 @@ case class SearchStats(
   /* I believe Monocle library has all this case class update stuff implemented, but it was quicker to implement it
   myself with a bit of type-fu than to get to know Monocle. */
   /** Implements element update or else insert logic for lists. */
-  private def mapUpdate[T, E <: MapEl[T], S[E] <: GenSeqLike[E, S[E]]](
-                                                                        map: S[E],
-                                                                        key: T,
-                                                                        defEl: => E)
+  private def mapUpdate[T, E <: MapEl[T], S[E] <: GenSeqLike[E, S[E]]](map: S[E], key: T, defEl: => E)
                                                                       (f: E => E)
                                                                       (implicit cbf: CanBuildFrom[S[_], E, S[E]]): S[E] =
     map.indexWhere(_.key == key) match {
@@ -48,7 +45,7 @@ case class SearchStats(
   }
 
   /** Produces incremented statistics with one more full page view event. */
-  def incFpv(url: String, id: String, weight: Double, index: Int): SearchStats = {
+  def incFpv(url: Option[String], id: String, weight: Double, index: Int): SearchStats = {
     def statInc[T]: (Stat[T]) => Stat[T] = e2 => e2.copy(fpvClicks = e2.fpvClicks.map(1 +) orElse Some(1))
 
     val statsInc: (ResultStats[String]) => ResultStats[String] = e1 => e1.copy(
@@ -57,7 +54,9 @@ case class SearchStats(
       indexesMap = mapUpdate[Int, Stat[Int], Seq](e1.indexesMap, index, Stat(index))(statInc))
     copy(
       marksMap = mapUpdate[String, ResultStats[String], IndexedSeq](marksMap, id, ResultStats(id))(statsInc),
-      urlsMap = mapUpdate[String, ResultStats[String], IndexedSeq](urlsMap, url, ResultStats(url))(statsInc))
+      urlsMap = url map { u =>
+        mapUpdate[String, ResultStats[String], IndexedSeq](urlsMap, u, ResultStats(u))(statsInc)
+      } getOrElse urlsMap)
   }
 }
 
