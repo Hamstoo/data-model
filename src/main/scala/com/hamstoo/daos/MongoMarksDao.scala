@@ -185,22 +185,22 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     wr <- c update(sel, d :~ "$pull" -> (d :~ s"$MARK.$TAGS" -> (d :~ "$in" -> tags)), multi = true)
   } yield wr.nModified
 
-  /** Retrieves a number of mongo _id values with URLs that belong to mark states without representations. */
-  def findMissingReprs(n: Int): Future[Map[BSONObjectID, String]] = for {
+  /** Retrieves a map of n mark IDs to URLs that belong to marks without representations. */
+  def findMissingReprs(n: Int): Future[Map[String, String]] = for {
     c <- futCol
     sel = d :~ UPRFX -> (d :~ "$exists" -> true) :~ UPRFX -> (d :~ "$ne" -> "".getBytes) :~
       REPRS -> (d :~ "$exists" -> false)
-    seq <- (c find sel projection d :~ "_id" -> 1 :~ s"$MARK.$URL" -> 1).coll[BSONDocument, Seq]()
+    seq <- (c find sel projection d :~ ID -> 1 :~ curnt :~ s"$MARK.$URL" -> 1).coll[BSONDocument, Seq]()
   } yield seq.map {
-    d => d.getAs[BSONObjectID]("_id").get -> d.getAs[BSONDocument](MARK).get.getAs[String](URL).get
-  }(collection.breakOut[Seq[BSONDocument], (BSONObjectID, String), Map[BSONObjectID, String]])
+    d => d.getAs[String](ID).get -> d.getAs[BSONDocument](MARK).get.getAs[String](URL).get
+  }(collection.breakOut[Seq[BSONDocument], (String, String), Map[String, String]])
 
-  /** Updates mark states from a list of _id values with provided representation id. */
-  def updateMarkReprId(ids: Set[BSONObjectID], repr: String): Future[Int] = for {
+  /** Updates marks from a list ids with provided representation id. */
+  def updateMarkReprId(ids: Set[String], repr: String): Future[Int] = for {
     c <- futCol
     /* When update mark repId if repId exists in perIds array then it should be removed from array
     and be pushed to the end of array to become last. See def receiveRepred : ...  (d :~ "$last" -> REPRS) */
-    sel = d :~ "_id" -> (d :~ "$in" -> ids)
+    sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
     wr <- c update(sel, d :~ "$pull" -> (d :~ REPRS -> repr), multi = true)
     _ <- wr failIfError;
     wr <- c update(sel, d :~ "$push" -> (d :~ REPRS -> repr), multi = true)
