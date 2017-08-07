@@ -1,7 +1,7 @@
 name := "data-model"
 organization := "com.hamstoo"
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
-version := "feature.114-alpha.3"
+version := "feature.114-alpha.4"
 
 scalaVersion := "2.11.11"
 crossScalaVersions := Seq("2.11.11", "2.11.7")
@@ -42,7 +42,8 @@ libraryDependencies ++= Seq(
   "io.spray" %% "spray-caching" % "1.3.4",
   "org.apache.commons" % "commons-text" % "1.1",
   "com.atlassian.commonmark" % "commonmark" % "0.9.0",
-  "org.jsoup" % "jsoup" % "1.10.3")
+  "org.jsoup" % "jsoup" % "1.10.3",
+  "org.reactivemongo" % "play2-reactivemongo_2.11" % "0.12.5-play26"% "test")
 
 pomIncludeRepository := { _ => false }
 pomExtra :=
