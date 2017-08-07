@@ -42,7 +42,8 @@ libraryDependencies ++= Seq(
   "io.spray" %% "spray-caching" % "1.3.4",
   "org.apache.commons" % "commons-text" % "1.1",
   "com.atlassian.commonmark" % "commonmark" % "0.9.0",
-  "org.jsoup" % "jsoup" % "1.10.3")
+  "org.jsoup" % "jsoup" % "1.10.3",
+  "org.reactivemongo" % "play2-reactivemongo_2.11" % "0.12.5-play26"% "test"))
 
 pomIncludeRepository := { _ => false }
 pomExtra :=
