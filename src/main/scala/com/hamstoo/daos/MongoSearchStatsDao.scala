@@ -22,15 +22,23 @@ class MongoSearchStatsDao(db: Future[DefaultDB]) {
     Index(QUERY -> Ascending :: Nil, unique = true) % s"bin-$QUERY-1-uniq" :: Nil toMap;
   futCol map (_.indexesManager ensure indxs)
 
-  def addClick(query: String, id: String, url: String, weight: Double, index: Int, fpv: Boolean): Future[Unit] = for {
-    c <- futCol
-    vis = if (fpv) VISFPV else VISURL
-    st = if (fpv) STFPV else STURL
-    sel = d :~ QUERY -> query
-    mbss <- (c find sel).one[SearchStats]
-    ss = mbss getOrElse SearchStats(query)
-    upd = if (fpv) ss incFpv (url, id, weight, index) else ss incUrl (url, id, weight, index)
-    wr <- c update(sel, upd, upsert = true)
-    _ <- wr.failIfError
-  } yield ()
+  def addUrlClick(query: String, id: String, url: String, weight: Double, index: Int): Future[Unit] =
+    for {
+      c <- futCol
+      sel = d :~ QUERY -> query
+      mbss <- (c find sel).one[SearchStats]
+      upd = mbss getOrElse SearchStats(query) incUrl(url, id, weight, index)
+      wr <- c update(sel, upd, upsert = true)
+      _ <- wr.failIfError
+    } yield ()
+
+  def addFpvClick(query: String, id: String, url: Option[String], weight: Double, index: Int): Future[Unit] =
+    for {
+      c <- futCol
+      sel = d :~ QUERY -> query
+      mbss <- (c find sel).one[SearchStats]
+      upd = mbss getOrElse SearchStats(query) incFpv(url, id, weight, index)
+      wr <- c update(sel, upd, upsert = true)
+      _ <- wr.failIfError
+    } yield ()
 }
