@@ -11,7 +11,7 @@ class SearchStatsSpec extends Specification {
       val weight = 22.11
       val index = 3
       val url = "/some/url"
-      val searchStats1 = SearchStats(query).incFpv(url, id, weight, index)
+      val searchStats1 = SearchStats(query).incFpv(Some(url), id, weight, index)
       searchStats1 shouldEqual SearchStats(
         query,
         marksMap = IndexedSeq(ResultStats(
@@ -24,7 +24,7 @@ class SearchStatsSpec extends Specification {
           fpvClicksTotal = Some(1),
           weightsMap = Seq(Stat[Double](weight, fpvClicks = Some(1))),
           indexesMap = Seq(Stat[Int](index, fpvClicks = Some(1))))))
-      val searchStats2 = searchStats1.incFpv(url, id, weight, index)
+      val searchStats2 = searchStats1.incFpv(None, id, weight, index)
       searchStats2 shouldEqual SearchStats(
         query,
         marksMap = IndexedSeq(ResultStats(
@@ -34,14 +34,14 @@ class SearchStatsSpec extends Specification {
           indexesMap = Seq(Stat[Int](index, fpvClicks = Some(2))))),
         urlsMap = IndexedSeq(ResultStats(
           key = url,
-          fpvClicksTotal = Some(2),
-          weightsMap = Seq(Stat[Double](weight, fpvClicks = Some(2))),
-          indexesMap = Seq(Stat[Int](index, fpvClicks = Some(2))))))
+          fpvClicksTotal = Some(1),
+          weightsMap = Seq(Stat[Double](weight, fpvClicks = Some(1))),
+          indexesMap = Seq(Stat[Int](index, fpvClicks = Some(1))))))
       val id2 = "anotherId"
       val weight2 = 11.22
       val index2 = 2
       val url2 = "/another/url"
-      val searchStats3 = searchStats2.incFpv(url2, id2, weight2, index2)
+      val searchStats3 = searchStats2.incFpv(Some(url2), id2, weight2, index2)
       searchStats3 shouldEqual SearchStats(
         query,
         marksMap = IndexedSeq(
@@ -63,9 +63,9 @@ class SearchStatsSpec extends Specification {
             indexesMap = Seq(Stat[Int](index2, fpvClicks = Some(1)))),
           ResultStats(
             key = url,
-            fpvClicksTotal = Some(2),
-            weightsMap = Seq(Stat[Double](weight, fpvClicks = Some(2))),
-            indexesMap = Seq(Stat[Int](index, fpvClicks = Some(2))))))
+            fpvClicksTotal = Some(1),
+            weightsMap = Seq(Stat[Double](weight, fpvClicks = Some(1))),
+            indexesMap = Seq(Stat[Int](index, fpvClicks = Some(1))))))
     }
   }
 }
