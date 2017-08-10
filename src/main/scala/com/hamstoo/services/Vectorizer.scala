@@ -50,6 +50,9 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
   /**
     * Post out to Python's conceptnet5.vectors.standardize_uri so as to avoid
     * re-implementing it in Scala.
+    * the system standartizes uri to bring the uri to appropriate view of REST endpoint,
+    * f.e.like in method standardizePost , i.e. s"$vectorsLink/$endpoint/$uuid"
+
     */
   def standardizeUri(language: String, term: String): Future[Option[String]] = standardizeCache((language, term)) {
     val (link, data) = standardizePost(language, term, "standardized_uri")
@@ -125,6 +128,8 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
 
   /**
     * Prepare `link` and `data` to post to one of the standardize endpoints.
+    * * the system standartizes post uri to bring the uri to appropriate view of REST endpoint,
+    * f.e. s"$vectorsLink/$endpoint/$uuid"
     */
   private def standardizePost(language: String, term: String, endpoint: String): (String, JsObject) = {
 

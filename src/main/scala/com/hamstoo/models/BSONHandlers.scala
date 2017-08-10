@@ -2,6 +2,7 @@ package com.hamstoo.models
 
 import java.util.UUID
 
+import akka.util.ByteString
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONBinary, BSONHandler, BSONLong, BSONString, Subtype}
 
@@ -13,9 +14,9 @@ import scala.collection.mutable
   */
 trait BSONHandlers {
   implicit val arrayBsonHandler: BSONHandler[BSONBinary, mutable.WrappedArray[Byte]] =
-    BSONHandler[BSONBinary, mutable.WrappedArray[Byte]](
-      _.byteArray,
-      a => BSONBinary(a.array, Subtype.GenericBinarySubtype))
+    BSONHandler(_.byteArray, a => BSONBinary(a.array, Subtype.GenericBinarySubtype))
+  implicit val byteStringBsonHandler: BSONHandler[BSONBinary, ByteString] =
+    BSONHandler(ByteString apply _.byteArray, b => BSONBinary(b.toArray, Subtype.GenericBinarySubtype))
   implicit val uuidBsonHandler: BSONHandler[BSONString, UUID] =
     BSONHandler[BSONString, UUID](UUID fromString _.value, BSONString apply _.toString)
   implicit val dateTimeBsonHandler: BSONHandler[BSONLong, DateTime] =
