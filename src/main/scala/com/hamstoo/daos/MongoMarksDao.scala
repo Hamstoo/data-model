@@ -12,8 +12,7 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 
 class MongoMarksDao(db: Future[DefaultDB]) {
 
@@ -23,47 +22,6 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   private val d = BSONDocument.empty
   private val curnt: Producer[BSONElement] = THRU -> Long.MaxValue
 
-  /* Data migration to 0.8.1 that brings in the new fields for from-thru model and refactored data structure. */
-  Await.ready(for {
-    c <- futCol
-    sel = d :~ "mils" -> (d :~ "$exists" -> true)
-    n <- c count Some(sel)
-    if n > 0
-    seq <- {
-      println(s"found $n entries to update")
-      (c find sel).coll[BSONDocument, Seq]()
-    }
-    _ <- Future sequence (for {
-      e <- seq
-      usr = e.getAs[UUID](USER).get
-      id = e.getAs[String](ID).get
-      bm = e.getAs[BSONDocument](MARK).get
-      upd = Mark(
-        usr,
-        id,
-        MarkData(
-          bm.getAs[String](SUBJ).get,
-          bm.getAs[String](URL),
-          bm.getAs[Double](STARS),
-          bm.getAs[Set[String]](TAGS),
-          bm.getAs[String](COMNT),
-          bm.getAs[String](COMNTENC)),
-        MarkAux(None, None),
-        None,
-        bm.getAs[String](REPR),
-        e.getAs[Long]("mils") orElse e.getAs[Long](MILS) get,
-        Long.MaxValue)
-      erase = d :~ "mils" -> 1 :~ s"$MARK.$UPRFX" -> 1 :~ s"$MARK.$REPR" -> 1 :~ s"$MARK.$TABVIS" -> 1 :~
-        s"$MARK.$TABBG" -> 1
-    } yield for {
-      _ <- {
-        println(s"updating entry $id")
-        c update(d :~ USER -> usr :~ ID -> id, upd)
-      }
-      _ <- c update(d :~ USER -> usr :~ ID -> id, d :~ "$unset" -> erase)
-    } yield ())
-  } yield (), Duration.Inf)
-
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
     Index(USER -> Ascending :: Nil) % s"bin-$USER-1" ::
@@ -71,7 +29,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
       Index(ID -> Ascending :: MILS -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$MILS-1-uniq" ::
       Index(ID -> Ascending :: THRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$THRU-1-uniq" ::
-      Index(UPRFX -> Ascending :: REPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$REPR-1" ::
+      Index(UPRFX -> Ascending :: REPRS -> Ascending :: Nil) % s"bin-$UPRFX-1-$REPRS-1" ::
       Index(s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMNT" -> Text :: Nil) %
         s"txt-$MARK.$SUBJ-$MARK.$TAGS-$MARK.$COMNT" ::
       Index(s"$MARK.$TAGS" -> Ascending :: Nil) % s"bin-$MARK.$TAGS-1" ::
@@ -116,7 +74,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def receiveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
     c <- futCol
-    sel0 = d :~ USER -> user :~ REPR -> (d :~ "$exists" -> true :~ "$ne" -> "") :~ curnt
+    sel0 = d :~ USER -> user :~ REPRS -> (d :~ "$exists" -> true :~ "$ne" -> "") :~ curnt
     sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
     seq <- (c find sel1).coll[Mark, Seq]()
   } yield seq
@@ -154,10 +112,17 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     now = DateTime.now.getMillis
     sel = d :~ USER -> user :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ THRU -> now), fetchNewObject = true)
-    mark = wr.result[Mark].get.copy(mark = mdata, repId = None, timeFrom = now, timeThru = Long.MaxValue)
+    mark = wr.result[Mark].get.copy(mark = mdata, repIds = None, timeFrom = now, timeThru = Long.MaxValue)
     wr <- c insert mark
     _ <- wr failIfError
   } yield mark
+
+  /** Appends provided string to mark's array of page sources. */
+  def addPageSource(user: UUID, id: String, source: String): Future[Unit] = for {
+    c <- futCol
+    wr <- c update(d :~ USER -> user :~ ID -> id :~ curnt, d :~ "$push" -> (d :~ PAGE -> source))
+    _ <- wr failIfError
+  } yield ()
 
   /**
     * Renames one tag in all user's marks that have it.
@@ -220,20 +185,25 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     wr <- c update(sel, d :~ "$pull" -> (d :~ s"$MARK.$TAGS" -> (d :~ "$in" -> tags)), multi = true)
   } yield wr.nModified
 
-  /** Retrieves a number of mongo _id values with URLs that belong to mark states without representations. */
-  def findMissingReprs(n: Int): Future[Map[BSONObjectID, String]] = for {
+  /** Retrieves a map of n mark IDs to URLs that belong to marks without representations. */
+  def findMissingReprs(n: Int): Future[Map[String, String]] = for {
     c <- futCol
     sel = d :~ UPRFX -> (d :~ "$exists" -> true) :~ UPRFX -> (d :~ "$ne" -> "".getBytes) :~
-      REPR -> (d :~ "$exists" -> false)
+      REPRS -> (d :~ "$exists" -> false)
     seq <- (c find sel projection d :~ "_id" -> 1 :~ s"$MARK.$URL" -> 1).coll[BSONDocument, Seq](n)
   } yield seq.map {
-    d => d.getAs[BSONObjectID]("_id").get -> d.getAs[BSONDocument](MARK).get.getAs[String](URL).get
-  }(collection.breakOut[Seq[BSONDocument], (BSONObjectID, String), Map[BSONObjectID, String]])
+    d => d.getAs[String](ID).get -> d.getAs[BSONDocument](MARK).get.getAs[String](URL).get
+  }(collection.breakOut[Seq[BSONDocument], (String, String), Map[String, String]])
 
-  /** Updates mark states from a list of _id values with provided representation id. */
-  def updateMarkReprId(ids: Set[BSONObjectID], repr: String): Future[Int] = for {
+  /** Updates marks from a list ids with provided representation id. */
+  def updateMarkReprId(ids: Set[String], repr: String): Future[Int] = for {
     c <- futCol
-    wr <- c update(d :~ "_id" -> (d :~ "$in" -> ids), d :~ "$set" -> (d :~ REPR -> repr), multi = true)
+    /* When update mark repId if repId exists in perIds array then it should be removed from array
+    and be pushed to the end of array to become last. See def receiveRepred : ...  (d :~ "$last" -> REPRS) */
+    sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
+    wr <- c update(sel, d :~ "$pull" -> (d :~ REPRS -> repr), multi = true)
+    _ <- wr failIfError;
+    wr <- c update(sel, d :~ "$push" -> (d :~ REPRS -> repr), multi = true)
     _ <- wr failIfError
   } yield wr.nModified
 }
