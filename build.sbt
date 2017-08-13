@@ -9,18 +9,9 @@ scalacOptions in ThisBuild ++= Seq("-feature", "-language:postfixOps", "-languag
 
 lazy val root = project in file(".")
 
-val gitBranch = settingKey[String]("Determines current git branch")
-gitBranch := Process("git rev-parse --abbrev-ref HEAD").lines.head
-val releaseGitBranch = settingKey[Boolean]("Determines current git branch is release")
-releaseGitBranch := gitBranch.value.startsWith("release")
-isSnapshot := !releaseGitBranch.value
-publishTo := {
-  if (releaseGitBranch.value) Some("Artifactory Realm" at
-    "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
-  else Some("Artifactory Realm" at
-    "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-dev-local;build.timestamp=" +
-    new java.util.Date().getTime)
-}
+publishTo :=
+  Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
+
 credentials += Credentials(
   "Artifactory Realm",
   "ec2-54-236-36-52.compute-1.amazonaws.com",
@@ -28,6 +19,7 @@ credentials += Credentials(
   sys.env.getOrElse("ARTIFACTORY_PSW", ""))
 
 resolvers ++= Seq(
+  Resolver.url("jb-bintray", url("http://dl.bintray.com/jetbrains/sbt-plugins"))(Resolver.ivyStylePatterns),
   "sonatype-snapshots" at "http://oss.sonatype.org/content/repositories/snapshots",
   "sonatype-releases" at "http://oss.sonatype.org/content/repositories/releases",
   "Atlassian Releases" at "https://maven.atlassian.com/public/")
@@ -43,7 +35,7 @@ libraryDependencies ++= Seq(
   "org.apache.commons" % "commons-text" % "1.1",
   "com.atlassian.commonmark" % "commonmark" % "0.9.0",
   "org.jsoup" % "jsoup" % "1.10.3",
-  "org.reactivemongo" % "play2-reactivemongo_2.11" % "0.12.5-play26"% "test")
+  "org.reactivemongo" % "play2-reactivemongo_2.11" % "0.12.5-play26" % "test")
 
 pomIncludeRepository := { _ => false }
 pomExtra :=
