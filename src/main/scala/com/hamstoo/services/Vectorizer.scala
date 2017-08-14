@@ -47,7 +47,7 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
     * Post out to Python's conceptnet5.vectors.standardize_uri so as to avoid
     * re-implementing it in Scala.
     * the system standartizes uri to bring the uri to appropriate view of REST endpoint,
-    * f.e.like in method standardizePost , i.e. s"$vectorsLink/$endpoint/$uuid"
+    * f.e.like in method standardizePost , i.e. s"{vectorsLink}/{endpoint}/{uuid}"
 
     */
   @deprecated("Deprecated in favor of DB mirrored lookup.", "0.9.0")
