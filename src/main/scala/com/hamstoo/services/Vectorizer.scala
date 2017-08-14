@@ -6,7 +6,6 @@ import com.hamstoo.daos.MongoVectorsDao
 import com.hamstoo.models.Representation.Vec
 import play.api.libs.json.{JsObject, Json}
 import play.api.libs.ws._
-import spray.caching.{Cache, LruCache}
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -33,16 +32,13 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
   val spcrRgx = """[-\/_\+—]|(\.\s+)|([\s,:;?!…]\s*)|(\.\.\.\s*)|(\s*["“”\(\)]\s*)"""
   val termRgx: Regex = s"[^a-z]*([a-z]+(($spcrRgx|[\\.'’])[a-z]+)*+)".r.unanchored
 
-  def newCache[T](): Cache[T] = LruCache[T](maxCapacity = MAX_CAPACITY, initialCapacity = MAX_CAPACITY / 4)
-
-  val lookupCache: Cache[Option[Vec]] = newCache()
-  val standardizeCache: Cache[Option[String]] = newCache()
   val sAndLCache: mutable.Map[(String, String), Option[Vec]] = scala.collection.mutable.HashMap()
 
   /**
     * Lookup a single term or word.
     */
-  def lookup(term: String): Future[Option[Vec]] = lookupCache(term) {
+  @deprecated("Deprecated in favor of DB mirrored lookup.", "0.9.0")
+  def lookup(term: String): Future[Option[Vec]] = {
     val link = s"$vectorsLink/$ENGLISH/$term"
     httpClient.url(link).get map handleResponse(_.json.as[Vec])
   }
@@ -54,7 +50,8 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
     * f.e.like in method standardizePost , i.e. s"$vectorsLink/$endpoint/$uuid"
 
     */
-  def standardizeUri(language: String, term: String): Future[Option[String]] = standardizeCache((language, term)) {
+  @deprecated("Deprecated in favor of DB mirrored lookup.", "0.9.0")
+  def standardizeUri(language: String, term: String): Future[Option[String]] = {
     val (link, data) = standardizePost(language, term, "standardized_uri")
     httpClient.url(link).post(data) map handleResponse(_.json.\("uri").as[String])
   }
@@ -62,6 +59,7 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
   /**
     * Standardize URI and lookup corresponding vector all in one API call.
     */
+  @deprecated("Deprecated in favor of DB mirrored lookup.", "0.9.0")
   def sAndL(language: String, term: String): Option[Vec] = {
     val (link, data) = standardizePost(language, term, "standardize_and_lookup")
 

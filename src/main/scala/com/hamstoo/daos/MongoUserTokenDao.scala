@@ -4,13 +4,13 @@ import java.util.UUID
 
 import com.hamstoo.models.UserToken
 import com.hamstoo.models.UserToken.ID
-import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.BSONDocument
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 /** Data access object for confirmation tokens. */
