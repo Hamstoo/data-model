@@ -80,11 +80,12 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     optRep <- c.find(d :~ ID -> id :~ curnt).one[Representation]
   } yield optRep
 
-  /** Retrieves a current representation by URL. */
+  /** Retrieves a public representation by URL. */
   def retrieveByUrl(url: String): Future[Option[Representation]] = for {
     c <- futCol
-    seq <- (c find d :~ LPREF -> url.prefx :~ curnt).coll[Representation, Seq]()
-  } yield seq collectFirst { case rep if rep.link contains url => rep }
+    seq <- (c find d :~ LPREF -> url.prefx :~ curnt :~ USRS -> (d :~ "$size" -> 0)).coll[Representation, Seq]() /*
+    The {users:{$size:0}} part of the query is not indexable and thus goes last. */
+  } yield seq find (_.link contains url)
 
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
