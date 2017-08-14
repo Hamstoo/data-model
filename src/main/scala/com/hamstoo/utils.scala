@@ -50,7 +50,7 @@ package object utils {
       if (wr.ok) f else Future failed new Exception(wr.writeErrors mkString "; ")
 
     def failIfError: Future[Unit] =
-      if (wr.ok) Future.successful() else Future failed new Exception(wr.writeErrors mkString "; ")
+      if (wr.ok) Future successful {} else Future failed new Exception(wr.writeErrors mkString "; ")
   }
 
   private val URL_PREFIX_LENGTH = 1000
@@ -62,4 +62,5 @@ package object utils {
       */
     def prefx: mutable.WrappedArray[Byte] = s.getBytes take URL_PREFIX_LENGTH
   }
+
 }
