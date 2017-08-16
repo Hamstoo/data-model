@@ -51,7 +51,7 @@ class MongoStatsDao(db: Future[DefaultDB]) {
     cS <- futStatsCol
     cI <- futImportsCol
     cE <- futEntriesCol
-    marks <- cE count Some(d :~ USER -> userId.toString :~ THRU -> Long.MaxValue)
+    marks <- cE count Some(d :~ USER -> userId.toString :~ TIMETHRU -> Long.MaxValue)
     imports <- cI.find(d :~ "_id" -> userId.toString).one[BSONDocument]
     /* Count total number of times user added a mark: */
     total <- cS count Some(d :~ USR -> userId.toString)
