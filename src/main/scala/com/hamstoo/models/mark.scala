@@ -132,8 +132,8 @@ object Mark extends BSONHandlers {
   val UPRFX: String = nameOf[Mark](_.urlPrfx)
   val PAGE: String = nameOf[Mark](_.page)
   val REPRS: String = nameOf[Mark](_.repIds)
-  val MILS: String = nameOf[Mark](_.timeFrom)
-  val THRU: String = nameOf[Mark](_.timeThru)
+  val TIMEFROM: String = nameOf[Mark](_.timeFrom)
+  val TIMETHRU: String = nameOf[Mark](_.timeThru)
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)
   val SUBJ: String = nameOf[MarkData](_.subj)
