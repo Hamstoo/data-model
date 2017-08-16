@@ -20,15 +20,15 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   private val futCol: Future[BSONCollection] = db map (_ collection "entries")
   private val d = BSONDocument.empty
-  private val curnt: Producer[BSONElement] = THRU -> Long.MaxValue
+  private val curnt: Producer[BSONElement] = TIMETHRU -> Long.MaxValue
 
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
     Index(USER -> Ascending :: Nil) % s"bin-$USER-1" ::
-      Index(THRU -> Ascending :: Nil) % s"bin-$THRU-1" ::
+      Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
       /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
-      Index(ID -> Ascending :: MILS -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$MILS-1-uniq" ::
-      Index(ID -> Ascending :: THRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$THRU-1-uniq" ::
+      Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
+      Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
       Index(UPRFX -> Ascending :: REPRS -> Ascending :: Nil) % s"bin-$UPRFX-1-$REPRS-1" ::
       Index(s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMNT" -> Text :: Nil) %
         s"txt-$MARK.$SUBJ-$MARK.$TAGS-$MARK.$COMNT" ::
@@ -52,7 +52,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Retrieves all current marks for the user, sorted by 'from' time. */
   def receive(user: UUID): Future[Seq[Mark]] = for {
     c <- futCol
-    seq <- (c find d :~ USER -> user :~ curnt sort d :~ MILS -> -1).coll[Mark, Seq]()
+    seq <- (c find d :~ USER -> user :~ curnt sort d :~ TIMEFROM -> -1).coll[Mark, Seq]()
   } yield seq
 
   /** Retrieves a current mark by user and url, None if not found. */
@@ -65,7 +65,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def receiveTagged(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
     c <- futCol
     sel = d :~ USER -> user :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ curnt
-    seq <- (c find sel sort d :~ MILS -> -1).coll[Mark, Seq]()
+    seq <- (c find sel sort d :~ TIMEFROM -> -1).coll[Mark, Seq]()
   } yield seq
 
   /**
@@ -111,7 +111,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futCol
     now = DateTime.now.getMillis
     sel = d :~ USER -> user :~ ID -> id :~ curnt
-    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ THRU -> now), fetchNewObject = true)
+    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
     mark = wr.result[Mark].get.copy(mark = mdata, repIds = None, timeFrom = now, timeThru = Long.MaxValue)
     wr <- c insert mark
     _ <- wr failIfError
@@ -158,7 +158,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futCol
     now = DateTime.now.getMillis
     sel = d :~ USER -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
-    wr <- c update(sel, d :~ "$set" -> (d :~ THRU -> now), multi = true)
+    wr <- c update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), multi = true)
     _ <- wr failIfError
   } yield wr.nModified
 
@@ -185,11 +185,17 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     wr <- c update(sel, d :~ "$pull" -> (d :~ s"$MARK.$TAGS" -> (d :~ "$in" -> tags)), multi = true)
   } yield wr.nModified
 
-  /** Retrieves a map of n mark IDs to URLs that belong to marks without representations. */
+  /**
+    * Retrieves a map (should it be a Seq?), of `n` mark IDs to URLs that belong to marks without representations.
+    * Careful though, a single mark ID can map to different URLs at different time periods which is why we're
+    * now only retrieving "current" marks.
+    */
   def findMissingReprs(n: Int): Future[Map[String, String]] = for {
     c <- futCol
-    sel = d :~ UPRFX -> (d :~ "$exists" -> true) :~ UPRFX -> (d :~ "$ne" -> "".getBytes) :~
-      REPRS -> (d :~ "$exists" -> false)
+    sel = d :~ UPRFX -> (d :~ "$exists" -> true) :~
+               UPRFX -> (d :~ "$ne" -> "".getBytes) :~
+               REPRS -> (d :~ "$exists" -> false) :~
+               curnt // it's not strictly necessary to only look at current documents, but why not
     seq <- (c find sel projection d :~ ID -> 1 :~ s"$MARK.$URL" -> 1).coll[BSONDocument, Seq](n)
   } yield seq.map {
     d => d.getAs[String](ID).get -> d.getAs[BSONDocument](MARK).get.getAs[String](URL).get
