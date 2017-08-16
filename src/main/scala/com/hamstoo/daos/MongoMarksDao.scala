@@ -187,7 +187,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     wr <- c update(sel, d :~ "$pull" -> (d :~ s"$MARK.$TAGS" -> (d :~ "$in" -> tags)), multi = true)
   } yield wr.nModified
 
-  /** Retrieves a list of n marks that require representations. */
+  /** Retrieves a list of n marks that require representations. Intentionally not filtering for `curnt` marks. */
   def findMissingReprs(n: Int): Future[Seq[Mark]] = for {
     c <- futCol
     sel = d :~ UPRFX -> (d :~ "$exists" -> true) :~ UPRFX -> (d :~ "$ne" -> "".getBytes) :~

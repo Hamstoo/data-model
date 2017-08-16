@@ -14,16 +14,17 @@ import scala.concurrent.duration.{Duration, _}
 import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
 
+
 class MongoMarksDaoSpec extends Specification {
 
   val link = "mongodb://localhost:27017"
-  val name = "hamstoo"
-  val testDuration = 2000
+  val dbName = "hamstoo"
+  val timeout = Duration(2000, MILLISECONDS)
 
   @tailrec
   private def getDB: Future[DefaultDB] =
     MongoConnection parseURI link map MongoDriver().connection match {
-      case Success(c) => c database name
+      case Success(c) => c database dbName
       case Failure(e) =>
         e.printStackTrace()
         println("Failed to establish connection to MongoDB.\nRetrying...\n")
@@ -33,34 +34,34 @@ class MongoMarksDaoSpec extends Specification {
 
   val marksDao = new MongoMarksDao(getDB)
   val reprsDao = new MongoRepresentationDao(getDB)
-  val uuid = "8da651bb-1a17-4144-bc33-c176e2ccf8a0"
 
-  println(uuid.toString)
-  val markUuid: UUID = UUID.randomUUID
-
-  // create new mark
   "MongoMarksDao" should {
+
+    "* findMissingReprs, both current and not" in {
+      val m = Mark(UUID.randomUUID(), mark = MarkData("a subject", Some("http://hamstoo.com")))
+      Await.result(marksDao.create(m), timeout)
+      Await.result(marksDao.update(m.userId, m.id, m.mark.copy(subj = "a NEW subject")), timeout)
+      val missingReprMarks = Await.result(marksDao.findMissingReprs(1000000), timeout)
+      missingReprMarks.count(_.userId == m.userId) mustEqual 2
+    }
+
     "* create mark to update rep id and retrieve rep id" in {
 
+      // create new mark
+      val userId = UUID.fromString("8da651bb-1a17-4144-bc33-c176e2ccf8a0")
+      println(userId.toString)
       val markData = MarkData("a subject", Some("http://hamstoo.com"))
-      val mark = Mark(
-        UUID.fromString(uuid),
-        mark = markData,
-        repIds = Some(BSONObjectID.generate.stringify :: Nil))
+      val mark = Mark(userId, mark = markData, repIds = Some(BSONObjectID.generate.stringify :: Nil))
 
-      //Create mark in DB
+      // Create mark in DB
       Try {
-        Await.result(
-          marksDao.create(mark),
-          Duration(testDuration, MILLISECONDS))
+        Await.result(marksDao.create(mark), timeout)
       } map println
       //  Results.Accepted mustEqual (resultCreateMark)
-      Thread.sleep(testDuration)
+      Thread.sleep(timeout.toMillis)
 
-      //Retrive marks
-      val marks = Await.result(
-        marksDao.receive(UUID.fromString(uuid)),
-        Duration(testDuration, MILLISECONDS))
+      // Retrieve marks
+      val marks = Await.result(marksDao.receive(userId), timeout)
       marks.foreach(mark => mark.repIds.foreach(println))
       val markIdToUpdate = marks.last.id
       println("Last mark id to update " + markIdToUpdate)
@@ -68,38 +69,31 @@ class MongoMarksDaoSpec extends Specification {
       val id = marks.head.repIds.get.last
       println("Last repr id to update " + id)
 
-      val createdRepresentation = Await.result(
-        reprsDao.retrieveById(id),
-        Duration(testDuration, MILLISECONDS))
+      val createdRepresentation = Await.result(reprsDao.retrieveById(id), timeout)
 
       val newReprId = BSONObjectID.generate.stringify
       println("newReprId to be recorded " + newReprId)
-      //Update Mark
+
+      // Update Mark
       val resultUpdateReprIdOfMark = Await.result(
         marksDao
           .updateMarkReprId(Set(mark.id), newReprId)
           .map(_ => Results.Accepted),
-        Duration(testDuration, MILLISECONDS))
+        timeout)
       println(resultUpdateReprIdOfMark)
       //   Results.Accepted mustEqual(resultUpdateReprIdOfMark)
 
-      //Retrieve update mark
+      // Retrieve update mark
       val repIds: Seq[String] =
-        Await.result(
-          marksDao.receive(UUID.fromString(uuid), mark.id),
-          Duration(testDuration, MILLISECONDS))
-          .get
-          .repIds
-          .get
+        Await.result(marksDao.receive(userId, mark.id), timeout).get.repIds.get
       repIds.foreach(x => println("ID new " + x))
       val getUodatedReprIdOfMark = repIds.last
       repIds.contains(newReprId) mustEqual true
       newReprId mustEqual getUodatedReprIdOfMark
 
       /* val updatedRepresentation = Await.result(reprsDao.retrieveById(getUodatedReprIdOfMark),
-        Duration(testDuration, MILLISECONDS))
+        Duration(timeout, MILLISECONDS))
       updatedRepresentation.get.timeThru should be > createdRepresentation.get.timeThru*/
-
     }
   }
 }
