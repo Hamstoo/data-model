@@ -47,45 +47,62 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   futCol map (_.indexesManager ensure indxs)
 
   /**
-    * Stores provided representation, optionally updating current state if repr id or link already exists in storage,
-    * but not if provided repr id and link belong to different representations. Note that `id` and `link` are never
-    * updated and returned id may initially belong to existing repr.
+    * Stores provided representation, optionally updating current state if repr id or link already exists in
+    * storage, but not if provided repr id and link belong to different representations. Note that `id` and `link`
+    * are never updated and returned id may initially belong to existing repr.
     * Returns a future id of either updated or inserted repr.
     */
   def save(repr: Representation): Future[String] = for {
     c <- futCol
-    /* Check if id and link exist in the db, failing on conflict. */
-    optRepr0 <- (c find d :~ ID -> repr.id :~ curnt).one[Representation]
-    optRepr1 <- if (repr.link.isEmpty || optRepr0.flatMap(_.link) == repr.link)
+    /* Check if id and (in public repr) link exist in the db, failing on conflict. */
+    optReprById <- retrieveById(repr.id)
+    optReprByUrl <- if (repr.link.isEmpty || optReprById.flatMap(_.link) == repr.link || repr.users.nonEmpty)
       Future successful None else retrieveByUrl(repr.link.get)
-    optRepr <- if (optRepr0.nonEmpty && optRepr1.nonEmpty)
-      Future failed new Exception("Id and link for different reprs.") else Future.successful(optRepr0 orElse optRepr1)
+    optRepr <- if (optReprById.nonEmpty && optReprByUrl.nonEmpty)
+      Future failed new Exception("Id and link for different reprs.") else
+      Future successful (optReprById orElse optReprByUrl)
     /* Insert new repr either as is or as an update, conserving id and link in the latter case. */
     id = optRepr map (_.id) getOrElse repr.id
     wr <- optRepr match {
-      case Some(r) =>
+      case Some(r) if r.users != repr.users => Future failed new Exception("Can't update, user IDs conflict.")
+      case Some(r) if r.link != repr.link => Future failed new Exception("Can't update, urls do not match.")
+      case Some(_) =>
+        // TODO: can check here whether vectors are sufficiently different to require update
         val now = DateTime.now.getMillis
         for {
           wr <- c update(d :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now))
-          wr <- wr.ifOk(c insert repr.copy(id = id, link = r.link, timeFrom = now, timeThru = Long.MaxValue))
+          _ <- wr failIfError;
+          wr <- c insert repr.copy(id = id, timeFrom = now, timeThru = Long.MaxValue)
         } yield wr
       case _ => c insert repr
     }
     _ <- wr failIfError
   } yield id
 
-  /** Retrieves a current representation by id. */
+  /** Retrieves a current (latest) representation by id. */
   def retrieveById(id: String): Future[Option[Representation]] = for {
     c <- futCol
     optRep <- c.find(d :~ ID -> id :~ curnt).one[Representation]
   } yield optRep
 
-  /** Retrieves a public representation by URL. */
+  /** Retrieves a current (latest) public representation by URL. */
   def retrieveByUrl(url: String): Future[Option[Representation]] = for {
     c <- futCol
     seq <- (c find d :~ LPREF -> url.prefx :~ curnt :~ USRS -> (d :~ "$size" -> 0)).coll[Representation, Seq]() /*
     The {users:{$size:0}} part of the query is not indexable and thus goes last. */
   } yield seq find (_.link contains url)
+
+  /** Retrieves all representations, including private and previous versions, by URL. */
+  def retrieveAllByUrl(url: String): Future[Seq[Representation]] = for {
+    c <- futCol
+    seq <- (c find d :~ LPREF -> url.prefx).coll[Representation, Seq]()
+  } yield seq filter (_.link contains url)
+
+  /** Retrieves all representations by Id. */
+  def retrieveAllById(id: String): Future[Seq[Representation]] = for {
+    c <- futCol
+    seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
+  } yield seq
 
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to

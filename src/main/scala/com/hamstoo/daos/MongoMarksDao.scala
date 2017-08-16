@@ -3,7 +3,7 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
-import com.hamstoo.models.{Mark, MarkData}
+import com.hamstoo.models.{Mark, MarkData, Page}
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -20,15 +20,15 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   private val futCol: Future[BSONCollection] = db map (_ collection "entries")
   private val d = BSONDocument.empty
-  private val curnt: Producer[BSONElement] = THRU -> Long.MaxValue
+  private val curnt: Producer[BSONElement] = TIMETHRU -> Long.MaxValue
 
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
     Index(USER -> Ascending :: Nil) % s"bin-$USER-1" ::
-      Index(THRU -> Ascending :: Nil) % s"bin-$THRU-1" ::
+      Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
       /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
-      Index(ID -> Ascending :: MILS -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$MILS-1-uniq" ::
-      Index(ID -> Ascending :: THRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$THRU-1-uniq" ::
+      Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
+      Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
       Index(UPRFX -> Ascending :: REPRS -> Ascending :: Nil) % s"bin-$UPRFX-1-$REPRS-1" ::
       Index(s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMNT" -> Text :: Nil) %
         s"txt-$MARK.$SUBJ-$MARK.$TAGS-$MARK.$COMNT" ::
@@ -52,7 +52,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Retrieves all current marks for the user, sorted by 'from' time. */
   def receive(user: UUID): Future[Seq[Mark]] = for {
     c <- futCol
-    seq <- (c find d :~ USER -> user :~ curnt sort d :~ MILS -> -1).coll[Mark, Seq]()
+    seq <- (c find d :~ USER -> user :~ curnt sort d :~ TIMEFROM -> -1).coll[Mark, Seq]()
   } yield seq
 
   /** Retrieves a current mark by user and url, None if not found. */
@@ -65,7 +65,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def receiveTagged(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
     c <- futCol
     sel = d :~ USER -> user :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ curnt
-    seq <- (c find sel sort d :~ MILS -> -1).coll[Mark, Seq]()
+    seq <- (c find sel sort d :~ TIMEFROM -> -1).coll[Mark, Seq]()
   } yield seq
 
   /**
@@ -111,16 +111,18 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futCol
     now = DateTime.now.getMillis
     sel = d :~ USER -> user :~ ID -> id :~ curnt
-    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ THRU -> now), fetchNewObject = true)
-    mark = wr.result[Mark].get.copy(mark = mdata, repIds = None, timeFrom = now, timeThru = Long.MaxValue)
-    wr <- c insert mark
+    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
+    mk = wr.result[Mark].get
+    reps = if (mdata.url == mk.mark.url) mk.repIds else None
+    newMk = mk.copy(mark = mdata, repIds = reps, timeFrom = now, timeThru = Long.MaxValue)
+    wr <- c insert newMk
     _ <- wr failIfError
-  } yield mark
+  } yield newMk
 
   /** Appends provided string to mark's array of page sources. */
-  def addPageSource(user: UUID, id: String, source: String): Future[Unit] = for {
+  def addPageSource(user: UUID, id: String, page: Page): Future[Unit] = for {
     c <- futCol
-    wr <- c update(d :~ USER -> user :~ ID -> id :~ curnt, d :~ "$push" -> (d :~ PAGE -> source))
+    wr <- c update(d :~ USER -> user :~ ID -> id :~ curnt, d :~ "$push" -> (d :~ PAGE -> page))
     _ <- wr failIfError
   } yield ()
 
@@ -158,7 +160,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futCol
     now = DateTime.now.getMillis
     sel = d :~ USER -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
-    wr <- c update(sel, d :~ "$set" -> (d :~ THRU -> now), multi = true)
+    wr <- c update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), multi = true)
     _ <- wr failIfError
   } yield wr.nModified
 
@@ -185,17 +187,15 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     wr <- c update(sel, d :~ "$pull" -> (d :~ s"$MARK.$TAGS" -> (d :~ "$in" -> tags)), multi = true)
   } yield wr.nModified
 
-  /** Retrieves a map of n mark IDs to URLs that belong to marks without representations. */
-  def findMissingReprs(n: Int): Future[Map[String, String]] = for {
+  /** Retrieves a list of n marks that require representations. */
+  def findMissingReprs(n: Int): Future[Seq[Mark]] = for {
     c <- futCol
     sel = d :~ UPRFX -> (d :~ "$exists" -> true) :~ UPRFX -> (d :~ "$ne" -> "".getBytes) :~
-      REPRS -> (d :~ "$exists" -> false)
-    seq <- (c find sel projection d :~ ID -> 1 :~ s"$MARK.$URL" -> 1).coll[BSONDocument, Seq](n)
-  } yield seq.map {
-    d => d.getAs[String](ID).get -> d.getAs[BSONDocument](MARK).get.getAs[String](URL).get
-  }(collection.breakOut[Seq[BSONDocument], (String, String), Map[String, String]])
+      "$or" -> BSONArray(d :~ REPRS -> (d :~ "$exists" -> false), d :~ s"$PAGE.0" -> (d :~ "$exists" -> true))
+    seq <- (c find sel).coll[Mark, Seq](n)
+  } yield seq
 
-  /** Updates marks from a list ids with provided representation id. */
+  /** Updates marks from a list of ids with provided representation id. */
   def updateMarkReprId(ids: Set[String], repr: String): Future[Int] = for {
     c <- futCol
     /* When update mark repId if repId exists in perIds array then it should be removed from array
@@ -206,4 +206,18 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     wr <- c update(sel, d :~ "$push" -> (d :~ REPRS -> repr), multi = true)
     _ <- wr failIfError
   } yield wr.nModified
+
+  /** Updates a mark with provided representation id and removes processed page source. */
+  def updateMarkReprId(id: String, repr: String, page: Page): Future[Unit] = for {
+    c <- futCol
+    /* When update mark repId if repId exists in perIds array then it should be removed from array
+    and be pushed to the end of array to become last. See def receiveRepred : ...  (d :~ "$last" -> REPRS) */
+    sel = d :~ ID -> id :~ curnt
+    wr <- c update(sel, d :~ "$push" -> (d :~ REPRS -> repr))
+    _ <- wr failIfError;
+    wr <- c update(sel, d :~ "$pull" -> (d :~ PAGE -> page))
+    _ <- wr failIfError;
+    wr <- c update(sel, d :~ "$pull" -> (d :~ REPRS -> repr))
+    _ <- wr failIfError
+  } yield ()
 }
