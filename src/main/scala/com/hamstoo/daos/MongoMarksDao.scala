@@ -196,28 +196,32 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   } yield seq
 
   /** Updates marks from a list of ids with provided representation id. */
-  def updateMarkReprId(ids: Set[String], repr: String): Future[Int] = for {
-    c <- futCol
-    /* When update mark repId if repId exists in perIds array then it should be removed from array
-    and be pushed to the end of array to become last. See def receiveRepred : ...  (d :~ "$last" -> REPRS) */
-    sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
-    wr <- c update(sel, d :~ "$pull" -> (d :~ REPRS -> repr), multi = true)
-    _ <- wr failIfError;
-    wr <- c update(sel, d :~ "$push" -> (d :~ REPRS -> repr), multi = true)
-    _ <- wr failIfError
-  } yield wr.nModified
+  def updateMarkReprId(id: String, timeFrom: Long, repr: String, page: Option[Page] = None): Future[Int] = {
 
-  /** Updates a mark with provided representation id and removes processed page source. */
-  def updateMarkReprId(id: String, repr: String, page: Page): Future[Unit] = for {
-    c <- futCol
-    /* When update mark repId if repId exists in perIds array then it should be removed from array
-    and be pushed to the end of array to become last. See def receiveRepred : ...  (d :~ "$last" -> REPRS) */
-    sel = d :~ ID -> id :~ curnt
-    wr <- c update(sel, d :~ "$push" -> (d :~ REPRS -> repr))
-    _ <- wr failIfError;
-    wr <- c update(sel, d :~ "$pull" -> (d :~ PAGE -> page))
-    _ <- wr failIfError;
-    wr <- c update(sel, d :~ "$pull" -> (d :~ REPRS -> repr))
-    _ <- wr failIfError
-  } yield ()
+    // updateMarkReprId is typically called as a result of findMissingReprs, so if the latter is picking up
+    // non-`curnt` marks, then the former needs to be also, o/w repr-engine's MongoClient.refresh could get
+    // stuck hopelessly trying to assign reprs to the same non-current marks over and over
+    val sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
+
+    val futUpdated: Future[Int] = for {
+      c <- futCol
+
+      /* When update mark repId if repId exists in perIds array then it should be removed from array
+      and be pushed to the end of array to become last. See def receiveRepred : ...  (d :~ "$last" -> REPRS) */
+      wr <- c update(sel, d :~ "$pull" -> (d :~ REPRS -> repr), multi = true)
+      _ <- wr failIfError;
+      wr <- c update(sel, d :~ "$push" -> (d :~ REPRS -> repr), multi = true)
+      _ <- wr failIfError
+
+    } yield wr.nModified
+
+    // remove processed page source, if provided
+    if (page.isEmpty) futUpdated else for {
+      c <- futCol
+      nUpdated <- futUpdated
+      wr <- c update(sel, d :~ "$pull" -> (d :~ PAGE -> page.get))
+      _ <- wr failIfError;
+      nModified = math.max(nUpdated, wr.nModified)
+    } yield nModified
+  }
 }

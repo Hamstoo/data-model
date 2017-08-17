@@ -3,41 +3,23 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.{Mark, MarkData}
+import com.hamstoo.specUtils
 import org.specs2.mutable.Specification
+import org.specs2.specification.Scope
 import play.api.mvc.Results
-import reactivemongo.api.{DefaultDB, MongoConnection, MongoDriver}
 import reactivemongo.bson.BSONObjectID
 
-import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.{Duration, _}
-import scala.concurrent.{Await, Future}
-import scala.util.{Failure, Success, Try}
+import scala.concurrent.duration._
+import scala.concurrent.Await
+import scala.util.Try
 
 
 class MongoMarksDaoSpec extends Specification {
 
-  val link = "mongodb://localhost:27017"
-  val dbName = "hamstoo"
-  val timeout = Duration(2000, MILLISECONDS)
-
-  @tailrec
-  private def getDB: Future[DefaultDB] =
-    MongoConnection parseURI link map MongoDriver().connection match {
-      case Success(c) => c database dbName
-      case Failure(e) =>
-        e.printStackTrace()
-        println("Failed to establish connection to MongoDB.\nRetrying...\n")
-        // Logger.warn("Failed to establish connection to MongoDB.\nRetrying...\n")
-        getDB
-    }
-
-  val marksDao = new MongoMarksDao(getDB)
-  val reprsDao = new MongoRepresentationDao(getDB)
-
   "MongoMarksDao" should {
 
-    "* findMissingReprs, both current and not" in {
+    "* findMissingReprs, both current and not" in new system {
       val m = Mark(UUID.randomUUID(), mark = MarkData("a subject", Some("http://hamstoo.com")))
       Await.result(marksDao.create(m), timeout)
       Await.result(marksDao.update(m.userId, m.id, m.mark.copy(subj = "a NEW subject")), timeout)
@@ -45,7 +27,7 @@ class MongoMarksDaoSpec extends Specification {
       missingReprMarks.count(_.userId == m.userId) mustEqual 2
     }
 
-    "* create mark to update rep id and retrieve rep id" in {
+    "* create mark to update rep id and retrieve rep id" in new system {
 
       // create new mark
       val userId = UUID.fromString("8da651bb-1a17-4144-bc33-c176e2ccf8a0")
@@ -77,7 +59,7 @@ class MongoMarksDaoSpec extends Specification {
       // Update Mark
       val resultUpdateReprIdOfMark = Await.result(
         marksDao
-          .updateMarkReprId(Set(mark.id), newReprId)
+          .updateMarkReprId(mark.id, mark.timeFrom, newReprId)
           .map(_ => Results.Accepted),
         timeout)
       println(resultUpdateReprIdOfMark)
@@ -95,5 +77,13 @@ class MongoMarksDaoSpec extends Specification {
         Duration(timeout, MILLISECONDS))
       updatedRepresentation.get.timeThru should be > createdRepresentation.get.timeThru*/
     }
+  }
+
+
+  // https://github.com/etorreborre/specs2/blob/SPECS2-3.8.9/examples/src/test/scala/examples/UnitSpec.scala
+  trait system extends Scope {
+    val marksDao: MongoMarksDao = specUtils.marksDao
+    val reprsDao: MongoRepresentationDao = specUtils.reprsDao
+    val timeout: Duration = specUtils.timeout
   }
 }
