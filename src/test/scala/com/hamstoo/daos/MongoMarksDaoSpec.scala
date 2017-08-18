@@ -2,10 +2,11 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Mark, MarkData}
+import com.hamstoo.models.{Mark, MarkData, Representation}
 import com.hamstoo.specUtils
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
+import play.api.mvc
 import play.api.mvc.Results
 import reactivemongo.bson.BSONObjectID
 
@@ -23,17 +24,17 @@ class MongoMarksDaoSpec extends Specification {
       val m = Mark(UUID.randomUUID(), mark = MarkData("a subject", Some("http://hamstoo.com")))
       Await.result(marksDao.create(m), timeout)
       Await.result(marksDao.update(m.userId, m.id, m.mark.copy(subj = "a NEW subject")), timeout)
-      val missingReprMarks = Await.result(marksDao.findMissingReprs(1000000), timeout)
+      val missingReprMarks: Seq[Mark] = Await.result(marksDao.findMissingReprs(1000000), timeout)
       missingReprMarks.count(_.userId == m.userId) mustEqual 2
     }
 
     "* create mark to update rep id and retrieve rep id" in new system {
 
       // create new mark
-      val userId = UUID.fromString("8da651bb-1a17-4144-bc33-c176e2ccf8a0")
+      val userId: UUID = UUID.fromString("8da651bb-1a17-4144-bc33-c176e2ccf8a0")
       println(userId.toString)
       val markData = MarkData("a subject", Some("http://hamstoo.com"))
-      val mark = Mark(userId, mark = markData, repIds = Some(BSONObjectID.generate.stringify :: Nil))
+      val mark = Mark(userId, mark = markData, pubRepr = Some(BSONObjectID.generate.stringify))
 
       // Create mark in DB
       Try {
@@ -43,35 +44,33 @@ class MongoMarksDaoSpec extends Specification {
       Thread.sleep(timeout.toMillis)
 
       // Retrieve marks
-      val marks = Await.result(marksDao.receive(userId), timeout)
-      marks.foreach(mark => mark.repIds.foreach(println))
-      val markIdToUpdate = marks.last.id
+      val marks: Seq[Mark] = Await.result(marksDao.receive(userId), timeout)
+      marks.foreach(mark => mark.pubRepr.foreach(println))
+      val markIdToUpdate: String = marks.last.id
       println("Last mark id to update " + markIdToUpdate)
 
-      val id = marks.head.repIds.get.last
-      println("Last repr id to update " + id)
+      val id: String = marks.head.pubRepr.get
+      println("Repr id to update " + id)
 
-      val createdRepresentation = Await.result(reprsDao.retrieveById(id), timeout)
+      val createdRepresentation: Option[Representation] = Await.result(reprsDao.retrieveById(id), timeout)
 
-      val newReprId = BSONObjectID.generate.stringify
+      val newReprId: String = BSONObjectID.generate.stringify
       println("newReprId to be recorded " + newReprId)
 
       // Update Mark
-      val resultUpdateReprIdOfMark = Await.result(
+      val resultUpdateReprIdOfMark: mvc.Results.Status = Await.result(
         marksDao
-          .updateMarkReprId(mark.id, mark.timeFrom, newReprId)
+          .updatePublicReprId(mark.id, mark.timeFrom, newReprId)
           .map(_ => Results.Accepted),
         timeout)
       println(resultUpdateReprIdOfMark)
       //   Results.Accepted mustEqual(resultUpdateReprIdOfMark)
 
       // Retrieve update mark
-      val repIds: Seq[String] =
-        Await.result(marksDao.receive(userId, mark.id), timeout).get.repIds.get
-      repIds.foreach(x => println("ID new " + x))
-      val getUodatedReprIdOfMark = repIds.last
-      repIds.contains(newReprId) mustEqual true
-      newReprId mustEqual getUodatedReprIdOfMark
+      val repId: String =
+        Await.result(marksDao.receive(userId, mark.id), timeout).get.pubRepr.get
+      println("ID new " + repId)
+      repId === newReprId
 
       /* val updatedRepresentation = Await.result(reprsDao.retrieveById(getUodatedReprIdOfMark),
         Duration(timeout, MILLISECONDS))
