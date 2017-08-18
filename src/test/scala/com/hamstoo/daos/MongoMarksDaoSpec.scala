@@ -2,18 +2,13 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Mark, MarkData, Representation}
+import com.hamstoo.models.{Mark, MarkData}
 import com.hamstoo.specUtils
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
-import play.api.mvc
-import play.api.mvc.Results
-import reactivemongo.bson.BSONObjectID
 
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
 import scala.concurrent.Await
-import scala.util.Try
+import scala.concurrent.duration._
 
 
 class MongoMarksDaoSpec extends Specification {
