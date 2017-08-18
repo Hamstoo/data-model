@@ -27,55 +27,6 @@ class MongoMarksDaoSpec extends Specification {
       val missingReprMarks: Seq[Mark] = Await.result(marksDao.findMissingReprs(1000000), timeout)
       missingReprMarks.count(_.userId == m.userId) mustEqual 2
     }
-
-    "* create mark to update rep id and retrieve rep id" in new system {
-
-      // create new mark
-      val userId: UUID = UUID.fromString("8da651bb-1a17-4144-bc33-c176e2ccf8a0")
-      println(userId.toString)
-      val markData = MarkData("a subject", Some("http://hamstoo.com"))
-      val mark = Mark(userId, mark = markData, pubRepr = Some(BSONObjectID.generate.stringify))
-
-      // Create mark in DB
-      Try {
-        Await.result(marksDao.create(mark), timeout)
-      } map println
-      //  Results.Accepted mustEqual (resultCreateMark)
-      Thread.sleep(timeout.toMillis)
-
-      // Retrieve marks
-      val marks: Seq[Mark] = Await.result(marksDao.receive(userId), timeout)
-      marks.foreach(mark => mark.pubRepr.foreach(println))
-      val markIdToUpdate: String = marks.last.id
-      println("Last mark id to update " + markIdToUpdate)
-
-      val id: String = marks.head.pubRepr.get
-      println("Repr id to update " + id)
-
-      val createdRepresentation: Option[Representation] = Await.result(reprsDao.retrieveById(id), timeout)
-
-      val newReprId: String = BSONObjectID.generate.stringify
-      println("newReprId to be recorded " + newReprId)
-
-      // Update Mark
-      val resultUpdateReprIdOfMark: mvc.Results.Status = Await.result(
-        marksDao
-          .updatePublicReprId(mark.id, mark.timeFrom, newReprId)
-          .map(_ => Results.Accepted),
-        timeout)
-      println(resultUpdateReprIdOfMark)
-      //   Results.Accepted mustEqual(resultUpdateReprIdOfMark)
-
-      // Retrieve update mark
-      val repId: String =
-        Await.result(marksDao.receive(userId, mark.id), timeout).get.pubRepr.get
-      println("ID new " + repId)
-      repId === newReprId
-
-      /* val updatedRepresentation = Await.result(reprsDao.retrieveById(getUodatedReprIdOfMark),
-        Duration(timeout, MILLISECONDS))
-      updatedRepresentation.get.timeThru should be > createdRepresentation.get.timeThru*/
-    }
   }
 
 

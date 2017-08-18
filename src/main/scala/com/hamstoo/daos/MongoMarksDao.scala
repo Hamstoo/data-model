@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.Mark.{PUBREPR, _}
+import com.hamstoo.models.Mark._
 import com.hamstoo.models.{Mark, MarkData, Page}
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
@@ -37,12 +37,26 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       Nil toMap;
   futCol map (_.indexesManager ensure indxs)
 
-  /** Saves a mark to the storage. */
-  def create(mark: Mark): Future[Unit] = for {
+  /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
+  def create(mark: Mark): Future[Mark] = for {
     c <- futCol
-    wr <- c insert mark
-    _ <- wr failIfError
-  } yield ()
+    now = DateTime.now.getMillis
+    optMark <- mark.mark.url match {
+      case Some(url) => receive(url, mark.userId) /* Looks for this user's marks with same URL if defined. */
+      case None => Future successful None
+    }
+    newMk <- optMark match {
+      case Some(m) => for {
+        wr <- c update(d :~ USER -> mark.userId :~ ID -> m.id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now))
+        wr <- wr ifOk (c insert m.copy(mark = mark.mark, timeFrom = now))
+        _ <- wr failIfError
+      } yield m /* Updates existing same URL mark with new data if such mark was found. */
+      case None => for {
+        wr <- c insert mark
+        _ <- wr failIfError
+      } yield mark /* Saves provided mark as is if it's URL is unique for the user. */
+    }
+  } yield newMk
 
   /** Retrieves a current mark by user and id, None if not found. */
   def receive(user: UUID, id: String): Future[Option[Mark]] = for {
@@ -106,11 +120,18 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   } yield seq
 
   /**
-    * Updates current state of a mark with provided MarkData, looking up the mark up by user and id.
+    * Updates current state of a mark with provided MarkData, looking the mark up by user and id.
     * Returns new current mark state.
     */
   def update(user: UUID, id: String, mdata: MarkData): Future[Mark] = for {
     c <- futCol
+    _ <- mdata.url match {
+      case Some(url) => receive(url, user) map {
+        case Some(_) => Future failed new UnsupportedOperationException
+        case _ => Future successful None
+      }
+      case _ => Future successful None
+    }
     now = DateTime.now.getMillis
     sel = d :~ USER -> user :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
