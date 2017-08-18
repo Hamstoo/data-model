@@ -99,7 +99,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def receiveTags(user: UUID): Future[Set[String]] = for {
     c <- futCol
     sel = d :~ USER -> user :~ curnt
-    set <- (c find sel projection d :~ s"$MARK.$TAGS" -> 1 :~ "_id" -> -1).coll[BSONDocument, Set]()
+    set <- (c find sel projection d :~ s"$MARK.$TAGS" -> 1 :~ "_id" -> 0).coll[BSONDocument, Set]()
   } yield for {
     d <- set
     ts <- d.getAs[BSONDocument](MARK).get.getAs[Set[String]](TAGS) getOrElse Set.empty
@@ -145,7 +145,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Appends provided string to mark's array of page sources. */
   def addPageSource(user: UUID, id: String, page: Page): Future[Unit] = for {
     c <- futCol
-    wr <- c update(d :~ USER -> user :~ ID -> id :~ curnt, d :~ "$push" -> (d :~ PAGE -> page))
+    wr <- c update(d :~ USER -> user :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ PAGE -> page))
     _ <- wr failIfError
   } yield ()
 
@@ -214,7 +214,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def findMissingReprs(n: Int): Future[Seq[Mark]] = for {
     c <- futCol
     sel = d :~ UPRFX -> (d :~ "$exists" -> true) :~ UPRFX -> (d :~ "$ne" -> "".getBytes) :~
-      "$or" -> BSONArray(d :~ PUBREPR -> (d :~ "$exists" -> false), d :~ s"$PAGE.0" -> (d :~ "$exists" -> true))
+      "$or" -> BSONArray(d :~ PUBREPR -> (d :~ "$exists" -> false), d :~ s"$PAGE" -> (d :~ "$exists" -> true))
     seq <- (c find sel).coll[Mark, Seq](n)
   } yield seq
 
@@ -250,7 +250,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     private representation ID into the mark and retrieves updated document in the result. */
     mk = wr.result[Mark].get
     _ <- if (mk.page contains page) for {
-      wr <- c update(sel, d :~ "$pull" -> (d :~ PAGE -> page))
+      wr <- c update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
       _ <- wr failIfError
     } yield () else Future successful {} /* Removes page source from the mark in case it's the same as the one
     processed. */
