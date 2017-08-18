@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.Mark._
+import com.hamstoo.models.Mark.{PUBREPR, _}
 import com.hamstoo.models.{Mark, MarkData, Page}
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
@@ -29,7 +29,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
       Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
       Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
-      Index(UPRFX -> Ascending :: REPRS -> Ascending :: Nil) % s"bin-$UPRFX-1-$REPRS-1" ::
+      Index(UPRFX -> Ascending :: PUBREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PUBREPR-1" ::
+      Index(UPRFX -> Ascending :: PRVREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PRVREPR-1" ::
       Index(s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMNT" -> Text :: Nil) %
         s"txt-$MARK.$SUBJ-$MARK.$TAGS-$MARK.$COMNT" ::
       Index(s"$MARK.$TAGS" -> Ascending :: Nil) % s"bin-$MARK.$TAGS-1" ::
@@ -74,7 +75,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def receiveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
     c <- futCol
-    sel0 = d :~ USER -> user :~ REPRS -> (d :~ "$exists" -> true :~ "$ne" -> "") :~ curnt
+    exst = d :~ "$exists" -> true :~ "$ne" -> ""
+    sel0 = d :~ USER -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
     sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
     seq <- (c find sel1).coll[Mark, Seq]()
   } yield seq
@@ -113,8 +115,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     sel = d :~ USER -> user :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
     mk = wr.result[Mark].get
-    reps = if (mdata.url == mk.mark.url) mk.repIds else None
-    newMk = mk.copy(mark = mdata, repIds = reps, timeFrom = now, timeThru = Long.MaxValue)
+    reps = if (mdata.url == mk.mark.url) (mk.pubRepr, mk.privRepr) else (None, None)
+    newMk = mk.copy(mark = mdata, pubRepr = reps._1, privRepr = reps._2, timeFrom = now, timeThru = Long.MaxValue)
     wr <- c insert newMk
     _ <- wr failIfError
   } yield newMk
@@ -191,37 +193,45 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def findMissingReprs(n: Int): Future[Seq[Mark]] = for {
     c <- futCol
     sel = d :~ UPRFX -> (d :~ "$exists" -> true) :~ UPRFX -> (d :~ "$ne" -> "".getBytes) :~
-      "$or" -> BSONArray(d :~ REPRS -> (d :~ "$exists" -> false), d :~ s"$PAGE.0" -> (d :~ "$exists" -> true))
+      "$or" -> BSONArray(d :~ PUBREPR -> (d :~ "$exists" -> false), d :~ s"$PAGE.0" -> (d :~ "$exists" -> true))
     seq <- (c find sel).coll[Mark, Seq](n)
   } yield seq
 
-  /** Updates marks from a list of ids with provided representation id. */
-  def updateMarkReprId(id: String, timeFrom: Long, repr: String, page: Option[Page] = None): Future[Int] = {
+  /**
+    * Updates a mark state with provided representation id. this method is typically called as a result
+    * of findMissingReprs, so if the latter is picking up non-`curnt` marks, then the former needs to be also, o/w
+    * repr-engine's MongoClient.refresh could get stuck hopelessly trying to assign reprs to the same non-current
+    * marks over and over.
+    */
+  def updatePublicReprId(id: String, timeFrom: Long, repId: String): Future[Unit] = for {
+    c <- futCol
+    sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
+    wr <- c update(sel, d :~ "$set" -> (d :~ PUBREPR -> repId))
+    _ <- wr failIfError
+  } yield ()
 
-    // updateMarkReprId is typically called as a result of findMissingReprs, so if the latter is picking up
-    // non-`curnt` marks, then the former needs to be also, o/w repr-engine's MongoClient.refresh could get
-    // stuck hopelessly trying to assign reprs to the same non-current marks over and over
-    val sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
-
-    val futUpdated: Future[Int] = for {
-      c <- futCol
-
-      /* When update mark repId if repId exists in perIds array then it should be removed from array
-      and be pushed to the end of array to become last. See def receiveRepred : ...  (d :~ "$last" -> REPRS) */
-      wr <- c update(sel, d :~ "$pull" -> (d :~ REPRS -> repr), multi = true)
-      _ <- wr failIfError;
-      wr <- c update(sel, d :~ "$push" -> (d :~ REPRS -> repr), multi = true)
+  /**
+    * Updates a mark state with provided private representation id and clears out processed page source. this method is
+    * typically called as a result of findMissingReprs, so if the latter is picking up non-`curnt` marks, then the
+    * former needs to be also, o/w repr-engine's MongoClient.refresh could get stuck hopelessly trying to assign
+    * reprs to the same non-current marks over and over.
+    *
+    * @param user     - user ID of mark's owner; serves as a safeguard against inadverent private content mixups
+    * @param id       - mark ID
+    * @param timeFrom - mark version timestamp
+    * @param repId    - representation ID
+    * @param page     - processed page source to clear out from the mark
+    */
+  def updatePrivateReprId(user: UUID, id: String, timeFrom: Long, repId: String, page: Page): Future[Unit] = for {
+    c <- futCol
+    sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
+    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> repId), fetchNewObject = true) /* Writes new
+    private representation ID into the mark and retrieves updated document in the result. */
+    mk = wr.result[Mark].get
+    _ <- if (mk.page contains page) for {
+      wr <- c update(sel, d :~ "$pull" -> (d :~ PAGE -> page))
       _ <- wr failIfError
-
-    } yield wr.nModified
-
-    // remove processed page source, if provided
-    if (page.isEmpty) futUpdated else for {
-      c <- futCol
-      nUpdated <- futUpdated
-      wr <- c update(sel, d :~ "$pull" -> (d :~ PAGE -> page.get))
-      _ <- wr failIfError;
-      nModified = math.max(nUpdated, wr.nModified)
-    } yield nModified
-  }
+    } yield () else Future successful {} /* Removes page source from the mark in case it's the same as the one
+    processed. */
+  } yield ()
 }
