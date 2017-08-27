@@ -25,7 +25,7 @@ import scala.util.Random
   */
 case class Comment(
                       usrId: UUID,
-                      id: String = Random.alphanumeric take Highlight.ID_LENGTH mkString,
+                      id: String = Random.alphanumeric take Comment.ID_LENGTH mkString,
                       url: String,
                       var uPref: Option[mutable.WrappedArray[Byte]] = None,
                       pos: Seq[CommentPos],
@@ -42,17 +42,16 @@ object Comment extends BSONHandlers {
 
   val ID_LENGTH: Int = 16
   val USR: String = nameOf[Comment](_.usrId)
-  val ID: String = nameOf[Highlight](_.id)
-  val POS: String = nameOf[Highlight](_.pos)
+  val ID: String = nameOf[Comment](_.id)
+  val POS: String = nameOf[Comment](_.pos)
   val PATH: String = nameOf[CommentPos](_.path)
   val TEXT: String = nameOf[CommentPos](_.text)
   val INDX: String = nameOf[CommentPos](_.indx)
-  val URL: String = nameOf[Highlight](_.url)
-  val UPRF: String = nameOf[Highlight](_.uPref)
-  val PRVW: String = nameOf[Highlight](_.preview)
-  val MEM: String = nameOf[Highlight](_.memeId)
-  val TSTMP: String = nameOf[Highlight](_.timeFrom)
-  val TILL: String = nameOf[Highlight](_.timeThru)
+  val URL: String = nameOf[Comment](_.url)
+  val UPRF: String = nameOf[Comment](_.uPref)
+  val MEM: String = nameOf[Comment](_.memeId)
+  val TSTMP: String = nameOf[Comment](_.timeFrom)
+  val TILL: String = nameOf[Comment](_.timeThru)
   implicit val hlposBsonHandler: BSONDocumentHandler[CommentPos] = Macros.handler[CommentPos]
-  implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
+  implicit val highlightHandler: BSONDocumentHandler[Comment] = Macros.handler[Comment]
 }
