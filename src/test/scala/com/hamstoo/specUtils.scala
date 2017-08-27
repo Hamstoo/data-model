@@ -1,6 +1,6 @@
 package com.hamstoo
 
-import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao}
+import com.hamstoo.daos.{MongoCommentDao, MongoMarksDao, MongoRepresentationDao}
 import reactivemongo.api._
 
 import scala.annotation.tailrec
@@ -34,4 +34,5 @@ package object specUtils {
 
   lazy val marksDao = new MongoMarksDao(getDB)
   lazy val reprsDao = new MongoRepresentationDao(getDB)
+  lazy val commentDao = new MongoCommentDao(getDB)
 }
