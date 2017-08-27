@@ -9,6 +9,7 @@ import org.specs2.specification.Scope
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
+import scala.util.Random
 
 
 class MongoCommentDaoSpec extends Specification {
@@ -17,11 +18,12 @@ class MongoCommentDaoSpec extends Specification {
 
     "* test create comment" in new system {
       val usrId  = UUID.randomUUID()
-      val c = Comment(usrId, url = "http://hamstsdsdoo.comsd", pos = Seq(Comment.CommentPos("sdasd","sdasd",0)))
+      val url ="http://hamstsdsdoo.comsssd"+Random.nextFloat()
+      val c = Comment(usrId, url = url, pos = Seq(Comment.CommentPos("sdassd","sdassd",0)))
       Await.result(commentsDao.create(c), timeout)
       Await.result(commentsDao.update(c.usrId, c.id,c.pos), timeout)
-      val missingReprMarks: Seq[Comment] = Await.result(commentsDao.receive("http://hamstsdsdoo.comsd",usrId), timeout)
-      missingReprMarks.count(_.usrId == c.usrId) mustEqual 2
+      val missingReprMarks: Seq[Comment] = Await.result(commentsDao.receive(url,usrId), timeout)
+      missingReprMarks.count(_.usrId == c.usrId) mustEqual 1
     }
   }
 
