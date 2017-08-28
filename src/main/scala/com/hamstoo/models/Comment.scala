@@ -28,7 +28,7 @@ case class Comment(
                       id: String = Random.alphanumeric take Comment.ID_LENGTH mkString,
                       url: String,
                       var uPref: Option[mutable.WrappedArray[Byte]] = None,
-                      pos: Seq[CommentPos],
+                      pos: CommentPos,
                       memeId: Option[String] = None,
                       timeFrom: Long = DateTime.now.getMillis,
                       timeThru: Long = Long.MaxValue) {
@@ -53,6 +53,6 @@ object Comment extends BSONHandlers {
   val MEM: String = nameOf[Comment](_.memeId)
   val TSTMP: String = nameOf[Comment](_.timeFrom)
   val TILL: String = nameOf[Comment](_.timeThru)
-  implicit val hlposBsonHandler: BSONDocumentHandler[CommentPos] = Macros.handler[CommentPos]
-  implicit val highlightHandler: BSONDocumentHandler[Comment] = Macros.handler[Comment]
+  implicit val commentposBsonHandler: BSONDocumentHandler[CommentPos] = Macros.handler[CommentPos]
+  implicit val commentHandler: BSONDocumentHandler[Comment] = Macros.handler[Comment]
 }

@@ -46,7 +46,7 @@ class MongoCommentDao(db: Future[DefaultDB]) {
     seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Comment, Seq]()
   } yield seq filter (_.url == url)
 
-  def update(usr: UUID, id: String, pos: Seq[CommentPos]): Future[Comment] = for {
+  def update(usr: UUID, id: String, pos: CommentPos): Future[Comment] = for {
     c <- futCol
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
