@@ -37,7 +37,7 @@ case class Comment(
 
 object Comment extends BSONHandlers {
 
-  case class CommentPos(path: String, text: String, indx: Int)
+  case class CommentPos(path: String, text: String, offsetX: Int, offsetY: Int)
 
 
   val ID_LENGTH: Int = 16
@@ -46,7 +46,8 @@ object Comment extends BSONHandlers {
   val POS: String = nameOf[Comment](_.pos)
   val PATH: String = nameOf[CommentPos](_.path)
   val TEXT: String = nameOf[CommentPos](_.text)
-  val INDX: String = nameOf[CommentPos](_.indx)
+  val OFFSETX: String = nameOf[CommentPos](_.offsetX)
+  val OFFSETY: String = nameOf[CommentPos](_.offsetY)
   val URL: String = nameOf[Comment](_.url)
   val UPRF: String = nameOf[Comment](_.uPref)
   val MEM: String = nameOf[Comment](_.memeId)
