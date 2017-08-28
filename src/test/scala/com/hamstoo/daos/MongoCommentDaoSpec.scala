@@ -19,7 +19,7 @@ class MongoCommentDaoSpec extends Specification {
     "* test create comment" in new system {
       val usrId  = UUID.randomUUID()
       val url ="http://hamstsdsdoo.comsssd"+Random.nextFloat()
-      val c = Comment(usrId, url = url, pos = Seq(Comment.CommentPos("sdassd","sdassd",0)))
+      val c = Comment(usrId, url = url, pos = Seq(Comment.CommentPos("sdassd","sdassd",0,0)))
       Await.result(commentsDao.create(c), timeout)
       Await.result(commentsDao.update(c.usrId, c.id,c.pos), timeout)
       val missingReprMarks: Seq[Comment] = Await.result(commentsDao.receive(url,usrId), timeout)
