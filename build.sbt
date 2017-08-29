@@ -1,7 +1,7 @@
 name := "data-model"
 organization := "com.hamstoo"
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
-version := "0.9.1-SNAPSHOT"
+version := "0.9.6"
 
 scalaVersion := "2.12.3"
 crossScalaVersions := Seq("2.11.11", "2.11.7", "2.12.3")

@@ -89,7 +89,7 @@ case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
   * @param timeFrom - timestamp of last edit
   * @param timeThru - the moment of time until which this version is latest
   *
-  *                 `score` is not part of the documents in the database, but it is returned from
+  * @param score    - `score` is not part of the documents in the database, but it is returned from
   *                 `MongoMarksDao.search` so it is easier to have it included here.
   */
 case class Mark(
@@ -142,9 +142,8 @@ object Mark extends BSONHandlers {
   val PRVREPR: String = nameOf[Mark](_.privRepr)
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
+  // `text` index search score <projectedFieldName>, not a field name of the collection:
   val SCORE: String = nameOf[Mark](_.score)
-  /* `text` index search score <projectedFieldName>, not a field name of the
-   collection */
   val SUBJ: String = nameOf[MarkData](_.subj)
   val URL: String = nameOf[MarkData](_.url)
   val STARS: String = nameOf[MarkData](_.rating)
