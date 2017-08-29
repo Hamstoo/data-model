@@ -30,16 +30,16 @@ class MongoCommentDao(db: Future[DefaultDB]) {
       Nil toMap;
   futCol map (_.indexesManager ensure indxs)
 
-  def create(hl: Comment): Future[Unit] = for {
+  def create(ct: Comment): Future[Unit] = for {
     c <- futCol
-    wr <- c insert hl
+    wr <- c insert ct
     _ <- wr failIfError
   } yield ()
 
   def receive(usr: UUID, id: String): Future[Option[Comment]] = for {
     c <- futCol
-    mbHl <- (c find d :~ USR -> usr :~ ID -> id :~ curnt projection d :~ POS -> 1).one[Comment]
-  } yield mbHl
+    optCt <- (c find d :~ USR -> usr :~ ID -> id :~ curnt projection d :~ POS -> 1).one[Comment]
+  } yield optCt
 
   def receive(url: String, usr: UUID): Future[Seq[Comment]] = for {
     c <- futCol
@@ -51,10 +51,10 @@ class MongoCommentDao(db: Future[DefaultDB]) {
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TILL -> now), fetchNewObject = true)
-    hl = wr.result[Comment].get.copy(pos = pos, memeId = None, timeFrom = now, timeThru = Long.MaxValue)
-    wr <- c insert hl
+    ct = wr.result[Comment].get.copy(pos = pos, memeId = None, timeFrom = now, timeThru = Long.MaxValue)
+    wr <- c insert ct
     _ <- wr failIfError
-  } yield hl
+  } yield ct
 
   def delete(usr: UUID, id: String): Future[Unit] = for {
     c <- futCol
