@@ -46,12 +46,17 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
     seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Highlight, Seq]()
   } yield seq filter (_.url == url)
 
-  def update(usr: UUID, id: String, pos: Seq[HLPos]): Future[Highlight] = for {
+  def update(usr: UUID, id: String, pos: HLPos, prv: HLPreview): Future[Highlight] = for {
     c <- futCol
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TILL -> now), fetchNewObject = true)
-    hl = wr.result[Highlight].get.copy(pos = pos, memeId = None, timeFrom = now, timeThru = Long.MaxValue)
+    hl = wr.result[Highlight].get.copy(
+      pos = pos,
+      preview = prv,
+      memeId = None,
+      timeFrom = now,
+      timeThru = Long.MaxValue)
     wr <- c insert hl
     _ <- wr failIfError
   } yield hl

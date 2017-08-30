@@ -18,7 +18,7 @@ import scala.util.Random
   * @param id       highlight id, common for all versions
   * @param url      URL of the web page where highlighting was done
   * @param uPref    binary prefix of the URL for indexing; set by class init
-  * @param pos      array of positioning data
+  * @param pos      array of positioning data and initial element text index
   * @param preview  highlight preview for full page view
   * @param memeId   'highlight representation' id, to be implemented
   * @param timeFrom timestamp
@@ -29,7 +29,7 @@ case class Highlight(
                       id: String = Random.alphanumeric take Highlight.ID_LENGTH mkString,
                       url: String,
                       var uPref: Option[mutable.WrappedArray[Byte]] = None,
-                      pos: Seq[HLPos],
+                      pos: HLPos,
                       preview: HLPreview,
                       memeId: Option[String] = None,
                       timeFrom: Long = DateTime.now.getMillis,
@@ -39,7 +39,9 @@ case class Highlight(
 
 object Highlight extends BSONHandlers {
 
-  case class HLPos(path: String, text: String, indx: Int)
+  case class HLPosElem(path: String, text: String)
+
+  case class HLPos(elements: Seq[HLPosElem], initIndex: Int)
 
   case class HLPreview(lead: String, text: String, tail: String)
 
@@ -47,9 +49,9 @@ object Highlight extends BSONHandlers {
   val USR: String = nameOf[Highlight](_.usrId)
   val ID: String = nameOf[Highlight](_.id)
   val POS: String = nameOf[Highlight](_.pos)
-  val PATH: String = nameOf[HLPos](_.path)
-  val TEXT: String = nameOf[HLPos](_.text)
-  val INDX: String = nameOf[HLPos](_.indx)
+  val PATH: String = nameOf[HLPosElem](_.path)
+  val TEXT: String = nameOf[HLPosElem](_.text)
+  val INDX: String = nameOf[HLPos](_.initIndex)
   val URL: String = nameOf[Highlight](_.url)
   val UPRF: String = nameOf[Highlight](_.uPref)
   val PRVW: String = nameOf[Highlight](_.preview)
@@ -59,6 +61,7 @@ object Highlight extends BSONHandlers {
   val MEM: String = nameOf[Highlight](_.memeId)
   val TSTMP: String = nameOf[Highlight](_.timeFrom)
   val TILL: String = nameOf[Highlight](_.timeThru)
+  implicit val hlposElemBsonHandler: BSONDocumentHandler[HLPosElem] = Macros.handler[HLPosElem]
   implicit val hlposBsonHandler: BSONDocumentHandler[HLPos] = Macros.handler[HLPos]
   implicit val hlprevBsonHandler: BSONDocumentHandler[HLPreview] = Macros.handler[HLPreview]
   implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
