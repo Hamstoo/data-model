@@ -33,9 +33,12 @@ libraryDependencies ++= Seq(
   "org.specs2" %% "specs2-core" % "3.8.9" % "test",
   "org.apache.commons" % "commons-text" % "1.1",
   "com.atlassian.commonmark" % "commonmark" % "0.9.0",
-  "org.jsoup" % "jsoup" % "1.10.3")
+  "org.jsoup" % "jsoup" % "1.10.3",
+  "org.scalatest" %% "scalatest" % "3.0.4" % "test",
+  "com.github.simplyscala" %% "scalatest-embedmongo" % "0.2.4" % "test")
 
 pomIncludeRepository := { _ => false }
+
 pomExtra :=
   <scm>
     <url>git@github.com:Hamstoo/data-model.git</url>
