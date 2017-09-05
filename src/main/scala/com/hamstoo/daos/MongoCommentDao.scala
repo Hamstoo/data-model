@@ -43,7 +43,7 @@ class MongoCommentDao(db: Future[DefaultDB]) {
 
   def receive(url: String, usr: UUID): Future[Seq[Comment]] = for {
     c <- futCol
-    seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Comment, Seq]()
+    seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).sort(d :~ "pos.offsetX" -> 1 :~ "pos.offsetY" -> 1).coll[Comment, Seq]()
   } yield seq filter (_.url == url)
 
   def update(usr: UUID, id: String, pos: CommentPos): Future[Comment] = for {
@@ -61,4 +61,9 @@ class MongoCommentDao(db: Future[DefaultDB]) {
     wr <- c update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TILL -> DateTime.now.getMillis))
     _ <- wr failIfError
   } yield ()
+
+  def receiveAll(): Future[Seq[Comment]] = for {
+    c <- futCol
+    seq <- (c find d).coll[Comment, Seq]()
+  } yield seq
 }
