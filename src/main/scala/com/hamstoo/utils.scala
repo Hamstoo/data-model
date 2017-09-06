@@ -1,17 +1,20 @@
 package com.hamstoo
 
+import org.joda.time.DateTime
 import play.api.mvc.{Call, Request}
 import reactivemongo.api.BSONSerializationPack.Reader
 import reactivemongo.api.collections.GenericQueryBuilder
 import reactivemongo.api.commands.WriteResult
 import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
 import reactivemongo.api.{BSONSerializationPack, Cursor}
+import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 
 import scala.collection.generic.CanBuildFrom
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.language.higherKinds
+
 
 package object utils {
   /** */
@@ -62,5 +65,22 @@ package object utils {
       */
     def prefx: mutable.WrappedArray[Byte] = s.getBytes take URL_PREFIX_LENGTH
   }
+
+  /**
+    * MongoDB documents with TimeThrus equal to this value are current.  Those with lesser TimeThrus were either
+    * deleted or have been updated, in which case there should be a new document with a matching TimeFrom.
+    *
+    * For reference, Long.MaxValue is equal to 9223372036854775807.
+    */
+  val INF_TIME: Long = Long.MaxValue
+
+  implicit class ExtendedLong(private val ms: Long) extends AnyVal {
+    /** Converts from time in milliseconds to a Joda DateTime. */
+    def dt: DateTime = new DateTime(ms)
+  }
+
+  /** A couple of handy ReactiveMongo shortcuts that were formerly being defined in every DAO class. */
+  val d = BSONDocument.empty
+  val curnt: Producer[BSONElement] = com.hamstoo.models.Mark.TIMETHRU -> INF_TIME
 
 }

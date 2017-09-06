@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Using '-Dlogback.debug=true' on the dockerEntrypoint in build.sbt will print which log file is being used
+     by Logback via SLF4J via play.api.Logger.  One of the "features" of Logback is that it first looks for
+     a file named 'logback-test.xml' on the classpath before looking for files named 'logback.xml' so that users
+     can override their logging configuration when testing.  However, if a dependency JAR includes such a file
+     you're screwed, as is the case per the following log message: "Found resource [logback-test.xml] at
+     [jar:file:/opt/docker/lib/com.typesafe.play.play-openid_2.12-2.6.3.jar!/logback-test.xml]".  To circumvent
+     this "feature" we've named this file 'logback-test.xml' even though it is located in main/resources.
+     Additionally, you may see a log message stating that this file "is not of type file", which can be safely
+     ignored.
+-->
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!--<pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>-->
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%logger{36}] - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+    <logger name="io.netty" level="INFO"/>
+    <logger name="org.asynchttpclient" level="INFO"/>
+    <logger name="reactivemongo" level="WARN"/>
+    <logger name="com.hamstoo" level="INFO"/>
+    <logger name="com.hamstoo.daos" level="INFO"/>
+    <logger name="com.hamstoo.models" level="INFO"/>
+</configuration>

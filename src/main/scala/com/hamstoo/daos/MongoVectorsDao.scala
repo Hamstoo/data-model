@@ -12,13 +12,16 @@ import reactivemongo.bson._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-/** Data access object for conceptnet vectors mongo-based storage. */
+/**
+  * Data access object for conceptnet-vectors service's mongo-based storage.  `services.Vectorizer` provides
+  * additional access to this data directly via the service itself.
+  */
 class MongoVectorsDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedWriteResult}
+  import com.hamstoo.utils._
 
   private val futCol: Future[BSONCollection] = db map (_ collection "vectors")
-  private val d = BSONDocument.empty
+
   // ensure mongo collection has proper indexes
   private val indxs: Map[String, Index] =
     Index(TERMS -> Ascending :: Nil) % s"bin-$TERMS-1" ::

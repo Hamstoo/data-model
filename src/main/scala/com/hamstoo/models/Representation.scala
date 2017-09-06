@@ -16,18 +16,20 @@ import scala.util.Random
   * representations of URLs.  The scraping and parsing are performed by an
   * instance of a RepresentationFactory.
   *
-  * @param id       Unique alphanumeric ID.
-  * @param link     URL link used to generate this Representation.
-  * @param lprefx   Binary URL prefix for indexing by mongodb. Gets overwritten by class init.
-  * @param users    User UUIDs from whom webpage source was received.
-  * @param page     Webpage source string provided by browser extension or retrieved with http request.
-  * @param header   Title and `h1` headers concatenated.
-  * @param doctext  Document text.
-  * @param othtext  Other text not included in document text.
-  * @param keywords Keywords from meta tags.
-  * @param vectors  Map from vector computation methods to Array[Double] vector embeddings of the texts.
-  * @param timeFrom Time of construction/modification.
-  * @param timeThru Time of validity.
+  * @param id         Unique alphanumeric ID.
+  * @param link       URL link used to generate this Representation.
+  * @param lprefx     Binary URL prefix for indexing by mongodb. Gets overwritten by class init.
+  * @param users      User UUIDs from whom webpage source was received.
+  * @param page       Webpage source string provided by browser extension or retrieved with http request.
+  * @param header     Title and `h1` headers concatenated.
+  * @param doctext    Document text.
+  * @param othtext    Other text not included in document text.
+  * @param keywords   Keywords from meta tags.
+  * @param autoGenKws Keywords generated from the 4 textual representations.  Based on BM25 and cosine similarities.
+  * @param vectors    Map from vector computation methods to Array[Double] vector embeddings of the texts.
+  * @param timeFrom   Time of construction/modification.
+  * @param timeThru   Time of validity.  Long.MaxValue indicates current value.
+  * @param versions   `data-model` project version and others, if provided.
   */
 case class Representation(
                            id: String = Random.alphanumeric take 12 mkString,
@@ -40,9 +42,14 @@ case class Representation(
                            othtext: String,
                            keywords: String,
                            vectors: Map[String, Representation.Vec],
+                           autoGenKws: Option[Seq[String]],
                            timeFrom: Long = DateTime.now.getMillis,
-                           timeThru: Long = Long.MaxValue) {
+                           timeThru: Long = Long.MaxValue,
+                           var versions: Option[Map[String, String]] = None) {
+
   lprefx = link.map(_.prefx)
+  versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
+                    .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
 }
 
 object Representation extends BSONHandlers {
@@ -133,7 +140,11 @@ object Representation extends BSONHandlers {
         CRPv2_2nd, // second most significant cluster (i.e. don't combine 1st and 2nd at point of construction)
         PC1,       // first principal direction/axis (not a principal component b/c not a reconstructed repr of orig. X)
         PC2,       // second
-        PC3        // third
+        PC3,       // third
+        PC4,       // fourth
+        KM1,       // most significant k-means cluster by average bm25 score
+        KM2,       // second most significant k-means cluster (i.e. don't combine 1st and 2nd at point of construction)
+        KM3        // third
       = Value
   }
 
@@ -147,7 +158,7 @@ object Representation extends BSONHandlers {
   val OTXT: String = nameOf[Representation](_.othtext)
   val KWORDS: String = nameOf[Representation](_.keywords)
   val VECS: String = nameOf[Representation](_.vectors)
-  val TIMEFROM: String = nameOf[Representation](_.timeFrom)
-  val TIMETHRU: String = nameOf[Representation](_.timeThru)
+  assert(nameOf[Representation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
+  assert(nameOf[Representation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 }

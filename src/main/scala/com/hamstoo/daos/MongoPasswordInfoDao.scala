@@ -12,14 +12,15 @@ import reactivemongo.bson.BSONDocument
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-/** Data access object for users' password info. */
+/**
+  * Data access object for users' password info.
+  */
 class MongoPasswordInfoDao(db: Future[DefaultDB]) extends DelegableAuthInfoDAO[PasswordInfo] {
 
   import com.hamstoo.models.Profile.{loginInfHandler, paswdInfHandler}
-  import com.hamstoo.utils.ExtendedWriteResult
+  import com.hamstoo.utils.{ExtendedWriteResult, d}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "users")
-  private val d = BSONDocument.empty
 
   /** Retrieves password info for a given login. */
   def find(loginInfo: LoginInfo): Future[Option[PasswordInfo]] = for {

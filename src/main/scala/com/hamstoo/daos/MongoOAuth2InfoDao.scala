@@ -7,19 +7,19 @@ import com.mohiva.play.silhouette.impl.providers.OAuth2Info
 import com.mohiva.play.silhouette.persistence.daos.DelegableAuthInfoDAO
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
-import reactivemongo.bson.BSONDocument
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-/** Data access object for users' auth tokens. */
+/**
+  * Data access object for users' auth tokens.
+  */
 class MongoOAuth2InfoDao(db: Future[DefaultDB]) extends DelegableAuthInfoDAO[OAuth2Info] {
 
   import com.hamstoo.models.Profile.{auth2InfHandler, loginInfHandler}
-  import com.hamstoo.utils.ExtendedWriteResult
+  import com.hamstoo.utils.{ExtendedWriteResult, d}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "users")
-  private val d = BSONDocument.empty
 
   /** Retrieves auth for a given login. */
   def find(loginInfo: LoginInfo): Future[Option[OAuth2Info]] = for {
