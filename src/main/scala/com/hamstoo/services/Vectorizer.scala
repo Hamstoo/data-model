@@ -21,6 +21,11 @@ object Vectorizer {
   var fCount: Int = 0
 }
 
+/**
+  * This class is a wrapper around the MongoVectorsDao and the conceptnet-vectors service.  It's primary function
+  * is to abstract away the difference between the two so that the user doesn't have to know where the vectors
+  * are coming from.
+  */
 class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink: String) {
   
   // should be a 2-letter language code, e.g. "en"
@@ -106,7 +111,7 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
 
   /** Preserves original `dbCachedLookup` behavior: what does the future hold? */
   def dbCachedLookup(language: String, term: String): Option[(Vec, String)] =
-    Await.result(dbCachedLookupFuture(language, term), Duration.Inf)
+    Await.result(dbCachedLookupFuture(language, term), 7 seconds)
 
   /**
     * Handle vector response from APIs that return vectors.
