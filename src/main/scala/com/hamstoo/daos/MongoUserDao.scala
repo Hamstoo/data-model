@@ -15,16 +15,18 @@ import reactivemongo.bson.BSONDocument
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-/** Data access object for user accounts. */
+/**
+  * Data access object for user accounts.
+  */
 class MongoUserDao(db: Future[DefaultDB]) extends IdentityService[User] {
 
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedWriteResult}
+  import com.hamstoo.utils._
 
   // get the "users" collection (in the future); the `map` is `Future.map`
   // http://reactivemongo.org/releases/0.12/api/#reactivemongo.api.DefaultDB
   private val futCol: Future[BSONCollection] = db map (_ collection "users")
-  private val d = BSONDocument.empty
+
   /* Ensure mongo collection has proper indexes: */
   private val indxs: Map[String, Index] =
     Index(PLGNF -> Ascending :: Nil, unique = true) % s"bin-$PLGNF-1-uniq" ::

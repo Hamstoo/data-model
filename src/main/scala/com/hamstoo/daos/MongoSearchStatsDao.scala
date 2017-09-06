@@ -11,12 +11,15 @@ import reactivemongo.bson.BSONDocument
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
+/**
+  * MongoDB data access object for `searchstats` collection.  Search stats are stats on the number of times
+  * a user has visited a mark's URL (via Hamstoo) or its full-page view.
+  */
 class MongoSearchStatsDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedWriteResult}
+  import com.hamstoo.utils._
 
   private val futCol: Future[BSONCollection] = db map (_ collection "searchstats")
-  private val d = BSONDocument.empty
 
   private val indxs: Map[String, Index] =
     Index(QUERY -> Ascending :: Nil, unique = true) % s"bin-$QUERY-1-uniq" :: Nil toMap;

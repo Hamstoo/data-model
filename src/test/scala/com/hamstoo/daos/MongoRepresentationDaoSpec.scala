@@ -1,53 +1,22 @@
 package com.hamstoo.daos
 
-import java.util.UUID
-
-import akka.actor.ActorSystem
-import akka.stream.ActorMaterializer
 import com.hamstoo.models.{Mark, MarkData, Representation}
-import com.hamstoo.services.Vectorizer
-import org.joda.time.DateTime
+import com.hamstoo.specUtils
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
-import play.api.libs.ws.ahc.AhcWSClient
-import play.api.mvc.Results
-import reactivemongo.api.collections.bson.BSONCollection
-import reactivemongo.api.{DefaultDB, MongoConnection, MongoDriver}
-import reactivemongo.bson.BSONObjectID
 
-import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.{Duration, _}
-import scala.concurrent.{Await, Future}
-import scala.util.{Failure, Random, Success, Try}
+import scala.concurrent.duration.Duration
+import scala.concurrent.Await
+import scala.util.Random
 
-class MongoRepresentationDaoSpec extends Specification{
+/**
+  * MongoRepresentationDao tests.
+  */
+class MongoRepresentationDaoSpec extends Specification {
 
-  val link = "mongodb://localhost:27017"
-  val name = "hamstoo"
-  val testDuration = 5000
-
-  @tailrec
-  private def getDB: Future[DefaultDB] =
-    MongoConnection parseURI link map MongoDriver().connection match {
-      case Success(c) => c database name
-      case Failure(e) =>
-        e.printStackTrace()
-        println("Failed to establish connection to MongoDB.\nRetrying...\n")
-        // Logger.warn("Failed to establish connection to MongoDB.\nRetrying...\n")
-        getDB
-    }
-
-  val marksDao = new MongoMarksDao(getDB)
-  val reprsDao = new MongoRepresentationDao(getDB)
-  val uuid = "8da651bb-1a17-4144-bc33-c176e2ccf8a0"
-
-  println(uuid.toString)
-  val markUuid: UUID = UUID.randomUUID
-
-  // create new mark
-
-  def randomMarkData = {
+  /** Create new mark. */
+  def randomMarkData: MarkData = {
     val alpha = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     val size = alpha.size
 
@@ -56,9 +25,8 @@ class MongoRepresentationDaoSpec extends Specification{
     MarkData("a subject", Some(s"http://$domain.com"))
   }
 
-
- /* "MongoRepresentaionDao" should {
-    "* create mark to update rep id and retrieve rep id" in {
+  /*"MongoRepresentaionDao" should {
+    "* create mark to update rep id and retrieve rep id" in new system {
 
     val markData = randomMarkData
 
@@ -122,13 +90,10 @@ class MongoRepresentationDaoSpec extends Specification{
     }
   }
 
-
   // create new mark
   "MongoMarksDao" should {
-    "* return mark if mark aleady exisists and return Future[Option][None]" +
-      "if mark is created on a Mark creation moment" in {
-
-
+    "* return mark if mark aleady exists and return Future[Option][None]" +
+      "if mark is created on a Mark creation moment" in new system {
 
       val markData = randomMarkData
       val mark = Mark(
@@ -139,13 +104,10 @@ class MongoRepresentationDaoSpec extends Specification{
       //Create mark in DB
      def createMark =  marksDao.create(mark)
 
-
-
     val firstlyCreatedMark =   Await.result(createMark, Duration(testDuration, MILLISECONDS))
     val secondlyCreatedMark = Await.result(createMark, Duration(testDuration, MILLISECONDS))
 
       /**Test success conditions*/
-
 
       /**Test condition 1 */
       firstlyCreatedMark shouldNotEqual secondlyCreatedMark
@@ -163,70 +125,65 @@ class MongoRepresentationDaoSpec extends Specification{
   }*/
 
   "MongoRepresentaionDao" should {
+    "* save representation" in new system {
 
-    "* save representation" in {
+      //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").drop(true), Duration(testDuration, MILLISECONDS))
+      //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").create(false), Duration(testDuration, MILLISECONDS))
 
-
-    //    Await.result(  getDB.value.get.get.collection[BSONCollection]("representations").drop(true), Duration(testDuration, MILLISECONDS))
-
-//ы      Await.result(  getDB.value.get.get.collection[BSONCollection]("representations").create(false), Duration(testDuration, MILLISECONDS))
-
-
-      val url = randomMarkData.url
+      val url: Option[String] = randomMarkData.url
       //val url = "http://nymag.com/daily/intelligencer/2017/04/andrew-sullivan-why-the-reactionary-right-must-be-taken-seriously.html"
       //val url = "https://developer.chrome.com/extensions/getstarted"
-      val vec :Representation.Vec = Seq(2304932.039423, 39402.3043)
-      val vec2 :Representation.Vec = Seq(2304932.039423, 39402.3043,2304932.039423, 39402.3043,2304932.039423, 39402.3043)
-      var repr: Representation = Representation(link = url,
-        page = "sdf",
-        header = "Monday",
-        doctext = "sdf",
-        othtext = "sdf",
-        keywords = "nothing",
-        vectors = Map{"something" -> vec})
+      val vec: Representation.Vec = Seq(2304932.039423, 39402.3043)
+      val vec2: Representation.Vec = Seq(2304932.039423, 39402.3043, 2304932.039423, 39402.3043, 2304932.039423, 39402.3043)
+      var reprOrig = Representation(link = url,
+                                    page = "sdf",
+                                    header = "Monday",
+                                    doctext = "sdf",
+                                    othtext = "sdf",
+                                    keywords = "nothing",
+                                    vectors = Map{"something" -> vec},
+                                    autoGenKws = None)
+      println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
-      println("REPR ID " +repr.id)
+      var reprCopy = Representation(link = url,
+                                    page = "sывфывdf",
+                                    header = "something",
+                                    doctext = "sasdasdf",
+                                    othtext = "ssadasddf",
+                                    keywords = "something",
+                                    vectors = Map{"month" -> vec2},
+                                    autoGenKws = None)
 
-
-      var reprCopy: Representation = Representation(link = url,
-        page = "sывфывdf",
-        header = "something",
-        doctext = "sasdasdf",
-        othtext = "ssadasddf",
-        keywords = "something",
-        vectors = Map{"month" -> vec2})
-
-      val id: String = Await.result(reprsDao save repr map (id => id), Duration(20000, MILLISECONDS))
-
-
-      println("Created 2 representations with ids " +repr.id+" "+reprCopy.id)
-      println("Created representation id " +id)
+      println(s"Creating 2 representations with ids ${reprOrig.id} and ${reprCopy.id}")
+      val id: String = Await.result(reprsDao.save(reprOrig)/*.map(id => id)*/, timeout)
+      println(s"Created representation id $id")
 
       id shouldNotEqual null
       id shouldNotEqual ""
       Thread.sleep(2500)
-      val id2: String = Await.result(reprsDao save reprCopy map (id => id), Duration(20000, MILLISECONDS))
+      val id2: String = Await.result(reprsDao.save(reprCopy)/*.map(id => id)*/, timeout)
+      println(s"Updated representation 2 id $id2")
+      id shouldEqual id2 // this is because `retrieveByUrl` will find `reprOrig`
 
-      println("Created representation 2 id " +id2)
+      //val repr1 = Await.result(reprsDao retrieveById id map (repr => repr), Duration(1000, MILLISECONDS))
+      //val repr2 = Await.result(reprsDao retrieveById id2 map (repr => repr), Duration(1000, MILLISECONDS))
 
-     // val repr1 = Await.result(reprsDao retrieveById  id map (repr => repr), Duration(1000, MILLISECONDS))
-     //   val repr2 = Await.result(reprsDao retrieveById  id2 map (repr => repr), Duration(1000, MILLISECONDS))
-
-      val reprs = Await.result(reprsDao retrieveAllById  id2, Duration(20000, MILLISECONDS))
-
-      println("Print SIZE "+reprs.size)
-      reprs.foreach(r => println("Print Seq "+r.timeThru))
+      // use `retrieveAllById` to get both previous and updated reprs from the db
+      val reprs: Seq[Representation] = Await.result(reprsDao retrieveAllById id2, timeout)
+      println(s"Print SIZE ${reprs.size}")
+      reprs.foreach(r => println(s"Print Seq ${r.timeThru}"))
 
       reprs.size shouldEqual 2
-
       reprs.head.timeThru should be < Long.MaxValue
-
       reprs.head.timeFrom shouldNotEqual  reprs.tail.head.timeFrom
-
       reprs.head.timeThru should be < reprs.tail.head.timeThru
     }
-
   }
 
-
+  // https://github.com/etorreborre/specs2/blob/SPECS2-3.8.9/examples/src/test/scala/examples/UnitSpec.scala
+  trait system extends Scope {
+    //val marksDao: MongoMarksDao = specUtils.marksDao
+    val reprsDao: MongoRepresentationDao = specUtils.reprsDao
+    val timeout: Duration = specUtils.timeout
+  }
 }

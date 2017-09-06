@@ -3,6 +3,7 @@ package com.hamstoo.daos
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import org.joda.time.DateTime
+import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
@@ -23,14 +24,19 @@ object MongoRepresentationDao {
   val LNK_WGT = 10
 }
 
+/**
+  * Data access object for MongoDB `representations` collection.
+  * @param db  Future[DefaultDB] database connection.
+  */
 class MongoRepresentationDao(db: Future[DefaultDB]) {
 
+  val logger: Logger = Logger(classOf[MongoRepresentationDao])
+
   import MongoRepresentationDao._
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedString, ExtendedWriteResult}
+  import com.hamstoo.utils._
+  import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "representations")
-  private val d = BSONDocument.empty
-  private val curnt: Producer[BSONElement] = TIMETHRU -> Long.MaxValue
 
   /* Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
    weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
@@ -54,27 +60,43 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     */
   def save(repr: Representation): Future[String] = for {
     c <- futCol
+
     /* Check if id and (in public repr) link exist in the db, failing on conflict. */
     optReprById <- retrieveById(repr.id)
-    optReprByUrl <- if (repr.link.isEmpty || optReprById.flatMap(_.link) == repr.link || repr.users.nonEmpty)
-      Future successful None else retrieveByUrl(repr.link.get)
+
+    optReprByUrl <- if (repr.link.isEmpty || optReprById.exists(_.link == repr.link) || repr.users.nonEmpty)
+      Future.successful(None) else
+      retrieveByUrl(repr.link.get)
+
     optRepr <- if (optReprById.nonEmpty && optReprByUrl.nonEmpty)
-      Future failed new Exception("Id and link for different reprs.") else
-      Future successful (optReprById orElse optReprByUrl)
+      Future.failed(new Exception("Id and link for different reprs")) else
+      Future.successful(optReprById orElse optReprByUrl)
+
     /* Insert new repr either as is or as an update, conserving id and link in the latter case. */
     id = optRepr map (_.id) getOrElse repr.id
+
     wr <- optRepr match {
-      case Some(r) if r.users != repr.users => Future failed new Exception("Can't update, user IDs conflict.")
-      case Some(r) if r.link != repr.link => Future failed new Exception("Can't update, urls do not match.")
-      case Some(_) =>
+      case Some(r) if r.users != repr.users =>
+        logger.warn(s"Inserting new Representation ${r.users} != ${repr.users}")
+        Future.failed(new Exception("Can't update, user IDs conflict"))
+
+      case Some(r) if r.link != repr.link =>
+        logger.warn(s"Inserting new Representation ${r.link} != ${repr.link}")
+        Future.failed(new Exception("Can't update, urls do not match"))
+
+      case Some(r) =>
         // TODO: can check here whether vectors are sufficiently different to require update
+        logger.info(s"Updating (yet still ignoring vector similarity!) existing Representation(id=${r.id}, link=${r.link}, timeFrom=${r.timeFrom}, dt=${r.timeFrom.dt})")
         val now = DateTime.now.getMillis
         for {
-          wr <- c update(d :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now))
+          wr <- c update(d :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now)) // retire the old one
           _ <- wr failIfError;
-          wr <- c insert repr.copy(id = id, timeFrom = now, timeThru = Long.MaxValue)
+          wr <- c insert repr.copy(id = id, timeFrom = now, timeThru = INF_TIME) // insert the new one
         } yield wr
-      case _ => c insert repr
+
+      case _ =>
+        logger.info(s"Inserting new Representation(id=${repr.id}, link=${repr.link})")
+        c insert repr
     }
     _ <- wr failIfError
   } yield id
@@ -98,7 +120,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     seq <- (c find d :~ LPREF -> url.prefx).coll[Representation, Seq]()
   } yield seq filter (_.link contains url)
 
-  /** Retrieves all representations by Id. */
+  /** Retrieves all representations, including private and previous versions, by Id. */
   def retrieveAllById(id: String): Future[Seq[Representation]] = for {
     c <- futCol
     seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()

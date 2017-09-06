@@ -17,16 +17,17 @@ import scala.concurrent.Future
 /** Data access object for usage stats. */
 class MongoStatsDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedWriteResult}
+  import com.hamstoo.utils._
 
   // database collections
   private val futStatsCol: Future[BSONCollection] = db map (_ collection "userstats")
   private val futImportsCol: Future[BSONCollection] = db map (_ collection "imports")
   private val futEntriesCol: Future[BSONCollection] = db map (_ collection "entries")
-  private val d = BSONDocument.empty
+
   private val IMPT = "imports"
   private val TIME = "time"
   private val USR = "user"
+
   /* Ensure the mongo collection has proper index: */
   private val indxs: Map[String, Index] =
     Map(Index(USR -> Ascending :: TIME -> Ascending :: Nil) % s"bin-$USR-1-$TIME-1")
