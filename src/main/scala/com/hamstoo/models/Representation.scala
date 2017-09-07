@@ -41,6 +41,7 @@ case class Representation(
                            doctext: String,
                            othtext: String,
                            keywords: String,
+                           nWords: Option[Long] = None,
                            vectors: Map[String, Representation.Vec],
                            autoGenKws: Option[Seq[String]],
                            timeFrom: Long = DateTime.now.getMillis,
@@ -157,6 +158,7 @@ object Representation extends BSONHandlers {
   val DTXT: String = nameOf[Representation](_.doctext)
   val OTXT: String = nameOf[Representation](_.othtext)
   val KWORDS: String = nameOf[Representation](_.keywords)
+  val N_WORDS: String = nameOf[Representation](_.nWords)
   val VECS: String = nameOf[Representation](_.vectors)
   assert(nameOf[Representation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
   assert(nameOf[Representation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
