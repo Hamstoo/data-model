@@ -20,6 +20,7 @@ import scala.util.Random
   * @param link       URL link used to generate this Representation.
   * @param lprefx     Binary URL prefix for indexing by mongodb. Gets overwritten by class init.
   * @param users      User UUIDs from whom webpage source was received.
+  *                   Shouldn't this be trackable by which mark.privReprs point to a particular Representation?
   * @param page       Webpage source string provided by browser extension or retrieved with http request.
   * @param header     Title and `h1` headers concatenated.
   * @param doctext    Document text.

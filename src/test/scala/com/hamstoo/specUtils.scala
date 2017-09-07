@@ -1,6 +1,6 @@
 package com.hamstoo
 
-import com.hamstoo.daos.{MongoCommentDao, MongoMarksDao, MongoRepresentationDao}
+import com.hamstoo.daos.{MongoCommentDao, MongoMarksDao, MongoRepresentationDao, MongoVectorsDao}
 import reactivemongo.api._
 
 import scala.annotation.tailrec
@@ -17,12 +17,15 @@ import scala.util.{Failure, Success}
   */
 package object specUtils {
 
+  val vectorsLink = "http://localhost:5000"
+  val idfsResource = "idfs/text8.json.zip"
+
   val link = "mongodb://localhost:27017"
   val dbName = "hamstoo"
   val timeout: Duration = 2000 milliseconds
 
   @tailrec
-  private def getDB: Future[DefaultDB] =
+  def getDB: Future[DefaultDB] =
     MongoConnection parseURI link map MongoDriver().connection match {
       case Success(c) => c database dbName
       case Failure(e) =>
@@ -35,4 +38,5 @@ package object specUtils {
   lazy val marksDao = new MongoMarksDao(getDB)
   lazy val reprsDao = new MongoRepresentationDao(getDB)
   lazy val commentDao = new MongoCommentDao(getDB)
+  lazy val vecDao = new MongoVectorsDao(getDB)
 }
