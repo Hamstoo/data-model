@@ -137,19 +137,19 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     * --ORDER BY score DESC -- actually this is not happening, would require `.sort` after `.find`
     */
   def search(ids: Set[String], query: String):
-          Future[Map[String, (Long, String, Option[Map[String, Vec]], Double)]] = for {
+          Future[Map[String, (Option[Long], String, Option[Map[String, Vec]], Double)]] = for {
     c <- futCol
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
     pjn = d :~ ID -> 1 :~ N_WORDS -> 1 :~ DTXT -> 1 :~ VECS -> 1 :~ SCORE -> (d :~ "$meta" -> "textScore")
     seq <- (c find sel projection pjn).coll[BSONDocument, Seq]()
   } yield seq.map { doc =>
     doc.getAs[String](ID).get -> (
-      doc.getAs[Long](N_WORDS).get,
+      doc.getAs[Long](N_WORDS),
       doc.getAs[String](DTXT).get,
       doc.getAs[Map[String, Vec]](VECS),
       doc.getAs[Double](SCORE).get)
   }(breakOut[
     Seq[BSONDocument],
-    (String, (Long, String, Option[Map[String, Vec]], Double)),
-    Map[String, (Long, String, Option[Map[String, Vec]], Double)]])
+    (String, (Option[Long], String, Option[Map[String, Vec]], Double)),
+    Map[String, (Option[Long], String, Option[Map[String, Vec]], Double)]])
 }

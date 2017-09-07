@@ -38,7 +38,10 @@ libraryDependencies ++= Seq(
   "org.specs2" %% "specs2-core" % "3.8.9" % "test",
   "org.apache.commons" % "commons-text" % "1.1",
   "com.atlassian.commonmark" % "commonmark" % "0.9.0",
-  "org.jsoup" % "jsoup" % "1.10.3")
+  "org.jsoup" % "jsoup" % "1.10.3",
+  "org.scalanlp" %% "breeze" % "0.13.1",
+  "org.scalanlp" %% "breeze-natives" % "0.13.1",
+  "com.typesafe.akka" %% "akka-testkit" % "2.5.4" % "test")
 
 pomIncludeRepository := { _ => false }
 pomExtra :=
