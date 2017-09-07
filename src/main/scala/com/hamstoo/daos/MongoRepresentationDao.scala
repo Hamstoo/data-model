@@ -77,12 +77,12 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
 
     wr <- optRepr match {
       case Some(r) if r.users != repr.users =>
-        logger.warn(s"Inserting new Representation ${r.users} != ${repr.users}")
+        logger.warn(s"Unable to insert new Representation; user IDs conflict: ${r.users} != ${repr.users}")
         Future.failed(new Exception("Can't update, user IDs conflict"))
 
       case Some(r) if r.link != repr.link =>
-        logger.warn(s"Inserting new Representation ${r.link} != ${repr.link}")
-        Future.failed(new Exception("Can't update, urls do not match"))
+        logger.warn(s"Unable to insert new Representation; URLs do not match: ${r.link} != ${repr.link}")
+        Future.failed(new Exception("Can't update, URLs do not match"))
 
       case Some(r) =>
         // TODO: can check here whether vectors are sufficiently different to require update
@@ -136,18 +136,20 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     * WHERE ANY(SPLIT(doctext) IN @query)
     * --ORDER BY score DESC -- actually this is not happening, would require `.sort` after `.find`
     */
-  def search(ids: Set[String], query: String): Future[Map[String, (String, Option[Map[String, Vec]], Double)]] = for {
+  def search(ids: Set[String], query: String):
+          Future[Map[String, (Long, String, Option[Map[String, Vec]], Double)]] = for {
     c <- futCol
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
-    pjn = d :~ ID -> 1 :~ DTXT -> 1 :~ VECS -> 1 :~ SCORE -> (d :~ "$meta" -> "textScore")
+    pjn = d :~ ID -> 1 :~ N_WORDS -> 1 :~ DTXT -> 1 :~ VECS -> 1 :~ SCORE -> (d :~ "$meta" -> "textScore")
     seq <- (c find sel projection pjn).coll[BSONDocument, Seq]()
   } yield seq.map { doc =>
     doc.getAs[String](ID).get -> (
+      doc.getAs[Long](N_WORDS).get,
       doc.getAs[String](DTXT).get,
       doc.getAs[Map[String, Vec]](VECS),
       doc.getAs[Double](SCORE).get)
   }(breakOut[
     Seq[BSONDocument],
-    (String, (String, Option[Map[String, Vec]], Double)),
-    Map[String, (String, Option[Map[String, Vec]], Double)]])
+    (String, (Long, String, Option[Map[String, Vec]], Double)),
+    Map[String, (Long, String, Option[Map[String, Vec]], Double)]])
 }

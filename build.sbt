@@ -1,7 +1,12 @@
 name := "data-model"
 organization := "com.hamstoo"
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
-version := "0.9.9"
+version := {
+  val fp = scala.io.Source.fromFile("VERSION")
+  val t = scala.util.Try(fp.getLines.find(_ => true))
+  fp.close
+  t.get.map(_.trim)
+}.getOrElse("latest")
 
 scalaVersion := "2.12.3"
 crossScalaVersions := Seq("2.11.11", "2.11.7", "2.12.3")
