@@ -5,6 +5,7 @@ import java.util.UUID
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.{Mark, MarkData, Page}
 import org.joda.time.DateTime
+import reactivemongo.api.BSONSerializationPack.Document
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
@@ -12,7 +13,9 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
+import scala.util.{Failure, Success}
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -259,7 +262,10 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
 
   def insertBookmarks(marksStream : Stream[Future[Option[Mark]]]): Unit = {
-    futCol.map(marksCollection => marksCollection.bulkInsert(marksStream.map(_.asInstanceOf[BSONDocument]), false))
+    futCol.map(marksCollection => marksCollection.bulkInsert(
+     marksStream.map( futOptMark =>
+       Await.result(futOptMark , Duration.Inf).fold(BSONDocument.empty)(_.asInstanceOf[BSONDocument])
+     ) , false))
   }
 
 }
