@@ -256,4 +256,10 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     } yield () else Future successful {} /* Removes page source from the mark in case it's the same as the one
     processed. */
   } yield ()
+
+
+  def insertBookmarks(marksStream : Stream[Mark]): Unit = {
+    futCol.map(marksCollection => marksCollection.bulkInsert(marksStream.map(_.asInstanceOf[BSONDocument]), false))
+  }
+
 }
