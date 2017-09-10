@@ -3,7 +3,7 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
-import com.hamstoo.models.{Mark, MarkData, Page}
+import com.hamstoo.models.{BSONHandlers, Mark, MarkData, Page}
 import org.joda.time.DateTime
 import reactivemongo.api.BSONSerializationPack.Document
 import reactivemongo.api.DefaultDB
@@ -265,7 +265,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def insertBookmarks(marksStream : Stream[Future[Option[Mark]]]): Future[MultiBulkWriteResult] = {
     futCol.map(marksCollection => marksCollection.bulkInsert(
      marksStream.map( futOptMark =>
-       Await.result(futOptMark , Duration.Inf).fold(BSONDocument.empty)(_.asInstanceOf[BSONDocument])
+       Await.result(futOptMark , Duration.Inf).fold(BSONDocument.empty)(Mark.entryBsonHandler.write(_))
      ) , false)).flatten
   }
 
