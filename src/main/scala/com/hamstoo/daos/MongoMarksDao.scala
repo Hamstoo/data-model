@@ -8,6 +8,7 @@ import org.joda.time.DateTime
 import reactivemongo.api.BSONSerializationPack.Document
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
+import reactivemongo.api.commands.MultiBulkWriteResult
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
@@ -261,11 +262,11 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   } yield ()
 
 
-  def insertBookmarks(marksStream : Stream[Future[Option[Mark]]]): Unit = {
+  def insertBookmarks(marksStream : Stream[Future[Option[Mark]]]): Future[MultiBulkWriteResult] = {
     futCol.map(marksCollection => marksCollection.bulkInsert(
      marksStream.map( futOptMark =>
        Await.result(futOptMark , Duration.Inf).fold(BSONDocument.empty)(_.asInstanceOf[BSONDocument])
-     ) , false))
+     ) , false)).flatten
   }
 
 }
