@@ -258,7 +258,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   } yield ()
 
 
-  def insertBookmarks(marksStream : Stream[Option[Mark]]): Unit = {
+  def insertBookmarks(marksStream : Stream[Future[Option[Mark]]]): Unit = {
     futCol.map(marksCollection => marksCollection.bulkInsert(marksStream.map(_.asInstanceOf[BSONDocument]), false))
   }
 
