@@ -1,6 +1,6 @@
 package com.hamstoo
 
-import com.hamstoo.daos.{MongoCommentDao, MongoMarksDao, MongoRepresentationDao, MongoVectorsDao}
+import com.hamstoo.daos._
 import reactivemongo.api._
 
 import scala.annotation.tailrec
@@ -22,7 +22,7 @@ package object specUtils {
 
   val link = "mongodb://localhost:27017"
   val dbName = "hamstoo"
-  val timeout: Duration = 2000 milliseconds
+  val timeout: Duration = 5000 milliseconds
 
   @tailrec
   def getDB: Future[DefaultDB] =
@@ -38,5 +38,6 @@ package object specUtils {
   lazy val marksDao = new MongoMarksDao(getDB)
   lazy val reprsDao = new MongoRepresentationDao(getDB)
   lazy val commentDao = new MongoCommentDao(getDB)
+  lazy val highlightDao = new MongoHighlightDao(getDB)
   lazy val vecDao = new MongoVectorsDao(getDB)
 }

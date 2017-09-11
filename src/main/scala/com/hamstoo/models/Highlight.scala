@@ -30,6 +30,7 @@ case class Highlight(
                       url: String,
                       var uPref: Option[mutable.WrappedArray[Byte]] = None,
                       pos: HLPos,
+                      pageCoord: PageCoord = PageCoord.ZERO_COORD,
                       preview: HLPreview,
                       memeId: Option[String] = None,
                       timeFrom: Long = DateTime.now.getMillis,
