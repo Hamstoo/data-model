@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.Comment
+import com.hamstoo.models.{Comment, Sortable}
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -49,11 +49,7 @@ class MongoCommentDao(db: Future[DefaultDB]) {
   def receiveSortedByPageCoord(url: String, usr: UUID): Future[Seq[Comment]] = for {
     c <- futCol
     seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Comment, Seq]()
-  } yield seq filter (_.url == url) sortWith {
-      case (c1, c2) if c1.pageCoord.y > c2.pageCoord.y => true
-      case (c1, c2) if c1.pageCoord.y == c2.pageCoord.y && c1.pageCoord.x > c2.pageCoord.x => true
-      case _ => false
-  }
+  } yield seq filter (_.url == url) sortWith Sortable.sortByPageCoord
 
 
   def update(usr: UUID, id: String, pos: CommentPos): Future[Comment] = for {

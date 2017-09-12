@@ -32,7 +32,7 @@ case class Comment(
                     pageCoord: PageCoord = PageCoord.ZERO_COORD,
                     memeId: Option[String] = None,
                     timeFrom: Long = DateTime.now.getMillis,
-                    timeThru: Long = Long.MaxValue) {
+                    timeThru: Long = Long.MaxValue) extends Sortable {
   uPref = Some(url.prefx)
 }
 
