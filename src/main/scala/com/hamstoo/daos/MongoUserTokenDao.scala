@@ -13,14 +13,16 @@ import reactivemongo.bson.BSONDocument
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-/** Data access object for confirmation tokens. */
+/**
+  * Data access object for confirmation tokens.
+  */
 class MongoUserTokenDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.models.UserToken.tokenHandler
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedWriteResult}
+  import com.hamstoo.utils._
 
   private val futCol: Future[BSONCollection] = db map (_ collection "tokens")
-  private val d = BSONDocument.empty
+
   /* Ensure mongo collection has proper index: */
   private val indxs = Map(Index(ID -> Ascending :: Nil) % s"bin-$ID-1")
   futCol map (_.indexesManager ensure indxs)

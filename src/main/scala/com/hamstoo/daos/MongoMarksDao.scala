@@ -14,13 +14,14 @@ import reactivemongo.bson._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
+/**
+  * Data access object for MongoDB `entries` (o/w known as "marks") collection.
+  */
 class MongoMarksDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedString, ExtendedWriteResult}
+  import com.hamstoo.utils._
 
   private val futCol: Future[BSONCollection] = db map (_ collection "entries")
-  private val d = BSONDocument.empty
-  private val curnt: Producer[BSONElement] = TIMETHRU -> Long.MaxValue
 
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
