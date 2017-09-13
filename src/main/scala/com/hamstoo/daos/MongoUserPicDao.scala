@@ -7,13 +7,14 @@ import reactivemongo.bson._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-/** Data access object for profile pictures. Implemented with mongo's binary keys. */
+/**
+  * Data access object for profile pictures--implemented with MongoDB's binary keys.
+  */
 class MongoUserPicDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.utils.ExtendedWriteResult
+  import com.hamstoo.utils.{ExtendedWriteResult, d}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "userpics")
-  private val d = BSONDocument.empty
   private val PKEY = "pic"
 
   /** Saves or updates file bytes by id. */

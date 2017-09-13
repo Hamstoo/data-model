@@ -22,6 +22,7 @@ class RepresentationSpec extends Specification {
         othtext = "",
         keywords = "",
         vectors = Map.empty[String, Vec],
+        autoGenKws = Some(Seq("keyword0", "keyword1")),
         timeFrom = 0)
       val (a, b) = (rep, rep)
       a.hashCode mustEqual b.hashCode

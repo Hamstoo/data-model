@@ -30,10 +30,11 @@ case class Highlight(
                       url: String,
                       var uPref: Option[mutable.WrappedArray[Byte]] = None,
                       pos: HLPos,
+                      pageCoord: PageCoord = PageCoord.ZERO_COORD,
                       preview: HLPreview,
                       memeId: Option[String] = None,
                       timeFrom: Long = DateTime.now.getMillis,
-                      timeThru: Long = Long.MaxValue) {
+                      timeThru: Long = Long.MaxValue) extends Sortable {
   uPref = Some(url.prefx)
 }
 
@@ -59,8 +60,8 @@ object Highlight extends BSONHandlers {
   val PTXT: String = nameOf[HLPreview](_.text)
   val TAIL: String = nameOf[HLPreview](_.tail)
   val MEM: String = nameOf[Highlight](_.memeId)
-  val TSTMP: String = nameOf[Highlight](_.timeFrom)
-  val TILL: String = nameOf[Highlight](_.timeThru)
+  assert(nameOf[Highlight](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
+  assert(nameOf[Highlight](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
   implicit val hlposElemBsonHandler: BSONDocumentHandler[HLPosElem] = Macros.handler[HLPosElem]
   implicit val hlposBsonHandler: BSONDocumentHandler[HLPos] = Macros.handler[HLPos]
   implicit val hlprevBsonHandler: BSONDocumentHandler[HLPreview] = Macros.handler[HLPreview]

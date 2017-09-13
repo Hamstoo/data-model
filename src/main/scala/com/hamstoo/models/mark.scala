@@ -106,6 +106,9 @@ case class Mark(
                  score: Option[Double] = None) {
   urlPrfx = mark.url map (_.prefx)
 
+  /** Use the private repr when available, o/w use the public one. */
+  def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
+
   /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
   override def equals(other: Any): Boolean = other match {
     case other: Mark => other.canEqual(this) && this.hashCode == other.hashCode
