@@ -28,4 +28,4 @@ deployment:
   artifactory:
     branch: /.*?/
     commands:
-      - sbt publish
+      - sbt publish -Dversion=$(git symbolic-ref --short -q HEAD)
