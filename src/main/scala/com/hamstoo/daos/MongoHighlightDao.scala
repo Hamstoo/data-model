@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.Highlight
+import com.hamstoo.models.{Highlight, Sortable}
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -47,6 +47,11 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
     c <- futCol
     seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Highlight, Seq]()
   } yield seq filter (_.url == url)
+
+  def receiveSortedByPageCoord(url: String, usr: UUID): Future[Seq[Highlight]] = for {
+    c <- futCol
+    seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Highlight, Seq]()
+  } yield seq filter (_.url == url) sortWith Sortable.sortByPageCoord
 
   def update(usr: UUID, id: String, pos: HLPos, prv: HLPreview): Future[Highlight] = for {
     c <- futCol
