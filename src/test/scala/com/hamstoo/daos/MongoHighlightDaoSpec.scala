@@ -5,6 +5,7 @@ import java.util.UUID
 import com.hamstoo.models.Highlight.{HLPos, HLPreview}
 import com.hamstoo.models.{Highlight, PageCoord}
 import com.hamstoo.specUtils
+import org.specs2.matcher.Matchers
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
 
@@ -12,12 +13,7 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.util.Random
 
-/**
-  * Created by
-  * Author: fayaz.sanaulla@gmail.com
-  * Date: 12.09.17
-  */
-class MongoHighlightDaoSpec extends Specification {
+class MongoHighlightDaoSpec extends Specification with Matchers{
   "MongoHighlightDai" should {
     "* return correctly sorted list of highlights" in new system {
       val usrId  = UUID.randomUUID()
@@ -31,7 +27,7 @@ class MongoHighlightDaoSpec extends Specification {
       Await.result(highlightDao.create(h2), timeout) mustEqual {}
       Await.result(highlightDao.create(h3), timeout) mustEqual {}
 
-      Await.result(highlightDao.receiveSorted(h1.usrId), timeout).map(_.pageCoord) mustEqual Seq(h2.pageCoord, h1.pageCoord, h3.pageCoord)
+      Await.result(highlightDao.receive(h1.usrId), timeout).map(_.usrId) mustEqual Seq(h1.usrId, h2.usrId, h3.usrId)
     }
   }
 
