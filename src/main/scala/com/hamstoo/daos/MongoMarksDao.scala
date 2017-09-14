@@ -266,7 +266,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     futCol.map(marksCollection => marksCollection.bulkInsert(
       Await.result(Future.sequence(marksStream).map(futOptMark =>
         futOptMark.flatten.map(mark =>
-        Mark.entryBsonHandler.write(mark))).flatten, Duration.Inf)
+        Mark.entryBsonHandler.write(mark))), Duration.Inf)
      , false)).flatten
   }
 
