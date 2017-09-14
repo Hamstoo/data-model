@@ -11,7 +11,6 @@ import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.util.Random
 
-
 class MongoCommentDaoSpec extends Specification {
 
   "MongoCommentsDao" should {
@@ -26,9 +25,9 @@ class MongoCommentDaoSpec extends Specification {
       missingReprMarks.count(_.usrId == c.usrId) mustEqual 1
     }
 
-    "* return correctly sorted list of comments" in new system {
+    "* return correctly list of comments for specifyed user" in new system {
       val usrId  = UUID.randomUUID()
-      val url ="http://hamstsdsdoo.comsssd"+Random.nextFloat()
+      val url ="http://hamstsdsdoo.comsssd" + Random.nextFloat()
 
       val c1 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = PageCoord(0.5, 0.5))
       val c2 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = PageCoord(0.6, 0.5))
@@ -38,7 +37,7 @@ class MongoCommentDaoSpec extends Specification {
       Await.result(commentsDao.create(c2), timeout) mustEqual {}
       Await.result(commentsDao.create(c3), timeout) mustEqual {}
 
-      Await.result(commentsDao.receiveSorted(c1.usrId), timeout).map(_.pageCoord) mustEqual Seq(c3.pageCoord, c2.pageCoord, c1.pageCoord)
+      Await.result(commentsDao.receive(c1.usrId), timeout).map(_.usrId) mustEqual Seq(c1.usrId, c2.usrId, c3.usrId)
     }
   }
 
