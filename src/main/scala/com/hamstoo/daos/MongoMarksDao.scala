@@ -264,9 +264,10 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   def insertBookmarks(marksStream : Stream[Future[Option[Mark]]]): Future[MultiBulkWriteResult] = {
     futCol.map(marksCollection => marksCollection.bulkInsert(
-     marksStream.map( futOptMark =>
-       Await.result(futOptMark , Duration.Inf).fold(BSONDocument.empty)(Mark.entryBsonHandler.write(_))
-     ) , false)).flatten
+      Await.result(Future.sequence(marksStream).map(futOptMark =>
+        futOptMark.flatten.map(mark =>
+        Mark.entryBsonHandler.write(mark))).flatten, Duration.Inf)
+     , false)).flatten
   }
 
 }
