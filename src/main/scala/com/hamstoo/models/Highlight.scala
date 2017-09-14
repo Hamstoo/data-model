@@ -50,6 +50,7 @@ object Highlight extends BSONHandlers {
   val USR: String = nameOf[Highlight](_.usrId)
   val ID: String = nameOf[Highlight](_.id)
   val POS: String = nameOf[Highlight](_.pos)
+  val PCOORD: String = nameOf[Highlight](_.pageCoord)
   val PATH: String = nameOf[HLPosElem](_.path)
   val TEXT: String = nameOf[HLPosElem](_.text)
   val INDX: String = nameOf[HLPos](_.initIndex)

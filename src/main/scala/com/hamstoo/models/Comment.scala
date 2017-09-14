@@ -46,6 +46,7 @@ object Comment extends BSONHandlers {
   val USR: String = nameOf[Comment](_.usrId)
   val ID: String = nameOf[Comment](_.id)
   val POS: String = nameOf[Comment](_.pos)
+  val PCOORD: String = nameOf[Highlight](_.pageCoord)
   val PATH: String = nameOf[CommentPos](_.path)
   val TEXT: String = nameOf[CommentPos](_.text)
   val OFFSETX: String = nameOf[CommentPos](_.offsetX)
@@ -55,8 +56,6 @@ object Comment extends BSONHandlers {
   val MEM: String = nameOf[Comment](_.memeId)
   val TSTMP: String = nameOf[Comment](_.timeFrom)
   val TILL: String = nameOf[Comment](_.timeThru)
-  val PCOORDX: String = nameOf[Comment](_.pageCoord) + ".x"
-  val PCOORDY: String = nameOf[Comment](_.pageCoord) + ".y"
   implicit val commentposBsonHandler: BSONDocumentHandler[CommentPos] = Macros.handler[CommentPos]
   implicit val commentHandler: BSONDocumentHandler[Comment] = Macros.handler[Comment]
 }

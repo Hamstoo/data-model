@@ -38,7 +38,7 @@ class MongoCommentDaoSpec extends Specification {
       Await.result(commentsDao.create(c2), timeout) mustEqual {}
       Await.result(commentsDao.create(c3), timeout) mustEqual {}
 
-      Await.result(commentsDao.receiveSortedByPageCoord(c1.url, c1.usrId), timeout).map(_.pageCoord) mustEqual Seq(c3.pageCoord, c2.pageCoord, c1.pageCoord)
+      Await.result(commentsDao.receiveSorted(c1.usrId), timeout).map(_.pageCoord) mustEqual Seq(c3.pageCoord, c2.pageCoord, c1.pageCoord)
     }
   }
 

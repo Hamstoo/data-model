@@ -8,7 +8,6 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
@@ -19,8 +18,8 @@ import scala.concurrent.Future
 class MongoHighlightDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.models.Highlight._
+  import com.hamstoo.models.Mark.TIMETHRU
   import com.hamstoo.utils._
-  import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
 
   private val futCol: Future[BSONCollection] = db map (_ collection "highlights")
 
@@ -48,10 +47,10 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
     seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Highlight, Seq]()
   } yield seq filter (_.url == url)
 
-  def receiveSortedByPageCoord(url: String, usr: UUID): Future[Seq[Highlight]] = for {
+  def receiveSorted(usr: UUID): Future[Seq[Highlight]] = for {
     c <- futCol
-    seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Highlight, Seq]()
-  } yield seq filter (_.url == url) sortWith Sortable.sortByPageCoord
+    seq <- (c find d :~ USR -> usr :~ curnt).coll[Highlight, Seq]()
+  } yield seq sortWith Sortable.sortByPageCoord
 
   def update(usr: UUID, id: String, pos: HLPos, prv: HLPreview): Future[Highlight] = for {
     c <- futCol
