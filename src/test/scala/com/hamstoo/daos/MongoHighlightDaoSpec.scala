@@ -3,7 +3,7 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.Highlight.{HLPos, HLPreview}
-import com.hamstoo.models.{Comment, Highlight, PageCoord}
+import com.hamstoo.models.{Highlight, PageCoord}
 import com.hamstoo.specUtils
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
@@ -31,7 +31,7 @@ class MongoHighlightDaoSpec extends Specification {
       Await.result(highlightDao.create(h2), timeout) mustEqual {}
       Await.result(highlightDao.create(h3), timeout) mustEqual {}
 
-      Await.result(highlightDao.receiveSortedByPageCoord(h1.url, h1.usrId), timeout).map(_.pageCoord) mustEqual Seq(h2.pageCoord, h1.pageCoord, h3.pageCoord)
+      Await.result(highlightDao.receiveSorted(h1.usrId), timeout).map(_.pageCoord) mustEqual Seq(h2.pageCoord, h1.pageCoord, h3.pageCoord)
     }
   }
 
