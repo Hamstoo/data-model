@@ -17,8 +17,8 @@ class MongoMarksDaoSpec extends Specification {
 
     "* findMissingReprs, both current and not" in new system {
       val m = Mark(UUID.randomUUID(), mark = MarkData("a subject", Some("http://hamstoo.com")))
-      Await.result(marksDao.create(m), timeout)
-      Await.result(marksDao.update(m.userId, m.id, m.mark.copy(subj = "a NEW subject")), timeout)
+      Await.result(marksDao.insert(m), timeout)
+      Await.result(marksDao.update1(m.userId, m.id, m.mark.copy(subj = "a NEW subject")), timeout)
       val missingReprMarks: Seq[Mark] = Await.result(marksDao.findMissingReprs(1000000), timeout)
       missingReprMarks.count(_.userId == m.userId) mustEqual 2
     }

@@ -110,6 +110,7 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
     }.getOrElse(Future.successful(None))
 
   /** Preserves original `dbCachedLookup` behavior: what does the future hold? */
+  @deprecated("Deprecated in favor of dbCachedLookupFuture.", "0.9.11")
   def dbCachedLookup(language: String, term: String): Option[(Vec, String)] =
     Await.result(dbCachedLookupFuture(language, term), 7 seconds)
 

@@ -1,6 +1,9 @@
 package com.hamstoo
 
+import java.util.UUID
+
 import com.hamstoo.daos._
+import com.hamstoo.models.{Mark, MarkData}
 import reactivemongo.api._
 
 import scala.annotation.tailrec
@@ -22,7 +25,7 @@ package object specUtils {
 
   val link = "mongodb://localhost:27017"
   val dbName = "hamstoo"
-  val timeout: Duration = 5000 milliseconds
+  val timeout: Duration = 5 seconds
 
   @tailrec
   def getDB: Future[DefaultDB] =
@@ -40,4 +43,10 @@ package object specUtils {
   lazy val commentDao = new MongoCommentDao(getDB)
   lazy val highlightDao = new MongoHighlightDao(getDB)
   lazy val vecDao = new MongoVectorsDao(getDB)
+
+  val userId: UUID = UUID.randomUUID
+  val mdA = MarkData("a subject", Some("http://a.com"), Some(3.0), Some(Set("atag")), Some("a comment"))
+  val mdB = MarkData("b subject", Some("http://b.com"), Some(4.0), Some(Set("btag")), Some("b comment"))
+  val mA = Mark(userId, mark = mdA, pubRepr = Some("aPubRepr"), privRepr = Some("aPrivRepr"))
+  val mB = Mark(userId, mark = mdB, pubRepr = Some("bPubRepr"), privRepr = Some("bPrivRepr"))
 }

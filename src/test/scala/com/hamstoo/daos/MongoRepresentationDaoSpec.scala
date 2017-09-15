@@ -145,7 +145,8 @@ class MongoRepresentationDaoSpec extends Specification {
                                     autoGenKws = None)
       println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
-      var reprCopy = Representation(link = url,
+      var reprCopy = Representation(id = reprOrig.id, // setting the ID to the existing ID is now required ...
+                                    link = url,       // ... it's no longer (as of 2017-9-12) inferred from the URL
                                     page = "sывфывdf",
                                     header = "something",
                                     doctext = "sasdasdf",
@@ -163,7 +164,7 @@ class MongoRepresentationDaoSpec extends Specification {
       Thread.sleep(2500)
       val id2: String = Await.result(reprsDao.save(reprCopy)/*.map(id => id)*/, timeout)
       println(s"Updated representation 2 id $id2")
-      id shouldEqual id2 // this is because `retrieveByUrl` will find `reprOrig`
+      id shouldEqual id2 // this is because they have the same ID
 
       //val repr1 = Await.result(reprsDao retrieveById id map (repr => repr), Duration(1000, MILLISECONDS))
       //val repr2 = Await.result(reprsDao retrieveById id2 map (repr => repr), Duration(1000, MILLISECONDS))

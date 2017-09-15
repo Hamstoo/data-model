@@ -8,6 +8,9 @@ import play.api.Logger
 import com.hamstoo.utils
 
 import scala.annotation.tailrec
+import scala.concurrent.{Await, Future}
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration._
 import scala.util.Random
 
 
@@ -65,7 +68,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
         // normalize w.r.t. cubrt(char count ratio) b/c `doctext` can be many, many times longer than the others
         if (str.isEmpty) Seq.empty[WordMass] else {
           val r = wgt * math.pow(maxLen.toDouble / str.length, 0.333333)
-          val (topWords, docLength) = text2TopWords(str)
+          val (topWords, docLength) = Await.result(text2TopWords(str), 60 seconds)
           nWords += docLength * wgt
           topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))
         }
@@ -328,24 +331,26 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
   }
 
   /** Count words in the document that have word vectors. */
-  @tailrec
-  final def countWords(words: Seq[String],
-                       wordCounts: Map[String, (Int, Vec)] = Map.empty[String, (Int, Vec)]): Map[String, (Int, Vec)] = {
+  def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] = {
 
-    if (words.isEmpty) wordCounts else {
+    // call dbCachedLookupFuture for each non-standardized/raw word in `words`
+    val withVecs = words.groupBy(identity).mapValues(_.length).map { case (w, n) =>
 
-      // TODO: 1. it would be nice if we could standardize the word first before calling `dbCachedLookup`
-      // TODO:    this would cut down on re-querying vectors for words that have already been found
-      // TODO: 2. use dbCachedLookupFuture here instead
-      val opWordVec: Option[(Vec, String)] = vectorizer.dbCachedLookup(vectorizer.ENGLISH, words.head)
-
-      val wcs: Option[Map[String, (Int, Vec)]] = opWordVec collect { case (wordVec, standardizedWord) =>
-        val updt = wordCounts.getOrElse(standardizedWord, (0, wordVec))
-        wCount += 1
-        wordCounts.updated(standardizedWord, (updt._1 + 1, wordVec))
+      // TODO: it would be nice if we could standardize the word first before calling `dbCachedLookup`
+      // TODO: this would cut down on re-querying vectors for words that have already been found
+      vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, w).map {
+        _.map { case (vec, standardizedWord) =>
+          wCount += 1 // not threadsafe, but just for testing, so who cares
+          (standardizedWord, (n, vec))
+        }
       }
-      countWords(words.drop(1), wcs getOrElse wordCounts)
     }
+
+    // Iterable-Future swap
+    val fseq: Future[Iterable[Option[(String, (Int, Vec))]]] = Future.sequence(withVecs)
+
+    // group by standardized words (just in case any non-standardized words map to the same standardized word)
+    fseq.map(_.flatten.groupBy(_._1).mapValues(it => (it.map(_._2._1).sum, it.head._2._2)))
   }
 
   /** Converts from number of unique words in a document to the number that are desired by `text2TopWords`. */
@@ -373,45 +378,46 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     * @param numTopWords  Function that converts from number of unique words to a fraction of which to return.
     * @return  Returns highest scoring `desiredFracWords` fraction of unique words as ordered by BM25 score.
     */
-  def text2TopWords(txt: String, numTopWords: Int => Int = defaultNumTopWords): (Seq[WordMass], Long) = {
+  def text2TopWords(txt: String, numTopWords: Int => Int = defaultNumTopWords): Future[(Seq[WordMass], Long)] = {
 
     // this is the only place that `countWords` (which is what calls `vectorizer.dbCachedLookup`) should be called
-    val counts = countWords(utils.tokenize(txt))
+    countWords(utils.tokenize(txt)).map { counts =>
 
-    // this is a "true" docLength w/out any weights applied to normalize as is performed in weightedTopWords
-    val docLength: Long = counts.foldLeft(0.toLong) { case (agg, (_, (n, _))) => agg + n }
+      // this is a "true" docLength w/out any weights applied to normalize as is performed in weightedTopWords
+      val docLength: Long = counts.foldLeft(0.toLong) { case (agg, (_, (n, _))) => agg + n }
 
-    // debugging
-    /*if (true) {
-      import java.io.{BufferedWriter, FileOutputStream, OutputStreamWriter}
-      utils.cleanly(new BufferedWriter(new OutputStreamWriter(new FileOutputStream("wordCounts.csv"))))(_.close) { fp =>
-        wordCounts.toSeq.sortBy(wn => -wn._2._1 * idfModel.transform(wn._1))
-          .foreach { case (w, (n, v)) =>
-            fp.write(s"$w,$n,${idfModel.transform(w)}\n")
-            println(s"$w: $n * ${idfModel.transform(w)} = ${n * idfModel.transform(w)} ")
-          }
-      }
-    }*/
+      // debugging
+      /*if (true) {
+        import java.io.{BufferedWriter, FileOutputStream, OutputStreamWriter}
+        utils.cleanly(new BufferedWriter(new OutputStreamWriter(new FileOutputStream("wordCounts.csv"))))(_.close) { fp =>
+          wordCounts.toSeq.sortBy(wn => -wn._2._1 * idfModel.transform(wn._1))
+            .foreach { case (w, (n, v)) =>
+              fp.write(s"$w,$n,${idfModel.transform(w)}\n")
+              println(s"$w: $n * ${idfModel.transform(w)} = ${n * idfModel.transform(w)} ")
+            }
+        }
+      }*/
 
-    // scale the TFs by their IDFs (i.e. "mass") and the word vectors by the resulting product
-    val withIdfs = counts.toSeq.map { case (w, (n, v)) =>
-      val tf = bm25Tf(n, docLength) // "true" docLength
+      // scale the TFs by their IDFs (i.e. "mass") and the word vectors by the resulting product
+      val withIdfs = counts.toSeq.map { case (w, (n, v)) =>
+        val tf = bm25Tf(n, docLength) // "true" docLength
       val mass = tf * idfModel.transform(w)
-      WordMass(w, n, tf, mass, v * mass)
-    }
-
-    val nDesired = numTopWords(counts.size)
-    val topWords = withIdfs.sortBy(-_.mass).take(nDesired)
-
-    // debugging
-    /*if (true) {
-      topWords.foreach { wm =>
-        val tf = bm25Tf(counts(wm.word)._1, docLength)
-        println(f"${wm.word}: ($tf%.2f * ${idfModel.transform(wm.word)}%.4f) = ${tf * idfModel.transform(wm.word)}%.4f ")
+        WordMass(w, n, tf, mass, v * mass)
       }
-    }*/
 
-    (topWords, docLength)
+      val nDesired = numTopWords(counts.size)
+      val topWords = withIdfs.sortBy(-_.mass).take(nDesired)
+
+      // debugging
+      /*if (true) {
+        topWords.foreach { wm =>
+          val tf = bm25Tf(counts(wm.word)._1, docLength)
+          println(f"${wm.word}: ($tf%.2f * ${idfModel.transform(wm.word)}%.4f) = ${tf * idfModel.transform(wm.word)}%.4f ")
+        }
+      }*/
+
+      (topWords, docLength)
+    }
   }
 
   /**
