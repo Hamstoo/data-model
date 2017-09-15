@@ -11,6 +11,9 @@ import com.hamstoo.services.VectorEmbeddingService.WordMass
 import com.hamstoo.specUtils
 import play.api.libs.ws.ahc.AhcWSClient
 
+import scala.concurrent.Await
+import scala.concurrent.duration._
+
 
 /**
   * VectorEmbeddingsService tests.
@@ -114,21 +117,21 @@ class VectorEmbeddingsServiceSpec extends Specification {
 
     "* select top words" in new System {
       val txt = "otter otter european_otter otters otterlike toyota ford car"
-      val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt)._1
+      val topWords: Seq[WordMass] = Await.result(vecSvc.text2TopWords(txt), 60 seconds)._1
       // 2 words are duplicates and out of the remaining 7 only 5 are kept per `text2TopWords.desiredFracWords` function
       topWords.size mustEqual 5
     }
 
     "* k-means vectorize" in new System {
       val txt = "otter european_otter otter otters otterlike toyota ford car"
-      val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt)._1
+      val topWords: Seq[WordMass] = Await.result(vecSvc.text2TopWords(txt), 60 seconds)._1
       val (vecs, _) = vecSvc.text2KMeansVecs(topWords, 2)
 
       Seq(("otter" ,  0.956, -0.590),
           ("car"   , -0.374,  0.423), // note that "car" is filtered out by `text2TopWords`
           ("ford"  , -0.626,  0.630),
           ("toyota", -0.482,  0.846)).foreach { case (w, s0, s1) =>
-        val wordVec = vectorizer.dbCachedLookup(vectorizer.ENGLISH, w).get._1
+        val wordVec = Await.result(vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, w), 7 seconds).get._1
         vecs(0).cosine(wordVec) must beCloseTo(s0, 1e-3)
         vecs(1).cosine(wordVec) must beCloseTo(s1, 1e-3)
       }

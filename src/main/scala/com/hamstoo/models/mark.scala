@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
-import com.hamstoo.utils.ExtendedString
+import com.hamstoo.utils.{ExtendedString, INF_TIME}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -13,6 +13,7 @@ import org.joda.time.DateTime
 import org.jsoup.Jsoup
 import org.jsoup.safety.Whitelist
 import play.api.libs.json.{Json, OFormat}
+import play.api.Logger
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
@@ -38,19 +39,40 @@ case class MarkData(
                      comment: Option[String] = None,
                      var commentEncoded: Option[String] = None) {
 
+  import MarkData._
+
   commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
     /* example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
     // https://github.com/atlassian/commonmark-java */
-    val document: Node = MarkData.parser.parse(c)
-    val html = MarkData.renderer.render(document)
+    val document: Node = parser.parse(c)
+    val html = renderer.render(document)
 
     /* example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
     // convert that &ldquo; back to a < character */
     val html2 = StringEscapeUtils.unescapeHtml4(html)
 
     // example: <p><img></p>
-    Jsoup.clean(html2, MarkData.htmlTagsWhitelist)
+    Jsoup.clean(html2, htmlTagsWhitelist)
+  }
+
+  /**
+    * Merge two `MarkData`s with as little data loss as possible.  Not using `copy` here to ensure that if
+    * additional fields are added to the constructor they aren't forgotten here.
+    */
+  def merge(oth: MarkData): MarkData = {
+
+    if (subj != oth.subj)
+      Logger.warn(s"Merging two marks with different subjects '${subj}' and '${oth.subj}'; ignoring latter")
+    if (url.isDefined && oth.url.isDefined && url.get != oth.url.get)
+      Logger.warn(s"Merging two marks with different URLs ${url.get} and ${oth.url.get}; ignoring latter")
+
+    MarkData(if (subj.length >= oth.subj.length) subj else oth.subj,
+             url.orElse(oth.url),
+             oth.rating.orElse(rating), // use new rating in case user's intent was to rate smth differently
+             Some(tags.getOrElse(Nil.toSet) union oth.tags.getOrElse(Nil.toSet)),
+             comment.map(_ + oth.comment.map(commentMergeSeparator + _).getOrElse("")).orElse(oth.comment)
+    )
   }
 }
 
@@ -66,6 +88,8 @@ object MarkData {
     .addEnforcedAttribute("a", "rel", "nofollow noopener noreferrer") /*
     https://medium.com/@jitbit/target-blank-the-most-underestimated-vulnerability-ever-96e328301f4c : */
     .addEnforcedAttribute("a", "target", "_blank")
+
+  val commentMergeSeparator: String = "\n\n---\n\n"
 }
 
 case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
@@ -88,13 +112,14 @@ case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
   * @param privRepr - optional personal user content representation id for this mark
   * @param timeFrom - timestamp of last edit
   * @param timeThru - the moment of time until which this version is latest
+  * @param mergeId  - if this mark was merged into another, this will be the ID of that other
   *
   * @param score    - `score` is not part of the documents in the database, but it is returned from
   *                 `MongoMarksDao.search` so it is easier to have it included here.
   */
 case class Mark(
                  userId: UUID,
-                 id: String = Random.alphanumeric take Mark.ID_LENGTH mkString,
+                 id: String = Mark.generateMarkId,
                  mark: MarkData,
                  aux: MarkAux = MarkAux(None, None),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
@@ -102,12 +127,50 @@ case class Mark(
                  pubRepr: Option[String] = None,
                  privRepr: Option[String] = None,
                  timeFrom: Long = DateTime.now.getMillis,
-                 timeThru: Long = Long.MaxValue,
+                 timeThru: Long = INF_TIME,
+                 mergeId: Option[String] = None,
                  score: Option[Double] = None) {
   urlPrfx = mark.url map (_.prefx)
 
   /** Use the private repr when available, o/w use the public one. */
   def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
+
+  /** Return true if the mark is representable but not yet represented. */
+  def representablePublic: Boolean = pubRepr.isEmpty && mark.url.isDefined
+  def representablePrivate: Boolean = page.isDefined // TODO: should we check for `privRepr.isEmpty` also here?
+
+  /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
+  def isCurrent: Boolean = timeThru == INF_TIME
+
+  /**
+    * Merge two marks.  This method is called from the `repr-engine` when a new mark's, `oth`, representations are
+    * similar enough (according to `Representation.isDuplicate`) to an existing mark's, `this`.  So `oth` probably
+    * won't have it's reprs set--unless one of them was set and the other not.
+    */
+  def merge(oth: Mark): Mark = {
+    assert(this.userId == oth.userId)
+
+    // warning messages
+    if (pubRepr.isDefined && oth.pubRepr.isDefined && pubRepr.get != oth.pubRepr.get)
+      Logger.warn(s"Merging two marks, $id and ${oth.id}, with different public representations ${pubRepr.get} and ${oth.pubRepr.get}; ignoring latter")
+    if (privRepr.isDefined && oth.privRepr.isDefined && privRepr.get != oth.privRepr.get)
+      Logger.warn(s"Merging two marks, $id and ${oth.id}, with different private representations ${privRepr.get} and ${oth.privRepr.get}; ignoring latter")
+
+    // TODO: how do we ensure that additional fields added to the constructor are accounted for here?
+    copy(mark = mark.merge(oth.mark),
+         aux  = aux .merge(oth.aux ),
+
+         // `page`s should all have been processed already if any private repr is defined, so only merge them if
+         // that is not the case; in which case it's very unlikely that both will be defined, but use newer one if so
+         // just in case the user wasn't logged in originally or something (but then `Representation.isDuplicate`
+         // would have returned false, so we wouldn't even be here in this awkward position)
+         page = if (Seq(privRepr, oth.privRepr).exists(_.isDefined)) None else oth.page.orElse(page),
+
+         // it's remotely possible that these are different, which we warn about above
+         pubRepr  = pubRepr .orElse(oth.pubRepr ),
+         privRepr = privRepr.orElse(oth.privRepr)
+    )
+  }
 
   /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
   override def equals(other: Any): Boolean = other match {
@@ -132,9 +195,18 @@ object Mark extends BSONHandlers {
 
   case class RangeMils(begin: Long, end: Long)
 
-  case class MarkAux(tabVisible: Option[Seq[RangeMils]], tabBground: Option[Seq[RangeMils]])
+  /** Auxiliary stats pertaining to a `Mark`. */
+  case class MarkAux(tabVisible: Option[Seq[RangeMils]], tabBground: Option[Seq[RangeMils]]) {
+
+    /** Not using `copy` in this merge to ensure if new fields are added, they aren't forgotten here. */
+    def merge(oth: MarkAux) =
+      MarkAux(Some(tabVisible.getOrElse(Nil) ++ oth.tabVisible.getOrElse(Nil)),
+              Some(tabBground.getOrElse(Nil) ++ oth.tabBground.getOrElse(Nil)))
+  }
 
   val ID_LENGTH: Int = 16
+  def generateMarkId: String = Random.alphanumeric take ID_LENGTH mkString
+
   val USER: String = nameOf[Mark](_.userId)
   val ID: String = nameOf[Mark](_.id)
   val MARK: String = nameOf[Mark](_.mark)
@@ -145,6 +217,7 @@ object Mark extends BSONHandlers {
   val PRVREPR: String = nameOf[Mark](_.privRepr)
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
+  val MERGEID: String = nameOf[Mark](_.mergeId)
   // `text` index search score <projectedFieldName>, not a field name of the collection:
   val SCORE: String = nameOf[Mark](_.score)
   val SUBJ: String = nameOf[MarkData](_.subj)
