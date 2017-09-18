@@ -3,12 +3,10 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
-import com.hamstoo.models.{BSONHandlers, Mark, MarkData, Page}
+import com.hamstoo.models.{Mark, MarkData, Page}
 import org.joda.time.DateTime
-import reactivemongo.api.BSONSerializationPack.Document
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
-import reactivemongo.api.commands.MultiBulkWriteResult
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
@@ -282,16 +280,4 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     } yield () else Future successful {} /* Removes page source from the mark in case it's the same as the one
     processed. */
   } yield ()
-
-
-  def insertBookmarks(marksStream: Stream[Future[Option[Mark]]]): Future[MultiBulkWriteResult] = {
-    lazy val streamOfDocs: Stream[BSONDocument] = marksStream.map(futOptMark =>
-      Await.result(futOptMark, Duration.Inf).fold(BSONDocument.empty)(Mark.entryBsonHandler.write(_))
-    ).withFilter { opt => opt.isEmpty == false }.map(x => x)
-    futCol.map(marksCollection => marksCollection.bulkInsert(
-      streamOfDocs,
-      false)).flatten
-  }
-
-
 }
