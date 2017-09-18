@@ -18,9 +18,9 @@ a remote repository, that is specified in `build.sbt`.
 Also, sbt can be lazy in reimporting artifacts to projects when artifacts in repos are updated without a change to 
 version string, so you might not see the changes to the library classes and methods from dependent code when using 
 -SNAPSHOT builds. This can be fixed by adding `.changing()` call to dependency definition like so: ```
-libraryDependencies += "org.specs2" %% "specs2" % "1.7-SNAPSHOT" % "test" changing()```. With this command this 
-dependency will always be reimported on project refresh with sbt.
- 
+"com.hamstoo" %% "data-model" % "issue-91-0.9.11-SNAPSHOT" changing()```. With this command this 
+dependency will always be reimported on project refresh with `sbt update` command.
+
 ### Data migration
 Any change to data classes that brings incompatibility of existing MongoDB documents with their data models warrants 
 writing some data migration code. Usually this takes the form of DB calls in `Mongo{Datatype}Dao` classes that are 
