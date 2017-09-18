@@ -2,14 +2,24 @@
 ### Versioning
 For now for master branch it's 0.{x}.{y}, where
 * x - major versions correlated with release deployments to production
-* y - minor increments differentiating code changes that can influence depending projects
+* y - minor increments differentiating code changes that can influence depending projects, iterating from 0 to any 
+multi-digit integer numbers with step of 1.
 
-In branches other than master you can choose any scheme to your liking except the one described above. SBT will not 
-overwrite existing artifacts with the same version string when executing `publishLocal` unless the version string ends 
-with `-SNAPSHOT`.   
-All commits to GitHub initiate CircleCI builds that culminate (if tests successful) in an artifact being published to
- a remote repository, specified in `build.sbt`. Thus care should be taken for commit products to not overwrite 
- each other.
+In branches other than master you can choose any scheme to your liking. Version string is stored in `VERSION` file in
+ project root folder. 
+SBT will not overwrite existing artifacts with the same version string when executing `publish` or `publishLocal` unless
+ the version string ends with `-SNAPSHOT`, so there is an automation script in `build.sbt` that names artifacts 
+ according to current git branch, adding -SNAPSHOT suffix to non-master branch builds. If you want to find out how your 
+ artifact from non-master branch will be named so that you can add the particular version as a dependency in other 
+ projects, then the scheme is as follows: $branch-$version-SNAPSHOT. This string will be present in command line output 
+ of the publish command and can be easily looked up there.
+All commits to GitHub repo initiate CircleCI builds that culminate (if tests succeed) in an artifact being published to 
+a remote repository, that is specified in `build.sbt`.
+Also, sbt can be lazy in reimporting artifacts to projects when artifacts in repos are updated without a change to 
+version string, so you might not see the changes to the library classes and methods from dependent code when using 
+-SNAPSHOT builds. This can be fixed by adding `.changing()` call to dependency definition like so: ```
+libraryDependencies += "org.specs2" %% "specs2" % "1.7-SNAPSHOT" % "test" changing()```. With this command this 
+dependency will always be reimported on project refresh with sbt.
  
 ### Data migration
 Any change to data classes that brings incompatibility of existing MongoDB documents with their data models warrants 
@@ -41,6 +51,5 @@ In order to connect to local MongoDB, please, download any client (for example
 [Compass](example https://www.mongodb.com/products/compass)) and set `mongodb://localhost:27017/hamstoo` as URL. There 
 is no need to change other settings as for now.
 
-In order to connect to Staging MongoDB, please, create a new security group and specify your IP in the TCP rule for 
-27017 port. Apply new security settings to the ec2 instance and its host name in connection URL. For example, 
-`mongodb://ec2-34-204-10-46.compute-1.amazonaws.com/hamstoo`.
+In order to connect to Staging MongoDB Atlas, please see instructions 
+[here](https://cloud.mongodb.com/v2/59a86128d383ad301cf45981#clusters/connect?clusterId=mongo-cluster-useast1).
