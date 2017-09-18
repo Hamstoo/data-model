@@ -1,14 +1,17 @@
+import scala.io.Source
+import scala.sys.process.Process
+
 name := "data-model"
 organization := "com.hamstoo"
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
 version := {
-  val opv = Option(System.getProperty("version"))
-  if (opv.exists(_ != "master")) opv.get + "-SNAPSHOT" else {
-    val fp = scala.io.Source.fromFile("VERSION")
-    val t = scala.util.Try(fp.getLines.find(_ => true))
-    fp.close
-    t.get.map(_.trim)
-  }.getOrElse("latest")
+  val branch = Process("git rev-parse --abbrev-ref HEAD").lineStream.head
+  val source = Source fromFile "VERSION"
+  val version = source.getLines find (_ => true) map { l =>
+    if (branch != "master") s"$branch-${l.trim}-SNAPSHOT" else l.trim
+  } getOrElse "latest-SNAPSHOT"
+  source.close
+  version
 }
 
 scalaVersion := "2.12.3"
