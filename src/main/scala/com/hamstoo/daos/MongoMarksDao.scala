@@ -13,7 +13,8 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -48,6 +49,17 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     _ <- wr failIfError;
       _ = logger.debug(s"Inserted mark ${mark.id}")
   } yield mark
+
+  /**
+    * Inserts existing marks from a stream.  If they are duplicates of pre-existing marks, repr-engine will
+    * merge them.
+    */
+  def insertStream(marks: Stream[Mark]): Future[Int] = for {
+    c <- futColl
+    now = DateTime.now.getMillis
+    ms = marks map(_.copy(timeFrom = now)) map Mark.entryBsonHandler.write // map each mark into a `BSONDocument`
+    wr <- c bulkInsert(ms, ordered = false)
+  } yield wr.totalN
 
   /** Retrieves a mark by user and ID, None if not found.  Retrieves current mark unless timeThru is specified. */
   def retrieve(user: UUID, id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = for {
