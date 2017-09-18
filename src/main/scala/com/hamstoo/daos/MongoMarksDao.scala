@@ -16,7 +16,6 @@ import reactivemongo.bson._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
-import scala.util.{Failure, Success}
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -62,6 +61,29 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       } yield mark /* Saves provided mark as is if it's URL is unique for the user. */
     }
   } yield newMk
+
+  /** Adds or updates existing marks from a stream. */
+  def createFromStream(marks: Stream[Mark]): Future[Int] = for {
+    c <- futCol
+    now = DateTime.now.getMillis
+    ms = marks map { m => /* lazily map incoming stream */
+      (m.mark.url fold m) { url => /* where url is defined check for existing mark */
+        Await.result(/* block for current stream element processing to complete. this is necessary to get
+        `Stream[Mark]` in the return of the stream mapping instead of `Stream[Future[Mark]]` that can't be flattened
+        by means of standard library without traversing the whole stream first */
+          for {
+            mk <- receive(url, m.userId) flatMap {
+              case Some(ex) => /* if mark exists already, then update existing entry and return it's copy */ for {
+                _ <- c.update(d :~ USER -> m.userId :~ ID -> m.id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now))
+              } yield ex.copy(mark = ex.mark.copy(subj = m.mark.subj, tags = m.mark.tags), timeFrom = now)
+              case _ => /* keep original otherwise */ Future successful m
+            }
+          } yield mk,
+          Duration.Inf)
+      }
+    } map Mark.entryBsonHandler.write /* map each mark into `BSONDocument` */
+    wr <- c bulkInsert(ms, ordered = false)
+  } yield wr.totalN
 
   /** Retrieves a current mark by user and id, None if not found. */
   def receive(user: UUID, id: String): Future[Option[Mark]] = for {
