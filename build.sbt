@@ -4,6 +4,10 @@ import scala.sys.process.Process
 name := "data-model"
 organization := "com.hamstoo"
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
+scalaVersion := "2.12.3"
+crossScalaVersions := Seq("2.11.11", "2.11.7", "2.12.3")
+scalacOptions in ThisBuild ++= Seq("-feature", "-language:postfixOps", "-language:implicitConversions", "-deprecation")
+
 version := {
   val branch = Process("git rev-parse --abbrev-ref HEAD").lineStream.head
   val source = Source fromFile "VERSION"
@@ -14,15 +18,10 @@ version := {
   version
 }
 
-scalaVersion := "2.12.3"
-crossScalaVersions := Seq("2.11.11", "2.11.7", "2.12.3")
-scalacOptions in ThisBuild ++= Seq("-feature", "-language:postfixOps", "-language:implicitConversions", "-deprecation")
-
 lazy val root = project in file(".")
 
 publishTo :=
   Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
-
 credentials += Credentials(
   "Artifactory Realm",
   "ec2-54-236-36-52.compute-1.amazonaws.com",
