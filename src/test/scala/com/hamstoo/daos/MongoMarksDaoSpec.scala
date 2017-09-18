@@ -16,7 +16,8 @@ class MongoMarksDaoSpec extends Specification {
   "MongoMarksDao" should {
 
     "* findMissingReprs, both current and not" in new system {
-      val m = Mark(UUID.randomUUID(), mark = MarkData("a subject", Some("http://hamstoo.com")))
+      val m = Mark(UUID.randomUUID(), mark = MarkData("North Korea",
+        Some("https://github.com/ziplokk1/incapsula-cracker/blob/master/README.md")))
       Await.result(marksDao.insert(m), timeout)
       Await.result(marksDao.update1(m.userId, m.id, m.mark.copy(subj = "a NEW subject")), timeout)
       val missingReprMarks: Seq[Mark] = Await.result(marksDao.findMissingReprs(1000000), timeout)
