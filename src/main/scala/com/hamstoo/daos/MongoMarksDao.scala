@@ -64,22 +64,28 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def createFromStream(marks: Stream[Mark]): Future[Int] = for {
     c <- futCol
     now = DateTime.now.getMillis
-    ms = marks map { m => /* lazily map incoming stream */
-      (m.mark.url fold m) { url => /* where url is defined check for existing mark */
-        Await.result(/* block for current stream element processing to complete. this is necessary to get
+    ms = marks map { m =>
+      (m.mark.url fold m) { url => /*where url is defined check for existing mark*/
+        Await.result(/*block for current stream element processing to complete. this is necessary to get
         `Stream[Mark]` in the return of the stream mapping instead of `Stream[Future[Mark]]` that can't be flattened
-        by means of standard library without traversing the whole stream first */
+        by means of standard library without traversing the whole stream first*/
           for {
             mk <- receive(url, m.userId) flatMap {
-              case Some(ex) => /* if mark exists already, then update existing entry and return it's copy */ for {
+              case Some(ex) => for {
                 _ <- c.update(d :~ USER -> m.userId :~ ID -> m.id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now))
-              } yield ex.copy(mark = ex.mark.copy(subj = m.mark.subj, tags = m.mark.tags), timeFrom = now)
-              case _ => /* keep original otherwise */ Future successful m
+              } yield ex.copy(
+                mark = ex.mark.copy(
+                  subj = m.mark.subj,
+                  tags = m.mark.tags,
+                  rating = m.mark.rating orElse ex.mark.rating,
+                  comment = m.mark.comment orElse ex.mark.comment),
+                timeFrom = now) /*if mark exists already, then update existing entry and mark's updated copy*/ ;
+              case _ => Future successful m /*keep original otherwise*/ ;
             }
           } yield mk,
           Duration.Inf)
       }
-    } map Mark.entryBsonHandler.write /* map each mark into `BSONDocument` */
+    } map Mark.entryBsonHandler.write /*map each mark into a `BSONDocument`*/
     wr <- c bulkInsert(ms, ordered = false)
   } yield wr.totalN
 
