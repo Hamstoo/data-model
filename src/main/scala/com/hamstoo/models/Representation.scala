@@ -63,7 +63,8 @@ case class Representation(
     */
   def isDuplicate(oth: Representation): Boolean = {
     // should we test Longest Common Substring here also?
-    doctext == oth.doctext || similarity(oth).exists(_ > Representation.DUPLICATE_CORR_THRESHOLD) ||
+    (!doctext.isEmpty && doctext == oth.doctext) ||
+      similarity(oth).exists(_ > Representation.DUPLICATE_CORR_THRESHOLD) ||
       (link == oth.link && similarity(oth).exists(_ > Representation.DUPLICATE_CORR_THRESHOLD * 0.9))
   }
 
