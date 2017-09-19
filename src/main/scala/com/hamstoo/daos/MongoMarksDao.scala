@@ -13,8 +13,7 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -138,7 +137,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futColl
     sel = d :~ USER -> user :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
-    oldMk = wr.result[Mark].get
+    oldMk <- wr.result[Mark].map(Future.successful).getOrElse(
+      Future.failed(new Exception(s"MongoMarksDao.update1: unable to findAndUpdate mark ID $id")))
     // if the URL has changed then discard the old public repr (only the public one though as the private one is
     // based on private user content that was only available from the browser extension at the time the user first
     // created it)
