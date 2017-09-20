@@ -39,14 +39,15 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
    weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
   private val indxs: Map[String, Index] =
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
-      Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
-      Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
-      Index(LPREF -> Ascending :: Nil) % s"bin-$LPREF-1" ::
-      Index(
-        key = DTXT -> Text :: OTXT -> Text :: KWORDS -> Text :: LNK -> Text :: Nil,
-        options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
+    Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
+    Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
+    Index(LPREF -> Ascending :: Nil) % s"bin-$LPREF-1" ::
+    Index(
+      key = DTXT -> Text :: OTXT -> Text :: KWORDS -> Text :: LNK -> Text :: Nil,
+      options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
         s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
-      Nil toMap;
+    Nil toMap;
+
   futColl map (_.indexesManager ensure indxs)
 
   /**
