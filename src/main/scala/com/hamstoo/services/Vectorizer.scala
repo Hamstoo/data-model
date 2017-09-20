@@ -53,16 +53,16 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
     * the system standartizes uri to bring the uri to appropriate view of REST endpoint, f.e.like in method
     * standardizePost, i.e. s"{vectorsLink}/{endpoint}/{uuid}"
     */
-  @deprecated("Deprecated in favor of DB mirrored lookup.", "0.9.0")
+  /*@deprecated("Deprecated in favor of DB mirrored lookup.", "0.9.0")
   def standardizeUri(language: String, term: String): Future[Option[String]] = {
     val (link, data) = standardizePost(language, term, "standardized_uri")
     httpClient.url(link).post(data) map handleResponse(_.json.\("uri").as[String])
-  }
+  }*/
 
   /**
     * Standardize URI and lookup corresponding vector all in one API call.
     */
-  @deprecated("Deprecated in favor of DB mirrored lookup.", "0.9.0")
+  /*@deprecated("Deprecated in favor of DB mirrored lookup.", "0.9.0")
   def sAndL(language: String, term: String): Option[Vec] = {
     val (link, data) = standardizePost(language, term, "standardize_and_lookup")
 
@@ -73,7 +73,7 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
     }
 
     sAndLCache.getOrElseUpdate((language, term), fetch(false))
-  }
+  }*/
 
   /**
     * Vector lookup with caching in database. This method looks up the term first, then the URI, and

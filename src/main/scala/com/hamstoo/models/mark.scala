@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
-import com.hamstoo.utils.{ExtendedString, INF_TIME}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -17,7 +17,7 @@ import play.api.Logger
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
-import scala.util.Random
+
 
 /**
   * User content data model. This case class is also used for front-end JSON formatting.
@@ -63,7 +63,7 @@ case class MarkData(
   def merge(oth: MarkData): MarkData = {
 
     if (subj != oth.subj)
-      Logger.warn(s"Merging two marks with different subjects '${subj}' and '${oth.subj}'; ignoring latter")
+      Logger.warn(s"Merging two marks with different subjects '$subj' and '${oth.subj}'; ignoring latter")
     if (url.isDefined && oth.url.isDefined && url.get != oth.url.get)
       Logger.warn(s"Merging two marks with different URLs ${url.get} and ${oth.url.get}; ignoring latter")
 
@@ -119,7 +119,7 @@ case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
   */
 case class Mark(
                  userId: UUID,
-                 id: String = Mark.generateMarkId,
+                 id: String = generateDbId(Mark.ID_LENGTH),
                  mark: MarkData,
                  aux: MarkAux = MarkAux(None, None),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
@@ -205,7 +205,6 @@ object Mark extends BSONHandlers {
   }
 
   val ID_LENGTH: Int = 16
-  def generateMarkId: String = Random.alphanumeric take ID_LENGTH mkString
 
   val USER: String = nameOf[Mark](_.userId)
   val ID: String = nameOf[Mark](_.id)

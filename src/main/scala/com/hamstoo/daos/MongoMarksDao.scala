@@ -28,16 +28,17 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
     Index(USER -> Ascending :: Nil) % s"bin-$USER-1" ::
-      Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
-      /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
-      Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
-      Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
-      Index(UPRFX -> Ascending :: PUBREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PUBREPR-1" ::
-      Index(UPRFX -> Ascending :: PRVREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PRVREPR-1" ::
-      Index(s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMNT" -> Text :: Nil) %
-        s"txt-$MARK.$SUBJ-$MARK.$TAGS-$MARK.$COMNT" ::
-      Index(s"$MARK.$TAGS" -> Ascending :: Nil) % s"bin-$MARK.$TAGS-1" ::
-      Nil toMap;
+    Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
+    /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
+    Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
+    Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
+    Index(UPRFX -> Ascending :: PUBREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PUBREPR-1" ::
+    Index(UPRFX -> Ascending :: PRVREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PRVREPR-1" ::
+    Index(s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMNT" -> Text :: Nil) %
+      s"txt-$MARK.$SUBJ-$MARK.$TAGS-$MARK.$COMNT" ::
+    Index(s"$MARK.$TAGS" -> Ascending :: Nil) % s"bin-$MARK.$TAGS-1" ::
+    Nil toMap;
+
   futColl map (_.indexesManager ensure indxs)
 
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */

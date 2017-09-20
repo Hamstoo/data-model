@@ -1,16 +1,14 @@
 package com.hamstoo.models
 
-import java.util.UUID
-
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Representation.VecEnum
-import com.hamstoo.utils.ExtendedString
+import com.hamstoo.utils.{ExtendedString, generateDbId}
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
-import scala.util.Random
+
 
 /**
   * This Representation class is used to store scraped and parsed textual
@@ -37,7 +35,7 @@ import scala.util.Random
   * @param versions   `data-model` project version and others, if provided.
   */
 case class Representation(
-                           id: String = Random.alphanumeric take 12 mkString,
+                           id: String = generateDbId(Representation.ID_LENGTH),
                            link: Option[String],
                            var lprefx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
                            page: String,
@@ -190,6 +188,8 @@ object Representation extends BSONHandlers {
         KM3        // third
       = Value
   }
+
+  val ID_LENGTH: Int = 12
 
   val ID: String = nameOf[Representation](_.id)
   val LNK: String = nameOf[Representation](_.link)
