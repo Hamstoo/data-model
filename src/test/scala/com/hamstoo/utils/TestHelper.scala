@@ -1,10 +1,8 @@
 package com.hamstoo.utils
 
 import com.github.simplyscala.MongoEmbedDatabase
-import com.hamstoo.specUtils._
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time.{Second, Seconds, Span}
-import org.scalatest.{FlatSpec, Matchers}
 import reactivemongo.api.{DefaultDB, MongoConnection, MongoDriver}
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -13,10 +11,17 @@ import scala.util.{Failure, Success}
 
 // https://github.com/etorreborre/specs2/blob/SPECS2-3.8.9/examples/src/test/scala/examples/UnitSpec.scala
 trait TestHelper
-  extends FlatSpec
-    with Matchers
+  extends FlatSpecWithMatchers
     with ScalaFutures
     with MongoEmbedDatabase {
+
+  lazy val vectorsLink = "http://localhost:5000"
+
+  lazy val idfsResource = "idfs/text8.json.zip"
+
+  lazy val link = "mongodb://localhost:27017"
+
+  lazy val dbName = "hamstoo"
 
   implicit val pc: PatienceConfig = PatienceConfig(Span(20, Seconds), Span(1, Second))
 
