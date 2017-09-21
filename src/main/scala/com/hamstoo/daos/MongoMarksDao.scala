@@ -87,7 +87,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = for {
     c <- futColl
     seq <- (c find d :~ USER -> user :~ UPRFX -> url.prefx :~ curnt).coll[Mark, Seq]()
-  } yield seq collectFirst { case e if e.mark.url contains url => e }
+  } yield seq collectFirst { case m if m.mark.url contains url => m }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
   def retrieveTagged(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {

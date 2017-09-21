@@ -30,9 +30,9 @@ class MongoCommentDaoSpec extends Specification {
       val usrId  = UUID.randomUUID()
       val url ="http://hamstsdsdoo.comsssd"+Random.nextFloat()
 
-      val c1 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = PageCoord(0.5, 0.5))
-      val c2 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = PageCoord(0.6, 0.5))
-      val c3 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = PageCoord(0.4, 0.8))
+      val c1 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = Some(PageCoord(0.5, 0.5)))
+      val c2 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = Some(PageCoord(0.6, 0.5)))
+      val c3 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = Some(PageCoord(0.4, 0.8)))
 
       Await.result(commentsDao.create(c1), timeout) mustEqual {}
       Await.result(commentsDao.create(c2), timeout) mustEqual {}

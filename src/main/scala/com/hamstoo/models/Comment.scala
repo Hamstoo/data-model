@@ -29,10 +29,10 @@ case class Comment(
                     url: String,
                     var uPref: Option[mutable.WrappedArray[Byte]] = None,
                     pos: CommentPos,
-                    pageCoord: PageCoord = PageCoord.ZERO_COORD,
+                    pageCoord: Option[PageCoord] = None,
                     memeId: Option[String] = None,
                     timeFrom: Long = DateTime.now.getMillis,
-                    timeThru: Long = Long.MaxValue) extends Sortable {
+                    timeThru: Long = Long.MaxValue) {
   uPref = Some(url.prefx)
 }
 
