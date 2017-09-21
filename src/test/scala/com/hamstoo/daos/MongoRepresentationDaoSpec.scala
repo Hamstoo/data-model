@@ -1,19 +1,18 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.{Mark, MarkData, Representation}
-import com.hamstoo.specUtils
-import org.specs2.mutable.Specification
-import org.specs2.specification.Scope
+import com.hamstoo.models.{MarkData, Representation}
+import com.hamstoo.utils.TestHelper
+import de.flapdoodle.embed.mongo.distribution.Version
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
-import scala.concurrent.Await
 import scala.util.Random
 
 /**
   * MongoRepresentationDao tests.
   */
-class MongoRepresentationDaoSpec extends Specification {
+class MongoRepresentationDaoSpec extends TestHelper {
+
+  lazy val reprsDao = new MongoRepresentationDao(getDB)
 
   /** Create new mark. */
   def randomMarkData: MarkData = {
@@ -124,8 +123,9 @@ class MongoRepresentationDaoSpec extends Specification {
     }
   }*/
 
-  "MongoRepresentaionDao" should {
-    "* save representation" in new system {
+  "MongoRepresentaionDao" should "* save representation" in {
+
+    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
 
       //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").drop(true), Duration(testDuration, MILLISECONDS))
       //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").create(false), Duration(testDuration, MILLISECONDS))
@@ -145,23 +145,25 @@ class MongoRepresentationDaoSpec extends Specification {
                                     autoGenKws = None)
       println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
-      var reprCopy = Representation(link = url,
-                                    page = "sывфывdf",
-                                    header = "something",
-                                    doctext = "sasdasdf",
-                                    othtext = "ssadasddf",
-                                    keywords = "something",
-                                    vectors = Map{"month" -> vec2},
-                                    autoGenKws = None)
+      val reprCopy = Representation(link = url,
+        page = "sывфывdf",
+        header = "something",
+        doctext = "sasdasdf",
+        othtext = "ssadasddf",
+        keywords = "something",
+        vectors = Map {
+          "month" -> vec2
+        },
+        autoGenKws = None)
 
       println(s"Creating 2 representations with ids ${reprOrig.id} and ${reprCopy.id}")
-      val id: String = Await.result(reprsDao.save(reprOrig)/*.map(id => id)*/, timeout)
+      val id: String = reprsDao.save(reprOrig).futureValue /*.map(id => id)*/
       println(s"Created representation id $id")
 
-      id shouldNotEqual null
-      id shouldNotEqual ""
+      id should not equal null
+      id should not equal ""
       Thread.sleep(2500)
-      val id2: String = Await.result(reprsDao.save(reprCopy)/*.map(id => id)*/, timeout)
+      val id2: String = reprsDao.save(reprCopy).futureValue /*.map(id => id)*/
       println(s"Updated representation 2 id $id2")
       id shouldEqual id2 // this is because `retrieveByUrl` will find `reprOrig`
 
@@ -169,21 +171,14 @@ class MongoRepresentationDaoSpec extends Specification {
       //val repr2 = Await.result(reprsDao retrieveById id2 map (repr => repr), Duration(1000, MILLISECONDS))
 
       // use `retrieveAllById` to get both previous and updated reprs from the db
-      val reprs: Seq[Representation] = Await.result(reprsDao retrieveAllById id2, timeout)
+      val reprs: Seq[Representation] = reprsDao.retrieveAllById(id2).futureValue
       println(s"Print SIZE ${reprs.size}")
       reprs.foreach(r => println(s"Print Seq ${r.timeThru}"))
 
       reprs.size shouldEqual 2
       reprs.head.timeThru should be < Long.MaxValue
-      reprs.head.timeFrom shouldNotEqual  reprs.tail.head.timeFrom
+      reprs.head.timeFrom should not equal  reprs.tail.head.timeFrom
       reprs.head.timeThru should be < reprs.tail.head.timeThru
     }
-  }
-
-  // https://github.com/etorreborre/specs2/blob/SPECS2-3.8.9/examples/src/test/scala/examples/UnitSpec.scala
-  trait system extends Scope {
-    //val marksDao: MongoMarksDao = specUtils.marksDao
-    val reprsDao: MongoRepresentationDao = specUtils.reprsDao
-    val timeout: Duration = specUtils.timeout
   }
 }
