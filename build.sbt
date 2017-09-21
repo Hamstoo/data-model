@@ -44,8 +44,10 @@ libraryDependencies ++= Seq(
   "org.scalanlp" %% "breeze" % "0.13.1",
   "org.scalanlp" %% "breeze-natives" % "0.13.1",
   "com.typesafe.akka" %% "akka-testkit" % "2.5.4" % "test",
-  "org.scalatest" % "scalatest_2.12" % "3.0.4" % "test",
-  "com.github.simplyscala" %% "scalatest-embedmongo" % "0.2.4" % "test")
+  "org.scalatest" %% "scalatest" % "3.0.4" % "test",
+  "com.github.simplyscala" %% "scalatest-embedmongo" % "0.2.4" % "test",
+  "com.whisk" %% "docker-testkit-scalatest" % "0.9.5" % "test",
+  "com.whisk" %% "docker-testkit-impl-spotify" % "0.9.5" % "test")
 
 pomIncludeRepository := { _ => false }
 
