@@ -35,7 +35,7 @@ class MongoHighlightDaoSpec extends Specification with Matchers{
   trait system extends Scope {
     val marksDao: MongoMarksDao = specUtils.marksDao
     val reprsDao: MongoRepresentationDao = specUtils.reprsDao
-    val commentsDao: MongoCommentDao = specUtils.commentDao
+//    val commentsDao: MongoCommentDao = specUtils.commentDao
     val highlightDao: MongoHighlightDao = specUtils.highlightDao
     val timeout: Duration = specUtils.timeout
   }

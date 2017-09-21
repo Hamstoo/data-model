@@ -37,7 +37,7 @@ package object specUtils {
 
   lazy val marksDao = new MongoMarksDao(getDB)
   lazy val reprsDao = new MongoRepresentationDao(getDB)
-  lazy val commentDao = new MongoCommentDao(getDB)
+//  lazy val commentDao = new MongoCommentDao(getDB)
   lazy val highlightDao = new MongoHighlightDao(getDB)
   lazy val vecDao = new MongoVectorsDao(getDB)
 }
