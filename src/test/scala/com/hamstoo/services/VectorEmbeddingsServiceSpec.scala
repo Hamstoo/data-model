@@ -8,6 +8,8 @@ import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingService.WordMass
 import com.hamstoo.utils.TestHelper
+import com.whisk.docker.impl.spotify.DockerKitSpotify
+import com.whisk.docker.scalatest.DockerTestKit
 import de.flapdoodle.embed.mongo.distribution.Version
 import play.api.libs.ws.ahc.AhcWSClient
 
@@ -19,7 +21,12 @@ import play.api.libs.ws.ahc.AhcWSClient
   * then it's possible that the conceptnet5-vectors-docker container isn't reachable.
   */
 //todo: add vector container service
-class VectorEmbeddingsServiceSpec extends TestKit(ActorSystem("VectorEmbeddingsServiceSpec-ActorSystem")) with TestHelper {
+class VectorEmbeddingsServiceSpec
+  extends TestKit(ActorSystem("VectorEmbeddingsServiceSpec-ActorSystem"))
+    with TestHelper
+    with DockerTestKit
+    with DockerKitSpotify
+    with DockerVectorService {
 
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
@@ -30,6 +37,10 @@ class VectorEmbeddingsServiceSpec extends TestKit(ActorSystem("VectorEmbeddingsS
   lazy val vecSvc = new VectorEmbeddingsService(vectorizer, idfModel)
 
   // skip all of these tests because CircleCI doesn't have access to the conceptnet-vectors container
+
+  "Vector docker service" should "get up and work" in {
+    isContainerReady(vectorContainer).futureValue shouldBe true
+  }
 
   "VectorEmbeddingsService" should "* IDF vectorize" ignore {
     withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
