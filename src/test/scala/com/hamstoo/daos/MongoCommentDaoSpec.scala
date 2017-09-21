@@ -3,50 +3,47 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.{Comment, PageCoord}
-import com.hamstoo.specUtils
-import org.specs2.mutable.Specification
-import org.specs2.specification.Scope
+import com.hamstoo.utils.TestHelper
+import de.flapdoodle.embed.mongo.distribution.Version
 
-import scala.concurrent.Await
-import scala.concurrent.duration._
 import scala.util.Random
 
-class MongoCommentDaoSpec extends Specification {
+class MongoCommentDaoSpec extends TestHelper {
 
-  "MongoCommentsDao" should {
+  "MongoCommentsDao" should "* test create comment" in  {
+    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
 
-    "* test create comment" in new system {
-      val usrId  = UUID.randomUUID()
-      val url ="http://hamstsdsdoo.comsssd"+Random.nextFloat()
-      val c = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0))
-      Await.result(commentsDao.create(c), timeout) mustEqual {}
-      Await.result(commentsDao.update(c.usrId, c.id,c.pos), timeout).timeFrom mustNotEqual c.timeFrom
-      val missingReprMarks: Seq[Comment] = Await.result(commentsDao.receive(url,usrId), timeout)
-      missingReprMarks.count(_.usrId == c.usrId) mustEqual 1
-    }
+      val commentsDao = new MongoCommentDao(getDB)
 
-    "* return correctly list of comments for specifyed user" in new system {
-      val usrId  = UUID.randomUUID()
-      val url ="http://hamstsdsdoo.comsssd" + Random.nextFloat()
+      val usrId = UUID.randomUUID()
+      val url = "http://hamstsdsdoo.comsssd" + Random.nextFloat()
+      val c = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd", "sdassd", 0, 0))
 
-      val c1 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = PageCoord(0.5, 0.5))
-      val c2 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = PageCoord(0.6, 0.5))
-      val c3 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd","sdassd",0,0), pageCoord = PageCoord(0.4, 0.8))
+      commentsDao.create(c).futureValue shouldEqual {}
 
-      Await.result(commentsDao.create(c1), timeout) mustEqual {}
-      Await.result(commentsDao.create(c2), timeout) mustEqual {}
-      Await.result(commentsDao.create(c3), timeout) mustEqual {}
+      commentsDao.update(c.usrId, c.id, c.pos).futureValue.timeFrom should not equal c.timeFrom
 
-      Await.result(commentsDao.receive(c1.usrId), timeout).map(_.usrId) mustEqual Seq(c1.usrId, c2.usrId, c3.usrId)
+      commentsDao.receive(url, usrId).futureValue.count(_.usrId == c.usrId) shouldEqual 1
     }
   }
 
+    it should "* return correctly list of comments for specifyed user" in {
+      withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
 
-  // https://github.com/etorreborre/specs2/blob/SPECS2-3.8.9/examples/src/test/scala/examples/UnitSpec.scala
-  trait system extends Scope {
-    val marksDao: MongoMarksDao = specUtils.marksDao
-    val reprsDao: MongoRepresentationDao = specUtils.reprsDao
-    val commentsDao: MongoCommentDao = specUtils.commentDao
-    val timeout: Duration = specUtils.timeout
-  }
+        val commentsDao = new MongoCommentDao(getDB)
+
+        val usrId = UUID.randomUUID()
+        val url = "http://hamstsdsdoo.comsssd" + Random.nextFloat()
+
+        val c1 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd", "sdassd", 0, 0), pageCoord = PageCoord(0.5, 0.5))
+        val c2 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd", "sdassd", 0, 0), pageCoord = PageCoord(0.6, 0.5))
+        val c3 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd", "sdassd", 0, 0), pageCoord = PageCoord(0.4, 0.8))
+
+        commentsDao.create(c1).futureValue shouldEqual {}
+        commentsDao.create(c2).futureValue shouldEqual {}
+        commentsDao.create(c3).futureValue shouldEqual {}
+
+        commentsDao.receive(c1.usrId).futureValue.map(_.usrId) shouldEqual Seq(c1.usrId, c2.usrId, c3.usrId)
+      }
+    }
 }
