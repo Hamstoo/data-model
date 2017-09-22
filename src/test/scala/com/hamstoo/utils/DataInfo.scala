@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.hamstoo.models.{Mark, MarkData}
 
-trait Info {
+trait DataInfo {
 
   lazy val vectorsLink = "http://localhost:5000"
 

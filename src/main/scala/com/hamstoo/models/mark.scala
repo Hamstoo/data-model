@@ -12,8 +12,8 @@ import org.commonmark.renderer.html.HtmlRenderer
 import org.joda.time.DateTime
 import org.jsoup.Jsoup
 import org.jsoup.safety.Whitelist
-import play.api.libs.json.{Json, OFormat}
 import play.api.Logger
+import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
