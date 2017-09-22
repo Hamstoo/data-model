@@ -15,7 +15,7 @@ import scala.util.Random
 /**
   * Created by
   * Author: fayaz.sanaulla@gmail.com
-  * Date: 12.09.17
+  * Date: 2017-09-12
   */
 class MongoHighlightDaoSpec extends Specification {
   "MongoHighlightDai" should {
