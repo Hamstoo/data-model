@@ -19,15 +19,15 @@ class MongoHighlightDaoSpec extends TestHelper {
       val usrId = UUID.randomUUID()
       val url = "http://hamstsdsdoo.comsssd" + Random.nextFloat()
 
-      val h1 = Highlight(usrId = usrId, url = url, pos = HLPos(Nil, 0), pageCoord = PageCoord(0.5, 0.6), preview = HLPreview("", "", ""))
-      val h2 = Highlight(usrId = usrId, url = url, pos = HLPos(Nil, 0), pageCoord = PageCoord(0.7, 0.6), preview = HLPreview("", "", ""))
-      val h3 = Highlight(usrId = usrId, url = url, pos = HLPos(Nil, 0), pageCoord = PageCoord(0.9, 0.5), preview = HLPreview("", "", ""))
+      val h1 = Highlight(usrId = usrId, url = url, pos = HLPos(Nil, 0), pageCoord = Some(PageCoord(0.5, 0.6)), preview = HLPreview("", "", ""))
+      val h2 = Highlight(usrId = usrId, url = url, pos = HLPos(Nil, 0), pageCoord = Some(PageCoord(0.7, 0.6)), preview = HLPreview("", "", ""))
+      val h3 = Highlight(usrId = usrId, url = url, pos = HLPos(Nil, 0), pageCoord = Some(PageCoord(0.9, 0.5)), preview = HLPreview("", "", ""))
 
       highlightDao.create(h1).futureValue shouldEqual {}
       highlightDao.create(h2).futureValue shouldEqual {}
       highlightDao.create(h3).futureValue shouldEqual {}
 
-      highlightDao.receive(h1.usrId).futureValue.map(_.usrId) shouldEqual Seq(h1.usrId, h2.usrId, h3.usrId)
+      highlightDao.receiveSortedByPageCoord(h1.url, h1.usrId).futureValue.map(_.usrId) shouldEqual Seq(h1.usrId, h2.usrId, h3.usrId)
     }
   }
 }

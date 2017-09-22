@@ -1,14 +1,20 @@
+import scala.io.Source
+import scala.sys.process.Process
+
 name := "data-model"
 organization := "com.hamstoo"
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
+
+// This needs to play nicely with the release.sh.  In particular, the VERSION file should always contain "-SNAPSHOT"
+// and release.sh is the only script that should ever remove it, which it does so only temporarily.
 version := {
-  val opv = Option(System.getProperty("version"))
-  if (opv.exists(_ != "master")) opv.get + "-SNAPSHOT" else {
-    val fp = scala.io.Source.fromFile("VERSION")
-    val t = scala.util.Try(fp.getLines.find(_ => true))
-    fp.close
-    t.get.map(_.trim)
-  }.getOrElse("latest")
+  val branch = Process("git rev-parse --abbrev-ref HEAD").lineStream.head
+  val fp = Source fromFile "VERSION"
+  val version = fp.getLines find (_ => true) map { l =>
+    if (branch != "master") s"$branch-${l.trim}" else l.trim
+  } getOrElse "latest-SNAPSHOT"
+  fp.close
+  version
 }
 
 scalaVersion := "2.12.3"
@@ -19,7 +25,6 @@ lazy val root = project in file(".")
 
 publishTo :=
   Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
-
 credentials += Credentials(
   "Artifactory Realm",
   "ec2-54-236-36-52.compute-1.amazonaws.com",

@@ -165,7 +165,7 @@ class MongoRepresentationDaoSpec extends TestHelper {
       Thread.sleep(2500)
       val id2: String = reprsDao.save(reprCopy).futureValue /*.map(id => id)*/
       println(s"Updated representation 2 id $id2")
-      id shouldEqual id2 // this is because `retrieveByUrl` will find `reprOrig`
+      id shouldEqual id2 // this is because they have the same ID
 
       //val repr1 = Await.result(reprsDao retrieveById id map (repr => repr), Duration(1000, MILLISECONDS))
       //val repr2 = Await.result(reprsDao retrieveById id2 map (repr => repr), Duration(1000, MILLISECONDS))

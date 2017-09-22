@@ -16,7 +16,7 @@ import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.language.higherKinds
-import scala.util.Try
+import scala.util.{Random, Try}
 import scala.util.matching.Regex
 
 
@@ -61,7 +61,15 @@ package object utils {
       if (wr.ok) Future successful {} else Future failed new Exception(wr.writeErrors mkString "; ")
   }
 
-  private val URL_PREFIX_LENGTH = 1000
+  // MongoDB `binary` indexes have a max size of 1024 bytes.  So to combine a 12-char ID with a byte array
+  // as in the below `marks` collection index, the byte array must be, at most, 992 bytes.  This is presumably
+  // due to some overhead in the MongoDB data types (BinData and String) and/or overhead due to the combination
+  // of multiple fields in a single index.
+  // From MongoMarksDao: `Index(UPRFX -> Ascending :: PUBREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PUBREPR-1"`
+  private val URL_PREFIX_LENGTH = 992
+
+  /** Generate an ID to be used for a document in a database collection. */
+  def generateDbId(length: Int): String = Random.alphanumeric take length mkString
 
   implicit class ExtendedString(private val s: String) extends AnyVal {
     /**
