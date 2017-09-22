@@ -8,7 +8,6 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
