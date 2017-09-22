@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.models.Highlight.{HLPos, HLPreview}
+import com.hamstoo.models.Highlight.{HLPos, HLPreview, HLShortcut}
 import com.hamstoo.utils.ExtendedString
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
@@ -36,6 +36,8 @@ case class Highlight(
                       timeFrom: Long = DateTime.now.getMillis,
                       timeThru: Long = Long.MaxValue) {
   uPref = Some(url.prefx)
+
+  def shortcut: HLShortcut = HLShortcut(id, preview)
 }
 
 object Highlight extends BSONHandlers {
@@ -45,6 +47,8 @@ object Highlight extends BSONHandlers {
   case class HLPos(elements: Seq[HLPosElem], initIndex: Int)
 
   case class HLPreview(lead: String, text: String, tail: String)
+
+  case class HLShortcut(id: String, preview: HLPreview)
 
   val ID_LENGTH: Int = 16
   val USR: String = nameOf[Highlight](_.usrId)

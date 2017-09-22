@@ -47,10 +47,13 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
     seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Highlight, Seq]()
   } yield seq filter (_.url == url)
 
-  def receiveSortedByPageCoord(url: String, usr: UUID): Future[Seq[Highlight]] = for {
+  //todo: in future move sorting to MongoDB engine, if possible
+  def receiveSortedByPageCoord(url: String, usr: UUID): Future[Seq[HLShortcut]] = for {
     c <- futCol
     seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Highlight, Seq]()
-  } yield seq filter (_.url == url) sortWith { case (a, b) => PageCoord.sortWith(a.pageCoord, b.pageCoord) }
+  } yield seq filter (_.url == url) sortWith {
+    case (a, b) => PageCoord.sortWith(a.pageCoord, b.pageCoord)
+  } map (_.shortcut)
 
   def update(usr: UUID, id: String, pos: HLPos, prv: HLPreview): Future[Highlight] = for {
     c <- futCol
