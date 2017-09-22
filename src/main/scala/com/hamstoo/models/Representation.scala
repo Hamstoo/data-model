@@ -1,26 +1,28 @@
 package com.hamstoo.models
 
-import java.util.UUID
-
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.utils.ExtendedString
+import com.hamstoo.models.Representation.VecEnum
+import com.hamstoo.utils.{ExtendedString, generateDbId}
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
-import scala.util.Random
+
 
 /**
   * This Representation class is used to store scraped and parsed textual
   * representations of URLs.  The scraping and parsing are performed by an
   * instance of a RepresentationFactory.
   *
+  * This class used to have a `users` parameter (removed 2017-9-12) described as "User UUIDs from whom webpage
+  * source was received."  There doesn't seem to be any need for this, however, as it can be computed from marks
+  * that point to a repr with their `privRepr`.  Indeed, `users` may have predated the implementation of `privRepr`
+  * and `pubRepr` anyway.
+  *
   * @param id         Unique alphanumeric ID.
   * @param link       URL link used to generate this Representation.
   * @param lprefx     Binary URL prefix for indexing by mongodb. Gets overwritten by class init.
-  * @param users      User UUIDs from whom webpage source was received.
-  *                   Shouldn't this be trackable by which mark.privReprs point to a particular Representation?
   * @param page       Webpage source string provided by browser extension or retrieved with http request.
   * @param header     Title and `h1` headers concatenated.
   * @param doctext    Document text.
@@ -33,10 +35,9 @@ import scala.util.Random
   * @param versions   `data-model` project version and others, if provided.
   */
 case class Representation(
-                           id: String = Random.alphanumeric take 12 mkString,
+                           id: String = generateDbId(Representation.ID_LENGTH),
                            link: Option[String],
                            var lprefx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
-                           users: Set[UUID] = Set.empty[UUID],
                            page: String,
                            header: String,
                            doctext: String,
@@ -47,15 +48,53 @@ case class Representation(
                            autoGenKws: Option[Seq[String]],
                            timeFrom: Long = DateTime.now.getMillis,
                            timeThru: Long = Long.MaxValue,
-                           var versions: Option[Map[String, String]] = None) {
+                           var versions: Option[Map[String, String]] = None,
+                           score: Option[Double] = None) {
 
   lprefx = link.map(_.prefx)
   versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
                     .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
+
+  /**
+    * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
+    * TODO: need to measure this distribution to determine if `DUPLICATE_CORR_THRESHOLD` is sufficient
+    */
+  def isDuplicate(oth: Representation): Boolean = {
+    // should we test Longest Common Substring here also?
+    (!doctext.isEmpty && doctext == oth.doctext) ||
+      similarity(oth).exists(_ > Representation.DUPLICATE_CORR_THRESHOLD) ||
+      (link == oth.link && similarity(oth).exists(_ > Representation.DUPLICATE_CORR_THRESHOLD * 0.9))
+  }
+
+  /** Define `similarity` in one place so that it can be used in multiple. */
+  def similarity(oth: Representation): Option[Double] = for {
+    thisVec <- vectors.get(VecEnum.IDF3.toString)
+    othVec <- oth.vectors.get(VecEnum.IDF3.toString)
+  } yield Representation.VecFunctions(thisVec).cosine(othVec)
+
+  /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
+  override def equals(other: Any): Boolean = other match {
+    case other: Representation => other.canEqual(this) && this.hashCode == other.hashCode
+    case _ => false
+  }
+
+  /**
+    * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
+    * `super.hashCode` comes from `Any` and so the implementation of `hashCode` that is automatically generated for
+    * case classes has to be copy and pasted here.  More at the following link:
+    * https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
+    * And an explanation here: https://stackoverflow.com/a/44708937/2030627
+    */
+  override def hashCode: Int = this.score match {
+    case None => scala.runtime.ScalaRunTime._hashCode(this)
+    case Some(_) => this.copy(score = None).hashCode
+  }
 }
 
 object Representation extends BSONHandlers {
   type Vec = Seq[Double]
+
+  val DUPLICATE_CORR_THRESHOLD = 0.97
 
   implicit class VecFunctions(private val vec: Vec) extends AnyVal {
 
@@ -65,14 +104,14 @@ object Representation extends BSONHandlers {
     // on the list to make evaluation lazy, though View construction also has its cost.
     def -(other: Vec): Vec = {
       @tailrec
-      def rec(a: Vec, b: Vec, c: Vec): Vec = if (a.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head - b.head) +: c)
+      def rec(a: Vec, b: Vec, c: Vec): Vec = if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head - b.head) +: c)
 
       rec(vec, other, Nil)
     }
 
     def +(other: Vec): Vec = {
       @tailrec
-      def rec(a: Vec, b: Vec, c: Vec): Vec = if (a.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head + b.head) +: c)
+      def rec(a: Vec, b: Vec, c: Vec): Vec = if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head + b.head) +: c)
 
       rec(vec, other, Nil)
     }
@@ -106,7 +145,7 @@ object Representation extends BSONHandlers {
 
     def dot(other: Vec): Double = {
       @tailrec
-      def rec(a: Vec, b: Vec, sum: Double): Double = if (a.isEmpty) sum else rec(a.tail, b.tail, sum + a.head * b.head)
+      def rec(a: Vec, b: Vec, sum: Double): Double = if (a.isEmpty || b.isEmpty) sum else rec(a.tail, b.tail, sum + a.head * b.head)
 
       rec(vec, other, 0.0)
     }
@@ -150,10 +189,11 @@ object Representation extends BSONHandlers {
       = Value
   }
 
+  val ID_LENGTH: Int = 12
+
   val ID: String = nameOf[Representation](_.id)
   val LNK: String = nameOf[Representation](_.link)
   val LPREF: String = nameOf[Representation](_.lprefx)
-  val USRS: String = nameOf[Representation](_.users)
   val PAGE: String = nameOf[Representation](_.page)
   val HEADR: String = nameOf[Representation](_.header)
   val DTXT: String = nameOf[Representation](_.doctext)
@@ -163,5 +203,6 @@ object Representation extends BSONHandlers {
   val VECS: String = nameOf[Representation](_.vectors)
   assert(nameOf[Representation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
   assert(nameOf[Representation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
+  assert(nameOf[Representation](_.score) == com.hamstoo.models.Mark.SCORE)
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 }

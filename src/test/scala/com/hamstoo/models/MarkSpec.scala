@@ -38,5 +38,24 @@ class MarkSpec extends FlatSpec with Matchers {
     f.commentEncoded.get shouldEqual "<p>'';!--\"=&amp;{()}</p>"
     val g = a.copy(comment = Some("hello <a name=\"n\" href=\"javascript:alert('xss')\">*you*</a>"))
     g.commentEncoded.get shouldEqual "<p>hello <a rel=\"nofollow noopener noreferrer\" target=\"_blank\"><em>you</em></a></p>"
+
+    it should "* be mergeable" in {
+      import com.hamstoo.specUtils.{mdA, mdB, mA, mB}
+
+      // test merge (would be nice to test warning messages due to non matching field values also)
+      val merged = mA.merge(mB)
+
+      merged.mark.subj shouldEqual mdA.subj
+      merged.mark.url shouldEqual mdA.url
+      merged.mark.rating shouldEqual mdB.rating // B!
+      merged.mark.tags.get shouldEqual (mdA.tags.get ++ mdB.tags.get)
+      merged.mark.comment.get shouldEqual (mdA.comment.get + "\n\n---\n\n" + mdB.comment.get)
+      merged.pubRepr shouldEqual mA.pubRepr
+      merged.privRepr shouldEqual mA.privRepr
+
+      // different userIds should throw an AssertionError
+      val c = Mark(UUID.randomUUID, mark = mdB)
+      mA.merge(c) must throwA[AssertionError]
+    }
   }
 }

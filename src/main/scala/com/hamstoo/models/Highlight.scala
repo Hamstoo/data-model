@@ -30,11 +30,11 @@ case class Highlight(
                       url: String,
                       var uPref: Option[mutable.WrappedArray[Byte]] = None,
                       pos: HLPos,
-                      pageCoord: PageCoord = PageCoord.ZERO_COORD,
+                      pageCoord: Option[PageCoord] = None,
                       preview: HLPreview,
                       memeId: Option[String] = None,
                       timeFrom: Long = DateTime.now.getMillis,
-                      timeThru: Long = Long.MaxValue) extends Sortable {
+                      timeThru: Long = Long.MaxValue) {
   uPref = Some(url.prefx)
 }
 

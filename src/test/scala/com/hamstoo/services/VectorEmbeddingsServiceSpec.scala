@@ -161,9 +161,10 @@ class VectorEmbeddingsServiceSpec
       val (vecs, _) = vecSvc.text2KMeansVecs(topWords, 2)
 
       Seq(("otter", 0.956, -0.590),
-        ("car", -0.374, 0.423), // note that "car" is filtered out by `text2TopWords`
-        ("ford", -0.626, 0.630),
-        ("toyota", -0.482, 0.846)).foreach { case (w, s0, s1) =>
+          ("car", -0.374, 0.423), // note that "car" is filtered out by `text2TopWords`
+          ("ford", -0.626, 0.630),
+          ("toyota", -0.482, 0.846)).foreach { case (w, s0, s1) =>
+
         val wordVec = vectorizer.dbCachedLookup(vectorizer.ENGLISH, w).get._1
         vecs(0).cosine(wordVec) shouldEqual s0 +- 1e-3
         vecs(1).cosine(wordVec) shouldEqual s1 +- 1e-3

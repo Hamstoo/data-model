@@ -33,15 +33,15 @@ class MongoCommentDaoSpec extends TestHelper {
         val usrId = UUID.randomUUID()
         val url = "http://hamstsdsdoo.comsssd" + Random.nextFloat()
 
-        val c1 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd", "sdassd", 0, 0), pageCoord = PageCoord(0.5, 0.5))
-        val c2 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd", "sdassd", 0, 0), pageCoord = PageCoord(0.6, 0.5))
-        val c3 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd", "sdassd", 0, 0), pageCoord = PageCoord(0.4, 0.8))
+        val c1 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.5, 0.5)))
+        val c2 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.6, 0.5)))
+        val c3 = Comment(usrId, url = url, pos = Comment.CommentPos("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.4, 0.8)))
 
         commentsDao.create(c1).futureValue shouldEqual {}
         commentsDao.create(c2).futureValue shouldEqual {}
         commentsDao.create(c3).futureValue shouldEqual {}
 
-        commentsDao.receive(c1.usrId).futureValue.map(_.usrId) shouldEqual Seq(c1.usrId, c2.usrId, c3.usrId)
+        commentsDao.receiveSortedByPageCoord(c1.url, c1.usrId).futureValue.map(_.usrId) shouldEqual Seq(c1.usrId, c2.usrId, c3.usrId)
       }
     }
 }
