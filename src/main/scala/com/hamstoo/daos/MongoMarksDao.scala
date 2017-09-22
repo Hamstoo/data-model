@@ -24,7 +24,6 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   val logger: Logger = Logger(classOf[MongoMarksDao])
 
   private val futColl: Future[BSONCollection] = db map (_ collection "entries")
-
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
     Index(USER -> Ascending :: Nil) % s"bin-$USER-1" ::
