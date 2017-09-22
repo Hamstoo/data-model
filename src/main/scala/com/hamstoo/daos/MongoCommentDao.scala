@@ -49,7 +49,9 @@ class MongoCommentDao(db: Future[DefaultDB]) {
   def receiveSortedByPageCoord(url: String, usr: UUID): Future[Seq[Comment]] = for {
     c <- futCol
     seq <- (c find d :~ USR -> usr :~ UPRF -> url.prefx :~ curnt).coll[Comment, Seq]()
-  } yield seq filter (_.url == url) sortWith { case (a, b) => PageCoord.sortWith(a.pageCoord, b.pageCoord) }
+  } yield seq filter (_.url == url) sortWith {
+    case (a, b) => PageCoord.sortWith(a.pageCoord, b.pageCoord)
+  }
 
 
   def update(usr: UUID, id: String, pos: CommentPos): Future[Comment] = for {
