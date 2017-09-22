@@ -30,8 +30,8 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   val logger: Logger = Logger(classOf[MongoRepresentationDao])
 
   import MongoRepresentationDao._
+  import com.hamstoo.models.Mark.{SCORE, TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
-  import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU, SCORE}
 
   private val futColl: Future[BSONCollection] = db map (_ collection "representations")
 
@@ -98,7 +98,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     *
     * SELECT id, doctext, vec, textScore() AS score FROM tbRepresentation
     * WHERE ANY(SPLIT(doctext) IN @query)
-    * --ORDER BY score DESC -- actually this is not happening, would require .sort` after `.find`
+    * --ORDER BY score DESC -- actually this is not happening, would require '.sort' after '.find'
     */
   def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
     c <- futColl

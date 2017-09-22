@@ -5,14 +5,12 @@ import java.util.{Locale, UUID}
 import com.hamstoo.daos.MongoVectorsDao
 import com.hamstoo.models.Representation.Vec
 import play.api.libs.json.{JsObject, Json}
-import play.api.libs.ws.JsonBodyWritables._
 import play.api.libs.ws._
 
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
-import scala.util.Try
 import scala.util.matching.Regex
 
 object Vectorizer {

@@ -134,7 +134,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * Updates current state of a mark with user-provided MarkData, looking the mark up by user and ID.
     * Returns new current mark state.
     */
-  def update1(user: UUID, id: String, mdata: MarkData, now: Long = DateTime.now.getMillis): Future[Mark] = for {
+  def update(user: UUID, id: String, mdata: MarkData, now: Long = DateTime.now.getMillis): Future[Mark] = for {
     c <- futColl
     sel = d :~ USER -> user :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
@@ -157,7 +157,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futColl
     _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id))
     mergedMk = oldMark.merge(newMark)
-    updatedMk <- this.update1(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
+    updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
   } yield updatedMk
 
   /** Appends provided string to mark's array of page sources. */

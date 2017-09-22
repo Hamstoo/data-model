@@ -135,17 +135,20 @@ class MongoRepresentationDaoSpec extends TestHelper {
       //val url = "https://developer.chrome.com/extensions/getstarted"
       val vec: Representation.Vec = Seq(2304932.039423, 39402.3043)
       val vec2: Representation.Vec = Seq(2304932.039423, 39402.3043, 2304932.039423, 39402.3043, 2304932.039423, 39402.3043)
-      var reprOrig = Representation(link = url,
-                                    page = "sdf",
-                                    header = "Monday",
-                                    doctext = "sdf",
-                                    othtext = "sdf",
-                                    keywords = "nothing",
-                                    vectors = Map{"something" -> vec},
-                                    autoGenKws = None)
+
+      val reprOrig = Representation(link = url,
+        page = "sdf",
+        header = "Monday",
+        doctext = "sdf",
+        othtext = "sdf",
+        keywords = "nothing",
+        vectors = Map {
+          "something" -> vec
+        },
+        autoGenKws = None)
       println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
-      val reprCopy = Representation(link = url,
+      val reprCopy = reprOrig.copy(
         page = "sывфывdf",
         header = "something",
         doctext = "sasdasdf",
@@ -153,8 +156,7 @@ class MongoRepresentationDaoSpec extends TestHelper {
         keywords = "something",
         vectors = Map {
           "month" -> vec2
-        },
-        autoGenKws = None)
+        })
 
       println(s"Creating 2 representations with ids ${reprOrig.id} and ${reprCopy.id}")
       val id: String = reprsDao.save(reprOrig).futureValue /*.map(id => id)*/

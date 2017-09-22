@@ -16,8 +16,8 @@ import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.language.higherKinds
-import scala.util.{Random, Try}
 import scala.util.matching.Regex
+import scala.util.{Random, Try}
 
 
 package object utils {
@@ -106,7 +106,7 @@ package object utils {
     * want to display excerpts of them on the My Marks page in human-readable form, (2) we may want to use them
     * as input to our own fit of word2vec or GloVe, and (3) the Conceptnet Numberbatch model is fitted with them
     * included.  This last point is part of what leads to a 418,000-word English vocabulary in which the following
-    * words are all found independently: "can't", "can't", and "can`t".
+    * words are all found independently: "can't", "can't", and "can't".
     */
   def parse(s: String): String = repeatedSpaceRgx.replaceAllIn(crlftRgx.replaceAllIn(s, " "), " ").trim
 

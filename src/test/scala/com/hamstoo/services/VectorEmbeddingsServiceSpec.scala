@@ -146,7 +146,7 @@ class VectorEmbeddingsServiceSpec
     withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
 
       val txt = "otter otter european_otter otters otterlike toyota ford car"
-      val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt)._1
+      val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt).futureValue._1
       // 2 words are duplicates and out of the remaining 7 only 5 are kept per `text2TopWords.desiredFracWords` function
       topWords.size shouldEqual 5
     }
@@ -157,7 +157,7 @@ class VectorEmbeddingsServiceSpec
     withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
 
       val txt = "otter european_otter otter otters otterlike toyota ford car"
-      val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt)._1
+      val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt).futureValue._1
       val (vecs, _) = vecSvc.text2KMeansVecs(topWords, 2)
 
       Seq(("otter", 0.956, -0.590),
@@ -165,7 +165,7 @@ class VectorEmbeddingsServiceSpec
           ("ford", -0.626, 0.630),
           ("toyota", -0.482, 0.846)).foreach { case (w, s0, s1) =>
 
-        val wordVec = vectorizer.dbCachedLookup(vectorizer.ENGLISH, w).get._1
+        val wordVec = vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, w).futureValue.get._1
         vecs(0).cosine(wordVec) shouldEqual s0 +- 1e-3
         vecs(1).cosine(wordVec) shouldEqual s1 +- 1e-3
       }

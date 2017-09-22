@@ -13,15 +13,8 @@ import scala.util.{Failure, Success}
 trait TestHelper
   extends FlatSpecWithMatchers
     with ScalaFutures
-    with MongoEmbedDatabase {
-
-  lazy val vectorsLink = "http://localhost:5000"
-
-  lazy val idfsResource = "idfs/text8.json.zip"
-
-  lazy val link = "mongodb://localhost:27017"
-
-  lazy val dbName = "hamstoo"
+    with MongoEmbedDatabase
+    with DataInfo {
 
   implicit val pc: PatienceConfig = PatienceConfig(Span(20, Seconds), Span(1, Second))
 

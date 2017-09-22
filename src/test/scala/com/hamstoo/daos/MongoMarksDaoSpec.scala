@@ -3,11 +3,10 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.{Mark, MarkData, Representation}
-import com.hamstoo.specUtils
 import com.hamstoo.utils.{TestHelper, generateDbId}
 import de.flapdoodle.embed.mongo.distribution.Version
 
-import scala.concurrent.Await
+import scala.concurrent.ExecutionContext.Implicits.global
 
 class MongoMarksDaoSpec extends TestHelper {
 
@@ -29,14 +28,15 @@ class MongoMarksDaoSpec extends TestHelper {
     }
   }
 
-  it should "* obey its `bin-urlPrfx-1-pubRepr-1` index" in new system {
-    val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(specUtils.crazyUrl)))
+  it should "* obey its `bin-urlPrfx-1-pubRepr-1` index" in {
+    val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(crazyUrl)))
     val reprId = generateDbId(Representation.ID_LENGTH)
-    Await.result( for {
+
+    for {
       _ <- marksDao.insert(m)
       _ <- marksDao.updatePublicReprId(m.id, m.timeFrom, reprId)
       mInserted <- marksDao.retrieve(m.userId, m.id)
       _ = mInserted.get.pubRepr.get shouldEqual reprId
-    } yield (), timeout)
+    } yield {}
   }
 }
