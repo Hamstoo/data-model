@@ -41,7 +41,7 @@ class MongoCommentDaoSpec extends TestHelper {
         commentsDao.create(c2).futureValue shouldEqual {}
         commentsDao.create(c3).futureValue shouldEqual {}
 
-        commentsDao.receiveSortedByPageCoord(c1.url, c1.usrId).futureValue.map(_.usrId) shouldEqual Seq(c1.usrId, c2.usrId, c3.usrId)
+        commentsDao.receiveSortedByPageCoord(c1.url, c1.usrId).futureValue.map(_.preview) shouldEqual Seq(c1.pos.text, c2.pos.text, c3.pos.text)
       }
     }
 }
