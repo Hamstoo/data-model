@@ -2,7 +2,6 @@ package com.hamstoo.daos
 
 import com.hamstoo.models.{MarkData, Representation}
 import com.hamstoo.utils.TestHelper
-import de.flapdoodle.embed.mongo.distribution.Version
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
@@ -125,7 +124,7 @@ class MongoRepresentationDaoSpec extends TestHelper {
 
   "MongoRepresentaionDao" should "* save representation" in {
 
-    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
+    withEmbedMongoFixture() { _ =>
 
       //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").drop(true), Duration(testDuration, MILLISECONDS))
       //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").create(false), Duration(testDuration, MILLISECONDS))

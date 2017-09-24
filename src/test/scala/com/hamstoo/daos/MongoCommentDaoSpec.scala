@@ -4,7 +4,6 @@ import java.util.UUID
 
 import com.hamstoo.models.{Comment, PageCoord}
 import com.hamstoo.utils.TestHelper
-import de.flapdoodle.embed.mongo.distribution.Version
 
 import scala.util.Random
 
@@ -13,7 +12,7 @@ class MongoCommentDaoSpec extends TestHelper {
   lazy val commentsDao = new MongoCommentDao(getDB)
 
   "MongoCommentsDao" should "* test create comment" in  {
-    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
+    withEmbedMongoFixture() { _ =>
 
       val usrId = UUID.randomUUID()
       val url = "http://hamstsdsdoo.comsssd" + Random.nextFloat()
@@ -28,7 +27,7 @@ class MongoCommentDaoSpec extends TestHelper {
   }
 
     it should "* return correctly list of comments for specifyed user" in {
-      withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
+      withEmbedMongoFixture() { _ =>
 
         val usrId = UUID.randomUUID()
         val url = "http://hamstsdsdoo.comsssd" + Random.nextFloat()
