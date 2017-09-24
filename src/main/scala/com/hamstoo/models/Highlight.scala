@@ -34,7 +34,7 @@ case class Highlight(
                       preview: HLPreview,
                       memeId: Option[String] = None,
                       timeFrom: Long = DateTime.now.getMillis,
-                      timeThru: Long = Long.MaxValue) {
+                      timeThru: Long = Long.MaxValue) extends Sortable with HasShortcut[HLShortcut] {
   uPref = Some(url.prefx)
 
   def shortcut: HLShortcut = HLShortcut(id, preview)

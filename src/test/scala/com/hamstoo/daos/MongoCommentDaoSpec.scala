@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Comment, PageCoord}
+import com.hamstoo.models.{Comment, PageCoord, Sortable}
 import com.hamstoo.utils.TestHelper
 
 import scala.util.Random
@@ -40,7 +40,10 @@ class MongoCommentDaoSpec extends TestHelper {
         commentsDao.create(c2).futureValue shouldEqual {}
         commentsDao.create(c3).futureValue shouldEqual {}
 
-        commentsDao.receiveSortedByPageCoord(c1.url, c1.usrId).futureValue.map(_.preview) shouldEqual Seq(c1.pos.text, c2.pos.text, c3.pos.text)
+        commentsDao.receive(c1.url, c1.usrId).futureValue
+          .sortWith(Sortable.sort)
+          .map(_.shortcut)
+          .map(_.preview) shouldEqual Seq(c1.pos.text, c2.pos.text, c3.pos.text)
       }
     }
 }
