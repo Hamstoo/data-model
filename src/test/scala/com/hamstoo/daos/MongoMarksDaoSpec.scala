@@ -4,7 +4,6 @@ import java.util.UUID
 
 import com.hamstoo.models.{Mark, MarkData, Representation}
 import com.hamstoo.utils.{TestHelper, generateDbId}
-import de.flapdoodle.embed.mongo.distribution.Version
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -14,7 +13,7 @@ class MongoMarksDaoSpec extends TestHelper {
 
   "MongoMarksDao" should "* findMissingReprs, both current and not" in {
 
-    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
+    withEmbedMongoFixture() { _ =>
 
       val mark = Mark(UUID.randomUUID(), mark = MarkData("a subject", Some("http://hamstoo.com")))
 
@@ -29,14 +28,17 @@ class MongoMarksDaoSpec extends TestHelper {
   }
 
   it should "* obey its `bin-urlPrfx-1-pubRepr-1` index" in {
-    val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(crazyUrl)))
-    val reprId = generateDbId(Representation.ID_LENGTH)
 
-    for {
-      _ <- marksDao.insert(m)
-      _ <- marksDao.updatePublicReprId(m.id, m.timeFrom, reprId)
-      mInserted <- marksDao.retrieve(m.userId, m.id)
-      _ = mInserted.get.pubRepr.get shouldEqual reprId
-    } yield {}
+    withEmbedMongoFixture() { _ =>
+      val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(crazyUrl)))
+      val reprId = generateDbId(Representation.ID_LENGTH)
+
+      for {
+        _ <- marksDao.insert(m)
+        _ <- marksDao.updatePublicReprId(m.id, m.timeFrom, reprId)
+        mInserted <- marksDao.retrieve(m.userId, m.id)
+        _ = mInserted.get.pubRepr.get shouldEqual reprId
+      } yield {}
+    }
   }
 }

@@ -5,7 +5,6 @@ import java.util.UUID
 import com.hamstoo.models.Highlight.{HLPos, HLPreview}
 import com.hamstoo.models.{Highlight, PageCoord}
 import com.hamstoo.utils.TestHelper
-import de.flapdoodle.embed.mongo.distribution.Version
 
 import scala.util.Random
 
@@ -14,7 +13,7 @@ class MongoHighlightDaoSpec extends TestHelper {
   lazy val highlightDao = new MongoHighlightDao(getDB)
 
   "MongoHighlightDai" should "* return correctly sorted list of highlights" in {
-    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
+    withEmbedMongoFixture() { _ =>
 
       val usrId = UUID.randomUUID()
       val url = "http://hamstsdsdoo.comsssd" + Random.nextFloat()

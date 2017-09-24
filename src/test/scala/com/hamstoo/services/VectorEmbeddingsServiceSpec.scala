@@ -10,7 +10,6 @@ import com.hamstoo.services.VectorEmbeddingService.WordMass
 import com.hamstoo.utils.TestHelper
 import com.whisk.docker.impl.spotify.DockerKitSpotify
 import com.whisk.docker.scalatest.DockerTestKit
-import de.flapdoodle.embed.mongo.distribution.Version
 import play.api.libs.ws.ahc.AhcWSClient
 
 
@@ -43,7 +42,8 @@ class VectorEmbeddingsServiceSpec
   }
 
   "VectorEmbeddingsService" should "* IDF vectorize" ignore {
-    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
+
+    withEmbedMongoFixture() { _ =>
 
       val header0 = "Futures and Promises - Scala Documentation Futures and Promises"
       //val header0 = "Getting Started Building a Google Chrome Extension"
@@ -57,7 +57,7 @@ class VectorEmbeddingsServiceSpec
 
   it should "* produce similar vecs in some cases (test is NON-DETERMINISTIC; if it fails try re-running it" ignore {
 
-    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
+    withEmbedMongoFixture() { _ =>
 
       import com.hamstoo.models.Representation._
 
@@ -104,7 +104,7 @@ class VectorEmbeddingsServiceSpec
   }
 
   it should "* produce similar vectors in other cases" ignore {
-    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
+    withEmbedMongoFixture() { _ =>
 
       import com.hamstoo.models.Representation._
 
@@ -143,7 +143,7 @@ class VectorEmbeddingsServiceSpec
 
   it should "* select top words" ignore {
 
-    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
+    withEmbedMongoFixture() { _ =>
 
       val txt = "otter otter european_otter otters otterlike toyota ford car"
       val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt).futureValue._1
@@ -154,7 +154,7 @@ class VectorEmbeddingsServiceSpec
 
   it should "* k-means vectorize" ignore {
 
-    withEmbedMongoFixture(port = 27017, version = Version.V3_4_1) { _ =>
+    withEmbedMongoFixture() { _ =>
 
       val txt = "otter european_otter otter otters otterlike toyota ford car"
       val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt).futureValue._1
@@ -166,7 +166,7 @@ class VectorEmbeddingsServiceSpec
           ("toyota", -0.482, 0.846)).foreach { case (w, s0, s1) =>
 
         val wordVec = vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, w).futureValue.get._1
-        vecs(0).cosine(wordVec) shouldEqual s0 +- 1e-3
+        vecs.head.cosine(wordVec) shouldEqual s0 +- 1e-3
         vecs(1).cosine(wordVec) shouldEqual s1 +- 1e-3
       }
     }

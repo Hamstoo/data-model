@@ -10,7 +10,7 @@ trait DataInfo {
 
   lazy val idfsResource = "idfs/text8.json.zip"
 
-  lazy val link = "mongodb://localhost:27017"
+  lazy val link = "mongodb://localhost:12345"
 
   lazy val dbName = "hamstoo"
 
