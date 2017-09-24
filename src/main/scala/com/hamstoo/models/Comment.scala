@@ -32,7 +32,7 @@ case class Comment(
                     pageCoord: Option[PageCoord] = None,
                     memeId: Option[String] = None,
                     timeFrom: Long = DateTime.now.getMillis,
-                    timeThru: Long = Long.MaxValue) {
+                    timeThru: Long = Long.MaxValue) extends Sortable with HasShortcut[CommentShortcut] {
   uPref = Some(url.prefx)
 
   def shortcut: CommentShortcut = CommentShortcut(id, pos.text)
