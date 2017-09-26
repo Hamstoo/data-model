@@ -38,21 +38,14 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
 
   private val futColl: Future[BSONCollection] = db map (_ collection "representations")
 
-  // trying this out for fun (debugging)
-  implicit class StringBSONFunctions(private val key: String) /*extends AnyVal*/ {
-    //def :>(elements: Producer[BSONElement]*): BSONDocument = d :~ (Producer[BSONElement](key) :+ elements)
-    //def :>(value: String): BSONDocument = d :~ Producer[BSONElement](key -> value)
-    def :>(value: String): BSONDocument = d :~ key -> value
-  }
-
   // data migration
   case class WeeRepr(id: String, timeFrom: Long, page: String)
   Await.result( for {
     c <- futColl
 
     // change any remaining String `Representation.page`s to Pages (version 0.9.17)
-    sel0 = d :~ PAGE -> ("$type" :> "string")
-    pjn0 = d :~ ID -> "" :~ TIMEFROM -> BSONLong(1) :~ PAGE -> ""
+    sel0 = d :~ PAGE -> (d :~ "$type" -> 2)
+    pjn0 = d :~ ID -> 1 :~ TIMEFROM -> 1 :~ PAGE -> 1
     stringPaged <- {
       implicit val r: BSONDocumentHandler[WeeRepr] = Macros.handler[WeeRepr]
       c.find(sel0, pjn0).coll[WeeRepr, Seq]()
