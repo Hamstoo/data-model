@@ -33,7 +33,7 @@ case class Comment(
                     memeId: Option[String] = None,
                     timeFrom: Long = DateTime.now.getMillis,
                     timeThru: Long = Long.MaxValue) {
-  uPref = Some(url.prefx)
+  uPref = Some(url.binaryPrefix)
 }
 
 object Comment extends BSONHandlers {
@@ -51,10 +51,10 @@ object Comment extends BSONHandlers {
   val OFFSETX: String = nameOf[CommentPos](_.offsetX)
   val OFFSETY: String = nameOf[CommentPos](_.offsetY)
   val URL: String = nameOf[Comment](_.url)
-  val UPRF: String = nameOf[Comment](_.uPref)
+  val UPREF: String = nameOf[Comment](_.uPref)
   val MEM: String = nameOf[Comment](_.memeId)
-  val TSTMP: String = nameOf[Comment](_.timeFrom)
-  val TILL: String = nameOf[Comment](_.timeThru)
+  assert(nameOf[Comment](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
+  assert(nameOf[Comment](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
   val PCOORDX: String = nameOf[Comment](_.pageCoord) + ".x"
   val PCOORDY: String = nameOf[Comment](_.pageCoord) + ".y"
   implicit val commentposBsonHandler: BSONDocumentHandler[CommentPos] = Macros.handler[CommentPos]
