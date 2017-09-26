@@ -1,6 +1,6 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.Representation
+import com.hamstoo.models.{Page, Representation}
 import com.hamstoo.models.Representation._
 import org.joda.time.DateTime
 import play.api.Logger
@@ -8,10 +8,13 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
+import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, BSONElement, BSONLong, BSONString, Macros, Producer}
 
-import scala.collection.breakOut
+import scala.collection.{breakOut, mutable}
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
+
 
 object MongoRepresentationDao {
 
@@ -35,15 +38,39 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
 
   private val futColl: Future[BSONCollection] = db map (_ collection "representations")
 
-  // reduce size of existing `lprefx`s down to URL_PREFIX_LENGTH to be consistent with MongoMarksDao (version 0.9.16)
-  for {
+  // trying this out for fun (debugging)
+  implicit class StringBSONFunctions(private val key: String) /*extends AnyVal*/ {
+    //def :>(elements: Producer[BSONElement]*): BSONDocument = d :~ (Producer[BSONElement](key) :+ elements)
+    //def :>(value: String): BSONDocument = d :~ Producer[BSONElement](key -> value)
+    def :>(value: String): BSONDocument = d :~ key -> value
+  }
+
+  // data migration
+  case class WeeRepr(id: String, timeFrom: Long, page: String)
+  Await.result( for {
     c <- futColl
-    sel = d :~ "$where" -> s"Object.bsonsize({$LPREFX:this.$LPREFX})>$URL_PREFIX_LENGTH+19"
-    longPfxed <- c.find(sel).coll[Representation, Seq]()
+
+    // change any remaining String `Representation.page`s to Pages (version 0.9.17)
+    sel0 = d :~ PAGE -> ("$type" :> "string")
+    pjn0 = d :~ ID -> "" :~ TIMEFROM -> BSONLong(1) :~ PAGE -> ""
+    stringPaged <- {
+      implicit val r: BSONDocumentHandler[WeeRepr] = Macros.handler[WeeRepr]
+      c.find(sel0, pjn0).coll[WeeRepr, Seq]()
+    }
+    _ = logger.info(s"Updating ${stringPaged.size} `Representations.page`s from Strings to Pages")
+    _ <- Future.sequence { stringPaged.map { r =>
+      val pg = Page(MediaType.TEXT_HTML.toString, r.page.getBytes)
+      c.update(d :~ ID -> r.id :~ TIMEFROM -> r.timeFrom, d :~ "$set" -> (d :~ PAGE -> pg))
+    }}
+
+    // reduce size of existing `lprefx`s down to URL_PREFIX_LENGTH to be consistent with MongoMarksDao (version 0.9.16)
+    sel1 = d :~ "$where" -> s"Object.bsonsize({$LPREFX:this.$LPREFX})>$URL_PREFIX_LENGTH+19"
+    longPfxed <- c.find(sel1).coll[Representation, Seq]()
+    _ = logger.info(s"Updating ${longPfxed.size} `Representation.lprefx`s to length $URL_PREFIX_LENGTH bytes")
     _ <- Future.sequence { longPfxed.map { repr => // lprefx will have been overwritten upon construction
       c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ LPREFX -> repr.lprefx))
     }}
-  } yield ()
+  } yield (), 300 seconds)
 
   /* Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
    weights must be integers, and if there's any error in how they're specified the index is silently ignored. */

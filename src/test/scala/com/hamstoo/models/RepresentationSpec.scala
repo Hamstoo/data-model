@@ -1,6 +1,7 @@
 package com.hamstoo.models
 
 import com.hamstoo.models.Representation._
+import com.hamstoo.utils.MediaType
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
 
@@ -16,7 +17,7 @@ class RepresentationSpec extends Specification {
       def rep = Representation(
         id = "",
         link = Some("xyz"),
-        page = "",
+        page = Page(MediaType.TEXT_HTML.toString, "".getBytes),
         header = "",
         doctext = "",
         othtext = "",

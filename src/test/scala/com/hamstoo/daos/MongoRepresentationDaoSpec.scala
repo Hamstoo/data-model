@@ -1,7 +1,8 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.{Mark, MarkData, Representation}
+import com.hamstoo.models.{Mark, MarkData, Page, Representation}
 import com.hamstoo.specUtils
+import com.hamstoo.utils.MediaType
 import org.specs2.mutable.Specification
 import org.specs2.specification.Scope
 
@@ -136,7 +137,7 @@ class MongoRepresentationDaoSpec extends Specification {
       val vec: Representation.Vec = Seq(2304932.039423, 39402.3043)
       val vec2: Representation.Vec = Seq(2304932.039423, 39402.3043, 2304932.039423, 39402.3043, 2304932.039423, 39402.3043)
       var reprOrig = Representation(link = url,
-                                    page = "sdf",
+                                    page = Page(MediaType.TEXT_HTML.toString, "sdf".getBytes),
                                     header = "Monday",
                                     doctext = "sdf",
                                     othtext = "sdf",
@@ -147,7 +148,7 @@ class MongoRepresentationDaoSpec extends Specification {
 
       var reprCopy = Representation(id = reprOrig.id, // setting the ID to the existing ID is now required ...
                                     link = url,       // ... it's no longer (as of 2017-9-12) inferred from the URL
-                                    page = "sывфывdf",
+                                    page = Page(MediaType.TEXT_HTML.toString, "sывфывdf".getBytes),
                                     header = "something",
                                     doctext = "sasdasdf",
                                     othtext = "ssadasddf",
