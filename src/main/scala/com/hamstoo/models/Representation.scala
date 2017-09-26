@@ -51,7 +51,7 @@ case class Representation(
                            var versions: Option[Map[String, String]] = None,
                            score: Option[Double] = None) {
 
-  lprefx = link.map(_.prefx)
+  lprefx = link.map(_.binaryPrefix)
   versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
                     .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
 
@@ -193,7 +193,7 @@ object Representation extends BSONHandlers {
 
   val ID: String = nameOf[Representation](_.id)
   val LNK: String = nameOf[Representation](_.link)
-  val LPREF: String = nameOf[Representation](_.lprefx)
+  val LPREFX: String = nameOf[Representation](_.lprefx)
   val PAGE: String = nameOf[Representation](_.page)
   val HEADR: String = nameOf[Representation](_.header)
   val DTXT: String = nameOf[Representation](_.doctext)

@@ -35,13 +35,23 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
 
   private val futColl: Future[BSONCollection] = db map (_ collection "representations")
 
+  // reduce size of existing `lprefx`s down to URL_PREFIX_LENGTH to be consistent with MongoMarksDao (version 0.9.16)
+  for {
+    c <- futColl
+    sel = d :~ "$where" -> s"Object.bsonsize({$LPREFX:this.$LPREFX})>$URL_PREFIX_LENGTH+19"
+    longPfxed <- c.find(sel).coll[Representation, Seq]()
+    _ <- Future.sequence { longPfxed.map { repr => // lprefx will have been overwritten upon construction
+      c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ LPREFX -> repr.lprefx))
+    }}
+  } yield ()
+
   /* Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
    weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
   private val indxs: Map[String, Index] =
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
     Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
-    Index(LPREF -> Ascending :: Nil) % s"bin-$LPREF-1" ::
+    Index(LPREFX -> Ascending :: Nil) % s"bin-$LPREFX-1" ::
     Index(
       key = DTXT -> Text :: OTXT -> Text :: KWORDS -> Text :: LNK -> Text :: Nil,
       options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %

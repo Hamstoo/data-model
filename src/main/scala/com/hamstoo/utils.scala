@@ -66,7 +66,7 @@ package object utils {
   // due to some overhead in the MongoDB data types (BinData and String) and/or overhead due to the combination
   // of multiple fields in a single index.
   // From MongoMarksDao: `Index(UPRFX -> Ascending :: PUBREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PUBREPR-1"`
-  private val URL_PREFIX_LENGTH = 992
+  val URL_PREFIX_LENGTH = 992
 
   /** Generate an ID to be used for a document in a database collection. */
   def generateDbId(length: Int): String = Random.alphanumeric take length mkString
@@ -76,7 +76,7 @@ package object utils {
       * Retrieves first chars of a string as binary sequence. This method exists as a means of constructing
       * binary prefixes of string fields for binary indexes in MongoDB.
       */
-    def prefx: mutable.WrappedArray[Byte] = s.getBytes take URL_PREFIX_LENGTH
+    def binaryPrefix: mutable.WrappedArray[Byte] = s.getBytes take URL_PREFIX_LENGTH
   }
 
   /**
