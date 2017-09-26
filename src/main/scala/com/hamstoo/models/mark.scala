@@ -92,6 +92,9 @@ object MarkData {
   val commentMergeSeparator: String = "\n\n---\n\n"
 }
 
+/**
+  * This is the object used to store private user content downloaded from the chrome extension.
+  */
 case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
 
 /**

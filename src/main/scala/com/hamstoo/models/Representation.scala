@@ -38,7 +38,7 @@ case class Representation(
                            id: String = generateDbId(Representation.ID_LENGTH),
                            link: Option[String],
                            var lprefx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
-                           page: String,
+                           page: Page,
                            header: String,
                            doctext: String,
                            othtext: String,
@@ -204,5 +204,6 @@ object Representation extends BSONHandlers {
   assert(nameOf[Representation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
   assert(nameOf[Representation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
   assert(nameOf[Representation](_.score) == com.hamstoo.models.Mark.SCORE)
+  implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 }
