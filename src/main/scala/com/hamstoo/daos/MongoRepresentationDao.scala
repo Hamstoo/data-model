@@ -91,7 +91,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   } yield seq
 
   /** Retrieves a current (latest) public representation by URL. */
-  @deprecated("Must be removed in future releases")
+  @deprecated("Must be removed in future releases", "1.0.0")
   def retrieveByUrl(url: String): Future[Option[Representation]] = for {
     c <- futColl
     seq <- (c find d :~ LPREF -> url.prefx :~ curnt).coll[Representation, Seq]()
