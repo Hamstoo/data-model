@@ -90,6 +90,13 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
   } yield seq
 
+  /** Retrieves a current (latest) public representation by URL. */
+  @deprecated("Must be removed in future releases")
+  def retrieveByUrl(url: String): Future[Option[Representation]] = for {
+    c <- futColl
+    seq <- (c find d :~ LPREF -> url.prefx :~ curnt).coll[Representation, Seq]()
+  } yield seq find (_.link contains url)
+
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
     * Representation instances. Also
