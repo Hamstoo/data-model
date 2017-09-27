@@ -43,6 +43,9 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   Await.result( for {
     c <- futColl
 
+    // ensure every repr has a page String before changing them all to Pages
+    _ <- c.update(d :~ PAGE -> (d :~ "$exists" -> 0), d :~ "$set" -> (d :~ PAGE -> ""), multi = true)
+
     // change any remaining String `Representation.page`s to Pages (version 0.9.17)
     sel0 = d :~ PAGE -> (d :~ "$type" -> 2)
     pjn0 = d :~ ID -> 1 :~ TIMEFROM -> 1 :~ PAGE -> 1
@@ -53,7 +56,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     _ = logger.info(s"Updating ${stringPaged.size} `Representations.page`s from Strings to Pages")
     _ <- Future.sequence { stringPaged.map { r =>
       val pg = Page(MediaType.TEXT_HTML.toString, r.page.getBytes)
-      c.update(d :~ ID -> r.id :~ TIMEFROM -> r.timeFrom, d :~ "$set" -> (d :~ PAGE -> pg))
+      c.update(d :~ ID -> r.id :~ TIMEFROM -> r.timeFrom, d :~ "$set" -> (d :~ PAGE -> pg), multi = true)
     }}
 
     // reduce size of existing `lprefx`s down to URL_PREFIX_LENGTH to be consistent with MongoMarksDao (version 0.9.16)
@@ -61,7 +64,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     longPfxed <- c.find(sel1).coll[Representation, Seq]()
     _ = logger.info(s"Updating ${longPfxed.size} `Representation.lprefx`s to length $URL_PREFIX_LENGTH bytes")
     _ <- Future.sequence { longPfxed.map { repr => // lprefx will have been overwritten upon construction
-      c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ LPREFX -> repr.lprefx))
+      c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ LPREFX -> repr.lprefx), multi = true)
     }}
   } yield (), 300 seconds)
 
