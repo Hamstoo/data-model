@@ -1,7 +1,7 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.{MarkData, Representation}
-import com.hamstoo.utils.TestHelper
+import com.hamstoo.models.{MarkData, Page, Representation}
+import com.hamstoo.utils.{MediaType, TestHelper}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
@@ -135,8 +135,9 @@ class MongoRepresentationDaoSpec extends TestHelper {
       val vec: Representation.Vec = Seq(2304932.039423, 39402.3043)
       val vec2: Representation.Vec = Seq(2304932.039423, 39402.3043, 2304932.039423, 39402.3043, 2304932.039423, 39402.3043)
 
-      val reprOrig = Representation(link = url,
-        page = "sdf",
+      val reprOrig = Representation(
+        link = url,
+        page = Page(MediaType.TEXT_HTML.toString, "sdf".getBytes),
         header = "Monday",
         doctext = "sdf",
         othtext = "sdf",
@@ -148,7 +149,7 @@ class MongoRepresentationDaoSpec extends TestHelper {
       println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
       val reprCopy = reprOrig.copy(
-        page = "sывфывdf",
+        page = Page(MediaType.TEXT_HTML.toString, "sывфывdf".getBytes),
         header = "something",
         doctext = "sasdasdf",
         othtext = "ssadasddf",
