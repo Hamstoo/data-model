@@ -5,16 +5,16 @@ name := "data-model"
 organization := "com.hamstoo"
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
 
-// This needs to play nicely with the release.sh.  In particular, the VERSION file should always contain "-SNAPSHOT"
-// and release.sh is the only script that should ever remove it, which it does so only temporarily.
+// We're no longer doing anything with -SNAPSHOT versions.  If you're working in a branch where you want to
+// temporarily put -SNAPSHOT in the version file so that your artifacts (may) get overwritten each time you
+// push, then knock yourself out.  But note it's unclear that Artifactory, as currently configured, allows
+// for the automatic overwriting of such JAR files; and also, circle.yml caches the ~/.ivy2 directory of previous
+// builds so you'll probably have to "Rebuild without cache" anyway for the new JAR to take effect.
 version := {
   val branch = Process("git rev-parse --abbrev-ref HEAD").lineStream.head
-  val fp = Source fromFile "VERSION"
-  val version = fp.getLines find (_ => true) map { l =>
-    if (branch != "master") s"$branch-${l.trim}" else l.trim
-  } getOrElse "latest-SNAPSHOT"
-  fp.close
-  version
+  Source.fromFile("VERSION").getLines find (_ => true) map { l =>
+    (if (branch == "master") "" else branch + "-") + l.trim
+  } getOrElse "latest"
 }
 
 scalaVersion := "2.12.3"

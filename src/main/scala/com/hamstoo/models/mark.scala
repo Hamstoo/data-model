@@ -92,6 +92,9 @@ object MarkData {
   val commentMergeSeparator: String = "\n\n---\n\n"
 }
 
+/**
+  * This is the object used to store private user content downloaded from the chrome extension.
+  */
 case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
 
 /**
@@ -130,7 +133,7 @@ case class Mark(
                  timeThru: Long = INF_TIME,
                  mergeId: Option[String] = None,
                  score: Option[Double] = None) {
-  urlPrfx = mark.url map (_.prefx)
+  urlPrfx = mark.url map (_.binaryPrefix)
 
   /** Use the private repr when available, o/w use the public one. */
   def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
@@ -210,14 +213,14 @@ object Mark extends BSONHandlers {
   val ID: String = nameOf[Mark](_.id)
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)
-  val UPRFX: String = nameOf[Mark](_.urlPrfx)
+  val URLPRFX: String = nameOf[Mark](_.urlPrfx)
   val PAGE: String = nameOf[Mark](_.page)
   val PUBREPR: String = nameOf[Mark](_.pubRepr)
   val PRVREPR: String = nameOf[Mark](_.privRepr)
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
   val MERGEID: String = nameOf[Mark](_.mergeId)
-  // `text` index search score <projectedFieldName>, not a field name of the collection:
+  // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)
   val SUBJ: String = nameOf[MarkData](_.subj)
   val URL: String = nameOf[MarkData](_.url)
