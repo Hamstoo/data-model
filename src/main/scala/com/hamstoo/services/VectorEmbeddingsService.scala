@@ -60,7 +60,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     // first weight them all approximately the same
     val maxLen = strreprs.map(_._1.length).max
 
-    // queries of MongoDB `text` indexes apply weights to counts of search terms so apply them in this count also
+    // word count is used to normalize $search scores obtained from queries against MongoDB Text Index
     var nWords: Long = 0
 
     val seq = if (maxLen == 0) Seq.empty[WordMass] else {
@@ -68,8 +68,8 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
         // normalize w.r.t. cubrt(char count ratio) b/c `doctext` can be many, many times longer than the others
         if (str.isEmpty) Seq.empty[WordMass] else {
           val r = wgt * math.pow(maxLen.toDouble / str.length, 0.333333)
-          val (topWords, docLength) = Await.result(text2TopWords(str), 60 seconds)
-          nWords += docLength * wgt
+          val (topWords, docLength) = Await.result(text2TopWords(str), 60 seconds) // TODO: remove this Await!
+          nWords += docLength * wgt // this weighting gets "undone" below
           topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))
         }
       }.groupBy(_.word)
@@ -80,7 +80,8 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
         }.toSeq
     }
 
-    (seq, nWords)
+    // undo the nWords weighting as if all of the words were straight doctext
+    (seq, nWords / CONTENT_WGT)
   }
 
   /**

@@ -28,6 +28,7 @@ import scala.collection.mutable
   * @param doctext    Document text.
   * @param othtext    Other text not included in document text.
   * @param keywords   Keywords from meta tags.
+  * @param nWords     Approximate number of words from the 4 bins each normalized for their MongoDB Text Index weights.
   * @param autoGenKws Keywords generated from the 4 textual representations.  Based on BM25 and cosine similarities.
   * @param vectors    Map from vector computation methods to Array[Double] vector embeddings of the texts.
   * @param timeFrom   Time of construction/modification.
