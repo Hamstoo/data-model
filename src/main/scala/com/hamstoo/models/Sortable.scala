@@ -1,15 +1,14 @@
 package com.hamstoo.models
 
 /**
-  * Created by
-  * Author: fayaz.sanaulla@gmail.com
-  * Date: 24.09.17
+  * Trait that define sort by page coordinates functionality
   */
 trait Sortable {
   val pageCoord: Option[PageCoord]
 }
 
 object Sortable {
+
   /**
     * Function-predicate that sorts 2 PageCoords in decreasing order.
     * First sort by `y`, then if they are equal, trying to make comparision by `x`.
