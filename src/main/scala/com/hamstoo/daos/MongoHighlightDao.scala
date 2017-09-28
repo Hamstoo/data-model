@@ -18,7 +18,7 @@ import scala.concurrent.Future
 class MongoHighlightDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.models.Highlight._
-  import com.hamstoo.models.Mark.TIMETHRU
+  import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
 
   private val futColl: Future[BSONCollection] = db map (_ collection "highlights")
