@@ -28,6 +28,7 @@ import scala.collection.mutable
   * @param doctext    Document text.
   * @param othtext    Other text not included in document text.
   * @param keywords   Keywords from meta tags.
+  * @param nWords     Approximate number of words from the 4 bins each normalized for their MongoDB Text Index weights.
   * @param autoGenKws Keywords generated from the 4 textual representations.  Based on BM25 and cosine similarities.
   * @param vectors    Map from vector computation methods to Array[Double] vector embeddings of the texts.
   * @param timeFrom   Time of construction/modification.
@@ -38,7 +39,7 @@ case class Representation(
                            id: String = generateDbId(Representation.ID_LENGTH),
                            link: Option[String],
                            var lprefx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
-                           page: String,
+                           page: Page,
                            header: String,
                            doctext: String,
                            othtext: String,
@@ -51,7 +52,7 @@ case class Representation(
                            var versions: Option[Map[String, String]] = None,
                            score: Option[Double] = None) {
 
-  lprefx = link.map(_.prefx)
+  lprefx = link.map(_.binaryPrefix)
   versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
                     .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
 
@@ -193,7 +194,7 @@ object Representation extends BSONHandlers {
 
   val ID: String = nameOf[Representation](_.id)
   val LNK: String = nameOf[Representation](_.link)
-  val LPREF: String = nameOf[Representation](_.lprefx)
+  val LPREFX: String = nameOf[Representation](_.lprefx)
   val PAGE: String = nameOf[Representation](_.page)
   val HEADR: String = nameOf[Representation](_.header)
   val DTXT: String = nameOf[Representation](_.doctext)
@@ -204,5 +205,6 @@ object Representation extends BSONHandlers {
   assert(nameOf[Representation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
   assert(nameOf[Representation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
   assert(nameOf[Representation](_.score) == com.hamstoo.models.Mark.SCORE)
+  implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 }
