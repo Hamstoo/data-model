@@ -12,7 +12,7 @@ class MongoHighlightDaoSpec extends TestHelper {
 
   lazy val highlightDao = new MongoHighlightDao(getDB)
 
-  "MongoHighlightDai" should "* return correctly sorted list of highlights" in {
+  "MongoHighlightDao" should "* return correctly sorted list of highlights" in {
     withEmbedMongoFixture() { _ =>
 
       val usrId = UUID.randomUUID()

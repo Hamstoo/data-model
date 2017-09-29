@@ -35,7 +35,7 @@ case class Highlight(
                       memeId: Option[String] = None,
                       timeFrom: Long = DateTime.now.getMillis,
                       timeThru: Long = Long.MaxValue) extends Sortable with HasShortcut[HLShortcut] {
-  uPref = Some(url.prefx)
+  uPref = Some(url.binaryPrefix)
 
   def shortcut: HLShortcut = HLShortcut(id, preview)
 }
@@ -59,7 +59,7 @@ object Highlight extends BSONHandlers {
   val TEXT: String = nameOf[HLPosElem](_.text)
   val INDX: String = nameOf[HLPos](_.initIndex)
   val URL: String = nameOf[Highlight](_.url)
-  val UPRF: String = nameOf[Highlight](_.uPref)
+  val UPREF: String = nameOf[Highlight](_.uPref)
   val PRVW: String = nameOf[Highlight](_.preview)
   val LEAD: String = nameOf[HLPreview](_.lead)
   val PTXT: String = nameOf[HLPreview](_.text)

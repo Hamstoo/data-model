@@ -25,6 +25,18 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   private val futColl: Future[BSONCollection] = db map (_ collection "entries")
 
+  // reduce size of existing `urlPrfx`s down to URL_PREFIX_LENGTH to prevent indexes below from being too large
+  // and causing exceptions when trying to update marks with reprIds (version 0.9.16)
+  for {
+    c <- futColl
+    sel = d :~ "$where" -> s"Object.bsonsize({$URLPRFX:this.$URLPRFX})>$URL_PREFIX_LENGTH+19"
+    longPfxed <- c.find(sel).coll[Mark, Seq]()
+    _ = logger.info(s"Updating ${longPfxed.size} `Mark.urlPrfx`s to length $URL_PREFIX_LENGTH bytes")
+    _ <- Future.sequence { longPfxed.map { m => // urlPrfx will have been overwritten upon `Mark` construction
+        c.update(d :~ ID -> m.id :~ TIMEFROM -> m.timeFrom, d :~ "$set" -> (d :~ URLPRFX -> m.urlPrfx))
+    }}
+  } yield ()
+
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
     Index(USER -> Ascending :: Nil) % s"bin-$USER-1" ::
@@ -32,8 +44,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
-    Index(UPRFX -> Ascending :: PUBREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PUBREPR-1" ::
-    Index(UPRFX -> Ascending :: PRVREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PRVREPR-1" ::
+    Index(URLPRFX -> Ascending :: PUBREPR -> Ascending :: Nil) % s"bin-$URLPRFX-1-$PUBREPR-1" ::
+    Index(URLPRFX -> Ascending :: PRVREPR -> Ascending :: Nil) % s"bin-$URLPRFX-1-$PRVREPR-1" ::
     Index(s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMNT" -> Text :: Nil) %
       s"txt-$MARK.$SUBJ-$MARK.$TAGS-$MARK.$COMNT" ::
     Index(s"$MARK.$TAGS" -> Ascending :: Nil) % s"bin-$MARK.$TAGS-1" ::
@@ -86,7 +98,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = for {
     c <- futColl
-    seq <- (c find d :~ USER -> user :~ UPRFX -> url.prefx :~ curnt).coll[Mark, Seq]()
+    seq <- (c find d :~ USER -> user :~ URLPRFX -> url.binaryPrefix :~ curnt).coll[Mark, Seq]()
   } yield seq collectFirst { case m if m.mark.url contains url => m }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
@@ -232,10 +244,10 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Retrieves a list of n marks that require representations. Intentionally not filtering for `curnt` marks. */
   def findMissingReprs(n: Int): Future[Seq[Mark]] = for {
     c <- futColl
-    sel = d :~ UPRFX -> (d :~ "$exists" -> true) :~ UPRFX -> (d :~ "$ne" -> "".getBytes) :~
+    sel = d :~ URLPRFX -> (d :~ "$exists" -> true) :~ URLPRFX -> (d :~ "$ne" -> "".getBytes) :~
           // note that this can result in the overwrite of a `privRepr` if both it and `page` exist
       "$or" -> BSONArray(d :~ PUBREPR -> (d :~ "$exists" -> false), d :~ s"$PAGE" -> (d :~ "$exists" -> true))
-    seq <- (c find sel).coll[Mark, Seq](n)
+    seq <- c.find(sel).coll[Mark, Seq](n)
   } yield seq
 
   /**
