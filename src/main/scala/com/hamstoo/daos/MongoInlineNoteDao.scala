@@ -2,20 +2,20 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.Comment
+import com.hamstoo.models.InlineNote
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext.Implicits.global // "Prefer a dedicated ThreadPool for IO-bound tasks" [https://www.beyondthelines.net/computing/scala-future-and-execution-context/]
 import scala.concurrent.Future
 
-class MongoCommentDao(db: Future[DefaultDB]) {
 
-  import com.hamstoo.models.Comment._
+class MongoInlineNoteDao(db: Future[DefaultDB]) {
+
+  import com.hamstoo.models.InlineNote._
   import com.hamstoo.utils._
   import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
 
@@ -25,7 +25,7 @@ class MongoCommentDao(db: Future[DefaultDB]) {
   for {
     c <- futColl
     sel = d :~ "$where" -> s"Object.bsonsize({$UPREF:this.$UPREF})>$URL_PREFIX_LENGTH+19"
-    longPfxed <- c.find(sel).coll[Comment, Seq]()
+    longPfxed <- c.find(sel).coll[InlineNote, Seq]()
     _ <- Future.sequence { longPfxed.map { repr => // uPref will have been overwritten upon construction
       c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ UPREF -> repr.uPref))
     }}
@@ -39,33 +39,38 @@ class MongoCommentDao(db: Future[DefaultDB]) {
       Nil toMap;
   futColl map (_.indexesManager ensure indxs)
 
-  def create(ct: Comment): Future[Unit] = for {
+  def create(ct: InlineNote): Future[Unit] = for {
     c <- futColl
     wr <- c insert ct
     _ <- wr failIfError
   } yield ()
 
-  def receive(usr: UUID, id: String): Future[Option[Comment]] = for {
+  def retrieve(usr: UUID, id: String): Future[Option[InlineNote]] = for {
     c <- futColl
-    optCt <- (c find d :~ USR -> usr :~ ID -> id :~ curnt projection d :~ POS -> 1).one[Comment]
+    optCt <- (c find d :~ USR -> usr :~ ID -> id :~ curnt projection d :~ POS -> 1).one[InlineNote]
   } yield optCt
 
-  def receive(url: String, usr: UUID): Future[Seq[Comment]] = for {
+  def retrieveByUrl(usr: UUID, url: String): Future[Seq[InlineNote]] = for {
     c <- futColl
-    seq <- (c find d :~ USR -> usr :~ UPREF -> url.binaryPrefix :~ curnt).coll[Comment, Seq]()
+    seq <- (c find d :~ USR -> usr :~ UPREF -> url.binaryPrefix :~ curnt).coll[InlineNote, Seq]()
   } yield seq filter (_.url == url)
 
-  def retrieveSortedByPageCoord(url: String, usr: UUID): Future[Seq[Comment]] = for {
+  /*def retrieveSortedByPageCoord(url: String, usr: UUID): Future[Seq[InlineNote]] = for {
     c <- futColl
     seq <- (c find d :~ USR -> usr :~ UPREF -> url.binaryPrefix :~ curnt).coll[Comment, Seq]()
-  } yield seq filter (_.url == url) sortWith { case (a, b) => PageCoord.sortWith(a.pageCoord, b.pageCoord) }
+  } yield seq filter (_.url == url) sortWith { case (a, b) => PageCoord.sortWith(a.pageCoord, b.pageCoord) }*/
 
-  def update(usr: UUID, id: String, pos: CommentPos): Future[Comment] = for {
+  // TODO: merge w/ HighlightDao?????
+
+
+
+
+  def update(usr: UUID, id: String, pos: InlineNote.Position): Future[InlineNote] = for {
     c <- futColl
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
-    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
-    ct = wr.result[Comment].get.copy(pos = pos, memeId = None, timeFrom = now, timeThru = Long.MaxValue)
+    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TILL -> now), fetchNewObject = true)
+    ct = wr.result[InlineNote].get.copy(pos = pos, memeId = None, timeFrom = now, timeThru = Long.MaxValue)
     wr <- c insert ct
     _ <- wr failIfError
   } yield ct
@@ -80,8 +85,8 @@ class MongoCommentDao(db: Future[DefaultDB]) {
     * Be carefull, expansive operation.
     * @return
     */
-  def receiveAll(): Future[Seq[Comment]] = for {
-    c <- futCol
-    seq <- (c find d).coll[Comment, Seq]()
+  def receiveAll(): Future[Seq[InlineNote]] = for {
+    c <- futColl
+    seq <- (c find d).coll[InlineNote, Seq]()
   } yield seq
 }

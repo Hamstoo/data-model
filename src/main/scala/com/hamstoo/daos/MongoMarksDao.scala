@@ -12,7 +12,7 @@ import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext.Implicits.global // "Prefer a dedicated ThreadPool for IO-bound tasks" [https://www.beyondthelines.net/computing/scala-future-and-execution-context/]
 import scala.concurrent.Future
 
 /**

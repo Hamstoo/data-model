@@ -8,10 +8,10 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, BSONElement, BSONLong, BSONString, Macros, Producer}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
-import scala.collection.{breakOut, mutable}
-import scala.concurrent.ExecutionContext.Implicits.global
+import scala.collection.breakOut
+import scala.concurrent.ExecutionContext.Implicits.global // "Prefer a dedicated ThreadPool for IO-bound tasks" [https://www.beyondthelines.net/computing/scala-future-and-execution-context/]
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
@@ -127,7 +127,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   @deprecated("Must be removed in future releases", "1.0.0")
   def retrieveByUrl(url: String): Future[Option[Representation]] = for {
     c <- futColl
-    seq <- (c find d :~ LPREF -> url.prefx :~ curnt).coll[Representation, Seq]()
+    seq <- (c find d :~ LPREFX -> url.binaryPrefix :~ curnt).coll[Representation, Seq]()
   } yield seq find (_.link contains url)
 
   /**

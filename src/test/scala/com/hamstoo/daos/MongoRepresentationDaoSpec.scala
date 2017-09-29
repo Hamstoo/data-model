@@ -1,7 +1,7 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.{MarkData, Representation}
-import com.hamstoo.utils.TestHelper
+import com.hamstoo.models.{MarkData, Representation, Page}
+import com.hamstoo.utils.{MediaType, TestHelper}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
