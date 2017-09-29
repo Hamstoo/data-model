@@ -19,7 +19,7 @@ class RepresentationSpec extends FlatSpecWithMatchers {
     def rep = Representation(
       id = "",
       link = Some("xyz"),
-      page = "",
+      page = Page(MediaType.TEXT_HTML.toString, "".getBytes),
       header = "",
       doctext = "",
       othtext = "",
