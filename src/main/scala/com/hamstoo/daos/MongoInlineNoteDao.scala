@@ -82,7 +82,7 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) {
   } yield ()
 
   /**
-    * Be carefull, expansive operation.
+    * Be carefull, expensive operation.
     * @return
     */
   def receiveAll(): Future[Seq[InlineNote]] = for {
