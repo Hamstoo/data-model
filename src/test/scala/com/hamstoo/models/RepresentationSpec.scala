@@ -1,7 +1,7 @@
 package com.hamstoo.models
 
 import com.hamstoo.models.Representation._
-import com.hamstoo.utils.FlatSpecWithMatchers
+import com.hamstoo.utils.{FlatSpecWithMatchers, MediaType}
 
 import scala.util.Random
 
