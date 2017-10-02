@@ -12,7 +12,7 @@ import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
-import scala.concurrent.ExecutionContext.Implicits.global // "Prefer a dedicated ThreadPool for IO-bound tasks" [https://www.beyondthelines.net/computing/scala-future-and-execution-context/]
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 /**
@@ -49,7 +49,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     Index(s"$MARK.$SUBJ" -> Text :: s"$MARK.$TAGS" -> Text :: s"$MARK.$COMNT" -> Text :: Nil) %
       s"txt-$MARK.$SUBJ-$MARK.$TAGS-$MARK.$COMNT" ::
     Index(s"$MARK.$TAGS" -> Ascending :: Nil) % s"bin-$MARK.$TAGS-1" ::
-    Nil toMap;
+    Nil toMap
 
   futColl map (_.indexesManager ensure indxs)
 
