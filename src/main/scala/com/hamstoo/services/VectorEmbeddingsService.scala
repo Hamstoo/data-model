@@ -4,13 +4,13 @@ import breeze.linalg.{DenseMatrix, DenseVector, svd}
 import com.hamstoo.daos.MongoRepresentationDao.{CONTENT_WGT, KWORDS_WGT}
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation.{Vec, VecEnum, _}
-import play.api.Logger
 import com.hamstoo.utils
+import play.api.Logger
 
 import scala.annotation.tailrec
-import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 import scala.util.Random
 
 

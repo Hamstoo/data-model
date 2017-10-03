@@ -3,7 +3,6 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.models.Highlight.{HLPos, HLPreview}
 import com.hamstoo.utils.ExtendedString
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
@@ -29,41 +28,46 @@ case class Highlight(
                       id: String = Random.alphanumeric take Highlight.ID_LENGTH mkString,
                       url: String,
                       var uPref: Option[mutable.WrappedArray[Byte]] = None,
-                      pos: HLPos,
+                      pos: Highlight.Position,
                       pageCoord: Option[PageCoord] = None,
-                      preview: HLPreview,
+                      preview: Highlight.Preview,
                       memeId: Option[String] = None,
                       timeFrom: Long = DateTime.now.getMillis,
-                      timeThru: Long = Long.MaxValue) {
+                      timeThru: Long = Long.MaxValue) extends Annotation with FrontendStub[Highlight.Stub] {
   uPref = Some(url.binaryPrefix)
+
+  override def stub: Highlight.Stub = Highlight.Stub(id, preview)
 }
 
 object Highlight extends BSONHandlers {
 
-  case class HLPosElem(path: String, text: String)
+  case class PositionElement(path: String, text: String)
 
-  case class HLPos(elements: Seq[HLPosElem], initIndex: Int)
+  case class Position(elements: Seq[PositionElement], initIndex: Int)
 
-  case class HLPreview(lead: String, text: String, tail: String)
+  case class Preview(lead: String, text: String, tail: String)
+
+  case class Stub(id: String, preview: Preview)
 
   val ID_LENGTH: Int = 16
   val USR: String = nameOf[Highlight](_.usrId)
   val ID: String = nameOf[Highlight](_.id)
   val POS: String = nameOf[Highlight](_.pos)
-  val PATH: String = nameOf[HLPosElem](_.path)
-  val TEXT: String = nameOf[HLPosElem](_.text)
-  val INDX: String = nameOf[HLPos](_.initIndex)
+  val PCOORD: String = nameOf[Highlight](_.pageCoord)
+  val PATH: String = nameOf[PositionElement](_.path)
+  val TEXT: String = nameOf[PositionElement](_.text)
+  val INDX: String = nameOf[Position](_.initIndex)
   val URL: String = nameOf[Highlight](_.url)
   val UPREF: String = nameOf[Highlight](_.uPref)
   val PRVW: String = nameOf[Highlight](_.preview)
-  val LEAD: String = nameOf[HLPreview](_.lead)
-  val PTXT: String = nameOf[HLPreview](_.text)
-  val TAIL: String = nameOf[HLPreview](_.tail)
+  val LEAD: String = nameOf[Preview](_.lead)
+  val PTXT: String = nameOf[Preview](_.text)
+  val TAIL: String = nameOf[Preview](_.tail)
   val MEM: String = nameOf[Highlight](_.memeId)
   assert(nameOf[Highlight](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
   assert(nameOf[Highlight](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
-  implicit val hlposElemBsonHandler: BSONDocumentHandler[HLPosElem] = Macros.handler[HLPosElem]
-  implicit val hlposBsonHandler: BSONDocumentHandler[HLPos] = Macros.handler[HLPos]
-  implicit val hlprevBsonHandler: BSONDocumentHandler[HLPreview] = Macros.handler[HLPreview]
+  implicit val hlposElemBsonHandler: BSONDocumentHandler[PositionElement] = Macros.handler[PositionElement]
+  implicit val hlposBsonHandler: BSONDocumentHandler[Position] = Macros.handler[Position]
+  implicit val hlprevBsonHandler: BSONDocumentHandler[Preview] = Macros.handler[Preview]
   implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
 }

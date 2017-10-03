@@ -3,45 +3,42 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.{Mark, MarkData, Representation}
-import com.hamstoo.utils.generateDbId
-import com.hamstoo.specUtils
-import org.specs2.mutable.Specification
-import org.specs2.specification.Scope
+import com.hamstoo.utils.{TestHelper, generateDbId}
 
-import scala.concurrent.Await
-import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 
+class MongoMarksDaoSpec extends TestHelper {
 
-class MongoMarksDaoSpec extends Specification {
+  lazy val marksDao = new MongoMarksDao(getDB)
 
-  "MongoMarksDao" should {
+  "MongoMarksDao" should "* findMissingReprs, both current and not" in {
 
-    "* findMissingReprs, both current and not" in new system {
-      val m = Mark(UUID.randomUUID(), mark = MarkData("North Korea",
-        Some("https://github.com/ziplokk1/incapsula-cracker/blob/master/README.md")))
-      Await.result(marksDao.insert(m), timeout)
-      Await.result(marksDao.update1(m.userId, m.id, m.mark.copy(subj = "a NEW subject")), timeout)
-      val missingReprMarks: Seq[Mark] = Await.result(marksDao.findMissingReprs(1000000), timeout)
-      missingReprMarks.count(_.userId == m.userId) mustEqual 2
-    }
+    withEmbedMongoFixture() { _ =>
 
-    "* obey its `bin-urlPrfx-1-pubRepr-1` index" in new system {
-      val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(specUtils.crazyUrl)))
-      val reprId = generateDbId(Representation.ID_LENGTH)
-      Await.result( for {
-        _ <- marksDao.insert(m)
-        _ <- marksDao.updatePublicReprId(m.id, m.timeFrom, reprId)
-        mInserted <- marksDao.retrieve(m.userId, m.id)
-        _ = mInserted.get.pubRepr.get mustEqual reprId
-      } yield (), timeout)
+      val mark = Mark(UUID.randomUUID(), mark = MarkData("a subject", Some("http://hamstoo.com")))
+
+      marksDao.insert(mark).futureValue shouldEqual mark
+
+      val newSubj = "a NEW subject"
+
+      marksDao.update(mark.userId, mark.id, mark.mark.copy(subj = "a NEW subject")).futureValue.mark.subj shouldEqual newSubj
+
+      marksDao.findMissingReprs(1000000).futureValue.count(_.userId == mark.userId) shouldEqual 2
     }
   }
 
-  // https://github.com/etorreborre/specs2/blob/SPECS2-3.8.9/examples/src/test/scala/examples/UnitSpec.scala
-  trait system extends Scope {
-    val marksDao: MongoMarksDao = specUtils.marksDao
-    val reprsDao: MongoRepresentationDao = specUtils.reprsDao
-    val timeout: Duration = specUtils.timeout
+  it should "* obey its `bin-urlPrfx-1-pubRepr-1` index" in {
+
+    withEmbedMongoFixture() { _ =>
+      val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(crazyUrl)))
+      val reprId = generateDbId(Representation.ID_LENGTH)
+
+      for {
+        _ <- marksDao.insert(m)
+        _ <- marksDao.updatePublicReprId(m.id, m.timeFrom, reprId)
+        mInserted <- marksDao.retrieve(m.userId, m.id)
+        _ = mInserted.get.pubRepr.get shouldEqual reprId
+      } yield {}
+    }
   }
 }
