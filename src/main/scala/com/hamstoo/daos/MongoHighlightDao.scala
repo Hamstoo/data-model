@@ -2,14 +2,14 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Highlight, PageCoord}
+import com.hamstoo.models.Highlight
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext.Implicits.global // "Prefer a dedicated ThreadPool for IO-bound tasks" [https://www.beyondthelines.net/computing/scala-future-and-execution-context/]
 import scala.concurrent.Future
 
 /**
@@ -18,8 +18,8 @@ import scala.concurrent.Future
 class MongoHighlightDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.models.Highlight._
-  import com.hamstoo.utils._
   import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
+  import com.hamstoo.utils._
 
   private val futColl: Future[BSONCollection] = db map (_ collection "highlights")
 
@@ -33,12 +33,13 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
     }}
   } yield ()
 
-  /* Indexes with names for this mongo collection: */
+  // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: UPREF -> Ascending :: Nil) % s"bin-$USR-1-$UPREF-1" ::
-      Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
-        s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
-      Nil toMap;
+    Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
+      s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
+    Nil toMap;
+  
   futColl map (_.indexesManager ensure indxs)
 
   def create(hl: Highlight): Future[Unit] = for {
@@ -47,22 +48,17 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
     _ <- wr failIfError
   } yield ()
 
-  def receive(usr: UUID, id: String): Future[Option[Highlight]] = for {
+  def retrieve(usr: UUID, id: String): Future[Option[Highlight]] = for {
     c <- futColl
     mbHl <- (c find d :~ USR -> usr :~ ID -> id :~ curnt projection d :~ POS -> 1).one[Highlight]
   } yield mbHl
 
-  def receive(url: String, usr: UUID): Future[Seq[Highlight]] = for {
+  def retrieveByUrl(usr: UUID, url: String): Future[Seq[Highlight]] = for {
     c <- futColl
     seq <- (c find d :~ USR -> usr :~ UPREF -> url.binaryPrefix :~ curnt).coll[Highlight, Seq]()
   } yield seq filter (_.url == url)
 
-  def receiveSortedByPageCoord(url: String, usr: UUID): Future[Seq[Highlight]] = for {
-    c <- futColl
-    seq <- (c find d :~ USR -> usr :~ UPREF -> url.binaryPrefix :~ curnt).coll[Highlight, Seq]()
-  } yield seq filter (_.url == url) sortWith { case (a, b) => PageCoord.sortWith(a.pageCoord, b.pageCoord) }
-
-  def update(usr: UUID, id: String, pos: HLPos, prv: HLPreview): Future[Highlight] = for {
+  def update(usr: UUID, id: String, pos: Highlight.Position, prv: Highlight.Preview): Future[Highlight] = for {
     c <- futColl
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt

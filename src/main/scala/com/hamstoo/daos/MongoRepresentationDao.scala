@@ -8,10 +8,10 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, BSONElement, BSONLong, BSONString, Macros, Producer}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
-import scala.collection.{breakOut, mutable}
-import scala.concurrent.ExecutionContext.Implicits.global
+import scala.collection.breakOut
+import scala.concurrent.ExecutionContext.Implicits.global // "Prefer a dedicated ThreadPool for IO-bound tasks" [https://www.beyondthelines.net/computing/scala-future-and-execution-context/]
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
@@ -33,8 +33,8 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   val logger: Logger = Logger(classOf[MongoRepresentationDao])
 
   import MongoRepresentationDao._
+  import com.hamstoo.models.Mark.{SCORE, TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
-  import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU, SCORE}
 
   private val futColl: Future[BSONCollection] = db map (_ collection "representations")
 
@@ -123,6 +123,13 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
   } yield seq
 
+  /** Retrieves a current (latest) public representation by URL. */
+  @deprecated("Must be removed in future releases", "1.0.0")
+  def retrieveByUrl(url: String): Future[Option[Representation]] = for {
+    c <- futColl
+    seq <- (c find d :~ LPREFX -> url.binaryPrefix :~ curnt).coll[Representation, Seq]()
+  } yield seq find (_.link contains url)
+
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
     * Representation instances. Also
@@ -131,7 +138,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     *
     * SELECT id, doctext, vec, textScore() AS score FROM tbRepresentation
     * WHERE ANY(SPLIT(doctext) IN @query)
-    * --ORDER BY score DESC -- actually this is not happening, would require .sort` after `.find`
+    * --ORDER BY score DESC -- actually this is not happening, would require '.sort' after '.find'
     */
   def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
     c <- futColl
