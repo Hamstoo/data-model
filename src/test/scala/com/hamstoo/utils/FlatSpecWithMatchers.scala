@@ -3,8 +3,6 @@ package com.hamstoo.utils
 import org.scalatest.{FlatSpecLike, Matchers}
 
 /**
-  * Created by
-  * Author: fayaz.sanaulla@gmail.com
-  * Date: 21.09.17
+  * Trait that combine FlatSpecLike trait with Matchers for simply test suites
   */
 trait FlatSpecWithMatchers extends FlatSpecLike with Matchers
