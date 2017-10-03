@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Highlight, PageCoord, Annotation}
+import com.hamstoo.models.{Annotation, Highlight, PageCoord}
 import com.hamstoo.utils.TestHelper
 
 import scala.util.Random
@@ -28,7 +28,6 @@ class MongoHighlightDaoSpec extends TestHelper {
 
       highlightDao.retrieveByUrl(h1.usrId, h1.url).futureValue
         .sortWith(Annotation.sort)
-        .map(_.stub)
         .map(_.preview) shouldEqual Seq(h2.preview, h1.preview, h3.preview)
     }
   }
