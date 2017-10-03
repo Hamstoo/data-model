@@ -5,6 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.utils.ExtendedString
 import org.joda.time.DateTime
+import play.api.libs.json.{JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
@@ -33,21 +34,27 @@ case class Highlight(
                       preview: Highlight.Preview,
                       memeId: Option[String] = None,
                       timeFrom: Long = DateTime.now.getMillis,
-                      timeThru: Long = Long.MaxValue) extends Annotation with FrontendStub[Highlight.Stub] {
+                      timeThru: Long = Long.MaxValue) extends Annotation with HasJsonPreview {
   uPref = Some(url.binaryPrefix)
 
-  override def stub: Highlight.Stub = Highlight.Stub(id, preview)
+  import Highlight.fmt
+
+  override def jsonPreview: JsObject = Json.obj(
+    "id" -> id,
+    "preview" -> Json.toJson(preview),
+    "type" -> "highlight"
+  )
 }
 
 object Highlight extends BSONHandlers {
+
+  implicit val fmt: OFormat[Preview] = Json.format[Preview]
 
   case class PositionElement(path: String, text: String)
 
   case class Position(elements: Seq[PositionElement], initIndex: Int)
 
   case class Preview(lead: String, text: String, tail: String)
-
-  case class Stub(id: String, preview: Preview)
 
   val ID_LENGTH: Int = 16
   val USR: String = nameOf[Highlight](_.usrId)
