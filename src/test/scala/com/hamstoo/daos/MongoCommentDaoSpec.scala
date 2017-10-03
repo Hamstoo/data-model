@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{InlineNote, PageCoord, Annotation}
+import com.hamstoo.models.{Annotation, InlineNote, PageCoord}
 import com.hamstoo.utils.TestHelper
 
 import scala.util.Random
@@ -43,8 +43,7 @@ class MongoCommentDaoSpec extends TestHelper {
 
       commentsDao.retrieveByUrl(c1.usrId, c1.url).futureValue
         .sortWith(Annotation.sort)
-        .map(_.stub)
-        .map(_.preview) shouldEqual Seq(c1.pos.text, c2.pos.text, c3.pos.text)
+        .map(_.pos.text) shouldEqual Seq(c1.pos.text, c2.pos.text, c3.pos.text)
     }
   }
 }
