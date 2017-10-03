@@ -3,6 +3,7 @@ package com.hamstoo.models
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Representation.VecEnum
 import com.hamstoo.utils.{ExtendedString, generateDbId}
+import org.apache.commons.text.similarity.LevenshteinDistance
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -58,20 +59,28 @@ case class Representation(
 
   /**
     * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
-    * TODO: need to measure this distribution to determine if `DUPLICATE_CORR_THRESHOLD` is sufficient
+    * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
     */
   def isDuplicate(oth: Representation): Boolean = {
-    // should we test Longest Common Substring here also?
-    (!doctext.isEmpty && doctext == oth.doctext) ||
-      similarity(oth).exists(_ > Representation.DUPLICATE_CORR_THRESHOLD) ||
-      (link == oth.link && similarity(oth).exists(_ > Representation.DUPLICATE_CORR_THRESHOLD * 0.9))
+    !doctext.isEmpty && doctext == oth.doctext ||
+      editSimilarity(oth) > Representation.DUPLICATE_SIMILARITY_THRESHOLD
   }
 
   /** Define `similarity` in one place so that it can be used in multiple. */
-  def similarity(oth: Representation): Option[Double] = for {
+  def vecSimilarity(oth: Representation): Double = (for {
     thisVec <- vectors.get(VecEnum.IDF3.toString)
     othVec <- oth.vectors.get(VecEnum.IDF3.toString)
-  } yield Representation.VecFunctions(thisVec).cosine(othVec)
+  } yield Representation.VecFunctions(thisVec).cosine(othVec)).getOrElse(0.0)
+
+  /** Another kind of similarity, the opposite of (relative) edit distance. */
+  def editSimilarity(oth: Representation): Double = {
+    if (doctext.isEmpty && oth.doctext.isEmpty) 1.0
+    else {
+      val editDist = LevenshteinDistance.getDefaultInstance.apply(doctext, oth.doctext)
+      val relDist = editDist / math.max(doctext.length, oth.doctext.length).toDouble // toDouble is important here
+      1.0 - relDist
+    }
+  }
 
   /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
   override def equals(other: Any): Boolean = other match {
@@ -95,7 +104,7 @@ case class Representation(
 object Representation extends BSONHandlers {
   type Vec = Seq[Double]
 
-  val DUPLICATE_CORR_THRESHOLD = 0.97
+  val DUPLICATE_SIMILARITY_THRESHOLD = 0.85
 
   implicit class VecFunctions(private val vec: Vec) extends AnyVal {
 
