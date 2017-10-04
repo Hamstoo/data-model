@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.ExtendedString
+import com.hamstoo.utils.{ExtendedString, generateDbId}
 import org.joda.time.DateTime
 import play.api.libs.json.{JsObject, Json}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
@@ -26,7 +26,7 @@ import scala.util.Random
   */
 case class InlineNote(
                        usrId: UUID,
-                       id: String = Random.alphanumeric take InlineNote.ID_LENGTH mkString,
+                       id: String = generateDbId(InlineNote.ID_LENGTH),
                        url: String,
                        var uPref: Option[mutable.WrappedArray[Byte]] = None,
                        pos: InlineNote.Position,
