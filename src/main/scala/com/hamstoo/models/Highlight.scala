@@ -3,16 +3,17 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.ExtendedString
+import com.hamstoo.utils.{ExtendedString, generateDbId}
 import org.joda.time.DateTime
 import play.api.libs.json.{JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
-import scala.util.Random
 
 /**
   * Data model of a text highlight.
+  *
+  * See `getHighlighted` function at src/content-scripts/annotation/highlight/highlight.js in chrome-extension repo.
   *
   * @param usrId    owner UUID
   * @param id       highlight id, common for all versions
@@ -26,7 +27,7 @@ import scala.util.Random
   */
 case class Highlight(
                       usrId: UUID,
-                      id: String = Random.alphanumeric take Highlight.ID_LENGTH mkString,
+                      id: String = generateDbId(Highlight.ID_LENGTH),
                       url: String,
                       var uPref: Option[mutable.WrappedArray[Byte]] = None,
                       pos: Highlight.Position,
@@ -50,10 +51,13 @@ object Highlight extends BSONHandlers {
 
   implicit val fmt: OFormat[Preview] = Json.format[Preview]
 
+  /** XML XPath and text located at that path. */
   case class PositionElement(path: String, text: String)
 
+  /** A highlight can stretch over a series of XPaths.  `initIndex` is the `startOffset` character in the first one. */
   case class Position(elements: Seq[PositionElement], initIndex: Int)
 
+  /** Text that occurs before and after the highlighted text, along with the highlighted `text` itself. */
   case class Preview(lead: String, text: String, tail: String)
 
   val ID_LENGTH: Int = 16

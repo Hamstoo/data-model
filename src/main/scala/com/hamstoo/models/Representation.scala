@@ -62,8 +62,16 @@ case class Representation(
     * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
     */
   def isDuplicate(oth: Representation): Boolean = {
-    !doctext.isEmpty && doctext == oth.doctext ||
-      editSimilarity(oth) > Representation.DUPLICATE_SIMILARITY_THRESHOLD
+
+    // quickly test for identical doctexts
+    !doctext.isEmpty && doctext == oth.doctext || (
+
+      // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
+      // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
+      // because it has too many false positives, like, e.g., when a site has very few English words.
+      vecSimilarity(oth) > Representation.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
+      editSimilarity(oth) > Representation.DUPLICATE_EDIT_SIMILARITY_THRESHOLD
+    )
   }
 
   /** Define `similarity` in one place so that it can be used in multiple. */
@@ -104,7 +112,8 @@ case class Representation(
 object Representation extends BSONHandlers {
   type Vec = Seq[Double]
 
-  val DUPLICATE_SIMILARITY_THRESHOLD = 0.85
+  val DUPLICATE_VEC_SIMILARITY_THRESHOLD = 0.9
+  val DUPLICATE_EDIT_SIMILARITY_THRESHOLD = 0.85
 
   implicit class VecFunctions(private val vec: Vec) extends AnyVal {
 
