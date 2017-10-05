@@ -3,13 +3,10 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.{ExtendedString, generateDbId}
+import com.hamstoo.utils.generateDbId
 import org.joda.time.DateTime
 import play.api.libs.json.{JsObject, Json}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
-
-import scala.collection.mutable
-import scala.util.Random
 
 /**
   * Data model of an inline note.  We refer to this as a "note" rather than a "comment" to help differentiate
@@ -17,8 +14,7 @@ import scala.util.Random
   *
   * @param usrId    user UUID
   * @param id       inline note id, common for all versions through time
-  * @param url      URL of the web page where commenting was done
-  * @param uPref    binary prefix of the URL for indexing; set by class init
+  * @param markId   markId of the web page where highlighting was done; URL can be obtained from there
   * @param pos      frontend comment data, including positioning and comment text
   * @param memeId   'comment representation' id, to be implemented
   * @param timeFrom timestamp
@@ -27,14 +23,12 @@ import scala.util.Random
 case class InlineNote(
                        usrId: UUID,
                        id: String = generateDbId(InlineNote.ID_LENGTH),
-                       url: String,
-                       var uPref: Option[mutable.WrappedArray[Byte]] = None,
+                       markId: String,
                        pos: InlineNote.Position,
                        pageCoord: Option[PageCoord] = None,
                        memeId: Option[String] = None,
                        timeFrom: Long = DateTime.now.getMillis,
                        timeThru: Long = Long.MaxValue) extends Annotation with HasJsonPreview {
-  uPref = Some(url.binaryPrefix)
 
   override def jsonPreview: JsObject = Json.obj(
     "id" -> id,
@@ -58,8 +52,7 @@ object InlineNote extends BSONHandlers {
   val TEXT: String = nameOf[Position](_.text)
   val OFFSETX: String = nameOf[Position](_.offsetX)
   val OFFSETY: String = nameOf[Position](_.offsetY)
-  val URL: String = nameOf[InlineNote](_.url)
-  val UPREF: String = nameOf[InlineNote](_.uPref)
+  val MARKID: String = nameOf[InlineNote](_.markId)
   val MEM: String = nameOf[InlineNote](_.memeId)
   val TSTMP: String = nameOf[InlineNote](_.timeFrom)
   val TILL: String = nameOf[InlineNote](_.timeThru)

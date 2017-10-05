@@ -2,41 +2,67 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.InlineNote
+import com.hamstoo.models.{InlineNote, Mark}
 import org.joda.time.DateTime
+import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
+import reactivemongo.api.commands.bson.DefaultBSONCommandError
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
+import reactivemongo.bson.{BSONArray, BSONDocumentHandler, Macros}
 
-import scala.concurrent.ExecutionContext.Implicits.global // "Prefer a dedicated ThreadPool for IO-bound tasks" [https://www.beyondthelines.net/computing/scala-future-and-execution-context/]
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-
+/**
+  * Data access object for inline notes (of which there can be many per mark) as opposed to comments (of which there
+  * is only one per mark).
+  */
 class MongoInlineNoteDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.models.InlineNote._
   import com.hamstoo.utils._
   import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
+  val logger: Logger = Logger(classOf[MongoInlineNoteDao])
 
   private val futColl: Future[BSONCollection] = db map (_ collection "comments")
 
-  // reduce size of existing `uPref`s down to URL_PREFIX_LENGTH to be consistent with MongoMarksDao (version 0.9.16)
+  // convert url/uPrefs to markIds
+  case class WeeNote(usrId: UUID, id: String, timeFrom: Long, url: String)
+  private val marksColl: Future[BSONCollection] = db map (_ collection "entries")
   for {
     c <- futColl
-    sel = d :~ "$where" -> s"Object.bsonsize({$UPREF:this.$UPREF})>$URL_PREFIX_LENGTH+19"
-    longPfxed <- c.find(sel).coll[InlineNote, Seq]()
-    _ <- Future.sequence { longPfxed.map { repr => // uPref will have been overwritten upon construction
-      c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ UPREF -> repr.uPref))
-    }}
+    mc <- marksColl
+
+    oldIdx = s"bin-$USR-1-uPref-1"
+    _ = logger.info(s"Dropping index $oldIdx")
+    nDropped <- c.indexesManager.drop(oldIdx).recover { case _: DefaultBSONCommandError => 0 }
+    _ = logger.info(s"Dropped $nDropped index(es)")
+
+    exst = d :~ "$exists" -> true
+    sel = d :~ "$or" -> BSONArray(d :~ "url" -> exst, d :~ "uPref" -> exst)
+    // pjn = d :~ USR -> 1 :~ ID -> 1 :~ TIMEFROM -> 1 :~ "url" -> 1 // unnecessary b/c WeeNote is a subset
+    urled <- {
+      implicit val r: BSONDocumentHandler[WeeNote] = Macros.handler[WeeNote]
+      c.find(sel).coll[WeeNote, Seq]()
+    }
+    _ = logger.info(s"Updating ${urled.size} InlineNotes with markIds (and removing their URLs)")
+    _ <- Future.sequence { urled.map { x => for { // lookup mark w/ same url
+      marks <- mc.find(d :~ Mark.USER -> x.usrId :~ Mark.URLPRFX -> x.url.binaryPrefix).coll[Mark, Seq]()
+      markId = marks.headOption.map(_.id).getOrElse("")
+      _ <- c.update(d :~ ID -> x.id :~ TIMEFROM -> x.timeFrom,
+                    d :~ "$unset" -> (d :~ "url" -> 1 :~ "uPref" -> 1) :~ "$set" -> {d :~ "markId" -> markId},
+                    multi = true)
+    } yield () }}
   } yield ()
 
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
-    Index(USR -> Ascending :: UPREF -> Ascending :: Nil) % s"bin-$USR-1-$UPREF-1" ::
-      Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
-        s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
-      Nil toMap;
+    Index(USR -> Ascending :: MARKID -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1" ::
+    Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
+      s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
+    Nil toMap;
   futColl map (_.indexesManager ensure indxs)
 
   def create(ct: InlineNote): Future[Unit] = for {
@@ -50,10 +76,11 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) {
     optCt <- (c find d :~ USR -> usr :~ ID -> id :~ curnt projection d :~ POS -> 1).one[InlineNote]
   } yield optCt
 
-  def retrieveByUrl(usr: UUID, url: String): Future[Seq[InlineNote]] = for {
+  /** Requires `usr` argument so that index can be used for lookup. */
+  def retrieveByMarkId(usr: UUID, markId: String): Future[Seq[InlineNote]] = for {
     c <- futColl
-    seq <- (c find d :~ USR -> usr :~ UPREF -> url.binaryPrefix :~ curnt).coll[InlineNote, Seq]()
-  } yield seq filter (_.url == url)
+    seq <- (c find d :~ USR -> usr :~ MARKID -> markId :~ curnt).coll[InlineNote, Seq]()
+  } yield seq
 
   /*def retrieveSortedByPageCoord(url: String, usr: UUID): Future[Seq[InlineNote]] = for {
     c <- futColl
@@ -85,7 +112,7 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) {
     * Be carefull, expensive operation.
     * @return
     */
-  def receiveAll(): Future[Seq[InlineNote]] = for {
+  def retrieveAll(): Future[Seq[InlineNote]] = for {
     c <- futColl
     seq <- (c find d).coll[InlineNote, Seq]()
   } yield seq
