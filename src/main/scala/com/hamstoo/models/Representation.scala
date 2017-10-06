@@ -112,7 +112,7 @@ case class Representation(
 object Representation extends BSONHandlers {
   type Vec = Seq[Double]
 
-  val DUPLICATE_VEC_SIMILARITY_THRESHOLD = 0.9
+  val DUPLICATE_VEC_SIMILARITY_THRESHOLD = 0.95
   val DUPLICATE_EDIT_SIMILARITY_THRESHOLD = 0.85
 
   implicit class VecFunctions(private val vec: Vec) extends AnyVal {
