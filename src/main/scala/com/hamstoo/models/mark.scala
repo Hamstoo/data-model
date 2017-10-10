@@ -6,6 +6,8 @@ import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
+import org.apache.tika.Tika
+import org.apache.tika.mime.MimeType
 import org.commonmark.node._
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
@@ -95,7 +97,28 @@ object MarkData {
 /**
   * This is the object used to store private user content downloaded from the chrome extension.
   */
-case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
+case class Page(mimeType: String, content: mutable.WrappedArray[Byte]){}
+
+object Page{
+  def apply(content: mutable.WrappedArray[Byte]) : Page = {
+   val mimeType =  TikaInstance.instance.detect(content.toArray[Byte])
+    Page(mimeType, content)
+  }
+}
+
+import org.apache.tika.Tika
+
+object TikaInstance {
+
+ private val _instance = new Tika
+
+  def instance = _instance
+
+}
+
+
+
+
 
 /**
   * User history (list) entry data model. An `Entry` is a `Mark` that belongs to a
