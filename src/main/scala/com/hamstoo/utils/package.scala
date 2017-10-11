@@ -1,7 +1,6 @@
 package com.hamstoo
 
 import java.util.Locale
-import javax.activation.MimeType
 
 import org.joda.time.DateTime
 import play.api.mvc.{Call, Request}
@@ -129,17 +128,5 @@ package object utils {
     Try(cleanup(resource))
     if (t.isFailure) println(t.failed.get)
     t
-  }
-
-  /**
-    * Enumeration of various media/MIME types.
-    * TODO: use Guava.MediaType instead of these strings?
-    *   https://stackoverflow.com/questions/7904497/is-there-an-enum-with-mime-types-in-java
-    */
-  object MediaType /*extends Enumeration*/ {
-    lazy val TEXT_HTML                 = new MimeType("text/html")
-    lazy val APPLICATION_OCTET_STREAM  = new MimeType("application/octet-stream")
-    lazy val TEXT_X_PHP                = new MimeType("text/x-php")
-    lazy val APPLICATION_PDF           = new MimeType("application/pdf")
   }
 }
