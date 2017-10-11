@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
+import com.hamstoo.services.TikaInstance
 import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
@@ -63,9 +64,9 @@ case class MarkData(
   def merge(oth: MarkData): MarkData = {
 
     if (subj != oth.subj)
-      Logger.warn(s"Merging two marks with different subjects '$subj' and '${oth.subj}'; ignoring latter")
+      logger.warn(s"Merging two marks with different subjects '$subj' and '${oth.subj}'; ignoring latter")
     if (url.isDefined && oth.url.isDefined && url.get != oth.url.get)
-      Logger.warn(s"Merging two marks with different URLs ${url.get} and ${oth.url.get}; ignoring latter")
+      logger.warn(s"Merging two marks with different URLs ${url.get} and ${oth.url.get}; ignoring latter")
 
     MarkData(if (subj.length >= oth.subj.length) subj else oth.subj,
              url.orElse(oth.url),
@@ -77,6 +78,8 @@ case class MarkData(
 }
 
 object MarkData {
+  val logger: Logger = Logger(classOf[MarkData])
+
   /* attention: mutable Java classes below.
   for markdown parsing/rendering: */
   lazy val parser: Parser = Parser.builder().build()
@@ -93,9 +96,20 @@ object MarkData {
 }
 
 /**
-  * This is the object used to store private user content downloaded from the chrome extension.
+  * This is the data structure used to store external content, e.g. HTML files or PDFs.  It could be private content
+  * downloaded via the chrome extension, the repr-engine downloads public content given a URL, or the file upload
+  * process uploads content directly from the user's computer.
   */
 case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
+
+object Page {
+
+  /** A separate `apply` method that detects the MIME type automagically with Tika. */
+  def apply(content: mutable.WrappedArray[Byte]): Page = {
+    val mimeType = TikaInstance.detect(content.toArray[Byte])
+    Page(mimeType, content)
+  }
+}
 
 /**
   * User history (list) entry data model. An `Entry` is a `Mark` that belongs to a
@@ -135,6 +149,8 @@ case class Mark(
                  score: Option[Double] = None) {
   urlPrfx = mark.url map (_.binaryPrefix)
 
+  import Mark._
+
   /** Use the private repr when available, o/w use the public one. */
   def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
 
@@ -155,9 +171,9 @@ case class Mark(
 
     // warning messages
     if (pubRepr.isDefined && oth.pubRepr.isDefined && pubRepr.get != oth.pubRepr.get)
-      Logger.warn(s"Merging two marks, $id and ${oth.id}, with different public representations ${pubRepr.get} and ${oth.pubRepr.get}; ignoring latter")
+      logger.warn(s"Merging two marks, $id and ${oth.id}, with different public representations ${pubRepr.get} and ${oth.pubRepr.get}; ignoring latter")
     if (privRepr.isDefined && oth.privRepr.isDefined && privRepr.get != oth.privRepr.get)
-      Logger.warn(s"Merging two marks, $id and ${oth.id}, with different private representations ${privRepr.get} and ${oth.privRepr.get}; ignoring latter")
+      logger.warn(s"Merging two marks, $id and ${oth.id}, with different private representations ${privRepr.get} and ${oth.privRepr.get}; ignoring latter")
 
     // TODO: how do we ensure that additional fields added to the constructor are accounted for here?
     copy(mark = mark.merge(oth.mark),
@@ -195,6 +211,7 @@ case class Mark(
 }
 
 object Mark extends BSONHandlers {
+  val logger: Logger = Logger(classOf[Mark])
 
   case class RangeMils(begin: Long, end: Long)
 
