@@ -3,42 +3,40 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.{Mark, MarkData, Representation}
-import com.hamstoo.utils.{TestHelper, generateDbId}
+import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment, TestHelper, generateDbId}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class MongoMarksDaoSpec extends TestHelper {
+class MongoMarksDaoSpec
+  extends FlatSpecWithMatchers
+    with MongoEnvironment
+    with FutureHandler
+    with TestHelper {
 
   lazy val marksDao = new MongoMarksDao(getDB)
 
   "MongoMarksDao" should "* findMissingReprs, both current and not" in {
 
-    withEmbedMongoFixture() { _ =>
+    val mark = Mark(UUID.randomUUID(), mark = MarkData("a subject", Some("http://hamstoo.com")))
 
-      val mark = Mark(UUID.randomUUID(), mark = MarkData("a subject", Some("http://hamstoo.com")))
+    marksDao.insert(mark).futureValue shouldEqual mark
 
-      marksDao.insert(mark).futureValue shouldEqual mark
+    val newSubj = "a NEW subject"
 
-      val newSubj = "a NEW subject"
+    marksDao.update(mark.userId, mark.id, mark.mark.copy(subj = "a NEW subject")).futureValue.mark.subj shouldEqual newSubj
 
-      marksDao.update(mark.userId, mark.id, mark.mark.copy(subj = "a NEW subject")).futureValue.mark.subj shouldEqual newSubj
-
-      marksDao.findMissingReprs(1000000).futureValue.count(_.userId == mark.userId) shouldEqual 2
-    }
+    marksDao.findMissingReprs(1000000).futureValue.count(_.userId == mark.userId) shouldEqual 2
   }
 
   it should "* obey its `bin-urlPrfx-1-pubRepr-1` index" in {
+    val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(crazyUrl)))
+    val reprId = generateDbId(Representation.ID_LENGTH)
 
-    withEmbedMongoFixture() { _ =>
-      val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(crazyUrl)))
-      val reprId = generateDbId(Representation.ID_LENGTH)
-
-      for {
-        _ <- marksDao.insert(m)
-        _ <- marksDao.updatePublicReprId(m.id, m.timeFrom, reprId)
-        mInserted <- marksDao.retrieve(m.userId, m.id)
-        _ = mInserted.get.pubRepr.get shouldEqual reprId
-      } yield {}
-    }
+    for {
+      _ <- marksDao.insert(m)
+      _ <- marksDao.updatePublicReprId(m.id, m.timeFrom, reprId)
+      mInserted <- marksDao.retrieve(m.userId, m.id)
+      _ = mInserted.get.pubRepr.get shouldEqual reprId
+    } yield {}
   }
 }
