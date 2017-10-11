@@ -9,7 +9,7 @@ import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 
-import scala.concurrent.ExecutionContext.Implicits.global // "Prefer a dedicated ThreadPool for IO-bound tasks" [https://www.beyondthelines.net/computing/scala-future-and-execution-context/]
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 /**
@@ -38,7 +38,7 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
     Index(USR -> Ascending :: UPREF -> Ascending :: Nil) % s"bin-$USR-1-$UPREF-1" ::
     Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
       s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
-    Nil toMap;
+    Nil toMap
   
   futColl map (_.indexesManager ensure indxs)
 
