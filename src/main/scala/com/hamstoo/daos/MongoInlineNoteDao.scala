@@ -22,8 +22,8 @@ import scala.concurrent.Future
 class MongoInlineNoteDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.models.InlineNote._
-  import com.hamstoo.utils._
   import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
+  import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MongoInlineNoteDao])
 
   private val futColl: Future[BSONCollection] = db map (_ collection "comments")
@@ -49,7 +49,7 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) {
     }
     _ = logger.info(s"Updating ${urled.size} InlineNotes with markIds (and removing their URLs)")
     _ <- Future.sequence { urled.map { x => for { // lookup mark w/ same url
-      marks <- mc.find(d :~ Mark.USER -> x.usrId :~ Mark.URLPRFX -> x.url.binaryPrefix).coll[Mark, Seq]()
+      marks <- mc.find(d :~ Mark.USR -> x.usrId :~ Mark.URLPRFX -> x.url.binaryPrefix).coll[Mark, Seq]()
       markId = marks.headOption.map(_.id).getOrElse("")
       _ <- c.update(d :~ ID -> x.id :~ TIMEFROM -> x.timeFrom,
                     d :~ "$unset" -> (d :~ "url" -> 1 :~ "uPref" -> 1) :~ "$set" -> {d :~ "markId" -> markId},
