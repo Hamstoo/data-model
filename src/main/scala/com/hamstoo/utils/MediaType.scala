@@ -14,6 +14,7 @@ object MediaType /*extends Enumeration*/ {
   lazy val TEXT_HTML = new MimeType("text/html")
   lazy val APPLICATION_OCTET_STREAM = new MimeType("application/octet-stream")
   lazy val TEXT_X_PHP = new MimeType("text/x-php")
+  lazy val APPLICATION_XHTML_XML = new MimeType("application/xhtml+xml")
 
   // PDF
   lazy val APPLICATION_PDF = new MimeType("application/pdf")
