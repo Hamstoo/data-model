@@ -7,11 +7,11 @@ import com.hamstoo.utils.{TestHelper, generateDbId}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class MongoMarksDaoSpec extends TestHelper {
+class MongoMarksDaoTests extends TestHelper {
 
   lazy val marksDao = new MongoMarksDao(getDB)
 
-  "MongoMarksDao" should "* findMissingReprs, both current and not" in {
+  "MongoMarksDao" should "findMissingReprs, both current and not" in {
 
     withEmbedMongoFixture() { _ =>
 
@@ -27,7 +27,7 @@ class MongoMarksDaoSpec extends TestHelper {
     }
   }
 
-  it should "* obey its `bin-urlPrfx-1-pubRepr-1` index" in {
+  it should "obey its `bin-urlPrfx-1-pubRepr-1` index" in {
 
     withEmbedMongoFixture() { _ =>
       val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(crazyUrl)))

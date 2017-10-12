@@ -9,7 +9,7 @@ import scala.util.Random
 /**
   * MongoRepresentationDao tests.
   */
-class MongoRepresentationDaoSpec extends TestHelper {
+class MongoRepresentationDaoTests extends TestHelper {
 
   lazy val reprsDao = new MongoRepresentationDao(getDB)
 
@@ -24,7 +24,7 @@ class MongoRepresentationDaoSpec extends TestHelper {
   }
 
   /*"MongoRepresentaionDao" should {
-    "* create mark to update rep id and retrieve rep id" in new system {
+    "create mark to update rep id and retrieve rep id" in new system {
 
     val markData = randomMarkData
 
@@ -122,7 +122,7 @@ class MongoRepresentationDaoSpec extends TestHelper {
     }
   }*/
 
-  "MongoRepresentaionDao" should "* save representation" in {
+  "MongoRepresentationDao" should "save representation" in {
 
     withEmbedMongoFixture() { _ =>
 
