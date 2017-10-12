@@ -20,6 +20,10 @@ class MarkSpec extends FlatSpecWithMatchers with DataInfo {
   it should "* markdown" in {
     val a = MarkData("", None, None, None, Some("* a lonely list item"), None)
     a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
+    val b = a.copy(comment = Some("hello markdown link conversion text [I'm an inline-style link](https://www.google.com)"))
+    b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
+      "<a href=\"https://www.google.com\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
+      "I'm an inline-style link</a></p>"
   }
 
   it should "* try to prevent XSS attacks" in {
