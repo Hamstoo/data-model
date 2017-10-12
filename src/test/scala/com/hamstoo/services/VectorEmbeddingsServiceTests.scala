@@ -10,29 +10,24 @@ import com.hamstoo.services.VectorEmbeddingService.WordMass
 import com.hamstoo.utils.TestHelper
 import play.api.libs.ws.ahc.AhcWSClient
 
-
 /**
   * VectorEmbeddingsService tests.
   *
   * If any of these tests fail with the following error "java.util.NoSuchElementException: None.get"
   * then it's possible that the conceptnet5-vectors-docker container isn't reachable.
   */
-//todo: solve
-class VectorEmbeddingsServiceSpec
+class VectorEmbeddingsServiceTests
   extends TestKit(ActorSystem("VectorEmbeddingsServiceSpec-ActorSystem"))
     with TestHelper {
 
   implicit val materializer: ActorMaterializer = ActorMaterializer()
-
   lazy val vectorizer = new Vectorizer(AhcWSClient(), new MongoVectorsDao(getDB), vectorsLink)
-
   lazy val idfModel = new IDFModel(idfsResource)
-
   lazy val vecSvc = new VectorEmbeddingsService(vectorizer, idfModel)
 
   // skip all of these tests because CircleCI doesn't have access to the conceptnet-vectors container
 
-  "VectorEmbeddingsService" should "* IDF vectorize" ignore {
+  "VectorEmbeddingsService" should "IDF vectorize" ignore {
 
     withEmbedMongoFixture() { _ =>
 
@@ -46,7 +41,7 @@ class VectorEmbeddingsServiceSpec
     }
   }
 
-  it should "* produce similar vecs in some cases (test is NON-DETERMINISTIC; if it fails try re-running it" ignore {
+  it should "produce similar vecs in some cases (test is NON-DETERMINISTIC; if it fails try re-running it" ignore {
 
     withEmbedMongoFixture() { _ =>
 
@@ -94,7 +89,7 @@ class VectorEmbeddingsServiceSpec
     }
   }
 
-  it should "* produce similar vectors in other cases" ignore {
+  it should "produce similar vectors in other cases" ignore {
     withEmbedMongoFixture() { _ =>
 
       import com.hamstoo.models.Representation._
@@ -132,7 +127,7 @@ class VectorEmbeddingsServiceSpec
     }
   }
 
-  it should "* select top words" ignore {
+  it should "select top words" ignore {
 
     withEmbedMongoFixture() { _ =>
 
@@ -143,7 +138,7 @@ class VectorEmbeddingsServiceSpec
     }
   }
 
-  it should "* k-means vectorize" ignore {
+  it should "k-means vectorize" ignore {
 
     withEmbedMongoFixture() { _ =>
 

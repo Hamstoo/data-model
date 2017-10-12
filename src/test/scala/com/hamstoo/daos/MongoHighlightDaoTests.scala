@@ -8,11 +8,11 @@ import com.hamstoo.utils.{generateDbId, TestHelper}
 import scala.util.Random
 
 
-class MongoHighlightDaoSpec extends TestHelper {
+class MongoHighlightDaoTests extends TestHelper {
 
   lazy val highlightDao = new MongoHighlightDao(getDB)
 
-  "MongoHighlightDao" should "* return correctly sorted list of highlights" in {
+  "MongoHighlightDao" should "return correctly sorted list of highlights" in {
     withEmbedMongoFixture() { _ =>
 
       val usrId = UUID.randomUUID()
