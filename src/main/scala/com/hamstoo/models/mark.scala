@@ -44,14 +44,16 @@ case class MarkData(
 
   commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
-    /* example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
-    // https://github.com/atlassian/commonmark-java */
+    // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
+    // https://github.com/atlassian/commonmark-java
     val document: Node = parser.parse(c)
     val html = renderer.render(document)
 
-    /* example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
-    // convert that &ldquo; back to a < character */
+    // example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
+    // convert that &ldquo; back to a < character
     val html2 = StringEscapeUtils.unescapeHtml4(html)
+
+    // issue 121 needs to be implemented here, before `Jsoup.clean` to safeguard against XSS
 
     // example: <p><img></p>
     Jsoup.clean(html2, htmlTagsWhitelist)
