@@ -128,9 +128,6 @@ class MongoRepresentationDaoTests
 
   "MongoRepresentationDao" should "save representation" in {
 
-    // not sure if this should be here per merge or not
-    //withEmbedMongoFixture() { _ =>
-
     //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").drop(true), Duration(testDuration, MILLISECONDS))
     //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").create(false), Duration(testDuration, MILLISECONDS))
 

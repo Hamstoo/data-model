@@ -20,7 +20,7 @@ class MongoInlineNoteDaoTests
     val c = InlineNote(usrId, markId = markId, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
 
     notesDao.create(c).futureValue shouldEqual {}
-    notesDao.update(c.usrId, c.id, c.pos).futureValue.timeFrom should not equal c.timeFrom
+    notesDao.update(c.usrId, c.id, c.pos, None).futureValue.timeFrom should not equal c.timeFrom
     notesDao.retrieveByMarkId(usrId, markId).futureValue.count(_.usrId == c.usrId) shouldEqual 1
   }
 

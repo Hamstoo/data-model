@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{InlineNote, Mark}
+import com.hamstoo.models.{InlineNote, Mark, PageCoord}
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -91,13 +91,17 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) {
 
 
 
-
-  def update(usr: UUID, id: String, pos: InlineNote.Position): Future[InlineNote] = for {
+  /** Update timeThru on an existing inline note and insert a new one with modified values. */
+  def update(usr: UUID, id: String, pos: InlineNote.Position, coord: Option[PageCoord]): Future[InlineNote] = for {
     c <- futColl
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TILL -> now), fetchNewObject = true)
-    ct = wr.result[InlineNote].get.copy(pos = pos, memeId = None, timeFrom = now, timeThru = Long.MaxValue)
+    ct = wr.result[InlineNote].get.copy(pos = pos,
+                                        pageCoord = coord,
+                                        memeId = None,
+                                        timeFrom = now,
+                                        timeThru = Long.MaxValue)
     wr <- c insert ct
     _ <- wr failIfError
   } yield ct
