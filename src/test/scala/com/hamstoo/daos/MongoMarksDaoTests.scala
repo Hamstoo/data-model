@@ -7,7 +7,7 @@ import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment,
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class MongoMarksDaoSpec
+class MongoMarksDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler
@@ -15,20 +15,18 @@ class MongoMarksDaoSpec
 
   lazy val marksDao = new MongoMarksDao(getDB)
 
-  "MongoMarksDao" should "* findMissingReprs, both current and not" in {
+  "MongoMarksDao" should "findMissingReprs, both current and not" in {
 
     val mark = Mark(UUID.randomUUID(), mark = MarkData("a subject", Some("http://hamstoo.com")))
-
     marksDao.insert(mark).futureValue shouldEqual mark
 
     val newSubj = "a NEW subject"
-
     marksDao.update(mark.userId, mark.id, mark.mark.copy(subj = "a NEW subject")).futureValue.mark.subj shouldEqual newSubj
 
     marksDao.findMissingReprs(1000000).futureValue.count(_.userId == mark.userId) shouldEqual 2
   }
 
-  it should "* obey its `bin-urlPrfx-1-pubRepr-1` index" in {
+  it should "obey its `bin-urlPrfx-1-pubRepr-1` index" in {
     val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(crazyUrl)))
     val reprId = generateDbId(Representation.ID_LENGTH)
 

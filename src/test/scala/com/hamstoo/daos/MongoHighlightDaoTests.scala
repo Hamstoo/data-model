@@ -6,7 +6,7 @@ import com.hamstoo.models.{Annotation, Highlight, Mark, PageCoord}
 import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment, TestHelper, generateDbId}
 
 
-class MongoHighlightDaoSpec
+class MongoHighlightDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler
@@ -14,7 +14,7 @@ class MongoHighlightDaoSpec
 
   lazy val highlightDao = new MongoHighlightDao(getDB)
 
-  "MongoHighlightDao" should "* return correctly sorted list of highlights" in {
+  "MongoHighlightDao" should "return correctly sorted list of highlights" in {
     val usrId = UUID.randomUUID()
     val markId = generateDbId(Mark.ID_LENGTH)
 

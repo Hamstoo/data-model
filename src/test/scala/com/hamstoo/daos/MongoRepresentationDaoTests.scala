@@ -9,7 +9,7 @@ import scala.util.Random
 /**
   * MongoRepresentationDao tests.
   */
-class MongoRepresentationDaoSpec
+class MongoRepresentationDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler
@@ -28,7 +28,7 @@ class MongoRepresentationDaoSpec
   }
 
   /*"MongoRepresentaionDao" should {
-    "* create mark to update rep id and retrieve rep id" in new system {
+    "create mark to update rep id and retrieve rep id" in new system {
 
     val markData = randomMarkData
 
@@ -126,7 +126,10 @@ class MongoRepresentationDaoSpec
     }
   }*/
 
-  "MongoRepresentaionDao" should "* save representation" in {
+  "MongoRepresentationDao" should "save representation" in {
+
+    // not sure if this should be here per merge or not
+    //withEmbedMongoFixture() { _ =>
 
     //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").drop(true), Duration(testDuration, MILLISECONDS))
     //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").create(false), Duration(testDuration, MILLISECONDS))
@@ -143,9 +146,7 @@ class MongoRepresentationDaoSpec
       doctext = "sdf",
       othtext = "sdf",
       keywords = "nothing",
-      vectors = Map {
-        "something" -> vec
-      },
+        vectors = Map {"something" -> vec},
       autoGenKws = None)
     println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
@@ -155,9 +156,7 @@ class MongoRepresentationDaoSpec
       doctext = "sasdasdf",
       othtext = "ssadasddf",
       keywords = "something",
-      vectors = Map {
-        "month" -> vec2
-      })
+        vectors = Map {"month" -> vec2})
 
     println(s"Creating 2 representations with ids ${reprOrig.id} and ${reprCopy.id}")
     val id: String = reprsDao.save(reprOrig).futureValue /*.map(id => id)*/

@@ -1,11 +1,13 @@
 package com.hamstoo.daos
 
+import java.nio.file.Files
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.{Mark, MarkData, Page}
 import org.joda.time.DateTime
 import play.api.Logger
+import play.api.libs.Files.TemporaryFile
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
@@ -171,6 +173,12 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     mergedMk = oldMark.merge(newMark)
     updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
   } yield updatedMk
+
+  /** Process the file into a Page instance and add it to the Mark in the database. */
+  def addFilePage(userId: UUID, markId: String, file: TemporaryFile): Future[Unit] = {
+    val page = Page(Files.readAllBytes(file))
+    addPageSource(userId, markId, page)
+  }
 
   /** Appends provided string to mark's array of page sources. */
   def addPageSource(user: UUID, id: String, page: Page): Future[Unit] = for {
