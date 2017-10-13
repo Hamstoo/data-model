@@ -10,15 +10,13 @@ import com.hamstoo.services.VectorEmbeddingService.WordMass
 import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment, TestHelper}
 import play.api.libs.ws.ahc.AhcWSClient
 
-
 /**
   * VectorEmbeddingsService tests.
   *
   * If any of these tests fail with the following error "java.util.NoSuchElementException: None.get"
   * then it's possible that the conceptnet5-vectors-docker container isn't reachable.
   */
-//todo: solve
-class VectorEmbeddingsServiceSpec
+class VectorEmbeddingsServiceTests
   extends TestKit(ActorSystem("VectorEmbeddingsServiceSpec-ActorSystem"))
     with FlatSpecWithMatchers
     with MongoEnvironment
@@ -32,16 +30,13 @@ class VectorEmbeddingsServiceSpec
   }
 
   implicit val materializer: ActorMaterializer = ActorMaterializer()
-
   lazy val vectorizer = new Vectorizer(AhcWSClient(), new MongoVectorsDao(getDB), vectorsLink)
-
   lazy val idfModel = new IDFModel(idfsResource)
-
   lazy val vecSvc = new VectorEmbeddingsService(vectorizer, idfModel)
 
   // skip all of these tests because CircleCI doesn't have access to the conceptnet-vectors container
 
-  "VectorEmbeddingsService" should "* IDF vectorize" ignore {
+  "VectorEmbeddingsService" should "IDF vectorize" ignore {
 
 
     val header0 = "Futures and Promises - Scala Documentation Futures and Promises"
@@ -54,7 +49,7 @@ class VectorEmbeddingsServiceSpec
 
   }
 
-  it should "* produce similar vecs in some cases (test is NON-DETERMINISTIC; if it fails try re-running it" ignore {
+  it should "produce similar vecs in some cases (test is NON-DETERMINISTIC; if it fails try re-running it" ignore {
 
 
     import com.hamstoo.models.Representation._
@@ -101,7 +96,7 @@ class VectorEmbeddingsServiceSpec
 
   }
 
-  it should "* produce similar vectors in other cases" ignore {
+  it should "produce similar vectors in other cases" ignore {
 
     import com.hamstoo.models.Representation._
 
@@ -138,7 +133,7 @@ class VectorEmbeddingsServiceSpec
 
   }
 
-  it should "* select top words" ignore {
+  it should "select top words" ignore {
 
 
     val txt = "otter otter european_otter otters otterlike toyota ford car"
@@ -148,7 +143,7 @@ class VectorEmbeddingsServiceSpec
 
   }
 
-  it should "* k-means vectorize" ignore {
+  it should "k-means vectorize" ignore {
 
 
     val txt = "otter european_otter otter otters otterlike toyota ford car"
