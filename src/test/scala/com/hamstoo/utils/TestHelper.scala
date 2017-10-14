@@ -6,7 +6,6 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
 
-// https://github.com/etorreborre/specs2/blob/SPECS2-3.8.9/examples/src/test/scala/examples/UnitSpec.scala
 trait TestHelper extends DataInfo {
 
   def getDB: Future[DefaultDB] = {
