@@ -19,29 +19,29 @@ class MongoHighlightDaoTests
   val usrId: UUID = UUID.randomUUID()
   val markId: String = generateDbId(Mark.ID_LENGTH)
 
-  val h1 = Highlight(usrId = usrId, markId = markId, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("first", "", ""))
+  val h = Highlight(usrId = usrId, markId = markId, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("first", "", ""))
 
-  "MongoHighlightDao" should "* insert highlights" in {
-    highlightDao.create(h1).futureValue shouldEqual {}
+  "MongoHighlightDao" should "* (UNIT) insert highlights" in {
+    highlightDao.create(h).futureValue shouldEqual {}
   }
 
   // todo: solve reactivemongo.bson.exceptions.DocumentKeyNotFound: The key 'usrId' could not be found in this document or array
-  it should "* retrieve highlights by id" ignore {
-    highlightDao.retrieve(h1.usrId, h1.id).futureValue.value shouldEqual h1
+  it should "* (UNIT) retrieve highlights by id" ignore {
+    highlightDao.retrieve(h.usrId, h.id).futureValue.value shouldEqual h
   }
 
-  it should "* retrieve highlights by markId" in {
-    highlightDao.retrieveByMarkId(h1.usrId, h1.markId).futureValue shouldEqual Seq(h1)
+  it should "* (UNIT) retrieve highlights by markId" in {
+    highlightDao.retrieveByMarkId(h.usrId, h.markId).futureValue shouldEqual Seq(h)
   }
 
-  it should "* update highlights" in {
+  it should "* (UNIT) update highlights" in {
     val newPos = Highlight.Position(Nil, 2)
 
-    highlightDao.update(h1.usrId, h1.id, pos = newPos, prv = h1.preview, coord = h1.pageCoord).futureValue.pos shouldEqual newPos
+    highlightDao.update(h.usrId, h.id, pos = newPos, prv = h.preview, coord = h.pageCoord).futureValue.pos shouldEqual newPos
   }
 
-  it should "* delete highlight" in {
-    highlightDao.delete(h1.usrId, h1.id).futureValue shouldEqual {}
-    highlightDao.retrieveByMarkId(h1.usrId, h1.markId).futureValue shouldEqual Nil
+  it should "* (UNIT) delete highlight" in {
+    highlightDao.delete(h.usrId, h.id).futureValue shouldEqual {}
+    highlightDao.retrieveByMarkId(h.usrId, h.markId).futureValue shouldEqual Nil
   }
 }
