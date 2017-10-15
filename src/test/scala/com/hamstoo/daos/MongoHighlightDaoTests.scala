@@ -25,7 +25,7 @@ class MongoHighlightDaoTests
     highlightDao.create(h).futureValue shouldEqual {}
   }
 
-  // todo: solve reactivemongo.bson.exceptions.DocumentKeyNotFound: The key 'usrId' could not be found in this document or array
+  // because of dropping "bin-usrId-1-uPref-1" index
   it should "* (UNIT) retrieve highlights by id" ignore {
     highlightDao.retrieve(h.usrId, h.id).futureValue.value shouldEqual h
   }
