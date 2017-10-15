@@ -88,7 +88,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   } yield seq
 
   /** Retrieves all marks by ID, including previous versions, sorted by `timeFrom` descending. */
-  def retrieveAllById(user: UUID, id: String): Future[Seq[Mark]] = for {
+  def retrieveAllById(id: String): Future[Seq[Mark]] = for {
     c <- futColl
     seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
   } yield seq
