@@ -19,13 +19,13 @@ class MongoInlineNoteDaoTests
   val usrId: UUID = UUID.randomUUID()
   val markId: String = generateDbId(Mark.ID_LENGTH)
 
-  val c = InlineNote(usrId, markId = markId, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
+  val c = InlineNote(usrId = usrId, markId = markId, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
 
   "MongoInlineNotesDao" should "* (UNIT) create inline note" in {
     notesDao.create(c).futureValue shouldEqual {}
   }
 
-  // todo: solve reactivemongo.bson.exceptions.DocumentKeyNotFound: The key 'usrId' could not be found in this document or array
+  // because of dropping "bin-usrId-1-uPref-1" index
   it should "* (UNIT) retrieve inline note by id" ignore {
     notesDao.retrieve(c.usrId, c.id).futureValue.value shouldEqual c
   }
