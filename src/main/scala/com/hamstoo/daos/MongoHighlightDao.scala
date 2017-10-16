@@ -2,9 +2,8 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Highlight, Mark, PageCoord}
+import com.hamstoo.models.{HLPosition, Highlight, Mark, PageCoord}
 import org.joda.time.DateTime
-import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.commands.bson.DefaultBSONCommandError
@@ -18,26 +17,25 @@ import scala.concurrent.Future
 /**
   * Data access object for highlights.
   */
-class MongoHighlightDao(db: Future[DefaultDB]) {
+class MongoHighlightDao(db: Future[DefaultDB]) extends MongoContentDao[Highlight] {
 
   import com.hamstoo.models.Highlight._
-  import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
-  val logger: Logger = Logger(classOf[MongoHighlightDao])
 
-  private val futColl: Future[BSONCollection] = db map (_ collection "highlights")
+  override val futColl: Future[BSONCollection] = db map (_ collection "highlights")
+  private val marksColl: Future[BSONCollection] = db map (_ collection "entries")
 
   // convert url/uPrefs to markIds
   case class WeeHighlight(usrId: UUID, id: String, timeFrom: Long, url: String)
-  private val marksColl: Future[BSONCollection] = db map (_ collection "entries")
+
   for {
     c <- futColl
     mc <- marksColl
 
     oldIdx = s"bin-$USR-1-uPref-1"
-    _ = logger.info(s"Dropping index $oldIdx")
+    _ = log.info(s"Dropping index $oldIdx")
     nDropped <- c.indexesManager.drop(oldIdx).recover { case _: DefaultBSONCommandError => 0 }
-    _ = logger.info(s"Dropped $nDropped index(es)")
+    _ = log.info(s"Dropped $nDropped index(es)")
 
     exst = d :~ "$exists" -> true
     sel = d :~ "$or" -> BSONArray(d :~ "url" -> exst, d :~ "uPref" -> exst)
@@ -45,7 +43,7 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
       implicit val r: BSONDocumentHandler[WeeHighlight] = Macros.handler[WeeHighlight]
       c.find(sel).coll[WeeHighlight, Seq]()
     }
-    _ = logger.info(s"Updating ${urled.size} Highlights with markIds (and removing their URLs)")
+    _ = log.info(s"Updating ${urled.size} Highlights with markIds (and removing their URLs)")
     _ <- Future.sequence { urled.map { x => for { // lookup mark w/ same url
       marks <- mc.find(d :~ Mark.USR -> x.usrId :~ Mark.URLPRFX -> x.url.binaryPrefix).coll[Mark, Seq]()
       markId = marks.headOption.map(_.id).getOrElse("")
@@ -64,26 +62,12 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
   
   futColl map (_.indexesManager ensure indxs)
 
-  def create(hl: Highlight): Future[Unit] = for {
-    c <- futColl
-    wr <- c insert hl
-    _ <- wr failIfError
-  } yield ()
-
-  def retrieve(usr: UUID, id: String): Future[Option[Highlight]] = for {
-    c <- futColl
-    mbHl <- (c find d :~ USR -> usr :~ ID -> id :~ curnt projection d :~ POS -> 1).one[Highlight]
-  } yield mbHl
-
-  /** Requires `usr` argument so that index can be used for lookup. */
-  def retrieveByMarkId(usr: UUID, markId: String): Future[Seq[Highlight]] = for {
-    c <- futColl
-    seq <- (c find d :~ USR -> usr :~ MARKID -> markId :~ curnt).coll[Highlight, Seq]()
-  } yield seq
-
   /** Update timeThru on an existing highlight and insert a new one with modified values. */
-  def update(usr: UUID, id: String, pos: Highlight.Position, prv: Highlight.Preview, coord: Option[PageCoord]):
-                                                                                        Future[Highlight] = for {
+  def update(usr: UUID,
+             id: String,
+             pos: HLPosition,
+             prv: Highlight.Preview,
+             coord: Option[PageCoord]): Future[Highlight] = for {
     c <- futColl
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
@@ -97,10 +81,4 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
     wr <- c insert hl
     _ <- wr failIfError
   } yield hl
-
-  def delete(usr: UUID, id: String): Future[Unit] = for {
-    c <- futColl
-    wr <- c update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> DateTime.now.getMillis))
-    _ <- wr failIfError
-  } yield ()
 }

@@ -58,7 +58,6 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
   def insert(mark: Mark): Future[Mark] = for {
     c <- futColl
-    now = DateTime.now.getMillis
     wr <- c insert mark
     _ <- wr failIfError;
       _ = logger.debug(s"Inserted mark ${mark.id}")

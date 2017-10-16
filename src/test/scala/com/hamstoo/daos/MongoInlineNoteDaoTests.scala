@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{InlineNote, Mark}
+import com.hamstoo.models.{InlineNote, InlineNotePosition, Mark}
 import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment, TestHelper, generateDbId}
 import org.scalatest.OptionValues
 
@@ -19,10 +19,10 @@ class MongoInlineNoteDaoTests
   val usrId: UUID = UUID.randomUUID()
   val markId: String = generateDbId(Mark.ID_LENGTH)
 
-  val c = InlineNote(usrId = usrId, markId = markId, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
+  val c = InlineNote(usrId = usrId, markId = markId, pos = InlineNotePosition("sdassd", "sdassd", 0, 0))
 
   "MongoInlineNotesDao" should "* (UNIT) create inline note" in {
-    notesDao.create(c).futureValue shouldEqual {}
+    notesDao.insert(c).futureValue shouldEqual c
   }
 
   // because of dropping "bin-usrId-1-uPref-1" index
@@ -35,7 +35,7 @@ class MongoInlineNoteDaoTests
   }
 
   it should "* (UNIT) update inline note" in {
-    val newPos = InlineNote.Position("1", "2", 0, 0)
+    val newPos = InlineNotePosition("1", "2", 0, 0)
     notesDao.update(c.usrId, c.id, newPos, None).futureValue.pos shouldEqual newPos
   }
 
