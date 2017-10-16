@@ -16,13 +16,13 @@ import org.apache.tika.sax.BodyContentHandler
   */
 object TikaInstance extends Tika() {
 
-  /* gets <title> meta tag value from any file
-     should accept Metadata instance of already parsed instance if caller includes one
-     to avoid duplication of instantiation of heavy Tika objects and double parsing
-     This method should accept either (titleTag + optMetadata) or (optByteArray)
-   */
-  def getTitle(
-      titleProperty: Option[Property] = Option.empty[Property],
+  /**
+    * Gets <title> meta tag value from any file. Should accept Metadata instance of already
+    * parsed instance if caller includes one to avoid duplication of instantiation of heavy
+    * Tika objects and double parsing.  This method accepts either (titleTag + optMetadata)
+    * or (optByteArray)
+    */
+  def getTitle(titleProperty: Option[Property] = Option.empty[Property],
       optMetadata: Option[Metadata] = Option.empty[Metadata],
       optArrayBytes: Option[Array[Byte]] = Option.empty[Array[Byte]]): Option[String] = {
 
@@ -30,8 +30,9 @@ object TikaInstance extends Tika() {
     optMetadata.fold(parseTitleMetaTag(optArrayBytes))(metadata => Option(metadata.get(titleProperty.get)))
   }
 
-  /* parse ArrayByte if Metadata instance is not accessible from caller place
-       this title metatag can also be empty so return None
+  /**
+    * Parse ArrayByte if Metadata instance is not accessible from caller place this title metatag
+    * can also be empty so return None.
     */
   def parseTitleMetaTag(otpByteArray : Option[Array[Byte]]): Option[String] = {
     otpByteArray.flatMap { byteArray =>
