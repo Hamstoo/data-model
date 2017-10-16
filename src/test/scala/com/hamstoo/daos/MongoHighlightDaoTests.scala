@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Highlight, Mark, PageCoord}
+import com.hamstoo.models.{HLPosition, Highlight, Mark, PageCoord}
 import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment, TestHelper, generateDbId}
 import org.scalatest.OptionValues
 
@@ -19,10 +19,10 @@ class MongoHighlightDaoTests
   val usrId: UUID = UUID.randomUUID()
   val markId: String = generateDbId(Mark.ID_LENGTH)
 
-  val h = Highlight(usrId = usrId, markId = markId, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("first", "", ""))
+  val h = Highlight(usrId = usrId, markId = markId, pos = HLPosition(Nil, 0), pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("first", "", ""))
 
   "MongoHighlightDao" should "* (UNIT) insert highlights" in {
-    highlightDao.create(h).futureValue shouldEqual {}
+    highlightDao.insert(h).futureValue shouldEqual h
   }
 
   // because of dropping "bin-usrId-1-uPref-1" index
@@ -35,7 +35,7 @@ class MongoHighlightDaoTests
   }
 
   it should "* (UNIT) update highlights" in {
-    val newPos = Highlight.Position(Nil, 2)
+    val newPos = HLPosition(Nil, 2)
 
     highlightDao.update(h.usrId, h.id, pos = newPos, prv = h.preview, coord = h.pageCoord).futureValue.pos shouldEqual newPos
   }
