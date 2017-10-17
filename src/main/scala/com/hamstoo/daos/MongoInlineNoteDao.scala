@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.hamstoo.models.{InlineNote, InlineNotePosition, Mark, PageCoord}
 import org.joda.time.DateTime
+import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.commands.bson.DefaultBSONCommandError
@@ -25,6 +26,8 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) extends MongoContentDao[InlineNo
 
   override val futColl: Future[BSONCollection] = db map (_ collection "comments")
   private val marksColl: Future[BSONCollection] = db map (_ collection "entries")
+
+  override val log = Logger(classOf[MongoInlineNoteDao])
 
   // convert url/uPrefs to markIds
   case class WeeNote(usrId: UUID, id: String, timeFrom: Long, url: String)
@@ -64,7 +67,10 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) extends MongoContentDao[InlineNo
   futColl map (_.indexesManager ensure indxs)
 
   /** Update timeThru on an existing inline note and insert a new one with modified values. */
-  def update(usr: UUID, id: String, pos: InlineNotePosition, coord: Option[PageCoord]): Future[InlineNote] = for {
+  def update(usr: UUID,
+             id: String,
+             pos: InlineNotePosition,
+             coord: Option[PageCoord]): Future[InlineNote] = for {
     c <- futColl
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt

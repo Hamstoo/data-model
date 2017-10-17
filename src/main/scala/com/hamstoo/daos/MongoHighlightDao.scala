@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.hamstoo.models.{HLPosition, Highlight, Mark, PageCoord}
 import org.joda.time.DateTime
+import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.commands.bson.DefaultBSONCommandError
@@ -24,6 +25,8 @@ class MongoHighlightDao(db: Future[DefaultDB]) extends MongoContentDao[Highlight
 
   override val futColl: Future[BSONCollection] = db map (_ collection "highlights")
   private val marksColl: Future[BSONCollection] = db map (_ collection "entries")
+
+  override val log = Logger(classOf[MongoHighlightDao])
 
   // convert url/uPrefs to markIds
   case class WeeHighlight(usrId: UUID, id: String, timeFrom: Long, url: String)
