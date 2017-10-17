@@ -5,14 +5,16 @@ import java.util.UUID
 import com.hamstoo.models._
 import com.hamstoo.utils._
 import org.joda.time.DateTime
+import play.api.Logger
 import reactivemongo.api.BSONSerializationPack.{Reader, Writer}
 import reactivemongo.api.collections.bson.BSONCollection
 
 import scala.concurrent.{ExecutionContext, Future}
 
-abstract class MongoContentDao[A <: Content](implicit ex: ExecutionContext) extends BSONHandlers with ContentInfo with Logging {
+abstract class MongoContentDao[A <: Content](implicit ex: ExecutionContext) extends BSONHandlers with ContentInfo {
 
   val futColl: Future[BSONCollection]
+  val log: Logger
 
   def insert(content: A)(implicit writer: Writer[A]): Future[A] = for {
     c <- futColl

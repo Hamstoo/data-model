@@ -1,7 +1,7 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.{Page, Representation}
 import com.hamstoo.models.Representation._
+import com.hamstoo.models.{Page, Representation}
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -11,9 +11,9 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.breakOut
-import scala.concurrent.ExecutionContext.Implicits.global // "Prefer a dedicated ThreadPool for IO-bound tasks" [https://www.beyondthelines.net/computing/scala-future-and-execution-context/]
-import scala.concurrent.{Await, Future}
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 
 
 object MongoRepresentationDao {
@@ -122,13 +122,6 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     c <- futColl
     seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
   } yield seq
-
-  /** Retrieves a current (latest) public representation by URL. */
-  @deprecated("Must be removed in future releases", "1.0.0")
-  def retrieveByUrl(url: String): Future[Option[Representation]] = for {
-    c <- futColl
-    seq <- (c find d :~ LPREFX -> url.binaryPrefix :~ curnt).coll[Representation, Seq]()
-  } yield seq find (_.link contains url)
 
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
