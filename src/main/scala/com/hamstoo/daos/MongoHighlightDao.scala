@@ -66,33 +66,33 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
 
   def create(hl: Highlight): Future[Unit] = for {
     c <- futColl
-    wr <- c insert hl
+    wr <- c.insert(hl)
     _ <- wr failIfError
   } yield ()
 
   def retrieve(usr: UUID, id: String): Future[Option[Highlight]] = for {
     c <- futColl
-    mbHl <- (c find d :~ USR -> usr :~ ID -> id :~ curnt projection d :~ POS -> 1).one[Highlight]
+    mbHl <- c.find(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ POS -> 1).one[Highlight]
   } yield mbHl
 
   /** Requires `usr` argument so that index can be used for lookup. */
   def retrieveByMarkId(usr: UUID, markId: String): Future[Seq[Highlight]] = for {
     c <- futColl
-    seq <- (c find d :~ USR -> usr :~ MARKID -> markId :~ curnt).coll[Highlight, Seq]()
+    seq <- c.find(d :~ USR -> usr :~ MARKID -> markId :~ curnt).coll[Highlight, Seq]()
   } yield seq
 
   def update(usr: UUID, id: String, pos: Highlight.Position, prv: Highlight.Preview): Future[Highlight] = for {
     c <- futColl
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
-    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
+    wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
     hl = wr.result[Highlight].get.copy(
       pos = pos,
       preview = prv,
       memeId = None,
       timeFrom = now,
       timeThru = INF_TIME)
-    wr <- c insert hl
+    wr <- c.insert(hl)
     _ <- wr failIfError
   } yield hl
 

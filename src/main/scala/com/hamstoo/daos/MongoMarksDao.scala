@@ -146,19 +146,21 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /**
     * Updates current state of a mark with user-provided MarkData, looking the mark up by user and ID.
-    * Returns new current mark state.
+    * Returns new current mark state.  Do not attempt to use this function to update non-user-provided data
+    * fields (i.e. non-MarkData).
     */
-  def update(user: UUID, id: String, mdata: MarkData, now: Long = DateTime.now.getMillis): Future[Mark] = for {
+  def update(user: UUID, id: String, mdata: MarkData): Future[Mark] = for {
     c <- futColl
     sel = d :~ USER -> user :~ ID -> id :~ curnt
-    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
+    now: Long = DateTime.now.getMillis
+    wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
     oldMk <- wr.result[Mark].map(Future.successful).getOrElse(
       Future.failed(new Exception(s"MongoMarksDao.update: unable to find mark $id")))
     // if the URL has changed then discard the old public repr (only the public one though as the private one is
     // based on private user content that was only available from the browser extension at the time the user first
     // created it)
     pubRp = if (mdata.url == oldMk.mark.url) oldMk.pubRepr else None
-    newMk = oldMk.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = Long.MaxValue)
+    newMk = oldMk.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = INF_TIME)
     wr <- c.insert(newMk)
     _ <- wr.failIfError
   } yield newMk
@@ -171,8 +173,19 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futColl
     _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id))
     mergedMk = oldMark.merge(newMark)
-    updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
-  } yield updatedMk
+
+    // this was formerly (2017-10-18) a bug as it doesn't affect any of the non-MarkData fields
+    //updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
+
+    sel = d :~ USER -> mergedMk.userId :~ ID -> mergedMk.id :~ curnt
+    wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
+    _ <- wr.failIfError
+
+    newMk = mergedMk.copy(timeFrom = now, timeThru = INF_TIME)
+    wr <- c.insert(newMk)
+    _ <- wr.failIfError
+
+  } yield newMk
 
   /** Process the file into a Page instance and add it to the Mark in the database. */
   def addFilePage(userId: UUID, markId: String, file: TemporaryFile): Future[Unit] = {
