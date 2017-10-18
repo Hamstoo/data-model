@@ -2,7 +2,7 @@ package com.hamstoo.daos.auth
 
 import java.util.UUID
 
-import com.hamstoo.daos.{MongoOAuth2InfoDao, MongoUserDao}
+import com.hamstoo.daos.MongoUserDao
 import com.hamstoo.models.{Profile, User, UserData}
 import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment, TestHelper}
 import com.mohiva.play.silhouette.api.LoginInfo

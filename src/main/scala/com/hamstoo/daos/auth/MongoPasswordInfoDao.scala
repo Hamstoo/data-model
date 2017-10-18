@@ -1,4 +1,4 @@
-package com.hamstoo.daos
+package com.hamstoo.daos.auth
 
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import play.api.Logger
