@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{InlineNote, Mark}
+import com.hamstoo.models.{InlineNote, Mark, PageCoord}
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -22,8 +22,8 @@ import scala.concurrent.Future
 class MongoInlineNoteDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.models.InlineNote._
-  import com.hamstoo.utils._
   import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
+  import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MongoInlineNoteDao])
 
   private val futColl: Future[BSONCollection] = db map (_ collection "comments")
@@ -49,7 +49,7 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) {
     }
     _ = logger.info(s"Updating ${urled.size} InlineNotes with markIds (and removing their URLs)")
     _ <- Future.sequence { urled.map { x => for { // lookup mark w/ same url
-      marks <- mc.find(d :~ Mark.USER -> x.usrId :~ Mark.URLPRFX -> x.url.binaryPrefix).coll[Mark, Seq]()
+      marks <- mc.find(d :~ Mark.USR -> x.usrId :~ Mark.URLPRFX -> x.url.binaryPrefix).coll[Mark, Seq]()
       markId = marks.headOption.map(_.id).getOrElse("")
       _ <- c.update(d :~ ID -> x.id :~ TIMEFROM -> x.timeFrom,
                     d :~ "$unset" -> (d :~ "url" -> 1 :~ "uPref" -> 1) :~ "$set" -> {d :~ "markId" -> markId},
@@ -91,13 +91,17 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) {
 
 
 
-
-  def update(usr: UUID, id: String, pos: InlineNote.Position): Future[InlineNote] = for {
+  /** Update timeThru on an existing inline note and insert a new one with modified values. */
+  def update(usr: UUID, id: String, pos: InlineNote.Position, coord: Option[PageCoord]): Future[InlineNote] = for {
     c <- futColl
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TILL -> now), fetchNewObject = true)
-    note = wr.result[InlineNote].get.copy(pos = pos, memeId = None, timeFrom = now, timeThru = INF_TIME)
+    note = wr.result[InlineNote].get.copy(pos = pos,
+                                          pageCoord = coord,
+                                          memeId = None,
+                                          timeFrom = now,
+                                          timeThru = Long.MaxValue)
     wr <- c.insert(note)
     _ <- wr failIfError
   } yield note

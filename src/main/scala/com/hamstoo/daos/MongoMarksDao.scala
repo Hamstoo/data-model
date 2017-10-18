@@ -41,7 +41,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /* Indexes with names for this mongo collection: */
   private val indxs: Map[String, Index] =
-    Index(USER -> Ascending :: Nil) % s"bin-$USER-1" ::
+    Index(USR -> Ascending :: Nil) % s"bin-$USR-1" ::
     Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
     /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
@@ -78,13 +78,13 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Retrieves a mark by user and ID, None if not found.  Retrieves current mark unless timeThru is specified. */
   def retrieve(user: UUID, id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = for {
     c <- futColl
-    optEnt <- (c find d :~ USER -> user :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
+    optEnt <- (c find d :~ USR -> user :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
   } yield optEnt
 
   /** Retrieves all current marks for the user, sorted by `timeFrom` descending. */
   def retrieve(user: UUID): Future[Seq[Mark]] = for {
     c <- futColl
-    seq <- c.find(d :~ USER -> user :~ curnt).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
+    seq <- c.find(d :~ USR -> user :~ curnt).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
   } yield seq
 
   /** Retrieves all marks by ID, including previous versions, sorted by `timeFrom` descending. */
@@ -100,13 +100,13 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = for {
     c <- futColl
-    seq <- (c find d :~ USER -> user :~ URLPRFX -> url.binaryPrefix :~ curnt).coll[Mark, Seq]()
+    seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ curnt).coll[Mark, Seq]()
   } yield seq collectFirst { case m if m.mark.url contains url => m }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
   def retrieveTagged(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
     c <- futColl
-    sel = d :~ USER -> user :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ curnt
+    sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ curnt
     seq <- (c find sel sort d :~ TIMEFROM -> -1).coll[Mark, Seq]()
   } yield seq
 
@@ -117,7 +117,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def retrieveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
     c <- futColl
     exst = d :~ "$exists" -> true :~ "$ne" -> ""
-    sel0 = d :~ USER -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
+    sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
     sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
     seq <- (c find sel1).coll[Mark, Seq]()
   } yield seq
@@ -125,7 +125,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Retrieves all tags existing in current marks for the user. */
   def retrieveTags(user: UUID): Future[Set[String]] = for {
     c <- futColl
-    sel = d :~ USER -> user :~ curnt
+    sel = d :~ USR -> user :~ curnt
     set <- (c find sel projection d :~ s"$MARK.$TAGS" -> 1 :~ "_id" -> 0).coll[BSONDocument, Set]()
   } yield for {
     d <- set
@@ -138,7 +138,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def search(user: UUID, query: String, tags: Set[String]): Future[Seq[Mark]] = for {
     c <- futColl
-    sel0 = d :~ USER -> user :~ curnt
+    sel0 = d :~ USR -> user :~ curnt
     sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
     pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
     seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), pjn).sort(pjn).coll[Mark, Seq]()
@@ -151,7 +151,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def update(user: UUID, id: String, mdata: MarkData): Future[Mark] = for {
     c <- futColl
-    sel = d :~ USER -> user :~ ID -> id :~ curnt
+    sel = d :~ USR -> user :~ ID -> id :~ curnt
     now: Long = DateTime.now.getMillis
     wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
     oldMk <- wr.result[Mark].map(Future.successful).getOrElse(
@@ -177,7 +177,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     // this was formerly (2017-10-18) a bug as it doesn't affect any of the non-MarkData fields
     //updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
 
-    sel = d :~ USER -> mergedMk.userId :~ ID -> mergedMk.id :~ curnt
+    sel = d :~ USR -> mergedMk.userId :~ ID -> mergedMk.id :~ curnt
     wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
     _ <- wr.failIfError
 
@@ -196,7 +196,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Appends provided string to mark's array of page sources. */
   def addPageSource(user: UUID, id: String, page: Page): Future[Unit] = for {
     c <- futColl
-    wr <- c.findAndUpdate(d :~ USER -> user :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ PAGE -> page))
+    wr <- c.findAndUpdate(d :~ USR -> user :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ PAGE -> page))
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
       logger.error(s"Unable to findAndUpdate mark $id's page source; wr.lastError = ${wr.lastError.get}")
@@ -213,7 +213,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def updateTag(user: UUID, tag: String, rename: String): Future[Int] = for {
     c <- futColl
-    sel = d :~ USER -> user :~ s"$MARK.$TAGS" -> tag
+    sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> tag
     wr <- c update(sel, d :~ "$set" -> (d :~ s"$MARK.$TAGS.$$" -> rename), multi = true)
     _ <- wr.failIfError
   } yield wr.nModified
@@ -221,7 +221,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Appends `time` to either `.tabVisible` or `.tabBground` array of a mark. */
   def addTiming(user: UUID, id: String, time: RangeMils, foreground: Boolean): Future[Unit] = for {
     c <- futColl
-    sel = d :~ USER -> user :~ ID -> id :~ curnt
+    sel = d :~ USR -> user :~ ID -> id :~ curnt
     wr <- c update(sel, d :~ "$push" -> (d :~ s"$AUX.${if (foreground) TABVIS else TABBG}" -> time))
     _ <- wr.failIfError
   } yield ()
@@ -232,7 +232,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     */
   def move(thisUser: UUID, thatUser: UUID): Future[Int] = for {
     c <- futColl
-    wr <- c update(d :~ USER -> thatUser, d :~ "$set" -> (d :~ USER -> thisUser), multi = true)
+    wr <- c update(d :~ USR -> thatUser, d :~ "$set" -> (d :~ USR -> thisUser), multi = true)
     _ <- wr.failIfError
   } yield wr.nModified
 
@@ -240,16 +240,22 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   def delete(user: UUID, ids: Seq[String], now: Long = DateTime.now.getMillis, mergeId: Option[String] = None):
                                                                           Future[Int] = for {
     c <- futColl
-    sel = d :~ USER -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
+    sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
     mrg = mergeId.map(d :~ MERGEID -> _).getOrElse(d)
     wr <- c update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now :~ mrg), multi = true)
     _ <- wr.failIfError
   } yield wr.nModified
 
+  def delete(usr: UUID, id: String): Future[Unit] = for {
+    c <- futColl
+    wr <- c update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> DateTime.now.getMillis))
+    _ <- wr failIfError
+  } yield ()
+
   /** Removes a tag from all user's marks that have it. */
   def deleteTag(user: UUID, tag: String): Future[Int] = for {
     c <- futColl
-    sel = d :~ USER -> user :~ s"$MARK.$TAGS" -> tag
+    sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> tag
     wr <- c update(sel, d :~ "$pull" -> (d :~ s"$MARK.$TAGS" -> tag), multi = true)
     _ <- wr.failIfError
   } yield wr.nModified
@@ -257,7 +263,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Adds a set of tags to each current mark from a list of IDs. */
   def tag(user: UUID, ids: Seq[String], tags: Set[String]): Future[Int] = for {
     c <- futColl
-    sel = d :~ USER -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
+    sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
     wr <- c update(sel, d :~ "$push" -> (d :~ s"$MARK.$TAGS" -> (d :~ "$each" -> tags)), multi = true)
     _ <- wr.failIfError
   } yield wr.nModified
@@ -265,7 +271,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   /** Removes a set of tags from each current mark from a list of IDs if they have any of the tags. */
   def untag(user: UUID, ids: Seq[String], tags: Set[String]): Future[Int] = for {
     c <- futColl
-    sel = d :~ USER -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
+    sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
     wr <- c update(sel, d :~ "$pull" -> (d :~ s"$MARK.$TAGS" -> (d :~ "$in" -> tags)), multi = true)
   } yield wr.nModified
 

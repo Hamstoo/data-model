@@ -11,13 +11,13 @@ import org.scalatest.{FlatSpec, Matchers}
 import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
-  * ?
+  * Tests of highlights intersection code.
   */
 class HighlightsIntersectionServiceTests extends FlatSpec with Matchers with MockitoSugar {
 
   val testDuration = 5000
-  val highLightsDao: MongoHighlightDao = mock[MongoHighlightDao]
-  val hlIntersectSvc: HighlightsIntersectionService = new HighlightsIntersectionService(highLightsDao)
+  val hlightsDao: MongoHighlightDao = mock[MongoHighlightDao]
+  val hlIntersectionSvc: HighlightsIntersectionService = new HighlightsIntersectionService(hlightsDao)
 
   val userId: UUID = UUID.randomUUID()
   val markId = generateDbId(Mark.ID_LENGTH)
@@ -57,7 +57,7 @@ class HighlightsIntersectionServiceTests extends FlatSpec with Matchers with Moc
   }
 
 
-  "HighlightIntersectionService" should "* (UNIT) merge same-element pieces of text in a highlight" in {
+  "HighlightIntersectionService" should "(UNIT) merge same-element pieces of text in a highlight" in {
 
       val elementsWithRepetitions: Seq[Highlight.PositionElement] = Highlight.PositionElement(paths.head, texts.head) ::
         Highlight.PositionElement(paths(1), texts(1).substring(0, 40)) :: Highlight.PositionElement(paths(1), texts(1).substring(40)) ::
@@ -67,159 +67,127 @@ class HighlightsIntersectionServiceTests extends FlatSpec with Matchers with Moc
       val mergedElems: Seq[Highlight.PositionElement] = Highlight.PositionElement(paths.head, texts.head) :: Highlight.PositionElement(paths(1), texts(1)) ::
         Highlight.PositionElement(paths(2), texts(2)) :: Highlight.PositionElement(paths(3), texts(3)) :: Nil
 
-      hlIntersectSvc mergeSameElems elementsWithRepetitions shouldEqual mergedElems
+      hlIntersectionSvc mergeSameElems elementsWithRepetitions shouldEqual mergedElems
   }
 
 
-  it should "* (UNIT) case 1: join highlight with intersection on 1 element with text overlap" in {
+  it should "(UNIT) case 1: join highlight with intersection on 1 element with text overlap" in {
 
     val length = htmlMock(5)._2.length
     val highlightA = makeHighlight(2, 5, 0, length - 10)
     val highlightB = makeHighlight(5, 7, length - 20, 10)
 
-    hlIntersectSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
 
-    hlIntersectSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 1
-
-    hlIntersectSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
-
-    hlIntersectSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual -1
-
-    val (positionUnion, previewUnion) = hlIntersectSvc.union(highlightA, highlightB)
+    val (positionUnion, previewUnion, pageCoord) = hlIntersectionSvc.union(highlightA, highlightB)
 
     val intended = makeHighlight(2, 7, 0, 10)
-
     positionUnion shouldEqual intended.pos
-
     previewUnion shouldEqual intended.preview
   }
 
-  it should "* (UNIT) case 2: join highlights with intersection on 2 elements with text overlap" in {
+  it should "(UNIT) case 2: join highlights with intersection on 2 elements with text overlap" in {
 
     val length = htmlMock(7)._2.length
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(6, 8, 5, 10)
 
-    hlIntersectSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
 
-    hlIntersectSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 1
-
-    hlIntersectSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
-
-    hlIntersectSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual -1
-
-    val (positionUnion, previewUnion) = hlIntersectSvc.union(highlightA, highlightB)
+    val (positionUnion, previewUnion, pageCoord) = hlIntersectionSvc.union(highlightA, highlightB)
 
     val intended = makeHighlight(1, 8, 0, 10)
-
     positionUnion shouldEqual intended.pos
-
     previewUnion shouldEqual intended.preview
   }
 
-  it should "* (UNIT) case 3: join highlights with intersection on all elements" in {
+  it should "(UNIT) case 3: join highlights with intersection on all elements" in {
 
     val length = htmlMock(7)._2.length
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(5, 7, 0, length - 10)
 
-    hlIntersectSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
 
-    hlIntersectSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
-
-    hlIntersectSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 1
-
-    hlIntersectSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual -1
-
-    val (positionUnion, previewUnion) = hlIntersectSvc.union(highlightA, highlightB)
+    val (positionUnion, previewUnion, pageCoord) = hlIntersectionSvc.union(highlightA, highlightB)
 
     val intended = makeHighlight(1, 7, 0, length - 10)
-
     positionUnion shouldEqual intended.pos
-
     previewUnion shouldEqual intended.preview
   }
 
-  it should "* (UNIT) case 4: join highlights with intersection in the only element with text overlap" in {
+  it should "(UNIT) case 4: join highlights with intersection in the only element with text overlap" in {
 
     val length = htmlMock(7)._2.length
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(7, 7, 10, length - 35)
 
-    hlIntersectSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
 
-    hlIntersectSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
-
-    hlIntersectSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 1
-
-    hlIntersectSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual -1
-
-    val (positionUnion, previewUnion) = hlIntersectSvc.union(highlightA, highlightB)
+    val (positionUnion, previewUnion, pageCoord) = hlIntersectionSvc.union(highlightA, highlightB)
 
     val intended = makeHighlight(1, 7, 0, length - 25)
-
     positionUnion shouldEqual intended.pos
-
     previewUnion shouldEqual intended.preview
   }
 
-  it should "* (UNIT) case 5: detect subset highlight with intersection in the only edge element" in {
+  it should "(UNIT) case 5: detect subset highlight with intersection in the only edge element" in {
 
     val length = htmlMock(7)._2.length
     val highlightA = makeHighlight(1, 7, 0, length - 10)
     val highlightB = makeHighlight(7, 7, 10, length - 20)
 
-    hlIntersectSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 1
-
-    hlIntersectSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual -1
-
-    hlIntersectSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 1
-
-    hlIntersectSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual -1
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
   }
 
-  it should "* (UNIT) case 6: detect subset highlight with intersection in 2 inside elements" in {
+  it should "(UNIT) case 6: detect subset highlight with intersection in 2 inside elements" in {
 
     val length = htmlMock(7)._2.length
     val highlightA = makeHighlight(1, 7, 20, length - 10)
     val highlightB = makeHighlight(5, 6, 10, 20)
 
-    hlIntersectSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 1
-
-    hlIntersectSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual -1
-
-    hlIntersectSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 0
-
-    hlIntersectSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe None
   }
 
-  it should "* (UNIT) case 7: detect non-intersecting highlight in 1 element overlapped but no text overlap" in {
+  it should "(UNIT) case 7: detect non-intersecting highlight in 1 element overlapped but no text overlap" in {
 
     val length = htmlMock(5)._2.length
     val highlightA = makeHighlight(1, 5, 20, length - 20)
     val highlightB = makeHighlight(5, 6, length - 10, 20)
 
-    hlIntersectSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
-
-    hlIntersectSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
-
-    hlIntersectSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 0
-
-    hlIntersectSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe None
   }
 
-  it should "* (UNIT) case 8: detect non-subset non-intersection highlight in single element overlapped but no text overlap" in {
+  it should "(UNIT) case 8: detect non-subset non-intersection highlight in single element overlapped but no text overlap" in {
 
     val length = htmlMock(5)._2.length
     val highlightA = makeHighlight(1, 5, 20, length - 20)
     val highlightB = makeHighlight(5, 5, length - 10, 10)
 
-    hlIntersectSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
-
-    hlIntersectSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
-
-    hlIntersectSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 0
-
-    hlIntersectSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe None
   }
 }
