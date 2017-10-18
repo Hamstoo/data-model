@@ -27,7 +27,7 @@ abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](coll: Future[BSONC
   } yield for {
     user <- optUser
     prof <- user.profiles find (_.loginInfo == loginInfo)
-    oai <- check(prof)
+    oai <- getAuth(prof)
   } yield oai.asInstanceOf[A]
 
   /** Updates user entry's auth for a given login. */
@@ -50,7 +50,7 @@ abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](coll: Future[BSONC
     _ <- wr failIfError
   } yield ()
 
-  private def check(profile: Profile): Option[AuthInfo] = {
+  private def getAuth(profile: Profile): Option[AuthInfo] = {
     typeOf[A] match {
       case a1 if a1 =:= typeOf[OAuth1Info] => profile.oAuth1Info
       case a2 if a2 =:= typeOf[OAuth2Info] => profile.oAuth2Info
