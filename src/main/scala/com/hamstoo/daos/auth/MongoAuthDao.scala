@@ -1,4 +1,4 @@
-package com.hamstoo.daos
+package com.hamstoo.daos.auth
 
 import com.hamstoo.models.User._
 import com.hamstoo.models.{Profile, User}
