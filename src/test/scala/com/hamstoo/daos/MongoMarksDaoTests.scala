@@ -3,7 +3,9 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.{Mark, MarkData}
-import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment, TestHelper}
+import com.hamstoo.test.env.MongoEnvironment
+import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
+import com.hamstoo.utils.TestHelper
 import org.scalatest.OptionValues
 
 import scala.concurrent.ExecutionContext.Implicits.global

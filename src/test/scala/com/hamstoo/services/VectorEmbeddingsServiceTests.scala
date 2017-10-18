@@ -1,13 +1,13 @@
 package com.hamstoo.services
 
-import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
-import akka.testkit.TestKit
 import com.hamstoo.daos.MongoVectorsDao
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingService.WordMass
-import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment, TestHelper}
+import com.hamstoo.test.FutureHandler
+import com.hamstoo.test.env.AkkaMongoEnvironment
+import com.hamstoo.utils.TestHelper
 import play.api.libs.ws.ahc.AhcWSClient
 
 /**
@@ -17,17 +17,9 @@ import play.api.libs.ws.ahc.AhcWSClient
   * then it's possible that the conceptnet5-vectors-docker container isn't reachable.
   */
 class VectorEmbeddingsServiceTests
-  extends TestKit(ActorSystem("VectorEmbeddingsServiceSpec-ActorSystem"))
-    with FlatSpecWithMatchers
-    with MongoEnvironment
+  extends AkkaMongoEnvironment("VectorEmbeddingsServiceSpec-ActorSystem")
     with FutureHandler
     with TestHelper {
-
-  override def afterAll(): Unit = {
-    TestKit.shutdownActorSystem(system)
-
-    super.afterAll()
-  }
 
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   lazy val vectorizer = new Vectorizer(AhcWSClient(), new MongoVectorsDao(getDB), vectorsLink)

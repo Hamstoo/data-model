@@ -1,8 +1,8 @@
-package com.hamstoo.utils
+package com.hamstoo.test
 
 import org.scalatest.{FlatSpecLike, Matchers}
 
 /**
-  * Trait that combine FlatSpecLike trait with Matchers for simply test suites
+  * Combination of FlatSpec functionality with Matchers functionality
   */
 trait FlatSpecWithMatchers extends FlatSpecLike with Matchers

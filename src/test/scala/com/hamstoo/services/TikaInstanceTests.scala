@@ -3,7 +3,7 @@ package com.hamstoo.services
 import java.nio.file.{Files, Path, Paths}
 
 import com.hamstoo.models.Page
-import com.hamstoo.utils.FlatSpecWithMatchers
+import com.hamstoo.test.FlatSpecWithMatchers
 
 /**
   * TikaInstanceTests

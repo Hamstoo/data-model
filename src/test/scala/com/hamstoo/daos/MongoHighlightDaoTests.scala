@@ -3,7 +3,9 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.{HLPosition, Highlight, Mark, PageCoord}
-import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment, TestHelper, generateDbId}
+import com.hamstoo.test.env.MongoEnvironment
+import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
+import com.hamstoo.utils.{TestHelper, generateDbId}
 import org.scalatest.OptionValues
 
 

@@ -2,7 +2,7 @@ package com.hamstoo.models
 
 import java.util.UUID
 
-import com.hamstoo.utils.FlatSpecWithMatchers
+import com.hamstoo.test.FlatSpecWithMatchers
 
 class AnnotationSpec extends FlatSpecWithMatchers {
 

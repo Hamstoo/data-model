@@ -4,7 +4,9 @@ import java.util.UUID
 
 import com.hamstoo.daos.MongoUserDao
 import com.hamstoo.models.{Profile, User, UserData}
-import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MongoEnvironment, TestHelper}
+import com.hamstoo.test.env.MongoEnvironment
+import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
+import com.hamstoo.utils.TestHelper
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.impl.providers.OAuth1Info
 import org.scalatest.OptionValues

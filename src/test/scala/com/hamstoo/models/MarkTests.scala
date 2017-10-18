@@ -2,7 +2,8 @@ package com.hamstoo.models
 
 import java.util.UUID
 
-import com.hamstoo.utils.{DataInfo, FlatSpecWithMatchers}
+import com.hamstoo.test.FlatSpecWithMatchers
+import com.hamstoo.utils.DataInfo
 
 /**
   * Mark model tests.

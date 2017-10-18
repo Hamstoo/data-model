@@ -1,7 +1,9 @@
 package com.hamstoo.daos
 
 import com.hamstoo.models.{MarkData, Page, Representation}
-import com.hamstoo.utils.{FlatSpecWithMatchers, FutureHandler, MediaType, MongoEnvironment, TestHelper}
+import com.hamstoo.test.env.MongoEnvironment
+import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
+import com.hamstoo.utils.{MediaType, TestHelper}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
@@ -20,7 +22,7 @@ class MongoRepresentationDaoTests
   /** Create new mark. */
   def randomMarkData: MarkData = {
     val alpha = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    val size = alpha.size
+    val size = alpha.length
 
     def randStr(n:Int) = (1 to n).map(x => alpha.charAt(Random.nextInt.abs % size)).mkString
     val domain = randStr(10)
