@@ -3,12 +3,13 @@ package com.hamstoo.services
 import java.nio.file.{Files, Path, Paths}
 
 import com.hamstoo.models.Page
-import com.hamstoo.utils.TestHelper
+import com.hamstoo.utils.FlatSpecWithMatchers
 
 /**
   * TikaInstanceTests
   */
-class TikaInstanceTests extends TestHelper {
+class TikaInstanceTests
+  extends FlatSpecWithMatchers {
 
   val pwd: String = System.getProperty("user.dir")
   val currentFile: Path = Paths.get(pwd + "/src/test/scala/com/hamstoo/services/" + getClass.getSimpleName + ".scala")

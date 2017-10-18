@@ -229,7 +229,7 @@ object Mark extends BSONHandlers {
 
   val ID_LENGTH: Int = 16
 
-  val USER: String = nameOf[Mark](_.userId)
+  val USR: String = nameOf[Mark](_.userId)
   val ID: String = nameOf[Mark](_.id)
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)
