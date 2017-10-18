@@ -50,6 +50,7 @@ libraryDependencies ++= Seq(
   "org.scalanlp" %% "breeze-natives" % "0.13.1",
   "com.typesafe.akka" %% "akka-testkit" % "2.5.4" % "test",
   "org.scalatest" %% "scalatest" % "3.0.4" % "test",
+  "org.mockito" % "mockito-core" % "2.10.0" % "test",
   "com.github.simplyscala" %% "scalatest-embedmongo" % "0.2.4" % "test",
   "org.apache.tika" % "tika-parsers" % "1.16")
 

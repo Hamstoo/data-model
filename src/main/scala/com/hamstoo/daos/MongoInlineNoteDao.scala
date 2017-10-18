@@ -57,7 +57,7 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) {
     } yield () }}
   } yield ()
 
-  /* Indexes with names for this mongo collection: */
+  // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: MARKID -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1" ::
     Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
@@ -65,21 +65,21 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) {
     Nil toMap;
   futColl map (_.indexesManager ensure indxs)
 
-  def create(ct: InlineNote): Future[Unit] = for {
+  def create(note: InlineNote): Future[Unit] = for {
     c <- futColl
-    wr <- c insert ct
+    wr <- c.insert(note)
     _ <- wr failIfError
   } yield ()
 
   def retrieve(usr: UUID, id: String): Future[Option[InlineNote]] = for {
     c <- futColl
-    optCt <- (c find d :~ USR -> usr :~ ID -> id :~ curnt projection d :~ POS -> 1).one[InlineNote]
-  } yield optCt
+    optNote <- c.find(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ POS -> 1).one[InlineNote]
+  } yield optNote
 
   /** Requires `usr` argument so that index can be used for lookup. */
   def retrieveByMarkId(usr: UUID, markId: String): Future[Seq[InlineNote]] = for {
     c <- futColl
-    seq <- (c find d :~ USR -> usr :~ MARKID -> markId :~ curnt).coll[InlineNote, Seq]()
+    seq <- c.find(d :~ USR -> usr :~ MARKID -> markId :~ curnt).coll[InlineNote, Seq]()
   } yield seq
 
   /*def retrieveSortedByPageCoord(url: String, usr: UUID): Future[Seq[InlineNote]] = for {
@@ -97,14 +97,14 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) {
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TILL -> now), fetchNewObject = true)
-    ct = wr.result[InlineNote].get.copy(pos = pos, memeId = None, timeFrom = now, timeThru = Long.MaxValue)
-    wr <- c insert ct
+    note = wr.result[InlineNote].get.copy(pos = pos, memeId = None, timeFrom = now, timeThru = INF_TIME)
+    wr <- c.insert(note)
     _ <- wr failIfError
-  } yield ct
+  } yield note
 
   def delete(usr: UUID, id: String): Future[Unit] = for {
     c <- futColl
-    wr <- c update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> DateTime.now.getMillis))
+    wr <- c.update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> DateTime.now.getMillis))
     _ <- wr failIfError
   } yield ()
 
