@@ -15,10 +15,9 @@ abstract class AkkaMongoEnvironment(actorSystemName: String)
   override def afterAll(): Unit = {
 
     // stopping actor system
-    log.info(s"Shutdowning actor system: $actorSystemName")
     TestKit.shutdownActorSystem(system)
 
-    // stopping mongo instance
+    // stopping mongodb instance
     super.afterAll()
   }
 

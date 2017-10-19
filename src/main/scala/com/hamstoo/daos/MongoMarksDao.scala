@@ -23,7 +23,7 @@ import scala.concurrent.Future
 class MongoMarksDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.utils._
-  val logger: Logger = Logger(classOf[MongoMarksDao])
+  val log: Logger = Logger(classOf[MongoMarksDao])
 
   private val futColl: Future[BSONCollection] = db map (_ collection "entries")
 
@@ -33,7 +33,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futColl
     sel = d :~ "$where" -> s"Object.bsonsize({$URLPRFX:this.$URLPRFX})>$URL_PREFIX_LENGTH+19"
     longPfxed <- c.find(sel).coll[Mark, Seq]()
-    _ = logger.info(s"Updating ${longPfxed.size} `Mark.urlPrfx`s to length $URL_PREFIX_LENGTH bytes")
+    _ = log.info(s"Updating ${longPfxed.size} `Mark.urlPrfx`s to length $URL_PREFIX_LENGTH bytes")
     _ <- Future.sequence { longPfxed.map { m => // urlPrfx will have been overwritten upon `Mark` construction
         c.update(d :~ ID -> m.id :~ TIMEFROM -> m.timeFrom, d :~ "$set" -> (d :~ URLPRFX -> m.urlPrfx))
     }}
@@ -56,122 +56,198 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   futColl map (_.indexesManager ensure indxs)
 
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
-  def insert(mark: Mark): Future[Mark] = for {
-    c <- futColl
-    wr <- c insert mark
-    _ <- wr failIfError;
-      _ = logger.debug(s"Inserted mark ${mark.id}")
-  } yield mark
+  def insert(mark: Mark): Future[Mark] = {
+    log.debug(s"Inserting mark: ${mark.id}")
+
+    for {
+        c <- futColl
+      wr <- c insert mark
+      _ <- wr failIfError;
+      _ = log.debug(s"Inserted mark ${mark.id}")
+    } yield {
+      log.debug(s"Mark: ${mark.id} successfully inserted")
+      mark
+    }
+  }
 
   /**
     * Inserts existing marks from a stream.  If they are duplicates of pre-existing marks, repr-engine will
     * merge them.
     */
-  def insertStream(marks: Stream[Mark]): Future[Int] = for {
-    c <- futColl
-    now = DateTime.now.getMillis
-    ms = marks map(_.copy(timeFrom = now)) map Mark.entryBsonHandler.write // map each mark into a `BSONDocument`
-    wr <- c bulkInsert(ms, ordered = false)
-  } yield wr.totalN
+  def insertStream(marks: Stream[Mark]): Future[Int] = {
+    log.debug(s"Inserting stream of marks")
+
+    for {
+      c <- futColl
+      now = DateTime.now.getMillis
+      ms = marks map(_.copy(timeFrom = now)) map Mark.entryBsonHandler.write // map each mark into a `BSONDocument`
+      wr <- c bulkInsert(ms, ordered = false)
+    } yield {
+      val count = wr.totalN
+      log.debug(s"$count marks was successfully inserted")
+      count
+    }
+  }
 
   /** Retrieves a mark by user and ID, None if not found.  Retrieves current mark unless timeThru is specified. */
-  def retrieve(user: UUID, id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = for {
-    c <- futColl
-    optEnt <- (c find d :~ USR -> user :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
-  } yield optEnt
+  def retrieve(user: UUID, id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
+    log.debug(s"Retrieving mark for uuid: $user and id: $id")
+    for {
+      c <- futColl
+      optEnt <- (c find d :~ USR -> user :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
+    } yield {
+      log.debug(s"$optEnt was successfully retrieved")
+      optEnt
+    }
+  }
 
   /** Retrieves all current marks for the user, sorted by `timeFrom` descending. */
-  def retrieve(user: UUID): Future[Seq[Mark]] = for {
-    c <- futColl
-    seq <- c.find(d :~ USR -> user :~ curnt).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
-  } yield seq
+  def retrieve(user: UUID): Future[Seq[Mark]] = {
+    log.debug(s"Retrieving marks by uuid: $user")
+    for {
+      c <- futColl
+      seq <- c.find(d :~ USR -> user :~ curnt).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
+    } yield {
+        log.debug(s"${seq.size} marks was successfully retrieved")
+        seq
+    }
+  }
 
   /** Retrieves all marks by ID, including previous versions, sorted by `timeFrom` descending. */
-  def retrieveAllById(id: String): Future[Seq[Mark]] = for {
-    c <- futColl
-    seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
-  } yield seq
+  def retrieveAllById(id: String): Future[Seq[Mark]] = {
+    log.debug(s"Retrieving all marks by id: $id")
+    for {
+      c <- futColl
+      seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
+    } yield {
+        log.debug(s"${seq.size} marks was successfully retrieved by id")
+        seq
+    }
+  }
 
   /**
     * Retrieves a current mark by user and URL, None if not found.  This is used in the Chrome extension via the
     * backend's `MarksController` to quickly get the mark for an active tab.  Eventually we'll probably want to
     * implement more complex logic based on representations similar to repr-engine's `dupSearch`.
     */
-  def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = for {
-    c <- futColl
-    seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ curnt).coll[Mark, Seq]()
-  } yield seq collectFirst { case m if m.mark.url contains url => m }
+  def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = {
+    log.debug(s"Retrieving marks by url: $url and uuid: $user")
+    for {
+      c <- futColl
+      seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ curnt).coll[Mark, Seq]()
+    } yield {
+      val optMark = seq find (_.mark.url.contains(url))
+      log.debug(s"$optMark mark was successfully retrieved")
+      optMark
+    }
+  }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
-  def retrieveTagged(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
-    c <- futColl
-    sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ curnt
-    seq <- (c find sel sort d :~ TIMEFROM -> -1).coll[Mark, Seq]()
-  } yield seq
+  def retrieveTagged(user: UUID, tags: Set[String]): Future[Seq[Mark]] = {
+    log.debug(s"Retrieve tagged marks for uuid: $user and tags: $tags")
+    for {
+      c <- futColl
+      sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ curnt
+      seq <- (c find sel sort d :~ TIMEFROM -> -1).coll[Mark, Seq]()
+    } yield {
+      log.debug(s"${seq.size} tagged marks was successfully retrieved")
+      seq
+    }
+  }
 
   /**
     * Retrieves all current marks with representations for the user, constrained by a list of tags. Mark must have
     * all tags to qualify.
     */
-  def retrieveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = for {
-    c <- futColl
-    exst = d :~ "$exists" -> true :~ "$ne" -> ""
-    sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
-    sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
-    seq <- (c find sel1).coll[Mark, Seq]()
-  } yield seq
+  def retrieveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = {
+    log.debug(s"Retrieve repred marks for user: $user and tags: $tags")
+    for {
+      c <- futColl
+      exst = d :~ "$exists" -> true :~ "$ne" -> ""
+      sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
+      sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
+      seq <- (c find sel1).coll[Mark, Seq]()
+    } yield {
+      log.debug(s"${seq.size} repred marks was successfully retrieved")
+      seq
+    }
+  }
 
   /** Retrieves all tags existing in current marks for the user. */
-  def retrieveTags(user: UUID): Future[Set[String]] = for {
-    c <- futColl
-    sel = d :~ USR -> user :~ curnt
-    set <- (c find sel projection d :~ s"$MARK.$TAGS" -> 1 :~ "_id" -> 0).coll[BSONDocument, Set]()
-  } yield for {
-    d <- set
-    ts <- d.getAs[BSONDocument](MARK).get.getAs[Set[String]](TAGS) getOrElse Set.empty
-  } yield ts
+  def retrieveTags(user: UUID): Future[Set[String]] = {
+    log.debug(s"Retrieve tags for user: $user")
+    for {
+      c <- futColl
+      sel = d :~ USR -> user :~ curnt
+      set <- (c find sel projection d :~ s"$MARK.$TAGS" -> 1 :~ "_id" -> 0).coll[BSONDocument, Set]()
+    } yield for {
+      d <- set
+      ts <- d.getAs[BSONDocument](MARK).get.getAs[Set[String]](TAGS) getOrElse Set.empty
+    } yield {
+      log.debug(s"$ts tags was successfully retrieved")
+      ts
+    }
+  }
 
   /**
     * Executes a search using text index with sorting in user's marks, constrained by tags. Mark state must be
     * current and have all tags to qualify.
     */
-  def search(user: UUID, query: String, tags: Set[String]): Future[Seq[Mark]] = for {
-    c <- futColl
-    sel0 = d :~ USR -> user :~ curnt
-    sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
-    pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-    seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), pjn).sort(pjn).coll[Mark, Seq]()
-  } yield seq
+  def search(user: UUID, query: String, tags: Set[String]): Future[Seq[Mark]] = {
+    log.debug(s"Searching for marks for user: $user by text query: $query and tags: $tags")
+    for {
+      c <- futColl
+      sel0 = d :~ USR -> user :~ curnt
+      sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
+      pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
+      seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), pjn).sort(pjn).coll[Mark, Seq]()
+    } yield {
+      log.debug(s"${seq.size} marks was successfully retrieved")
+      seq
+    }
+  }
 
   /**
     * Updates current state of a mark with user-provided MarkData, looking the mark up by user and ID.
     * Returns new current mark state.
     */
-  def update(user: UUID, id: String, mdata: MarkData, now: Long = DateTime.now.getMillis): Future[Mark] = for {
-    c <- futColl
-    sel = d :~ USR -> user :~ ID -> id :~ curnt
-    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
-    oldMk <- wr.result[Mark].map(Future.successful).getOrElse(
-      Future.failed(new Exception(s"MongoMarksDao.update1: unable to findAndUpdate mark ID $id")))
-    // if the URL has changed then discard the old public repr (only the public one though as the private one is
-    // based on private user content that was only available from the browser extension at the time the user first
-    // created it)
-    pubRp = if (mdata.url == oldMk.mark.url) oldMk.pubRepr else None
-    newMk = oldMk.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = Long.MaxValue)
-    wr <- c insert newMk
-    _ <- wr failIfError
-  } yield newMk
+  def update(user: UUID, id: String, mdata: MarkData, now: Long = DateTime.now.getMillis): Future[Mark] = {
+    log.debug(s"Updating mark for user: $user and id: $id")
+    for {
+      c <- futColl
+      sel = d :~ USR -> user :~ ID -> id :~ curnt
+      wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
+      oldMk <- wr.result[Mark].map(Future.successful).getOrElse(
+        Future.failed(new Exception(s"MongoMarksDao.update1: unable to findAndUpdate mark ID $id")))
+      // if the URL has changed then discard the old public repr (only the public one though as the private one is
+      // based on private user content that was only available from the browser extension at the time the user first
+      // created it)
+      pubRp = if (mdata.url == oldMk.mark.url) oldMk.pubRepr else None
+      newMk = oldMk.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = Long.MaxValue)
+      wr <- c insert newMk
+      _ <- wr failIfError
+    } yield {
+      log.debug("Mark was successfully updated")
+      newMk
+    }
+  }
 
   /**
     * Merge two marks by setting their `timeFrom`s to the time of execution and inserting a new mark with the
     * same `timeThru`.
     */
-  def merge(oldMark: Mark, newMark: Mark, now: Long = DateTime.now.getMillis): Future[Mark] = for {
-    c <- futColl
-    _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id))
-    mergedMk = oldMark.merge(newMark)
-    updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
-  } yield updatedMk
+  def merge(oldMark: Mark, newMark: Mark, now: Long = DateTime.now.getMillis): Future[Mark] = {
+    log.debug(s"Merging mark: $oldMark and $newMark")
+    for {
+      c <- futColl
+      _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id))
+      mergedMk = oldMark.merge(newMark)
+      updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
+    } yield {
+      log.debug(s"Marks was successfully merged into $updatedMk")
+      updatedMk
+    }
+  }
 
   /** Process the file into a Page instance and add it to the Mark in the database. */
   def addFilePage(userId: UUID, markId: String, file: TemporaryFile): Future[Unit] = {
@@ -268,7 +344,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
     wr <- c update(sel, d :~ "$set" -> (d :~ PUBREPR -> reprId))
     _ <- wr failIfError;
-    _ = logger.debug(s"Updated mark $id with public representation ID $reprId")
+    _ = log.debug(s"Updated mark $id with public representation ID $reprId")
   } yield ()
 
   /**
@@ -291,7 +367,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> reprId), fetchNewObject = true)
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
-      logger.warn(s"Unable to findAndUpdate mark $id's (timeFrom = $timeFrom) private representation to $reprId; wr.lastError = ${wr.lastError.get}")
+      log.warn(s"Unable to findAndUpdate mark $id's (timeFrom = $timeFrom) private representation to $reprId; wr.lastError = ${wr.lastError.get}")
       Future.failed(new Exception("MongoMarksDao.updatePrivateReprId"))
     }
 
@@ -304,7 +380,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       _ <- wr failIfError
     } yield () else Future.successful {}
 
-    _ = logger.debug(s"Updated mark $id with private representation ID $reprId")
+    _ = log.debug(s"Updated mark $id with private representation ID $reprId")
   } yield ()
 
   def delete(usr: UUID, id: String): Future[Unit] = for {
