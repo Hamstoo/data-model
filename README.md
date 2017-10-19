@@ -123,3 +123,14 @@ class SomeTest extends FlatSpecWithMathcers with MongoEnvironment {
      }   
 }
 ```
+5. To set up test environment with embedded actor system and mongodb instance, extend `AkkaMongoEnvironment` class. By default it use configuration from example above. So use can easily override mongodb params.
+```
+class SomeTest extends AkkaMongoEnvironment("actor system name") {
+    override val mongoPort = 27017
+    override val mongoVersion = Version.V3_3_1
+    
+    "Testing some mongodb related operation" should "correctly work" in {
+        // mongodb, actor system related operation
+    }   
+}
+```
