@@ -194,12 +194,14 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   }
 
   /** Appends provided string to mark's array of page sources. */
-  def addPageSource(user: UUID, id: String, page: Page): Future[Unit] = for {
+  def addPageSource(user: UUID, id: String, page: Page, ensureNoPrivRepr: Boolean = true): Future[Unit] = for {
     c <- futColl
-    wr <- c.findAndUpdate(d :~ USR -> user :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ PAGE -> page))
+    sel0 = d :~ USR -> user :~ ID -> id :~ curnt
+    sel1 = if (ensureNoPrivRepr) sel0 :~ PRVREPR -> (d :~ "$exists" -> false) else sel0
+    wr <- c.findAndUpdate(sel1, d :~ "$set" -> (d :~ PAGE -> page))
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
-      logger.error(s"Unable to findAndUpdate mark $id's page source; wr.lastError = ${wr.lastError.get}")
+      logger.error(s"Unable to findAndUpdate mark $id's page source; ensureNoPrivRepr = $ensureNoPrivRepr, wr.lastError = ${wr.lastError.get}")
       Future.failed(new Exception("MongoMarksDao.addPageSource"))
     }
 
