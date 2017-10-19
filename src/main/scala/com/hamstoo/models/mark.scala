@@ -178,6 +178,7 @@ case class Mark(
       logger.warn(s"Merging two marks, $id and ${oth.id}, with different private representations ${privRepr.get} and ${oth.privRepr.get}; ignoring latter")
 
     // TODO: how do we ensure that additional fields added to the constructor are accounted for here?
+    // TODO: how do we ensure that other data (like highlights) that reference markIds are accounted for?
     copy(mark = mark.merge(oth.mark),
          aux  = aux .merge(oth.aux ),
 

@@ -62,8 +62,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     for {
         c <- futColl
       wr <- c insert mark
-      _ <- wr failIfError;
-      _ = log.debug(s"Inserted mark ${mark.id}")
+      _ <- wr failIfError
     } yield {
       log.debug(s"Mark: ${mark.id} successfully inserted")
       mark
@@ -120,8 +119,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       c <- futColl
       seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
-        log.debug(s"${seq.size} marks were successfully retrieved by id")
-        seq
+      log.debug(s"${seq.size} marks were successfully retrieved by id")
+      seq
     }
   }
 
@@ -209,45 +208,46 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /**
     * Updates current state of a mark with user-provided MarkData, looking the mark up by user and ID.
-    * Returns new current mark state.
+    * Returns new current mark state.  Do not attempt to use this function to update non-user-provided data
+    * fields (i.e. non-MarkData).
     */
-  def update(user: UUID, id: String, mdata: MarkData, now: Long = DateTime.now.getMillis): Future[Mark] = {
-    log.debug(s"Updating mark for user: $user and id: $id")
-    for {
-      c <- futColl
-      sel = d :~ USR -> user :~ ID -> id :~ curnt
-      wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
-      oldMk <- wr.result[Mark].map(Future.successful).getOrElse(
-        Future.failed(new Exception(s"MongoMarksDao.update1: unable to findAndUpdate mark ID $id")))
-      // if the URL has changed then discard the old public repr (only the public one though as the private one is
-      // based on private user content that was only available from the browser extension at the time the user first
-      // created it)
-      pubRp = if (mdata.url == oldMk.mark.url) oldMk.pubRepr else None
-      newMk = oldMk.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = Long.MaxValue)
-      wr <- c insert newMk
-      _ <- wr failIfError
-    } yield {
-      log.debug("Mark was successfully updated")
-      newMk
-    }
-  }
+  def update(user: UUID, id: String, mdata: MarkData): Future[Mark] = for {
+    c <- futColl
+    sel = d :~ USR -> user :~ ID -> id :~ curnt
+    now: Long = DateTime.now.getMillis
+    wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
+    oldMk <- wr.result[Mark].map(Future.successful).getOrElse(
+      Future.failed(new Exception(s"MongoMarksDao.update: unable to find mark $id")))
+    // if the URL has changed then discard the old public repr (only the public one though as the private one is
+    // based on private user content that was only available from the browser extension at the time the user first
+    // created it)
+    pubRp = if (mdata.url == oldMk.mark.url) oldMk.pubRepr else None
+    newMk = oldMk.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = INF_TIME)
+    wr <- c.insert(newMk)
+    _ <- wr.failIfError
+  } yield newMk
 
   /**
     * Merge two marks by setting their `timeFrom`s to the time of execution and inserting a new mark with the
     * same `timeThru`.
     */
-  def merge(oldMark: Mark, newMark: Mark, now: Long = DateTime.now.getMillis): Future[Mark] = {
-    log.debug(s"Merging mark: $oldMark and $newMark")
-    for {
-      c <- futColl
-      _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id))
-      mergedMk = oldMark.merge(newMark)
-      updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
-    } yield {
-      log.debug(s"Marks were successfully merged into $updatedMk")
-      updatedMk
-    }
-  }
+  def merge(oldMark: Mark, newMark: Mark, now: Long = DateTime.now.getMillis): Future[Mark] = for {
+    c <- futColl
+    _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id))
+    mergedMk = oldMark.merge(newMark)
+
+    // this was formerly (2017-10-18) a bug as it doesn't affect any of the non-MarkData fields
+    //updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
+
+    sel = d :~ USR -> mergedMk.userId :~ ID -> mergedMk.id :~ curnt
+    wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
+    _ <- wr.failIfError
+
+    newMk = mergedMk.copy(timeFrom = now, timeThru = INF_TIME)
+    wr <- c.insert(newMk)
+    _ <- wr.failIfError
+
+  } yield newMk
 
   /** Process the file into a Page instance and add it to the Mark in the database. */
   def addFilePage(userId: UUID, markId: String, file: TemporaryFile): Future[Unit] = {
@@ -256,14 +256,18 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   }
 
   /** Appends provided string to mark's array of page sources. */
-  def addPageSource(user: UUID, id: String, page: Page): Future[Unit] = {
-    log.debug(s"Adding page: $page for user: $user and id: $id")
-    for {
-      c <- futColl
-      wr <- c update(d :~ USR -> user :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ PAGE -> page))
-      _ <- wr failIfError
-    } yield log.debug(s"Page: $page was successfully added")
-  }
+  def addPageSource(user: UUID, id: String, page: Page): Future[Unit] = for {
+    c <- futColl
+    wr <- c.findAndUpdate(d :~ USR -> user :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ PAGE -> page))
+
+    _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
+      logger.error(s"Unable to findAndUpdate mark $id's page source; wr.lastError = ${wr.lastError.get}")
+      Future.failed(new Exception("MongoMarksDao.addPageSource"))
+    }
+
+    m = wr.result[Mark].get
+    _ = if (m.privRepr.isDefined) logger.warn(s"Adding page source for mark ${m.id} (${m.timeFrom}) that already has a private representation ${m.privRepr.get}, which will eventually be overwritten")
+  } yield ()
 
   /**
     * Renames one tag in all user's marks that have it.
@@ -288,7 +292,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futColl
     sel = d :~ USR -> user :~ ID -> id :~ curnt
     wr <- c update(sel, d :~ "$push" -> (d :~ s"$AUX.${if (foreground) TABVIS else TABBG}" -> time))
-    _ <- wr failIfError
+    _ <- wr.failIfError
   } yield ()
 
   /**
@@ -436,7 +440,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     // removes page source from the mark in case it's the same as the one processed
     _ <- if (mk.page.contains(page)) for {
       wr <- c update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
-      _ <- wr failIfError
+      _ <- wr.failIfError
     } yield () else Future.successful {}
 
     _ = log.debug(s"Updated mark $id with private representation ID $reprId")
