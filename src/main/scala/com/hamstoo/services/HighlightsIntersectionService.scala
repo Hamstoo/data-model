@@ -1,7 +1,7 @@
 package com.hamstoo.services
 
 import com.hamstoo.daos.MongoHighlightDao
-import com.hamstoo.models.{Highlight, PageCoord}
+import com.hamstoo.models.{HLPosition, HLPositionElement, Highlight, PageCoord}
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -30,7 +30,7 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
 
     h <- filtered match {
       // just insert the new highlight if none intersect with it
-      case Nil => hlightsDao create hl map (_ => hl)
+      case Nil => hlightsDao insert hl map (_ => hl)
 
       // return original highlight if the new one is a subset of it
       case (origHl, (_, Some(false))) :: Nil => Future successful origHl
@@ -54,13 +54,13 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
             nHl.copy(pos = pos, preview = prv, pageCoord = coord)
           }
         }
-        hlightsDao create h map (_ => h)
+        hlightsDao insert h map (_ => h)
     }
   } yield h // return produced, updated, or existing highlight
 
   /** Recursively joins same-element text pieces of a highlight. */
-  def mergeSameElems(es: Seq[Highlight.PositionElement], acc: Seq[Highlight.PositionElement] = Nil):
-                                                                          Seq[Highlight.PositionElement] = {
+  def mergeSameElems(es: Seq[HLPositionElement],
+                     acc: Seq[HLPositionElement] = Nil): Seq[HLPositionElement] = {
     if (es.size < 2) return es ++ acc reverse
     val t = es.tail
     if (es.head.path == t.head.path) mergeSameElems(t.tail, es.head.copy(text = es.head.text + t.head.text) +: acc)
@@ -68,9 +68,9 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
   }
 
   /** Merges two positioning sequences and previews of two intersecting highlights. */
-  def union(hlA: Highlight, hlB: Highlight): (Highlight.Position, Highlight.Preview, Option[PageCoord]) = {
-    val posA: Highlight.Position = hlA.pos
-    val posB: Highlight.Position = hlB.pos
+  def union(hlA: Highlight, hlB: Highlight): (HLPosition, Highlight.Preview, Option[PageCoord]) = {
+    val posA: HLPosition = hlA.pos
+    val posB: HLPosition = hlB.pos
     val elsA = posA.elements
     val elsB = posB.elements
     val pthsA: Seq[String] = elsA.map(_.path)
@@ -81,22 +81,22 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
 
     // if intersection is longer than single element, then drop last of heading highlight and first n - 1
     // intersecting elements of trailing highlight
-    val elsUnion: Seq[Highlight.PositionElement] =
+    val elsUnion: Seq[HLPositionElement] =
       if (intersection.size > 1)
         elsA.init ++ elsB.drop(intersection.size - 1)
       // otherwise merge by concatenating texts of the single intersecting element
       else
         elsA.init ++
-          (Highlight.PositionElement(elsB.head.path, elsA.last.text.take(posB.initIndex) + elsB.head.text) +: elsB.tail)
+          (HLPositionElement(elsB.head.path, elsA.last.text.take(posB.initIndex) + elsB.head.text) +: elsB.tail)
 
     val prvUnion = Highlight.Preview(hlA.preview.lead, ("" /: elsUnion) (_ + _.text), hlB.preview.tail)
-    (Highlight.Position(elsUnion, posA.initIndex), prvUnion, hlA.pageCoord.orElse(hlB.pageCoord))
+    (HLPosition(elsUnion, posA.initIndex), prvUnion, hlA.pageCoord.orElse(hlB.pageCoord))
   }
 
   /** Checks whether one position is a subset of another.  Returns true if A is a subset of B. */
-  def isSubset(posA: Highlight.Position, posB: Highlight.Position): Option[Boolean] = {
-    val esA: Seq[Highlight.PositionElement] = posA.elements
-    val esB: Seq[Highlight.PositionElement] = posB.elements
+  def isSubset(posA: HLPosition, posB: HLPosition): Option[Boolean] = {
+    val esA: Seq[HLPositionElement] = posA.elements
+    val esB: Seq[HLPositionElement] = posB.elements
     val psA: Seq[String] = esA.map(_.path)
     val psB: Seq[String] = esB.map(_.path)
     val setA: Set[String] = psA.toSet
@@ -116,9 +116,9 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
   }
 
   /** Checks if two highlights overlap by checking xpath lists intersection for text overlaps. */
-  def isEdgeIntsc(posA: Highlight.Position, posB: Highlight.Position): Option[Boolean] = {
-    val elemsA: Seq[Highlight.PositionElement] = posA.elements
-    val elemsB: Seq[Highlight.PositionElement] = posB.elements
+  def isEdgeIntsc(posA: HLPosition, posB: HLPosition): Option[Boolean] = {
+    val elemsA: Seq[HLPositionElement] = posA.elements
+    val elemsB: Seq[HLPositionElement] = posB.elements
     val pathsA: Seq[String] = elemsA.map(_.path)
     val pathsB: Seq[String] = elemsB.map(_.path)
     /* look for sequences of paths that are tails of one position and start of another: */
