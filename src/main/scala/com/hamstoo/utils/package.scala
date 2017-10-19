@@ -55,10 +55,10 @@ package object utils {
       * encountered.
       */
     def ifOk[T](f: => Future[T]): Future[T] =
-      if (wr.ok) f else Future failed new Exception(wr.writeErrors mkString "; ")
+      if (wr.ok) f else Future.failed(new Exception(wr.writeErrors mkString "; "))
 
     def failIfError: Future[Unit] =
-      if (wr.ok) Future successful {} else Future failed new Exception(wr.writeErrors mkString "; ")
+      if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors mkString "; "))
   }
 
   // MongoDB `binary` indexes have a max size of 1024 bytes.  So to combine a 12-char ID with a byte array

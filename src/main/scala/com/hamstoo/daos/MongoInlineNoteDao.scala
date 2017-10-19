@@ -58,7 +58,7 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) extends MongoContentDao[InlineNo
     } yield () }}
   } yield ()
 
-  /* Indexes with names for this mongo collection: */
+  // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: MARKID -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1" ::
     Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
