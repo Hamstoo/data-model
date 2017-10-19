@@ -1,25 +1,21 @@
 package com.hamstoo.services
 
-import java.util.UUID
-
 import com.hamstoo.daos.MongoHighlightDao
-import com.hamstoo.models.{Highlight, Mark}
-import com.hamstoo.utils.generateDbId
-import org.scalatest.mockito.MockitoSugar
-import org.scalatest.{FlatSpec, Matchers}
+import com.hamstoo.models.{HLPosition, HLPositionElement, Highlight, Mark}
+import com.hamstoo.test.FlatSpecWithMatchers
+import com.hamstoo.test.env.MongoEnvironment
+import com.hamstoo.utils.{TestHelper, generateDbId}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
   * Tests of highlights intersection code.
   */
-class HighlightsIntersectionServiceTests extends FlatSpec with Matchers with MockitoSugar {
+class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with MongoEnvironment with TestHelper {
 
-  val testDuration = 5000
-  val hlightsDao: MongoHighlightDao = mock[MongoHighlightDao]
+  val hlightsDao: MongoHighlightDao = new MongoHighlightDao(getDB)
   val hlIntersectionSvc: HighlightsIntersectionService = new HighlightsIntersectionService(hlightsDao)
 
-  val userId: UUID = UUID.randomUUID()
   val markId = generateDbId(Mark.ID_LENGTH)
 
   val paths: Seq[String] = for {i <- 0 to 9} yield s"html/body/p$i"
@@ -46,26 +42,26 @@ class HighlightsIntersectionServiceTests extends FlatSpec with Matchers with Moc
 
   def makeHighlight(fromEl: Int, toEl: Int, initIndx: Int, endLen: Int): Highlight = {
     assert(fromEl <= toEl)
-    val slice: Seq[Highlight.PositionElement] = htmlMock slice(fromEl, toEl + 1) map { case (p, t) => Highlight.PositionElement(p, t) }
-    val els: Seq[Highlight.PositionElement] = {
+    val slice: Seq[HLPositionElement] = htmlMock slice(fromEl, toEl + 1) map { case (p, t) => HLPositionElement(p, t) }
+    val els: Seq[HLPositionElement] = {
       val h = slice.head
-      val wh = Highlight.PositionElement(h.path, h.text substring initIndx) +: slice.tail
+      val wh = HLPositionElement(h.path, h.text substring initIndx) +: slice.tail
       val l = wh.last
-      wh.init :+ Highlight.PositionElement(l.path, l.text substring(0, endLen))
+      wh.init :+ HLPositionElement(l.path, l.text substring(0, endLen))
     }
-    Highlight(userId, markId = markId, pos = Highlight.Position(els, initIndx), preview = Highlight.Preview("", ("" /: els)(_ + _.text), ""))
+    Highlight(userId, markId = markId, pos = HLPosition(els, initIndx), preview = Highlight.Preview("", ("" /: els)(_ + _.text), ""))
   }
 
 
   "HighlightIntersectionService" should "(UNIT) merge same-element pieces of text in a highlight" in {
 
-      val elementsWithRepetitions: Seq[Highlight.PositionElement] = Highlight.PositionElement(paths.head, texts.head) ::
-        Highlight.PositionElement(paths(1), texts(1).substring(0, 40)) :: Highlight.PositionElement(paths(1), texts(1).substring(40)) ::
-        Highlight.PositionElement(paths(2), texts(2).substring(0, 30)) :: Highlight.PositionElement(paths(2), texts(2).substring(30)) ::
-        Highlight.PositionElement(paths(3), texts(3)) :: Nil
+      val elementsWithRepetitions: Seq[HLPositionElement] = HLPositionElement(paths.head, texts.head) ::
+        HLPositionElement(paths(1), texts(1).substring(0, 40)) :: HLPositionElement(paths(1), texts(1).substring(40)) ::
+        HLPositionElement(paths(2), texts(2).substring(0, 30)) :: HLPositionElement(paths(2), texts(2).substring(30)) ::
+        HLPositionElement(paths(3), texts(3)) :: Nil
 
-      val mergedElems: Seq[Highlight.PositionElement] = Highlight.PositionElement(paths.head, texts.head) :: Highlight.PositionElement(paths(1), texts(1)) ::
-        Highlight.PositionElement(paths(2), texts(2)) :: Highlight.PositionElement(paths(3), texts(3)) :: Nil
+      val mergedElems: Seq[HLPositionElement] = HLPositionElement(paths.head, texts.head) :: HLPositionElement(paths(1), texts(1)) ::
+        HLPositionElement(paths(2), texts(2)) :: HLPositionElement(paths(3), texts(3)) :: Nil
 
       hlIntersectionSvc mergeSameElems elementsWithRepetitions shouldEqual mergedElems
   }

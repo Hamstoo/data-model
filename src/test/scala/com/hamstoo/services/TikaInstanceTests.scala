@@ -8,8 +8,7 @@ import com.hamstoo.test.FlatSpecWithMatchers
 /**
   * TikaInstanceTests
   */
-class TikaInstanceTests
-  extends FlatSpecWithMatchers {
+class TikaInstanceTests extends FlatSpecWithMatchers {
 
   val pwd: String = System.getProperty("user.dir")
   val currentFile: Path = Paths.get(pwd + "/src/test/scala/com/hamstoo/services/" + getClass.getSimpleName + ".scala")
