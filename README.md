@@ -63,3 +63,63 @@ is no need to change other settings as for now.
 
 In order to connect to Staging MongoDB Atlas, please see instructions 
 [here](https://cloud.mongodb.com/v2/59a86128d383ad301cf45981#clusters/connect?clusterId=mongo-cluster-useast1).
+# testkit
+### Usage
+1. To add core testing functionality like `Spec` and `Matchers`, extends `FlatSpecWithMatchers` trait.
+```
+// example 
+class SomeTest extends FlatSpecWithMathcers {
+    "arithmetic" should "work correctly" in {
+        1 + 1 shouldEqual 2
+        4 / 2 should not equal 3
+    }
+}
+```
+2. To handle future value in test, extend `FutureHandler` trait.
+```
+// example
+class SomeTest extends FlatSpecWithMathcers with FutureHandler {
+    "arithmetic from future" should "work correctly" in {
+        Future.successful(1 + 1).futureValue shouldEqual 2
+    }
+}
+```
+3. To set up test environment with embedded actor system, extend `AkkaEnvironment` class
+```
+class SomeTest extends AkkaEnvironment("actor system name")
+```
+it will automatically shut down actor system in the end. Look on example:
+```
+// example
+
+class SomeTest extends AkkaEnvironment("system") with ImplicitSender {
+
+    "An Echo actor" should "send back messages unchanged" in {
+        val echo = system.actorOf(TestActors.echoActorProps)
+        echo ! "hello world"
+        expectMsg("hello world")
+     }   
+}
+```
+4. To set up test environment with embedded fake mongodb instance, extend `MongoEnvironment` trait.
+```
+class SomeTest extends FlatSpecWithMathcers with MongoEnvironment {
+
+    "Testing some mongodb related operation" should "correctly work" in {
+        // test
+     }   
+}
+```
+it will automatically start and stop mongodb. By default it runs on port 12345 with mongodb version 3.4.1.
+You can simply override it if you need:
+```
+import de.flapdoodle.embed.mongo.distribution.Version
+
+class SomeTest extends FlatSpecWithMathcers with MongoEnvironment {
+    override val mongoPort = 27017
+    override val mongoVersion = Version.V3_3_1
+    "Testing some mongodb related operation" should "correctly work" in {
+        // test
+     }   
+}
+```

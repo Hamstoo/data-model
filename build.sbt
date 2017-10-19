@@ -5,6 +5,7 @@ import scala.io.Source
 import scala.sys.process.Process
 
 lazy val commonSettings = Seq(
+
   // We're no longer doing anything with -SNAPSHOT versions.  If you're working in a branch where you want to
   // temporarily put -SNAPSHOT in the version file so that your artifacts (may) get overwritten each time you
   // push, then knock yourself out.  But note it's unclear that Artifactory, as currently configured, allows
@@ -21,16 +22,13 @@ lazy val commonSettings = Seq(
   crossScalaVersions := Seq("2.11.11", "2.11.7", "2.12.3"),
 )
 
-lazy val testkit = project
-  .settings(
-    commonSettings,
-    name := "testkit"
-  )
+lazy val testkit = project.settings(commonSettings)
 
 lazy val root = (project in file("."))
   .aggregate(testkit).dependsOn(testkit)
   .settings(
     commonSettings,
+
     name := "data-model",
 
     homepage := Some(url("https://github.com/Hamstoo/data-model")),
@@ -48,10 +46,10 @@ lazy val root = (project in file("."))
       "-language:postfixOps",
       "-language:implicitConversions",
       "-deprecation"),
-    // module resolvers
+    // resolvers
     resolvers ++= Dependencies.dataModelResolvers,
 
-    // module dependencies
+    // dependencies
     libraryDependencies ++= Dependencies.dataModelDep,
 
     pomIncludeRepository := { _ => false },
