@@ -18,18 +18,19 @@ import scala.concurrent.Future
 /**
   * Data access object for highlights.
   */
-class MongoHighlightDao(db: Future[DefaultDB]) {
+class MongoHighlightDao(db: Future[DefaultDB]) extends MongoAnnotationDao[Highlight]("Highlight") {
 
   import com.hamstoo.models.Highlight._
-  import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
-  val logger: Logger = Logger(classOf[MongoHighlightDao])
 
-  private val futColl: Future[BSONCollection] = db map (_ collection "highlights")
+  override val futColl: Future[BSONCollection] = db map (_ collection "highlights")
+  private val marksColl: Future[BSONCollection] = db map (_ collection "entries")
+
+  override val logger = Logger(classOf[MongoHighlightDao])
 
   // convert url/uPrefs to markIds
   case class WeeHighlight(usrId: UUID, id: String, timeFrom: Long, url: String)
-  private val marksColl: Future[BSONCollection] = db map (_ collection "entries")
+
   for {
     c <- futColl
     mc <- marksColl
@@ -64,26 +65,12 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
   
   futColl map (_.indexesManager ensure indxs)
 
-  def create(hl: Highlight): Future[Unit] = for {
-    c <- futColl
-    wr <- c.insert(hl)
-    _ <- wr failIfError
-  } yield ()
-
-  def retrieve(usr: UUID, id: String): Future[Option[Highlight]] = for {
-    c <- futColl
-    mbHl <- c.find(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ POS -> 1).one[Highlight]
-  } yield mbHl
-
-  /** Requires `usr` argument so that index can be used for lookup. */
-  def retrieveByMarkId(usr: UUID, markId: String): Future[Seq[Highlight]] = for {
-    c <- futColl
-    seq <- c.find(d :~ USR -> usr :~ MARKID -> markId :~ curnt).coll[Highlight, Seq]()
-  } yield seq
-
   /** Update timeThru on an existing highlight and insert a new one with modified values. */
-  def update(usr: UUID, id: String, pos: Highlight.Position, prv: Highlight.Preview, coord: Option[PageCoord]):
-                                                                                        Future[Highlight] = for {
+  def update(usr: UUID,
+             id: String,
+             pos: Highlight.Position,
+             prv: Highlight.Preview,
+             coord: Option[PageCoord]): Future[Highlight] = for {
     c <- futColl
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
@@ -94,13 +81,7 @@ class MongoHighlightDao(db: Future[DefaultDB]) {
                                        memeId = None,
                                        timeFrom = now,
                                        timeThru = INF_TIME)
-    wr <- c.insert(hl)
+    wr <- c insert hl
     _ <- wr failIfError
   } yield hl
-
-  def delete(usr: UUID, id: String): Future[Unit] = for {
-    c <- futColl
-    wr <- c update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> DateTime.now.getMillis))
-    _ <- wr failIfError
-  } yield ()
 }

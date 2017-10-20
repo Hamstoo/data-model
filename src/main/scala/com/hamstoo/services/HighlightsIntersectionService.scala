@@ -30,7 +30,7 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
 
     h <- filtered match {
       // just insert the new highlight if none intersect with it
-      case Nil => hlightsDao create hl map (_ => hl)
+      case Nil => hlightsDao insert hl map (_ => hl)
 
       // return original highlight if the new one is a subset of it
       case (origHl, (_, Some(false))) :: Nil => Future successful origHl
@@ -54,13 +54,13 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
             nHl.copy(pos = pos, preview = prv, pageCoord = coord)
           }
         }
-        hlightsDao create h map (_ => h)
+        hlightsDao insert h map (_ => h)
     }
   } yield h // return produced, updated, or existing highlight
 
   /** Recursively joins same-element text pieces of a highlight. */
-  def mergeSameElems(es: Seq[Highlight.PositionElement], acc: Seq[Highlight.PositionElement] = Nil):
-                                                                          Seq[Highlight.PositionElement] = {
+  def mergeSameElems(es: Seq[Highlight.PositionElement],
+                     acc: Seq[Highlight.PositionElement] = Nil): Seq[Highlight.PositionElement] = {
     if (es.size < 2) return es ++ acc reverse
     val t = es.tail
     if (es.head.path == t.head.path) mergeSameElems(t.tail, es.head.copy(text = es.head.text + t.head.text) +: acc)

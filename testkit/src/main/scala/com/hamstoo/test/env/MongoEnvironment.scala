@@ -1,14 +1,17 @@
-package com.hamstoo.utils
+package com.hamstoo.test.env
 
 import com.github.simplyscala.{MongoEmbedDatabase, MongodProps}
 import de.flapdoodle.embed.mongo.distribution.Version
 import org.scalatest.{BeforeAndAfterAll, Suite}
-import play.api.Logger
 
 /**
-  * Trait that start Fake MongoDB instance
+  * Trait that provide test environment with in-memory mongodb instance for test purpose.
+  * MongoDB instance will start before all tests on default port: 12345
+  * and default version: mongodb:3.4.1.
+  * Will clean up resources after all test was executed
   */
 trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
+
   self: Suite =>
 
   // default mongo version, override if needed
@@ -18,15 +21,15 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   val mongoPort: Int = 12345
 
   // uninitialized fongo(fake mongo) instance
-  var fongo: MongodProps = _
+  final var fongo: MongodProps = _
 
-  override protected def beforeAll(): Unit = {
-    Logger.info(s"Starting Fake MongoDB:$mongoVersion instance on port:$mongoPort")
+  override def beforeAll(): Unit = {
+    // starting fake mongodb instance
     fongo = mongoStart(mongoPort, mongoVersion)
   }
 
-  override protected def afterAll(): Unit = {
-    Logger.info(s"Stopping Fake MongoDB instance on port:$mongoPort")
+  override def afterAll(): Unit = {
+    // stopping fake mongodb instance
     mongoStop(fongo)
   }
 }
