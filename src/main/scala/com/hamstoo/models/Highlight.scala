@@ -41,7 +41,7 @@ case class Highlight(
   )
 }
 
-object Highlight extends BSONHandlers {
+object Highlight extends BSONHandlers with AnnotationInfo {
 
   implicit val fmt: OFormat[Preview] = Json.format[Preview]
 
@@ -49,25 +49,21 @@ object Highlight extends BSONHandlers {
   case class PositionElement(path: String, text: String)
 
   /** A highlight can stretch over a series of XPaths.  `initIndex` is the `startOffset` character in the first one. */
-  case class Position(elements: Seq[PositionElement], initIndex: Int)
+  case class Position(elements: Seq[PositionElement], initIndex: Int) extends Positions
 
   /** Text that occurs before and after the highlighted text, along with the highlighted `text` itself. */
   case class Preview(lead: String, text: String, tail: String)
 
   val ID_LENGTH: Int = 16
-  val USR: String = nameOf[Highlight](_.usrId)
-  val ID: String = nameOf[Highlight](_.id)
-  val POS: String = nameOf[Highlight](_.pos)
-  val PCOORD: String = nameOf[Highlight](_.pageCoord)
+
   val PATH: String = nameOf[PositionElement](_.path)
   val TEXT: String = nameOf[PositionElement](_.text)
   val INDX: String = nameOf[Position](_.initIndex)
-  val MARKID: String = nameOf[Highlight](_.markId)
   val PRVW: String = nameOf[Highlight](_.preview)
   val LEAD: String = nameOf[Preview](_.lead)
   val PTXT: String = nameOf[Preview](_.text)
   val TAIL: String = nameOf[Preview](_.tail)
-  val MEM: String = nameOf[Highlight](_.memeId)
+
   assert(nameOf[Highlight](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
   assert(nameOf[Highlight](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
   implicit val hlposElemBsonHandler: BSONDocumentHandler[PositionElement] = Macros.handler[PositionElement]

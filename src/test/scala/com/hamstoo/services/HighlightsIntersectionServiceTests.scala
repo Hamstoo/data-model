@@ -1,25 +1,21 @@
 package com.hamstoo.services
 
-import java.util.UUID
-
 import com.hamstoo.daos.MongoHighlightDao
 import com.hamstoo.models.{Highlight, Mark}
-import com.hamstoo.utils.generateDbId
-import org.scalatest.mockito.MockitoSugar
-import org.scalatest.{FlatSpec, Matchers}
+import com.hamstoo.test.FlatSpecWithMatchers
+import com.hamstoo.test.env.MongoEnvironment
+import com.hamstoo.utils.{TestHelper, generateDbId}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
   * Tests of highlights intersection code.
   */
-class HighlightsIntersectionServiceTests extends FlatSpec with Matchers with MockitoSugar {
+class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with MongoEnvironment with TestHelper {
 
-  val testDuration = 5000
-  val hlightsDao: MongoHighlightDao = mock[MongoHighlightDao]
+  val hlightsDao: MongoHighlightDao = new MongoHighlightDao(getDB)
   val hlIntersectionSvc: HighlightsIntersectionService = new HighlightsIntersectionService(hlightsDao)
 
-  val userId: UUID = UUID.randomUUID()
   val markId = generateDbId(Mark.ID_LENGTH)
 
   val paths: Seq[String] = for {i <- 0 to 9} yield s"html/body/p$i"

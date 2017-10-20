@@ -2,13 +2,13 @@ package com.hamstoo.models
 
 import java.util.UUID
 
-import com.hamstoo.utils.FlatSpecWithMatchers
+import com.hamstoo.test.FlatSpecWithMatchers
 
 class AnnotationSpec extends FlatSpecWithMatchers {
 
   import AnnotationSpec._
 
-  "Annotation sorting" should "sort correctly with defined page coordinates" in {
+  "Annotation sorting" should "(UNIT) sort correctly with defined page coordinates" in {
 
     import FullyDefined._
 
@@ -20,7 +20,7 @@ class AnnotationSpec extends FlatSpecWithMatchers {
 
   }
 
-  it should "sort correctly with partial undefined page coordinates" in {
+  it should "(UNIT) sort correctly with partial undefined page coordinates" in {
 
     import PartialDefined._
 
@@ -32,7 +32,7 @@ class AnnotationSpec extends FlatSpecWithMatchers {
 
   }
 
-  it should "sort correctly with totally undefined page coordinates" in {
+  it should "(UNIT) sort correctly with totally undefined page coordinates" in {
 
     import FullyUndefined._
 
