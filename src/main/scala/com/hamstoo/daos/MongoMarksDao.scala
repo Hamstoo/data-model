@@ -387,10 +387,17 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     logger.debug("Finding marks with missing public representation")
     for {
       c <- futColl
-      sel = d :~ URLPRFX -> (d :~ "$exists" -> true) :~ URLPRFX -> (d :~ "$ne" -> "".getBytes) :~
-        // note that this can result in the overwrite of a `privRepr` if both it and `page` exist
-        "$or" -> BSONArray(d :~ PUBREPR -> (d :~ "$exists" -> false), d :~ s"$PAGE" -> (d :~ "$exists" -> true))
-      seq <- c.find(sel).coll[Mark, Seq](n)
+
+      // selPub and selPriv must be consistent with Mark.representablePublic/Private
+      selPub = d :~ PUBREPR -> (d :~ "$exists" -> false) :~
+                    URLPRFX -> (d :~ "$exists" -> true) :~ URLPRFX -> (d :~ "$ne" -> "".getBytes)
+
+      // we might leave a Page attached to a mark, if for example the processing of that page fails
+      // (see repr-engine's MongoClient.receive in the FailedProcessing case)
+      selPriv = d :~ PRVREPR -> (d :~ "$exists" -> false) :~
+                     PAGE -> (d :~ "$exists" -> true)
+
+      seq <- c.find(d :~ "$or" -> BSONArray(selPub, selPriv)).coll[Mark, Seq](n)
     } yield {
       logger.debug(s"${seq.size} marks without pub repr were retrieved")
       seq
@@ -424,10 +431,11 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * @param user     - user ID of mark's owner; serves as a safeguard against inadvertent private content mixups
     * @param id       - mark ID
     * @param timeFrom - mark version timestamp
-    * @param reprId    - representation ID
+    * @param reprId   - representation ID
     * @param page     - processed page source to clear out from the mark
     */
-  def updatePrivateReprId(user: UUID, id: String, timeFrom: Long, reprId: String, page: Page): Future[Unit] = for {
+  def updatePrivateReprId(user: UUID, id: String, timeFrom: Long, reprId: String, page: Option[Page]):
+                                                                                          Future[Unit] = for {
     c <- futColl
     sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
 
@@ -443,11 +451,11 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     mk = wr.result[Mark].get
 
     // removes page source from the mark in case it's the same as the one processed
-    _ <- if (mk.page.contains(page)) for {
+    _ <- if (page.exists(mk.page.contains)) for {
       wr <- c update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
       _ <- wr.failIfError
     } yield () else Future.successful {}
 
-    _ = logger.debug(s"Updated mark $id with private representation ID $reprId")
+    _ = logger.debug(s"Updated mark $id with private representation $reprId")
   } yield ()
 }

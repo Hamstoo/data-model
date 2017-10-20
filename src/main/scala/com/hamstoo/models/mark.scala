@@ -158,7 +158,7 @@ case class Mark(
 
   /** Return true if the mark is representable but not yet represented. */
   def representablePublic: Boolean = pubRepr.isEmpty && mark.url.isDefined
-  def representablePrivate: Boolean = page.isDefined // TODO: should we check for `privRepr.isEmpty` also here?
+  def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
