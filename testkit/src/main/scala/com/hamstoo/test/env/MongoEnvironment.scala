@@ -4,6 +4,12 @@ import com.github.simplyscala.{MongoEmbedDatabase, MongodProps}
 import de.flapdoodle.embed.mongo.distribution.Version
 import org.scalatest.{BeforeAndAfterAll, Suite}
 
+/**
+  * Trait that provide test environment with in-memory mongodb instance for test purpose.
+  * MongoDB instance will start before all tests on default port: 12345
+  * and default version: mongodb:3.4.1.
+  * Will clean up resources after all test was executed
+  */
 trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
 
   self: Suite =>

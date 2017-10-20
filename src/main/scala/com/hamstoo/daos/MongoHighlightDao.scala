@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{HLPosition, Highlight, Mark, PageCoord}
+import com.hamstoo.models.{Highlight, Mark, PageCoord}
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -18,7 +18,7 @@ import scala.concurrent.Future
 /**
   * Data access object for highlights.
   */
-class MongoHighlightDao(db: Future[DefaultDB]) extends MongoContentDao[Highlight]("Highlight") {
+class MongoHighlightDao(db: Future[DefaultDB]) extends MongoAnnotationDao[Highlight]("Highlight") {
 
   import com.hamstoo.models.Highlight._
   import com.hamstoo.utils._
@@ -26,7 +26,7 @@ class MongoHighlightDao(db: Future[DefaultDB]) extends MongoContentDao[Highlight
   override val futColl: Future[BSONCollection] = db map (_ collection "highlights")
   private val marksColl: Future[BSONCollection] = db map (_ collection "entries")
 
-  override val log = Logger(classOf[MongoHighlightDao])
+  override val logger = Logger(classOf[MongoHighlightDao])
 
   // convert url/uPrefs to markIds
   case class WeeHighlight(usrId: UUID, id: String, timeFrom: Long, url: String)
@@ -36,9 +36,9 @@ class MongoHighlightDao(db: Future[DefaultDB]) extends MongoContentDao[Highlight
     mc <- marksColl
 
     oldIdx = s"bin-$USR-1-uPref-1"
-    _ = log.info(s"Dropping index $oldIdx")
+    _ = logger.info(s"Dropping index $oldIdx")
     nDropped <- c.indexesManager.drop(oldIdx).recover { case _: DefaultBSONCommandError => 0 }
-    _ = log.info(s"Dropped $nDropped index(es)")
+    _ = logger.info(s"Dropped $nDropped index(es)")
 
     exst = d :~ "$exists" -> true
     sel = d :~ "$or" -> BSONArray(d :~ "url" -> exst, d :~ "uPref" -> exst)
@@ -46,7 +46,7 @@ class MongoHighlightDao(db: Future[DefaultDB]) extends MongoContentDao[Highlight
       implicit val r: BSONDocumentHandler[WeeHighlight] = Macros.handler[WeeHighlight]
       c.find(sel).coll[WeeHighlight, Seq]()
     }
-    _ = log.info(s"Updating ${urled.size} Highlights with markIds (and removing their URLs)")
+    _ = logger.info(s"Updating ${urled.size} Highlights with markIds (and removing their URLs)")
     _ <- Future.sequence { urled.map { x => for { // lookup mark w/ same url
       marks <- mc.find(d :~ Mark.USR -> x.usrId :~ Mark.URLPRFX -> x.url.binaryPrefix).coll[Mark, Seq]()
       markId = marks.headOption.map(_.id).getOrElse("")
@@ -68,13 +68,13 @@ class MongoHighlightDao(db: Future[DefaultDB]) extends MongoContentDao[Highlight
   /** Update timeThru on an existing highlight and insert a new one with modified values. */
   def update(usr: UUID,
              id: String,
-             pos: HLPosition,
+             pos: Highlight.Position,
              prv: Highlight.Preview,
              coord: Option[PageCoord]): Future[Highlight] = for {
     c <- futColl
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
-    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
+    wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
     hl = wr.result[Highlight].get.copy(pos = pos,
                                        preview = prv,
                                        pageCoord = coord,

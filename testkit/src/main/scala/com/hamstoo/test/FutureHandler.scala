@@ -4,9 +4,10 @@ import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time.{Second, Seconds, Span}
 
 /**
-  * Add necessary methods to handle future value
+  * Trait that provide method to working with future value
   */
 trait FutureHandler extends ScalaFutures {
 
+  // required to handle future
   implicit val pc: PatienceConfig = PatienceConfig(Span(100, Seconds), Span(1, Second))
 }
