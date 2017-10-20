@@ -32,7 +32,8 @@ lazy val root = (project in file("."))
   .aggregate(testkit).dependsOn(testkit)
   .settings(commonSettings: _*)
 
-publishTo := Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
+
+publishTo in ThisBuild := Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
 
 credentials += Credentials(
   "Artifactory Realm",
