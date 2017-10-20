@@ -4,6 +4,10 @@ import sbt.Keys.credentials
 import scala.io.Source
 import scala.sys.process.Process
 
+name := "data-model"
+
+homepage := Some(url("https://github.com/Hamstoo/data-model"))
+
 lazy val commonSettings = Seq(
 
   // We're no longer doing anything with -SNAPSHOT versions.  If you're working in a branch where you want to
@@ -26,39 +30,34 @@ lazy val testkit = project.settings(commonSettings)
 
 lazy val root = (project in file("."))
   .aggregate(testkit).dependsOn(testkit)
-  .settings(
-    commonSettings,
+  .settings(commonSettings: _*)
 
-    name := "data-model",
+publishTo := Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
 
-    homepage := Some(url("https://github.com/Hamstoo/data-model")),
+credentials += Credentials(
+  "Artifactory Realm",
+  "ec2-54-236-36-52.compute-1.amazonaws.com",
+  "admin",
+  sys.env.getOrElse("ARTIFACTORY_PSW", ""))
 
-    publishTo := Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local"),
+scalacOptions in ThisBuild ++= Seq(
+  "-feature",
+  "-language:postfixOps",
+  "-language:implicitConversions",
+  "-deprecation")
 
-    credentials += Credentials(
-      "Artifactory Realm",
-      "ec2-54-236-36-52.compute-1.amazonaws.com",
-      "admin",
-      sys.env.getOrElse("ARTIFACTORY_PSW", "")),
+// resolvers
+resolvers ++= Dependencies.dataModelResolvers
 
-    scalacOptions in ThisBuild ++= Seq(
-      "-feature",
-      "-language:postfixOps",
-      "-language:implicitConversions",
-      "-deprecation"),
-    // resolvers
-    resolvers ++= Dependencies.dataModelResolvers,
+// dependencies
+libraryDependencies ++= Dependencies.dataModelDep
 
-    // dependencies
-    libraryDependencies ++= Dependencies.dataModelDep,
+pomIncludeRepository := { _ => false }
 
-    pomIncludeRepository := { _ => false },
+pomExtra :=
+  <scm>
+    <url>git@github.com:Hamstoo/data-model.git</url>
+    <connection>scm:git:git@github.com:Hamstoo/data-model.git</connection>
+  </scm>
 
-    pomExtra :=
-      <scm>
-        <url>git@github.com:Hamstoo/data-model.git</url>
-        <connection>scm:git:git@github.com:Hamstoo/data-model.git</connection>
-      </scm>,
-
-    parallelExecution := false
-  )
+parallelExecution := false
