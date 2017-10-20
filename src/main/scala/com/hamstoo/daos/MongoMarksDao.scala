@@ -23,7 +23,7 @@ import scala.concurrent.Future
 class MongoMarksDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.utils._
-  val log: Logger = Logger(classOf[MongoMarksDao])
+  val logger: Logger = Logger(classOf[MongoMarksDao])
 
   private val futColl: Future[BSONCollection] = db map (_ collection "entries")
 
@@ -33,7 +33,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     c <- futColl
     sel = d :~ "$where" -> s"Object.bsonsize({$URLPRFX:this.$URLPRFX})>$URL_PREFIX_LENGTH+19"
     longPfxed <- c.find(sel).coll[Mark, Seq]()
-    _ = log.info(s"Updating ${longPfxed.size} `Mark.urlPrfx`s to length $URL_PREFIX_LENGTH bytes")
+    _ = logger.info(s"Updating ${longPfxed.size} `Mark.urlPrfx`s to length $URL_PREFIX_LENGTH bytes")
     _ <- Future.sequence { longPfxed.map { m => // urlPrfx will have been overwritten upon `Mark` construction
         c.update(d :~ ID -> m.id :~ TIMEFROM -> m.timeFrom, d :~ "$set" -> (d :~ URLPRFX -> m.urlPrfx))
     }}
@@ -57,14 +57,14 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
   def insert(mark: Mark): Future[Mark] = {
-    log.debug(s"Inserting mark: ${mark.id}")
+    logger.debug(s"Inserting mark ${mark.id}")
 
     for {
-        c <- futColl
+      c <- futColl
       wr <- c insert mark
       _ <- wr failIfError
     } yield {
-      log.debug(s"Mark: ${mark.id} successfully inserted")
+      logger.debug(s"Mark: ${mark.id} successfully inserted")
       mark
     }
   }
@@ -74,7 +74,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * merge them.
     */
   def insertStream(marks: Stream[Mark]): Future[Int] = {
-    log.debug(s"Inserting stream of marks")
+    logger.debug(s"Inserting stream of marks")
 
     for {
       c <- futColl
@@ -83,43 +83,43 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       wr <- c bulkInsert(ms, ordered = false)
     } yield {
       val count = wr.totalN
-      log.debug(s"$count marks were successfully inserted")
+      logger.debug(s"$count marks were successfully inserted")
       count
     }
   }
 
   /** Retrieves a mark by user and ID, None if not found.  Retrieves current mark unless timeThru is specified. */
   def retrieve(user: UUID, id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
-    log.debug(s"Retrieving mark for uuid: $user and id: $id")
+    logger.debug(s"Retrieving mark for uuid: $user and id: $id")
     for {
       c <- futColl
       optEnt <- (c find d :~ USR -> user :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
     } yield {
-      log.debug(s"$optEnt was successfully retrieved")
+      logger.debug(s"$optEnt was successfully retrieved")
       optEnt
     }
   }
 
   /** Retrieves all current marks for the user, sorted by `timeFrom` descending. */
   def retrieve(user: UUID): Future[Seq[Mark]] = {
-    log.debug(s"Retrieving marks by uuid: $user")
+    logger.debug(s"Retrieving marks by uuid: $user")
     for {
       c <- futColl
       seq <- c.find(d :~ USR -> user :~ curnt).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
-        log.debug(s"${seq.size} marks were successfully retrieved")
+        logger.debug(s"${seq.size} marks were successfully retrieved")
         seq
     }
   }
 
   /** Retrieves all marks by ID, including previous versions, sorted by `timeFrom` descending. */
   def retrieveAllById(id: String): Future[Seq[Mark]] = {
-    log.debug(s"Retrieving all marks by id: $id")
+    logger.debug(s"Retrieving all marks by id: $id")
     for {
       c <- futColl
       seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
-      log.debug(s"${seq.size} marks were successfully retrieved by id")
+      logger.debug(s"${seq.size} marks were successfully retrieved by id")
       seq
     }
   }
@@ -130,26 +130,26 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * implement more complex logic based on representations similar to repr-engine's `dupSearch`.
     */
   def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = {
-    log.debug(s"Retrieving marks by url: $url and uuid: $user")
+    logger.debug(s"Retrieving marks by url: $url and uuid: $user")
     for {
       c <- futColl
       seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ curnt).coll[Mark, Seq]()
     } yield {
       val optMark = seq find (_.mark.url.contains(url))
-      log.debug(s"$optMark mark was successfully retrieved")
+      logger.debug(s"$optMark mark was successfully retrieved")
       optMark
     }
   }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
   def retrieveTagged(user: UUID, tags: Set[String]): Future[Seq[Mark]] = {
-    log.debug(s"Retrieve tagged marks for uuid: $user and tags: $tags")
+    logger.debug(s"Retrieve tagged marks for uuid: $user and tags: $tags")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ curnt
       seq <- (c find sel sort d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
-      log.debug(s"${seq.size} tagged marks were successfully retrieved")
+      logger.debug(s"${seq.size} tagged marks were successfully retrieved")
       seq
     }
   }
@@ -159,7 +159,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * all tags to qualify.
     */
   def retrieveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = {
-    log.debug(s"Retrieve repred marks for user: $user and tags: $tags")
+    logger.debug(s"Retrieve repred marks for user: $user and tags: $tags")
     for {
       c <- futColl
       exst = d :~ "$exists" -> true :~ "$ne" -> ""
@@ -167,14 +167,14 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
       seq <- (c find sel1).coll[Mark, Seq]()
     } yield {
-      log.debug(s"${seq.size} repred marks were successfully retrieved")
+      logger.debug(s"${seq.size} repred marks were successfully retrieved")
       seq
     }
   }
 
   /** Retrieves all tags existing in current marks for the user. */
   def retrieveTags(user: UUID): Future[Set[String]] = {
-    log.debug(s"Retrieve tags for user: $user")
+    logger.debug(s"Retrieve tags for user: $user")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ curnt
@@ -183,7 +183,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       d <- set
       ts <- d.getAs[BSONDocument](MARK).get.getAs[Set[String]](TAGS) getOrElse Set.empty
     } yield {
-      log.debug(s"$ts tags were successfully retrieved")
+      logger.debug(s"$ts tags were successfully retrieved")
       ts
     }
   }
@@ -193,7 +193,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * current and have all tags to qualify.
     */
   def search(user: UUID, query: String, tags: Set[String]): Future[Seq[Mark]] = {
-    log.debug(s"Searching for marks for user: $user by text query: $query and tags: $tags")
+    logger.debug(s"Searching for marks for user: $user by text query: $query and tags: $tags")
     for {
       c <- futColl
       sel0 = d :~ USR -> user :~ curnt
@@ -201,7 +201,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
       seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), pjn).sort(pjn).coll[Mark, Seq]()
     } yield {
-      log.debug(s"${seq.size} marks were successfully retrieved")
+      logger.debug(s"${seq.size} marks were successfully retrieved")
       seq
     }
   }
@@ -264,7 +264,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
       logger.error(s"Unable to findAndUpdate mark $id's page source; ensureNoPrivRepr = $ensureNoPrivRepr, wr.lastError = ${wr.lastError.get}")
-      Future.failed(new Exception("MongoMarksDao.addPageSource"))
+      Future.failed(new NoSuchElementException("MongoMarksDao.addPageSource"))
     }
 
     m = wr.result[Mark].get
@@ -276,7 +276,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * Returns updated mark states number.
     */
   def updateTag(user: UUID, tag: String, rename: String): Future[Int] = {
-    log.debug(s"Updating tag: $tag for user: $user")
+    logger.debug(s"Updating tag: $tag for user: $user")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> tag
@@ -284,7 +284,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       _ <- wr failIfError
     } yield {
       val count = wr.nModified
-      log.debug(s"$count marks tag's were successfully updated")
+      logger.debug(s"$count marks tag's were successfully updated")
       count
     }
   }
@@ -302,14 +302,14 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * Returns the number of mark states moved.
     */
   def move(thisUser: UUID, thatUser: UUID): Future[Int] = {
-    log.debug(s"Moving marks from user: $thisUser to user: $thatUser")
+    logger.debug(s"Moving marks from user: $thisUser to user: $thatUser")
     for {
       c <- futColl
       wr <- c update(d :~ USR -> thatUser, d :~ "$set" -> (d :~ USR -> thisUser), multi = true)
       _ <- wr failIfError
     } yield {
       val count = wr.nModified
-      log.debug(s"$count were successfully moveed from user: $thisUser to user: $thatUser")
+      logger.debug(s"$count were successfully moveed from user: $thisUser to user: $thatUser")
       count
     }
   }
@@ -320,7 +320,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
              now: Long = DateTime.now.getMillis,
              mergeId: Option[String] = None): Future[Int] = {
 
-    log.debug(s"Deleting marks for user: $user")
+    logger.debug(s"Deleting marks for user $user: $ids")
 
     for {
       c <- futColl
@@ -330,14 +330,17 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       _ <- wr failIfError
     } yield {
       val count = wr.nModified
-      log.debug(s"$count were successfully deleted")
+      logger.debug(s"$count were successfully deleted")
       count
     }
   }
 
+  /** Delete a single mark. */
+  def delete(user: UUID, id: String): Future[Int] = delete(user, id :: Nil)
+
   /** Removes a tag from all user's marks that have it. */
   def deleteTag(user: UUID, tag: String): Future[Int] = {
-    log.debug(s"Deleting tag: $tag from all user's marks for user: $user")
+    logger.debug(s"Deleting tag: $tag from all user's marks for user: $user")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> tag
@@ -345,14 +348,14 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       _ <- wr failIfError
     } yield {
       val count = wr.nModified
-      log.debug(s"Tag: $tag was removed from $count marks")
+      logger.debug(s"Tag: $tag was removed from $count marks")
       count
     }
   }
 
   /** Adds a set of tags to each current mark from a list of IDs. */
   def tag(user: UUID, ids: Seq[String], tags: Set[String]): Future[Int] = {
-    log.debug(s"Adding tags to marks for user: $user")
+    logger.debug(s"Adding tags to marks for user: $user")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
@@ -360,28 +363,28 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       _ <- wr failIfError
     } yield {
       val count = wr.nModified
-      log.debug(s"Tags were added to $count marks")
+      logger.debug(s"Tags were added to $count marks")
       count
     }
   }
 
   /** Removes a set of tags from each current mark from a list of IDs if they have any of the tags. */
   def untag(user: UUID, ids: Seq[String], tags: Set[String]): Future[Int] = {
-    log.debug(s"Removing tags from marks for user: $user")
+    logger.debug(s"Removing tags from marks for user: $user")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
       wr <- c update(sel, d :~ "$pull" -> (d :~ s"$MARK.$TAGS" -> (d :~ "$in" -> tags)), multi = true)
     } yield {
       val count = wr.nModified
-      log.debug(s"Tags were removed from $count marks")
+      logger.debug(s"Tags were removed from $count marks")
       count
     }
   }
 
   /** Retrieves a list of n marks that require representations. Intentionally not filtering for `curnt` marks. */
   def findMissingReprs(n: Int): Future[Seq[Mark]] = {
-    log.debug("Finding marks with missing public representation")
+    logger.debug("Finding marks with missing public representation")
     for {
       c <- futColl
       sel = d :~ URLPRFX -> (d :~ "$exists" -> true) :~ URLPRFX -> (d :~ "$ne" -> "".getBytes) :~
@@ -389,7 +392,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
         "$or" -> BSONArray(d :~ PUBREPR -> (d :~ "$exists" -> false), d :~ s"$PAGE" -> (d :~ "$exists" -> true))
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
-      log.debug(s"${seq.size} marks without pub repr were retrieved")
+      logger.debug(s"${seq.size} marks without pub repr were retrieved")
       seq
     }
   }
@@ -401,14 +404,14 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * marks over and over.
     */
   def updatePublicReprId(id: String, timeFrom: Long, reprId: String): Future[Unit] = {
-    log.debug(s"Updating mark $id with public representation ID $reprId")
+    logger.debug(s"Updating mark $id with public representation ID $reprId")
 
     for {
       c <- futColl
       sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
       wr <- c update(sel, d :~ "$set" -> (d :~ PUBREPR -> reprId))
       _ <- wr failIfError;
-      _ = log.debug(s"Updated mark $id with public representation ID $reprId")
+      _ = logger.debug(s"Updated mark $id with public representation ID $reprId")
     } yield ()
   }
 
@@ -432,8 +435,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> reprId), fetchNewObject = true)
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
-      log.warn(s"Unable to findAndUpdate mark $id's (timeFrom = $timeFrom) private representation to $reprId; wr.lastError = ${wr.lastError.get}")
-      Future.failed(new Exception("MongoMarksDao.updatePrivateReprId"))
+      logger.warn(s"Unable to findAndUpdate mark $id's (timeFrom = $timeFrom) private representation to $reprId; wr.lastError = ${wr.lastError.get}")
+      Future.failed(new NoSuchElementException("MongoMarksDao.updatePrivateReprId"))
     }
 
     // this will "NoSuchElementException: None.get" when `get` is called if `wr.result[Mark]` is None
@@ -445,15 +448,6 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       _ <- wr.failIfError
     } yield () else Future.successful {}
 
-    _ = log.debug(s"Updated mark $id with private representation ID $reprId")
+    _ = logger.debug(s"Updated mark $id with private representation ID $reprId")
   } yield ()
-
-  def delete(usr: UUID, id: String): Future[Unit] = {
-    log.debug(s"Deleting mark for user: $usr and id: $id")
-    for {
-      c <- futColl
-      wr <- c update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> DateTime.now.getMillis))
-      _ <- wr failIfError
-    } yield ()
-  }
 }
