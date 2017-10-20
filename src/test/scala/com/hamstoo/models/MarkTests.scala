@@ -10,7 +10,7 @@ import com.hamstoo.utils.DataInfo
   */
 class MarkTests extends FlatSpecWithMatchers with DataInfo {
 
-  "Mark" should "be consistently hashable, regardless of its `score`" in {
+  "Mark" should "(UNIT) be consistently hashable, regardless of its `score`" in {
     val uuid = UUID.randomUUID
     val a = Mark(uuid, mark = MarkData("a subject", None))
     val b = a.copy(score = Some(3.4))
@@ -18,12 +18,12 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
     a shouldEqual b
   }
 
-  it should "markdown" in {
+  it should "(UNIT) markdown" in {
     val a = MarkData("", None, None, None, Some("* a lonely list item"), None)
     a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
   }
 
-  it should "try to prevent XSS attacks" in {
+  it should "(UNIT) try to prevent XSS attacks" in {
     // https://www.owasp.org/index.php/XSS_Filter_Evasion_Cheat_Sheet
     val a = MarkData("", None, None, None, Some("<SCRIPT SRC=http://xss.rocks/xss.js></SCRIPT>"), None)
     a.commentEncoded.get shouldEqual ""
@@ -41,7 +41,7 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
     g.commentEncoded.get shouldEqual "<p>hello <a rel=\"nofollow noopener noreferrer\" target=\"_blank\"><em>you</em></a></p>"
   }
 
-  it should "be mergeable" in {
+  it should "(UNIT) be mergeable" in {
     // test merge (would be nice to test warning messages due to non matching field values also)
     val merged = mA.merge(mB)
 

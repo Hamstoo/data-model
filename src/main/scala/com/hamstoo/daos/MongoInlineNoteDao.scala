@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{InlineNote, InlineNotePosition, Mark, PageCoord}
+import com.hamstoo.models.{InlineNote, Mark, PageCoord}
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -19,7 +19,7 @@ import scala.concurrent.Future
   * Data access object for inline notes (of which there can be many per mark) as opposed to comments (of which there
   * is only one per mark).
   */
-class MongoInlineNoteDao(db: Future[DefaultDB]) extends MongoContentDao[InlineNote]("InlineNotes") {
+class MongoInlineNoteDao(db: Future[DefaultDB]) extends MongoAnnotationDao[InlineNote]("InlineNotes") {
 
   import com.hamstoo.models.InlineNote._
   import com.hamstoo.utils._
@@ -27,7 +27,7 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) extends MongoContentDao[InlineNo
   override val futColl: Future[BSONCollection] = db map (_ collection "comments")
   private val marksColl: Future[BSONCollection] = db map (_ collection "entries")
 
-  override val log = Logger(classOf[MongoInlineNoteDao])
+  override val logger = Logger(classOf[MongoInlineNoteDao])
 
   // convert url/uPrefs to markIds
   case class WeeNote(usrId: UUID, id: String, timeFrom: Long, url: String)
@@ -37,9 +37,9 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) extends MongoContentDao[InlineNo
     mc <- marksColl
 
     oldIdx = s"bin-$USR-1-uPref-1"
-    _ = log.info(s"Dropping index $oldIdx")
+    _ = logger.info(s"Dropping index $oldIdx")
     nDropped <- c.indexesManager.drop(oldIdx).recover { case _: DefaultBSONCommandError => 0 }
-    _ = log.info(s"Dropped $nDropped index(es)")
+    _ = logger.info(s"Dropped $nDropped index(es)")
 
     exst = d :~ "$exists" -> true
     sel = d :~ "$or" -> BSONArray(d :~ "url" -> exst, d :~ "uPref" -> exst)
@@ -48,7 +48,7 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) extends MongoContentDao[InlineNo
       implicit val r: BSONDocumentHandler[WeeNote] = Macros.handler[WeeNote]
       c.find(sel).coll[WeeNote, Seq]()
     }
-    _ = log.info(s"Updating ${urled.size} InlineNotes with markIds (and removing their URLs)")
+    _ = logger.info(s"Updating ${urled.size} InlineNotes with markIds (and removing their URLs)")
     _ <- Future.sequence { urled.map { x => for { // lookup mark w/ same url
       marks <- mc.find(d :~ Mark.USR -> x.usrId :~ Mark.URLPRFX -> x.url.binaryPrefix).coll[Mark, Seq]()
       markId = marks.headOption.map(_.id).getOrElse("")
@@ -69,7 +69,7 @@ class MongoInlineNoteDao(db: Future[DefaultDB]) extends MongoContentDao[InlineNo
   /** Update timeThru on an existing inline note and insert a new one with modified values. */
   def update(usr: UUID,
              id: String,
-             pos: InlineNotePosition,
+             pos: InlineNote.Position,
              coord: Option[PageCoord]): Future[InlineNote] = for {
     c <- futColl
     now = DateTime.now.getMillis

@@ -128,7 +128,7 @@ class MongoRepresentationDaoTests
     }
   }*/
 
-  "MongoRepresentationDao" should "save representation" in {
+  "MongoRepresentationDao" should "(UNIT) save representation" in {
 
     //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").drop(true), Duration(testDuration, MILLISECONDS))
     //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").create(false), Duration(testDuration, MILLISECONDS))

@@ -8,7 +8,7 @@ class AnnotationSpec extends FlatSpecWithMatchers {
 
   import AnnotationSpec._
 
-  "Annotation sorting" should "sort correctly with defined page coordinates" in {
+  "Annotation sorting" should "(UNIT) sort correctly with defined page coordinates" in {
 
     import FullyDefined._
 
@@ -20,7 +20,7 @@ class AnnotationSpec extends FlatSpecWithMatchers {
 
   }
 
-  it should "sort correctly with partial undefined page coordinates" in {
+  it should "(UNIT) sort correctly with partial undefined page coordinates" in {
 
     import PartialDefined._
 
@@ -32,7 +32,7 @@ class AnnotationSpec extends FlatSpecWithMatchers {
 
   }
 
-  it should "sort correctly with totally undefined page coordinates" in {
+  it should "(UNIT) sort correctly with totally undefined page coordinates" in {
 
     import FullyUndefined._
 
@@ -53,45 +53,45 @@ object AnnotationSpec {
 
   object FullyDefined {
 
-    val c1 = InlineNote(usrId = uuid, markId = id, pos = InlineNotePosition("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.5, 0.5)))
-    val c2 = InlineNote(usrId = uuid, markId = id, pos = InlineNotePosition("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.6, 0.5)))
-    val c3 = InlineNote(usrId = uuid, markId = id, pos = InlineNotePosition("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.4, 0.8)))
+    val c1 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.5, 0.5)))
+    val c2 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.6, 0.5)))
+    val c3 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.4, 0.8)))
 
     val noteSeq: Seq[InlineNote] = Seq(c1, c2, c3)
 
-    val h1 = Highlight(usrId = uuid, markId = id, pos = HLPosition(Nil, 0), pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("", "", ""))
-    val h2 = Highlight(usrId = uuid, markId = id, pos = HLPosition(Nil, 0), pageCoord = Some(PageCoord(0.7, 0.6)), preview = Highlight.Preview("", "", ""))
-    val h3 = Highlight(usrId = uuid, markId = id, pos = HLPosition(Nil, 0), pageCoord = Some(PageCoord(0.9, 0.5)), preview = Highlight.Preview("", "", ""))
+    val h1 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("", "", ""))
+    val h2 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.7, 0.6)), preview = Highlight.Preview("", "", ""))
+    val h3 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.9, 0.5)), preview = Highlight.Preview("", "", ""))
 
     val highlightSeq: Seq[Highlight] = Seq(h1, h2, h3)
   }
 
   object PartialDefined {
 
-    val c1 = InlineNote(usrId = uuid, markId = id, pos = InlineNotePosition("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.5, 0.5)))
-    val c2 = InlineNote(usrId = uuid, markId = id, pos = InlineNotePosition("sdassd", "sdassd", 0, 0))
-    val c3 = InlineNote(usrId = uuid, markId = id, pos = InlineNotePosition("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.4, 0.8)))
+    val c1 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.5, 0.5)))
+    val c2 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
+    val c3 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.4, 0.8)))
 
     val noteSeq: Seq[InlineNote] = Seq(c1, c2, c3)
 
-    val h1 = Highlight(usrId = uuid, markId = id, pos = HLPosition(Nil, 0), preview = Highlight.Preview("", "", ""))
-    val h2 = Highlight(usrId = uuid, markId = id, pos = HLPosition(Nil, 0), preview = Highlight.Preview("", "", ""))
-    val h3 = Highlight(usrId = uuid, markId = id, pos = HLPosition(Nil, 0), pageCoord = Some(PageCoord(0.9, 0.5)), preview = Highlight.Preview("", "", ""))
+    val h1 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), preview = Highlight.Preview("", "", ""))
+    val h2 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), preview = Highlight.Preview("", "", ""))
+    val h3 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.9, 0.5)), preview = Highlight.Preview("", "", ""))
 
     val highlightSeq: Seq[Highlight] = Seq(h1, h2, h3)
   }
 
   object FullyUndefined {
 
-    val c1 = InlineNote(usrId = uuid, markId = id, pos = InlineNotePosition("sdassd", "sdassd", 0, 0))
-    val c2 = InlineNote(usrId = uuid, markId = id, pos = InlineNotePosition("sdassd", "sdassd", 0, 0))
-    val c3 = InlineNote(usrId = uuid, markId = id, pos = InlineNotePosition("sdassd", "sdassd", 0, 0))
+    val c1 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
+    val c2 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
+    val c3 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
 
     val noteSeq: Seq[InlineNote] = Seq(c1, c2, c3)
 
-    val h1 = Highlight(usrId = uuid, markId = id, pos = HLPosition(Nil, 0), preview = Highlight.Preview("", "", ""))
-    val h2 = Highlight(usrId = uuid, markId = id, pos = HLPosition(Nil, 0), preview = Highlight.Preview("", "", ""))
-    val h3 = Highlight(usrId = uuid, markId = id, pos = HLPosition(Nil, 0), preview = Highlight.Preview("", "", ""))
+    val h1 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), preview = Highlight.Preview("", "", ""))
+    val h2 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), preview = Highlight.Preview("", "", ""))
+    val h3 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), preview = Highlight.Preview("", "", ""))
 
     val highlightSeq: Seq[Highlight] = Seq(h1, h2, h3)
 

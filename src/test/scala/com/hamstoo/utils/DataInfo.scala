@@ -4,14 +4,21 @@ import java.util.UUID
 
 import com.hamstoo.models.{Mark, MarkData}
 
+/**
+  * Trait that contain test information
+  */
 trait DataInfo {
 
+  // vector service address
   lazy val vectorsLink = "http://localhost:5000"
 
+  // idfs zip file address
   lazy val idfsResource = "idfs/text8.json.zip"
 
-  lazy val link = "mongodb://localhost:12345"
+  // mongodb uri
+  lazy val uri = "mongodb://localhost:12345"
 
+  // mongo database name
   lazy val dbName = "hamstoo"
 
   val userId = UUID.randomUUID()
