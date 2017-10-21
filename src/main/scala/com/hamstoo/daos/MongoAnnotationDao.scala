@@ -6,8 +6,8 @@ import com.hamstoo.models._
 import com.hamstoo.utils._
 import org.joda.time.DateTime
 import play.api.Logger
-import reactivemongo.api.BSONSerializationPack.{Reader, Writer}
 import reactivemongo.api.collections.bson.BSONCollection
+import reactivemongo.bson.BSONDocumentHandler
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -15,9 +15,9 @@ import scala.concurrent.{ExecutionContext, Future}
   * This class define base mongodb related functionality for classes that extend Annotation trait
   * @param name name of object like: 'Highlight' or 'InlineNote' for logging purpose only
   * @param ex   execution context
-  * @tparam A
+  * @tparam A - this type param must be subtype of Annotations and have defined BSONDocument handler
   */
-abstract class MongoAnnotationDao[A <: Annotation](name: String)(implicit ex: ExecutionContext) extends AnnotationInfo {
+abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: String)(implicit ex: ExecutionContext) extends AnnotationInfo {
 
   val futColl: Future[BSONCollection]
   val logger: Logger
@@ -25,10 +25,9 @@ abstract class MongoAnnotationDao[A <: Annotation](name: String)(implicit ex: Ex
   /**
     * Insert annotation instance into mongodb collection
     * @param annotation - object that must be inserted
-    * @param writer - serializer from A to BSONDocument
     * @return - Future value with successfully inserted annotations object
     */
-  def insert(annotation: A)(implicit writer: Writer[A]): Future[A] = {
+  def insert(annotation: A): Future[A] = {
     logger.debug(s"Inserting $name: ${annotation.id}")
 
     for {
@@ -45,10 +44,9 @@ abstract class MongoAnnotationDao[A <: Annotation](name: String)(implicit ex: Ex
     * Retrieve annotation object from mongodb collection by several parameters
     * @param usr - unique owner identifier
     * @param id - unique annotation identifier
-    * @param reader - deserializer from BSONDocument to A
     * @return - option value with annotation object
     */
-  def retrieve(usr: UUID, id: String)(implicit reader: Reader[A]): Future[Option[A]] = {
+  def retrieve(usr: UUID, id: String): Future[Option[A]] = {
     logger.debug(s"Retrieving $name by uuid: $usr and id: $id")
 
     for {
@@ -64,10 +62,9 @@ abstract class MongoAnnotationDao[A <: Annotation](name: String)(implicit ex: Ex
     * Retrieve annotations from mongodb collection by several parameters
     * @param usr - unique owner identifier
     * @param markId - markId of the web page where annotation was done
-    * @param reader - deserializer from BSONDocument to A
     * @return - future with sequence of annotations that match condition
     */
-  def retrieveByMarkId(usr: UUID, markId: String)(implicit reader: Reader[A]): Future[Seq[A]] = {
+  def retrieveByMarkId(usr: UUID, markId: String): Future[Seq[A]] = {
     logger.debug(s"Retrieving ${name + "s"} by uuid: $usr and markId: $markId")
 
     for {
@@ -97,10 +94,9 @@ abstract class MongoAnnotationDao[A <: Annotation](name: String)(implicit ex: Ex
 
   /**
     * Retrive all annotations from mongodb collection.
-    * @param reader - deserializer from BSONDocument to A
     * @return - future with sequence of annotations
     */
-  def retrieveAll()(implicit reader: Reader[A]): Future[Seq[A]] = {
+  def retrieveAll(): Future[Seq[A]] = {
     logger.debug(s"Retrieving all ${name + "s"}")
 
     for {

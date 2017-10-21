@@ -19,5 +19,8 @@ object Dependencies {
     "org.jsoup" % "jsoup" % "1.10.3",
     "org.scalanlp" %% "breeze" % "0.13.1",
     "org.scalanlp" %% "breeze-natives" % "0.13.1",
-    "org.apache.tika" % "tika-parsers" % "1.16")
+    "org.apache.tika" % "tika-parsers" % "1.16",
+    "org.scalatest" %% "scalatest" % "3.0.4",
+    "com.github.simplyscala" %% "scalatest-embedmongo" % "0.2.4",
+    "com.typesafe.akka" %% "akka-testkit" % "2.5.6")
 }
