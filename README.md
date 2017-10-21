@@ -63,7 +63,8 @@ is no need to change other settings as for now.
 
 In order to connect to Staging MongoDB Atlas, please see instructions 
 [here](https://cloud.mongodb.com/v2/59a86128d383ad301cf45981#clusters/connect?clusterId=mongo-cluster-useast1).
-# testkit
+# test helper tools
+This tools provided in data-model test package. The goal of this tools, it's simplify test writing.
 ### Usage
 1. To add core testing functionality like `Spec` and `Matchers`, extends `FlatSpecWithMatchers` trait.
 ```
