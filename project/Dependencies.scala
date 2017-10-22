@@ -13,7 +13,10 @@ object Dependencies {
     "com.mohiva" %% "play-silhouette-persistence" % "5.0.0",
     "com.github.dwickern" %% "scala-nameof" % "1.0.3" % "provided",
     "joda-time" % "joda-time" % "2.9.9",
-    "org.reactivemongo" %% "reactivemongo" % "0.12.7",
+
+    // moving to previous version 0.12.5, because version: 0.12.7 throw IndexNotFound error in tests
+    "org.reactivemongo" %% "reactivemongo" % "0.12.5",
+
     "org.apache.commons" % "commons-text" % "1.1",
     "com.atlassian.commonmark" % "commonmark" % "0.9.0",
     "org.jsoup" % "jsoup" % "1.10.3",
