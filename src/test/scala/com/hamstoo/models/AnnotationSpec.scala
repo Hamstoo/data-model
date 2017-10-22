@@ -12,11 +12,11 @@ class AnnotationSpec extends FlatSpecWithMatchers {
 
     import FullyDefined._
 
-    noteSeq.sortWith(Annotation.sort).map(_.pageCoord) shouldEqual Seq(c3.pageCoord, c2.pageCoord, c1.pageCoord)
+    noteSeq.sortWith(Annotation.sort).map(_.pageCoord) shouldEqual Seq(c1.pageCoord, c2.pageCoord, c3.pageCoord)
 
-    highlightSeq.sortWith(Annotation.sort).map(_.pageCoord) shouldEqual Seq(h2.pageCoord, h1.pageCoord, h3.pageCoord)
+    highlightSeq.sortWith(Annotation.sort).map(_.pageCoord) shouldEqual Seq(h3.pageCoord, h1.pageCoord, h2.pageCoord)
 
-    noteSeq ++ highlightSeq sortWith Annotation.sort map (_.pageCoord) shouldEqual Seq(c3.pageCoord, h2.pageCoord, h1.pageCoord, h3.pageCoord, c2.pageCoord, c1.pageCoord)
+    noteSeq ++ highlightSeq sortWith Annotation.sort map (_.pageCoord) shouldEqual Seq(c1.pageCoord, c2.pageCoord, h3.pageCoord, h1.pageCoord, h2.pageCoord, c3.pageCoord)
 
   }
 
@@ -24,11 +24,11 @@ class AnnotationSpec extends FlatSpecWithMatchers {
 
     import PartialDefined._
 
-    noteSeq.sortWith(Annotation.sort) shouldEqual Seq(c3, c1, c2)
+    noteSeq.sortWith(Annotation.sort) shouldEqual Seq(c2, c1, c3)
 
-    highlightSeq.sortWith(Annotation.sort) shouldEqual Seq(h3, h1, h2)
+    highlightSeq.sortWith(Annotation.sort) shouldEqual Seq(h2, h1, h3)
 
-    noteSeq ++ highlightSeq sortWith Annotation.sort shouldEqual Seq(c3, h3, c1, c2, h1, h2)
+    noteSeq ++ highlightSeq sortWith Annotation.sort shouldEqual Seq(h2, h1, c2, c1, h3, c3)
 
   }
 
@@ -36,13 +36,13 @@ class AnnotationSpec extends FlatSpecWithMatchers {
 
     import FullyUndefined._
 
-    noteSeq.sortWith(Annotation.sort) shouldEqual noteSeq
+    noteSeq.sortWith(Annotation.sort) shouldEqual noteSeq.reverse
 
-    highlightSeq.sortWith(Annotation.sort) shouldEqual highlightSeq
+    highlightSeq.sortWith(Annotation.sort) shouldEqual highlightSeq.reverse
 
     val combinedSeq = noteSeq ++ highlightSeq
 
-    combinedSeq sortWith Annotation.sort shouldEqual combinedSeq
+    combinedSeq sortWith Annotation.sort shouldEqual combinedSeq.reverse
   }
 }
 
