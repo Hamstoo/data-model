@@ -16,7 +16,7 @@ import org.jsoup.safety.Whitelist
 import play.api.Logger
 import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
-
+import Mark._
 import scala.collection.mutable
 
 
@@ -255,5 +255,65 @@ object Mark extends BSONHandlers {
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
   implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
+  implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
+}
+
+
+
+/**
+  * This class is lightweigh copy of Mark class used for search through marks.
+  * It should be lightweight and should not contain heavy fields like
+  * page and other unnecessary methods
+  *
+  *
+  * The fields are:
+  *
+  * @param userId   - owning user's UUID
+  * @param id       - the mark's alphanumerical string, used as an identifier common with all the marks versions
+  * @param mark     - user-provided content
+  * @param pubRepr  - optional public page representation id for this mark
+  * @param privRepr - optional personal user content representation id for this mark
+  * @param timeFrom - timestamp of last edit
+  * @param timeThru - the moment of time until which this version is latest
+  * @param score    - `score` is not part of the documents in the database, but it is returned from
+  *                 `MongoMarksDao.search` so it is easier to have it included here.
+  */
+case class SearchMark(
+                       userId: UUID,
+                       id: String = generateDbId(Mark.ID_LENGTH),
+                       mark: MarkData,
+                       pubRepr: Option[String] = None,
+                       privRepr: Option[String] = None,
+                       timeFrom: Long = DateTime.now.getMillis,
+                       timeThru: Long = INF_TIME,
+                       score: Option[Double] = None) {
+
+  def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
+
+}
+
+object SearchMark extends BSONHandlers {
+  val logger: Logger = Logger(classOf[Mark])
+
+  case class RangeMils(begin: Long, end: Long)
+  val ID_LENGTH: Int = 16
+  val USR: String = nameOf[Mark](_.userId)
+  val ID: String = nameOf[Mark](_.id)
+  val MARK: String = nameOf[Mark](_.mark)
+  val PUBREPR: String = nameOf[Mark](_.pubRepr)
+  val PRVREPR: String = nameOf[Mark](_.privRepr)
+  val TIMEFROM: String = nameOf[Mark](_.timeFrom)
+  val TIMETHRU: String = nameOf[Mark](_.timeThru)
+  // `text` index search score <projectedFieldName>, not a field name of the collection
+  val SCORE: String = nameOf[Mark](_.score)
+  val SUBJ: String = nameOf[MarkData](_.subj)
+  val URL: String = nameOf[MarkData](_.url)
+  val STARS: String = nameOf[MarkData](_.rating)
+  val TAGS: String = nameOf[MarkData](_.tags)
+  val COMNT: String = nameOf[MarkData](_.comment)
+  val COMNTENC: String = nameOf[MarkData](_.commentEncoded)
+  implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
+  implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
+  implicit val entryBsonHandler: BSONDocumentHandler[SearchMark] = Macros.handler[SearchMark]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
 }

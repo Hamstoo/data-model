@@ -4,7 +4,7 @@ import java.nio.file.Files
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
-import com.hamstoo.models.{Mark, MarkData, Page}
+import com.hamstoo.models.{Mark, MarkData, Page, SearchMark}
 import org.joda.time.DateTime
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
@@ -158,14 +158,14 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * Retrieves all current marks with representations for the user, constrained by a list of tags. Mark must have
     * all tags to qualify.
     */
-  def retrieveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = {
+  def retrieveRepred(user: UUID, tags: Set[String]): Future[Seq[SearchMark]] = {
     logger.debug(s"Retrieve repred marks for user: $user and tags: $tags")
     for {
       c <- futColl
       exst = d :~ "$exists" -> true :~ "$ne" -> ""
       sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
-      seq <- (c find sel1).coll[Mark, Seq]()
+      seq <- (c find sel1).coll[SearchMark, Seq]()
     } yield {
       logger.debug(s"${seq.size} repred marks were successfully retrieved")
       seq
@@ -192,14 +192,14 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * Executes a search using text index with sorting in user's marks, constrained by tags. Mark state must be
     * current and have all tags to qualify.
     */
-  def search(user: UUID, query: String, tags: Set[String]): Future[Seq[Mark]] = {
+  def search(user: UUID, query: String, tags: Set[String]): Future[Seq[SearchMark]] = {
     logger.debug(s"Searching for marks for user: $user by text query: $query and tags: $tags")
     for {
       c <- futColl
       sel0 = d :~ USR -> user :~ curnt
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
       pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-      seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), pjn).sort(pjn).coll[Mark, Seq]()
+      seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), pjn).sort(pjn).coll[SearchMark, Seq]()
     } yield {
       logger.debug(s"${seq.size} marks were successfully retrieved")
       seq

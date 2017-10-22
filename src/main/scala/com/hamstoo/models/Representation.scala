@@ -2,6 +2,7 @@ package com.hamstoo.models
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Representation.VecEnum
+import com.hamstoo.models.Representation.VecEnum.Value
 import com.hamstoo.utils.{ExtendedString, generateDbId}
 import org.apache.commons.text.similarity.LevenshteinDistance
 import org.joda.time.DateTime
@@ -226,3 +227,47 @@ object Representation extends BSONHandlers {
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 }
+
+/**
+  * This class is lightweigh copy of Representation class used for search through marks.
+  * It should be lightweight and should not contain heavy fields like
+  * page, doctext, othtext and other unnecessary methods
+  *
+  * This class used to have a `users` parameter (removed 2017-9-12) described as "User UUIDs from whom webpage
+  * source was received."  There doesn't seem to be any need for this, however, as it can be computed from marks
+  * that point to a repr with their `privRepr`.  Indeed, `users` may have predated the implementation of `privRepr`
+  * and `pubRepr` anyway.
+  *
+  * @param id         Unique alphanumeric ID.
+  * @param doctext    Document text.
+  * @param nWords     Approximate number of words from the 4 bins each normalized for their MongoDB Text Index weights.
+  * @param vectors    Map from vector computation methods to Array[Double] vector embeddings of the texts.
+  * @param timeFrom   Time of construction/modification.
+  * @param timeThru   Time of validity.  Long.MaxValue indicates current value.
+  */
+//TODO: is it posible not to use `doctext` field in Hamstoo.SearchService.search` for preview
+case class SearchRepresentation(
+                           id: String = generateDbId(Representation.ID_LENGTH),
+                           doctext: String,
+                           nWords: Option[Long] = None,
+                           vectors: Map[String, Representation.Vec],
+                           timeFrom: Long = DateTime.now.getMillis,
+                           timeThru: Long = Long.MaxValue,
+                           score: Option[Double] = None) {
+}
+
+  object SearchRepresentation extends BSONHandlers {
+    type Vec = Seq[Double]
+
+    val ID: String = nameOf[Representation](_.id)
+    val LNK: String = nameOf[Representation](_.link)
+    val DTXT: String = nameOf[Representation](_.doctext)
+    val N_WORDS: String = nameOf[Representation](_.nWords)
+    val VECS: String = nameOf[Representation](_.vectors)
+    assert(nameOf[SearchRepresentation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
+    assert(nameOf[SearchRepresentation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
+    assert(nameOf[SearchRepresentation](_.score) == com.hamstoo.models.Mark.SCORE)
+    implicit val searchReprHandler: BSONDocumentHandler[SearchRepresentation] = Macros.handler[SearchRepresentation]
+  }
+
+

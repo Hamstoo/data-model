@@ -1,7 +1,7 @@
 package com.hamstoo.daos
 
 import com.hamstoo.models.Representation._
-import com.hamstoo.models.{Page, Representation}
+import com.hamstoo.models.{Page, Representation, SearchRepresentation}
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -133,15 +133,15 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     * WHERE ANY(SPLIT(doctext) IN @query)
     * --ORDER BY score DESC -- actually this is not happening, would require '.sort' after '.find'
     */
-  def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
+  def search(ids: Set[String], query: String): Future[Map[String, SearchRepresentation]] = for {
     c <- futColl
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
     pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-    seq <- c.find(sel, pjn).coll[Representation, Seq]()
+    seq <- c.find(sel, pjn).coll[SearchRepresentation, Seq]()
   } yield seq.map { repr =>
     repr.id -> repr
   }(breakOut[
-    Seq[Representation],
-    (String, Representation),
-    Map[String, Representation]])
+    Seq[SearchRepresentation],
+    (String, SearchRepresentation),
+    Map[String, SearchRepresentation]])
 }
