@@ -34,7 +34,7 @@ class MongoMarksDaoTests
   val m2 = Mark(uuid2, mark = MarkData("a subject1", Some("http://hamstoo.com")))
 
   val m3 = Mark(uuid2, mark = MarkData("a subject2", Some("http://hamstoo.com")))
-  val m4 = Mark(uuid2, id = m3.id, mark = MarkData("a subject2", Some("http://hamstoo.com")))
+  val m4 = Mark(uuid2, id = m3.id, mark = MarkData("a subject2", Some("http://hamstoo.com")), timeThru = Long.MaxValue - 1)
 
   "MongoMarksDao" should "(UNIT) insert mark" in {
     marksDao.insert(m1).futureValue shouldEqual m1

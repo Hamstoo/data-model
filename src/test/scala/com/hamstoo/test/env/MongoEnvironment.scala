@@ -24,12 +24,22 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   final var fongo: MongodProps = _
 
   override def beforeAll(): Unit = {
+
+    println(s"Starting MongoDB:$mongoVersion instance on port: $mongoPort")
     // starting fake mongodb instance
     fongo = mongoStart(mongoPort, mongoVersion)
+
+    // delay to successful start
+    Thread.sleep(1000)
   }
 
   override def afterAll(): Unit = {
+
+    println("Stopping MongoDB instance")
     // stopping fake mongodb instance
     mongoStop(fongo)
+
+    // delay to successful stop
+    Thread.sleep(1000)
   }
 }
