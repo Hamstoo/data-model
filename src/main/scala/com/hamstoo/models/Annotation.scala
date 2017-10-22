@@ -30,10 +30,10 @@ object Annotation {
     * First sort by `y`, then if they are equal, trying to make comparision by `x`.
     */
   def sort(a: Annotation, b: Annotation): Boolean = (a.pageCoord, b.pageCoord) match {
-    case (Some(_), None) => true
-    case (Some(a1), Some(b1)) if a1.y > b1.y => true
-    case (Some(a1), Some(b1)) if a1.y == b1.y && a1.x > b1.x => true
-    case _ => false
+    case (Some(_), None) => false
+    case (Some(a1), Some(b1)) if a1.y > b1.y => false
+    case (Some(a1), Some(b1)) if a1.y == b1.y && a1.x > b1.x => false
+    case _ => true
   }
 }
 
