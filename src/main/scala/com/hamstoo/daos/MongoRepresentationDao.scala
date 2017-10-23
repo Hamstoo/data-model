@@ -8,7 +8,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, Macros}
 
 import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -137,6 +137,8 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     c <- futColl
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
     pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
+    _ = logger.info(s"sel = ${BSONDocument.pretty(sel)}")
+    _ = logger.info(s"pjn = ${BSONDocument.pretty(pjn)}")
     seq <- c.find(sel, pjn).coll[Representation, Seq]()
   } yield seq.map { repr =>
     repr.id -> repr
