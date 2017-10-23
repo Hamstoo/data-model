@@ -16,7 +16,7 @@ import org.jsoup.safety.Whitelist
 import play.api.Logger
 import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
-
+import Mark._
 import scala.collection.mutable
 
 
@@ -132,9 +132,6 @@ object Page {
   * @param timeFrom - timestamp of last edit
   * @param timeThru - the moment of time until which this version is latest
   * @param mergeId  - if this mark was merged into another, this will be the ID of that other
-  *
-  * @param score    - `score` is not part of the documents in the database, but it is returned from
-  *                 `MongoMarksDao.search` so it is easier to have it included here.
   */
 case class Mark(
                  userId: UUID,
@@ -147,8 +144,7 @@ case class Mark(
                  privRepr: Option[String] = None,
                  timeFrom: Long = DateTime.now.getMillis,
                  timeThru: Long = INF_TIME,
-                 mergeId: Option[String] = None,
-                 score: Option[Double] = None) {
+                 mergeId: Option[String] = None) {
   urlPrfx = mark.url map (_.binaryPrefix)
 
   import Mark._
@@ -193,24 +189,6 @@ case class Mark(
          privRepr = privRepr.orElse(oth.privRepr)
     )
   }
-
-  /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
-  override def equals(other: Any): Boolean = other match {
-    case other: Mark => other.canEqual(this) && this.hashCode == other.hashCode
-    case _ => false
-  }
-
-  /**
-    * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
-    * `super.hashCode` comes from `Any` and so the implementation of `hashCode` that is automatically generated for
-    * case classes has to be copy and pasted here.  More at the following link:
-    * https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
-    * And an explanation here: https://stackoverflow.com/a/44708937/2030627
-    */
-  override def hashCode: Int = this.score match {
-    case None => scala.runtime.ScalaRunTime._hashCode(this)
-    case Some(_) => this.copy(score = None).hashCode
-  }
 }
 
 object Mark extends BSONHandlers {
@@ -241,7 +219,6 @@ object Mark extends BSONHandlers {
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
   val MERGEID: String = nameOf[Mark](_.mergeId)
   // `text` index search score <projectedFieldName>, not a field name of the collection
-  val SCORE: String = nameOf[Mark](_.score)
   val SUBJ: String = nameOf[MarkData](_.subj)
   val URL: String = nameOf[MarkData](_.url)
   val STARS: String = nameOf[MarkData](_.rating)

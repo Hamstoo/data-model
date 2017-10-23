@@ -1,5 +1,6 @@
 package com.hamstoo.daos
 
+import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.models.Representation._
 import com.hamstoo.models.{Page, Representation}
 import org.joda.time.DateTime
@@ -15,13 +16,21 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
-
+/**
+  * MongoRepresentationDao companion object.
+  */
 object MongoRepresentationDao {
 
   // Mongo `text` index weights, `othtext` has implicit weight of 1 (also used as vector weights)
   val CONTENT_WGT = 8
   val KWORDS_WGT = 4
   val LNK_WGT = 10
+
+  /** A subset of Representation's fields along with a `score` field returned by `search`. */
+  case class SearchRepr(id: String, doctext: String, nWords: Option[Long],
+                        vectors: Map[String, Representation.Vec], timeFrom: Long, timeThru: Long, score: Double)
+  val SCORE: String = nameOf[SearchRepr](_.score)
+  implicit val searchReprHandler: BSONDocumentHandler[SearchRepr] = Macros.handler[SearchRepr]
 }
 
 /**
@@ -33,7 +42,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   val logger: Logger = Logger(classOf[MongoRepresentationDao])
 
   import MongoRepresentationDao._
-  import com.hamstoo.models.Mark.{SCORE, TIMEFROM, TIMETHRU}
+  import com.hamstoo.models.Mark.{TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
 
   private val futColl: Future[BSONCollection] = db map (_ collection "representations")
@@ -133,15 +142,15 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     * WHERE ANY(SPLIT(doctext) IN @query)
     * --ORDER BY score DESC -- actually this is not happening, would require '.sort' after '.find'
     */
-  def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
+  def search(ids: Set[String], query: String): Future[Map[String, SearchRepr]] = for {
     c <- futColl
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
     pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-    seq <- c.find(sel, pjn).coll[Representation, Seq]()
+    seq <- c.find(sel, pjn).coll[SearchRepr, Seq]()
   } yield seq.map { repr =>
     repr.id -> repr
   }(breakOut[
-    Seq[Representation],
-    (String, Representation),
-    Map[String, Representation]])
+    Seq[SearchRepr],
+    (String, SearchRepr),
+    Map[String, SearchRepr]])
 }

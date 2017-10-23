@@ -2,6 +2,7 @@ package com.hamstoo.models
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Representation.VecEnum
+import com.hamstoo.models.Representation.VecEnum.Value
 import com.hamstoo.utils.{ExtendedString, generateDbId}
 import org.apache.commons.text.similarity.LevenshteinDistance
 import org.joda.time.DateTime
@@ -50,8 +51,7 @@ case class Representation(
                            autoGenKws: Option[Seq[String]],
                            timeFrom: Long = DateTime.now.getMillis,
                            timeThru: Long = Long.MaxValue,
-                           var versions: Option[Map[String, String]] = None,
-                           score: Option[Double] = None) {
+                           var versions: Option[Map[String, String]] = None) {
 
   lprefx = link.map(_.binaryPrefix)
   versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
@@ -88,24 +88,6 @@ case class Representation(
       val relDist = editDist / math.max(doctext.length, oth.doctext.length).toDouble // toDouble is important here
       1.0 - relDist
     }
-  }
-
-  /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
-  override def equals(other: Any): Boolean = other match {
-    case other: Representation => other.canEqual(this) && this.hashCode == other.hashCode
-    case _ => false
-  }
-
-  /**
-    * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
-    * `super.hashCode` comes from `Any` and so the implementation of `hashCode` that is automatically generated for
-    * case classes has to be copy and pasted here.  More at the following link:
-    * https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
-    * And an explanation here: https://stackoverflow.com/a/44708937/2030627
-    */
-  override def hashCode: Int = this.score match {
-    case None => scala.runtime.ScalaRunTime._hashCode(this)
-    case Some(_) => this.copy(score = None).hashCode
   }
 }
 
@@ -222,7 +204,8 @@ object Representation extends BSONHandlers {
   val VECS: String = nameOf[Representation](_.vectors)
   assert(nameOf[Representation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
   assert(nameOf[Representation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
-  assert(nameOf[Representation](_.score) == com.hamstoo.models.Mark.SCORE)
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 }
+
+
