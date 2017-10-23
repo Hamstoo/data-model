@@ -71,7 +71,9 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) retrieve repred marks by uuid and tag set" in {
-    marksDao.retrieveRepred(uuid1, tagSet).futureValue shouldEqual Seq(m1)
+    import MongoMarksDao.SearchMark
+    val sm1 = SearchMark(m1.userId, m1.id, m1.mark, m1.pubRepr, m1.privRepr, m1.timeFrom, m1.timeThru, None)
+    marksDao.retrieveRepred(uuid1, tagSet).futureValue shouldEqual Seq(sm1)
   }
 
   it should "(UNIT) retrieve mark tags by uuid" in {

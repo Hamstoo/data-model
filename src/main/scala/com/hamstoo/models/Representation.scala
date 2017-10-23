@@ -51,8 +51,7 @@ case class Representation(
                            autoGenKws: Option[Seq[String]],
                            timeFrom: Long = DateTime.now.getMillis,
                            timeThru: Long = Long.MaxValue,
-                           var versions: Option[Map[String, String]] = None,
-                           score: Option[Double] = None) {
+                           var versions: Option[Map[String, String]] = None) {
 
   lprefx = link.map(_.binaryPrefix)
   versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
@@ -89,24 +88,6 @@ case class Representation(
       val relDist = editDist / math.max(doctext.length, oth.doctext.length).toDouble // toDouble is important here
       1.0 - relDist
     }
-  }
-
-  /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
-  override def equals(other: Any): Boolean = other match {
-    case other: Representation => other.canEqual(this) && this.hashCode == other.hashCode
-    case _ => false
-  }
-
-  /**
-    * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
-    * `super.hashCode` comes from `Any` and so the implementation of `hashCode` that is automatically generated for
-    * case classes has to be copy and pasted here.  More at the following link:
-    * https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
-    * And an explanation here: https://stackoverflow.com/a/44708937/2030627
-    */
-  override def hashCode: Int = this.score match {
-    case None => scala.runtime.ScalaRunTime._hashCode(this)
-    case Some(_) => this.copy(score = None).hashCode
   }
 }
 
@@ -223,51 +204,8 @@ object Representation extends BSONHandlers {
   val VECS: String = nameOf[Representation](_.vectors)
   assert(nameOf[Representation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
   assert(nameOf[Representation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
-  assert(nameOf[Representation](_.score) == com.hamstoo.models.Mark.SCORE)
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
 }
-
-/**
-  * This class is lightweigh copy of Representation class used for search through marks.
-  * It should be lightweight and should not contain heavy fields like
-  * page, doctext, othtext and other unnecessary methods
-  *
-  * This class used to have a `users` parameter (removed 2017-9-12) described as "User UUIDs from whom webpage
-  * source was received."  There doesn't seem to be any need for this, however, as it can be computed from marks
-  * that point to a repr with their `privRepr`.  Indeed, `users` may have predated the implementation of `privRepr`
-  * and `pubRepr` anyway.
-  *
-  * @param id         Unique alphanumeric ID.
-  * @param doctext    Document text.
-  * @param nWords     Approximate number of words from the 4 bins each normalized for their MongoDB Text Index weights.
-  * @param vectors    Map from vector computation methods to Array[Double] vector embeddings of the texts.
-  * @param timeFrom   Time of construction/modification.
-  * @param timeThru   Time of validity.  Long.MaxValue indicates current value.
-  */
-//TODO: is it posible not to use `doctext` field in Hamstoo.SearchService.search` for preview
-case class SearchRepresentation(
-                           id: String = generateDbId(Representation.ID_LENGTH),
-                           doctext: String,
-                           nWords: Option[Long] = None,
-                           vectors: Map[String, Representation.Vec],
-                           timeFrom: Long = DateTime.now.getMillis,
-                           timeThru: Long = Long.MaxValue,
-                           score: Option[Double] = None) {
-}
-
-  object SearchRepresentation extends BSONHandlers {
-    type Vec = Seq[Double]
-
-    val ID: String = nameOf[Representation](_.id)
-    val LNK: String = nameOf[Representation](_.link)
-    val DTXT: String = nameOf[Representation](_.doctext)
-    val N_WORDS: String = nameOf[Representation](_.nWords)
-    val VECS: String = nameOf[Representation](_.vectors)
-    assert(nameOf[SearchRepresentation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
-    assert(nameOf[SearchRepresentation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
-    assert(nameOf[SearchRepresentation](_.score) == com.hamstoo.models.Mark.SCORE)
-    implicit val searchReprHandler: BSONDocumentHandler[SearchRepresentation] = Macros.handler[SearchRepresentation]
-  }
 
 

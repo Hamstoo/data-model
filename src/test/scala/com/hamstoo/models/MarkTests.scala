@@ -2,6 +2,7 @@ package com.hamstoo.models
 
 import java.util.UUID
 
+import com.hamstoo.daos.MongoMarksDao
 import com.hamstoo.test.FlatSpecWithMatchers
 import com.hamstoo.utils.DataInfo
 
@@ -10,15 +11,15 @@ import com.hamstoo.utils.DataInfo
   */
 class MarkTests extends FlatSpecWithMatchers with DataInfo {
 
-  "Mark" should "(UNIT) be consistently hashable, regardless of its `score`" in {
+  "SearchMark" should "(UNIT) be consistently hashable, regardless of its `score`" in {
     val uuid = UUID.randomUUID
-    val a = Mark(uuid, mark = MarkData("a subject", None))
-    val b = a.copy(score = Some(3.4))
+    val a = MongoMarksDao.SearchMark(uuid, "", MarkData("", None), Some(""), Some(""), 0L, 0L, Some(2.4))
+    val b = a.copy(score = a.score.map(_ + 1))
     a.hashCode shouldEqual b.hashCode
-    a shouldEqual b
+    a shouldEqual b // the calculation of `groupedMs` in `SearchService.search` requires this property
   }
 
-  it should "(UNIT) markdown" in {
+  "Mark" should "(UNIT) markdown" in {
     val a = MarkData("", None, None, None, Some("* a lonely list item"), None)
     a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
   }

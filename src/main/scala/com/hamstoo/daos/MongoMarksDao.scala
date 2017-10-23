@@ -3,8 +3,9 @@ package com.hamstoo.daos
 import java.nio.file.Files
 import java.util.UUID
 
+import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.models.Mark._
-import com.hamstoo.models.{Mark, MarkData, Page, SearchMark}
+import com.hamstoo.models.{Mark, MarkData, Page}
 import org.joda.time.DateTime
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
@@ -18,10 +19,43 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 /**
+  * MongoMarksDao companion object.
+  */
+object MongoMarksDao {
+
+  /** A subset of Mark's fields along with a `score` field returned by `search`. */
+  case class SearchMark(userId: UUID, id: String, mark: MarkData, pubRepr: Option[String],
+                        privRepr: Option[String], timeFrom: Long, timeThru: Long, score: Option[Double]) {
+
+    /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
+    override def equals(other: Any): Boolean = other match {
+      case other: SearchMark => other.canEqual(this) && this.hashCode == other.hashCode
+      case _ => false
+    }
+
+    /**
+      * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
+      * `super.hashCode` comes from `Any` and so the implementation of `hashCode` that is automatically generated for
+      * case classes has to be copy and pasted here.  More at the following link:
+      * https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
+      * And an explanation here: https://stackoverflow.com/a/44708937/2030627
+      */
+    override def hashCode: Int = this.score match {
+      case None => scala.runtime.ScalaRunTime._hashCode(this)
+      case Some(_) => this.copy(score = None).hashCode
+    }
+  }
+
+  val SCORE: String = nameOf[SearchMark](_.score)
+  implicit val searchMarkHandler: BSONDocumentHandler[SearchMark] = Macros.handler[SearchMark]
+}
+
+/**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
   */
 class MongoMarksDao(db: Future[DefaultDB]) {
 
+  import MongoMarksDao._
   import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MongoMarksDao])
 
