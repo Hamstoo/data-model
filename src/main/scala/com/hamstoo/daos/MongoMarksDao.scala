@@ -205,13 +205,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       exst = d :~ "$exists" -> true :~ "$ne" -> ""
       sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
-      //Filter unncecessary fields while performing request
-      dropFields =  d :~ (PAGE -> BSONInteger(0))  :~ (TABBG -> BSONInteger(0)) :~
-        (URLPRFX -> BSONInteger(0)) :~ (AUX -> BSONInteger(0)) :~ (MERGEID -> BSONInteger(0)) :~
-        (URL -> BSONInteger(0)) :~ (STARS -> BSONInteger(0)) :~ (TAGS -> BSONInteger(0)) :~
-        (COMNT -> BSONInteger(0)) :~ (COMNTENC -> BSONInteger(0)) :~ (TABVIS -> BSONInteger(0)) :~
-         SCORE -> (d :~ "$meta" -> "textScore")
-      seq <- c.find(sel1, dropFields).coll[SearchMark, Seq]()
+      seq <- c.find(sel1).coll[SearchMark, Seq]()
     } yield {
       logger.debug(s"${seq.size} repred marks were successfully retrieved")
       seq
@@ -246,10 +240,11 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
       pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
       //Filter unncecessary fields while performing request
-      dropFields =  d :~ (PAGE -> BSONInteger(0))  :~ (TABBG -> BSONInteger(0)) :~
+      //It seems BSONReader to SearchMark reads only necessary fields that's why following logics is commented
+      dropFields =  d :~ /*(PAGE -> BSONInteger(0))  :~ (TABBG -> BSONInteger(0)) :~
         (URLPRFX -> BSONInteger(0)) :~ (AUX -> BSONInteger(0)) :~ (MERGEID -> BSONInteger(0)) :~
         (URL -> BSONInteger(0)) :~ (STARS -> BSONInteger(0)) :~ (TAGS -> BSONInteger(0)) :~
-        (COMNT -> BSONInteger(0)) :~ (COMNTENC -> BSONInteger(0)) :~ (TABVIS -> BSONInteger(0)) :~
+        (COMNT -> BSONInteger(0)) :~ (COMNTENC -> BSONInteger(0)) :~ (TABVIS -> BSONInteger(0)) :~*/
         SCORE -> (d :~ "$meta" -> "textScore")
       seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), dropFields).sort(pjn).coll[SearchMark, Seq]()
     } yield {

@@ -195,11 +195,8 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     c <- futColl
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
     pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-    //Filter unncecessary fields while performing request
-    dropFields =  d :~ (PAGE -> BSONInteger(0)) :~ (OTXT -> BSONInteger(0)) :~
-                       (LPREFX -> BSONInteger(0)) :~ (HEADR -> BSONInteger(0)) :~
-                       (KWORDS -> BSONInteger(0))
-    seq <- c.find(sel, dropFields).sort(pjn).coll[SearchRepr, Seq]()
+
+    seq <- c.find(sel, pjn).coll[SearchRepr, Seq]()
   } yield seq.map { repr =>
     repr.id -> repr
   }(breakOut[
