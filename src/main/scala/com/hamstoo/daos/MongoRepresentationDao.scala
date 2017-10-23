@@ -80,6 +80,12 @@ object MongoRepresentationDao {
     }
   }
 
+  implicit def reprToSearchRepr(r : Representation) = SearchRepr(r.id,r.doctext,
+                                                        r.link.getOrElse(""),
+                                                        r.nWords,r.vectors,
+                                                        r.timeFrom,
+                                                        r.timeThru,1)
+
 }
 
 /**
@@ -195,7 +201,6 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     c <- futColl
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
     pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-
     seq <- c.find(sel, pjn).coll[SearchRepr, Seq]()
   } yield seq.map { repr =>
     repr.id -> repr

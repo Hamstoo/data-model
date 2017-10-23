@@ -239,8 +239,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       sel0 = d :~ USR -> user :~ curnt
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
       pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-      //Filter unncecessary fields while performing request
-      //It seems BSONReader to SearchMark reads only necessary fields that's why following logics is commented
+      // Filter unncecessary fields while performing request
+      // It seems BSONReader to SearchMark reads only necessary fields that's why following logics is commented
       dropFields =  d :~ /*(PAGE -> BSONInteger(0))  :~ (TABBG -> BSONInteger(0)) :~
         (URLPRFX -> BSONInteger(0)) :~ (AUX -> BSONInteger(0)) :~ (MERGEID -> BSONInteger(0)) :~
         (URL -> BSONInteger(0)) :~ (STARS -> BSONInteger(0)) :~ (TAGS -> BSONInteger(0)) :~
