@@ -73,10 +73,10 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mongo
     val highlightA = makeHighlight(2, 5, 0, length - 10)
     val highlightB = makeHighlight(5, 7, length - 20, 10)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 1
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual -1
 
     val (positionUnion, previewUnion, pageCoord) = hlIntersectionSvc.union(highlightA, highlightB)
 
@@ -91,10 +91,10 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mongo
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(6, 8, 5, 10)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 1
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual -1
 
     val (positionUnion, previewUnion, pageCoord) = hlIntersectionSvc.union(highlightA, highlightB)
 
@@ -109,10 +109,10 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mongo
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(5, 7, 0, length - 10)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 1
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual -1
 
     val (positionUnion, previewUnion, pageCoord) = hlIntersectionSvc.union(highlightA, highlightB)
 
@@ -127,10 +127,10 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mongo
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(7, 7, 10, length - 35)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 1
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual -1
 
     val (positionUnion, previewUnion, pageCoord) = hlIntersectionSvc.union(highlightA, highlightB)
 
@@ -145,10 +145,10 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mongo
     val highlightA = makeHighlight(1, 7, 0, length - 10)
     val highlightB = makeHighlight(7, 7, 10, length - 20)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe Some(false)
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 1
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual -1
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 1
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual -1
   }
 
   it should "(UNIT) case 6: detect subset highlight with intersection in 2 inside elements" in {
@@ -157,10 +157,10 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mongo
     val highlightA = makeHighlight(1, 7, 20, length - 10)
     val highlightB = makeHighlight(5, 6, 10, 20)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe Some(false)
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 1
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual -1
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual 0
   }
 
   it should "(UNIT) case 7: detect non-intersecting highlight in 1 element overlapped but no text overlap" in {
@@ -169,10 +169,10 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mongo
     val highlightA = makeHighlight(1, 5, 20, length - 20)
     val highlightB = makeHighlight(5, 6, length - 10, 20)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual 0
   }
 
   it should "(UNIT) case 8: detect non-subset non-intersection highlight in single element overlapped but no text overlap" in {
@@ -181,9 +181,9 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mongo
     val highlightA = makeHighlight(1, 5, 20, length - 20)
     val highlightB = makeHighlight(5, 5, length - 10, 10)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldEqual 0
+    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldEqual 0
+    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldEqual 0
   }
 }
