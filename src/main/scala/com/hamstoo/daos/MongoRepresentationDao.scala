@@ -4,6 +4,7 @@ import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.models.Mark.PAGE
 import com.hamstoo.models.Representation._
 import com.hamstoo.models.{Page, Representation}
+import org.apache.commons.text.similarity.LevenshteinDistance
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -28,10 +29,57 @@ object MongoRepresentationDao {
   val LNK_WGT = 10
 
   /** A subset of Representation's fields along with a `score` field returned by `search`. */
-  case class SearchRepr(id: String, doctext: String, nWords: Option[Long],
+  case class SearchRepr(id: String, doctext: String, link: String, nWords: Option[Long],
                         vectors: Map[String, Representation.Vec], timeFrom: Long, timeThru: Long, score: Double)
   val SCORE: String = nameOf[SearchRepr](_.score)
   implicit val searchReprHandler: BSONDocumentHandler[SearchRepr] = Macros.handler[SearchRepr]
+
+  /**
+    * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
+    * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
+    */
+  def isDuplicate(mainRepr: Representation, oth: Representation): Boolean = {
+
+    // quickly test for identical doctexts
+    !mainRepr.doctext.isEmpty && mainRepr.doctext == oth.doctext || (
+
+      // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
+      // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
+      // because it has too many false positives, like, e.g., when a site has very few English words.
+        vecSimilarity(mainRepr.vectors, oth) > Representation.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
+        editSimilarity(mainRepr.doctext, oth) > Representation.DUPLICATE_EDIT_SIMILARITY_THRESHOLD
+      )
+  }
+
+  def isDuplicate(mainRepr: SearchRepr, oth: Representation): Boolean = {
+
+    // quickly test for identical doctexts
+    !mainRepr.doctext.isEmpty && mainRepr.doctext == oth.doctext || (
+
+      // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
+      // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
+      // because it has too many false positives, like, e.g., when a site has very few English words.
+      vecSimilarity(mainRepr.vectors, oth) > Representation.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
+        editSimilarity(mainRepr.doctext, oth) > Representation.DUPLICATE_EDIT_SIMILARITY_THRESHOLD
+      )
+  }
+
+  /** Define `similarity` in one place so that it can be used in multiple. */
+  def vecSimilarity(vectors: Map[String, Representation.Vec], oth: Representation): Double = (for {
+    thisVec <- vectors.get(VecEnum.IDF3.toString)
+    othVec <- oth.vectors.get(VecEnum.IDF3.toString)
+  } yield Representation.VecFunctions(thisVec).cosine(othVec)).getOrElse(0.0)
+
+  /** Another kind of similarity, the opposite of (relative) edit distance. */
+  def editSimilarity(doctext: String, oth: Representation): Double = {
+    if (doctext.isEmpty && oth.doctext.isEmpty) 1.0
+    else {
+      val editDist = LevenshteinDistance.getDefaultInstance.apply(doctext, oth.doctext)
+      val relDist = editDist / math.max(doctext.length, oth.doctext.length).toDouble // toDouble is important here
+      1.0 - relDist
+    }
+  }
+
 }
 
 /**
@@ -148,9 +196,10 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
     pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
     //Filter unncecessary fields while performing request
-    dropFields =  d :~ (PAGE -> BSONInteger(0)) :~ (OTXT -> BSONInteger(0)) :~ (DTXT -> BSONInteger(0)) :~
-                       (LPREFX -> BSONInteger(0)) :~ (HEADR -> BSONInteger(0)) :~ (KWORDS -> BSONInteger(0))
-    seq <- c.find(sel, pjn).projection(dropFields).coll[SearchRepr, Seq]()
+    dropFields =  d :~ (PAGE -> BSONInteger(0)) :~ (OTXT -> BSONInteger(0)) :~
+                       (LPREFX -> BSONInteger(0)) :~ (HEADR -> BSONInteger(0)) :~
+                       (KWORDS -> BSONInteger(0))
+    seq <- c.find(sel, dropFields).sort(pjn).coll[SearchRepr, Seq]()
   } yield seq.map { repr =>
     repr.id -> repr
   }(breakOut[

@@ -146,12 +146,7 @@ case class Mark(
                  timeThru: Long = INF_TIME,
                  mergeId: Option[String] = None) {
   urlPrfx = mark.url map (_.binaryPrefix)
-
-  import Mark._
-
-  /** Use the private repr when available, o/w use the public one. */
-  def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
-
+  
   /** Return true if the mark is representable but not yet represented. */
   def representablePublic: Boolean = pubRepr.isEmpty && mark.url.isDefined
   def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined

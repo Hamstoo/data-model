@@ -4,8 +4,10 @@ import java.nio.file.Files
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
+import com.hamstoo.daos.MongoMarksDao.SCORE
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.{Mark, MarkData, Page}
+import com.hamstoo.utils.d
 import org.joda.time.DateTime
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
@@ -43,7 +45,12 @@ object MongoMarksDao {
       case None => scala.runtime.ScalaRunTime._hashCode(this)
       case Some(_) => this.copy(score = None).hashCode
     }
+
   }
+
+  /** Use the private repr when available, o/w use the public one.
+    * Used by Mark and SearchMark classes */
+  def primaryRepr(privRepr: Option[String], pubRepr: Option[String]): String = privRepr.orElse(pubRepr).getOrElse("")
 
   val SCORE: String = nameOf[SearchMark](_.score)
   implicit val searchMarkHandler: BSONDocumentHandler[SearchMark] = Macros.handler[SearchMark]
@@ -202,8 +209,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       dropFields =  d :~ (PAGE -> BSONInteger(0))  :~ (TABBG -> BSONInteger(0)) :~
         (URLPRFX -> BSONInteger(0)) :~ (AUX -> BSONInteger(0)) :~ (MERGEID -> BSONInteger(0)) :~
         (URL -> BSONInteger(0)) :~ (STARS -> BSONInteger(0)) :~ (TAGS -> BSONInteger(0)) :~
-        (COMNT -> BSONInteger(0)) :~ (COMNTENC -> BSONInteger(0)) :~ (TABVIS -> BSONInteger(0))
-
+        (COMNT -> BSONInteger(0)) :~ (COMNTENC -> BSONInteger(0)) :~ (TABVIS -> BSONInteger(0)) :~
+         SCORE -> (d :~ "$meta" -> "textScore")
       seq <- c.find(sel1, dropFields).coll[SearchMark, Seq]()
     } yield {
       logger.debug(s"${seq.size} repred marks were successfully retrieved")
@@ -242,8 +249,9 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       dropFields =  d :~ (PAGE -> BSONInteger(0))  :~ (TABBG -> BSONInteger(0)) :~
         (URLPRFX -> BSONInteger(0)) :~ (AUX -> BSONInteger(0)) :~ (MERGEID -> BSONInteger(0)) :~
         (URL -> BSONInteger(0)) :~ (STARS -> BSONInteger(0)) :~ (TAGS -> BSONInteger(0)) :~
-        (COMNT -> BSONInteger(0)) :~ (COMNTENC -> BSONInteger(0)) :~ (TABVIS -> BSONInteger(0))
-      seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), pjn).projection(dropFields).sort(pjn).coll[SearchMark, Seq]()
+        (COMNT -> BSONInteger(0)) :~ (COMNTENC -> BSONInteger(0)) :~ (TABVIS -> BSONInteger(0)) :~
+        SCORE -> (d :~ "$meta" -> "textScore")
+      seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), dropFields).sort(pjn).coll[SearchMark, Seq]()
     } yield {
       logger.debug(s"${seq.size} marks were successfully retrieved")
       seq

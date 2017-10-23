@@ -57,38 +57,7 @@ case class Representation(
   versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
                     .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
 
-  /**
-    * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
-    * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
-    */
-  def isDuplicate(oth: Representation): Boolean = {
 
-    // quickly test for identical doctexts
-    !doctext.isEmpty && doctext == oth.doctext || (
-
-      // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
-      // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
-      // because it has too many false positives, like, e.g., when a site has very few English words.
-      vecSimilarity(oth) > Representation.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
-      editSimilarity(oth) > Representation.DUPLICATE_EDIT_SIMILARITY_THRESHOLD
-    )
-  }
-
-  /** Define `similarity` in one place so that it can be used in multiple. */
-  def vecSimilarity(oth: Representation): Double = (for {
-    thisVec <- vectors.get(VecEnum.IDF3.toString)
-    othVec <- oth.vectors.get(VecEnum.IDF3.toString)
-  } yield Representation.VecFunctions(thisVec).cosine(othVec)).getOrElse(0.0)
-
-  /** Another kind of similarity, the opposite of (relative) edit distance. */
-  def editSimilarity(oth: Representation): Double = {
-    if (doctext.isEmpty && oth.doctext.isEmpty) 1.0
-    else {
-      val editDist = LevenshteinDistance.getDefaultInstance.apply(doctext, oth.doctext)
-      val relDist = editDist / math.max(doctext.length, oth.doctext.length).toDouble // toDouble is important here
-      1.0 - relDist
-    }
-  }
 }
 
 object Representation extends BSONHandlers {
