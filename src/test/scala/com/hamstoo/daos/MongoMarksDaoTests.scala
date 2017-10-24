@@ -71,7 +71,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) retrieve repred marks by uuid and tag set" in {
-    marksDao.retrieveRepred(uuid1, tagSet).futureValue shouldEqual Seq(m1)
+    marksDao.retrieveRepred(uuid1, tagSet).futureValue.map(_.id) shouldEqual Seq(m1.id)
   }
 
   it should "(UNIT) retrieve mark tags by uuid" in {
