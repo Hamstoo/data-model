@@ -61,7 +61,15 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
       if (depth >= 5)
         Future.failed(new IllegalArgumentException(s"Too many redirects for $url"))
       else {
-        httpClient.url(url).withFollowRedirects(true).get().flatMap { res =>
+
+        // The below call to WSRequest.get returns a Future, but if the URL is junk (e.g. chrome://extensions/), it throws
+        // an exception, which it appears to throw from outside of a Future block.  This wouldn't be a problem except for
+        // the fact that RepresentationActor.receive has contentRetriever.retrieve as its *first* Future in its
+        // for-comprehension, which means this exception occurs outside of *all* of the desugared Future flatMaps.  To
+        // remedy, this call either needs to not be the first Future in the for-comprehension (an odd limitation that
+        // callers shouldn't really have to worry about) or be wrapped in a Try, as has been done here.
+        Try(httpClient.url(url).withFollowRedirects(true).get).fold(Future.failed, identity).flatMap { res =>
+
           res.status match {
             // withFollowRedirects follows only 301 and 302 redirects.
             // We need to cover 308 - Permanent Redirect also. The new url can be found in "Location" header.
