@@ -18,7 +18,6 @@ dependencies:
     - "~/.sbt"
     - "target"
     - "project/target"
-    - "public"
 
 test:
   override:
