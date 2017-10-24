@@ -28,7 +28,7 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
       origHl <- hls // for each existing highlight in the DB
       edge = isEdgeIntsc(origHl.pos, hl.pos) // check for edge intersections
       subs = isSubset(origHl.pos, hl.pos) // check for inclusion
-      if edge.isDefined || subs.isDefined // filter highlights for joining (i.e. ignore non-joining)
+      if edge != 0 || subs != 0 // filter highlights for joining (i.e. ignore non-joining)
     } yield origHl -> (edge -> subs) // add comparison results to filtered highlights
 
     h <- filtered match {
