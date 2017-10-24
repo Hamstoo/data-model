@@ -198,11 +198,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       c <- futColl
       sel0 = d :~ USR -> user :~ curnt
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
-      sel2 = sel1 :~ "$text" -> (d :~ "$search" -> query)
       pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-      _ = logger.info(s"sel = ${BSONDocument.pretty(sel2)}")
-      _ = logger.info(s"pjn = ${BSONDocument.pretty(pjn)}")
-      seq <- c.find(sel2, pjn).sort(pjn).coll[Mark, Seq]()
+      seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), pjn).sort(pjn).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} marks were successfully retrieved")
       seq
