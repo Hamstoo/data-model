@@ -240,13 +240,15 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   } yield newMk
 
   /**
-    * Merge two marks by setting their `timeFrom`s to the time of execution and inserting a new mark with the
-    * same `timeThru`.
+    * Merge two marks by setting their `timeThru`s to the time of execution and inserting a new mark with the
+    * same `timeFrom`.
     */
   def merge(oldMark: Mark, newMark: Mark, now: Long = DateTime.now.getMillis): Future[Mark] = for {
     c <- futColl
+
+    // delete the newer mark and merge it into the older/pre-existing one
     _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id))
-    mergedMk = oldMark.merge(newMark)
+    mergedMk = oldMark.merge(newMark).copy(timeFrom = now, timeThru = INF_TIME)
 
     // this was formerly (2017-10-18) a bug as it doesn't affect any of the non-MarkData fields
     //updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
@@ -255,11 +257,10 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
     _ <- wr.failIfError
 
-    newMk = mergedMk.copy(timeFrom = now, timeThru = INF_TIME)
-    wr <- c.insert(newMk)
+    wr <- c.insert(mergedMk)
     _ <- wr.failIfError
 
-  } yield newMk
+  } yield mergedMk
 
   /** Process the file into a Page instance and add it to the Mark in the database. */
   def addFilePage(userId: UUID, markId: String, file: TemporaryFile): Future[Unit] = {
@@ -293,7 +294,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       c <- futColl
       sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> tag
       wr <- c update(sel, d :~ "$set" -> (d :~ s"$MARK.$TAGS.$$" -> rename), multi = true)
-      _ <- wr failIfError
+      _ <- wr.failIfError
     } yield {
       val count = wr.nModified
       logger.debug(s"$count marks tag's were successfully updated")
