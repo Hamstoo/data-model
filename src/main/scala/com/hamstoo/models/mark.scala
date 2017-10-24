@@ -140,7 +140,7 @@ case class Mark(
                  userId: UUID,
                  id: String = generateDbId(Mark.ID_LENGTH),
                  mark: MarkData,
-                 aux: MarkAux = MarkAux(None, None),
+                 aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
                  page: Option[Page] = None,
                  pubRepr: Option[String] = None,
@@ -180,7 +180,10 @@ case class Mark(
     // TODO: how do we ensure that additional fields added to the constructor are accounted for here?
     // TODO: how do we ensure that other data (like highlights) that reference markIds are accounted for?
     copy(mark = mark.merge(oth.mark),
-         aux  = aux .merge(oth.aux ),
+         aux  = for {
+           a <- aux
+           oa <- oth.aux
+         } yield a.merge(oa),
 
          // `page`s should all have been processed already if any private repr is defined, so only merge them if
          // that is not the case; in which case it's very unlikely that both will be defined, but use newer one if so

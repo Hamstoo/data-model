@@ -140,21 +140,21 @@ class MongoRepresentationDaoTests
     val vec2: Representation.Vec = Seq(2304932.039423, 39402.3043, 2304932.039423, 39402.3043, 2304932.039423, 39402.3043)
 
     val reprOrig = Representation(link = url,
-      page = Page(MediaType.TEXT_HTML.toString, "sdf".getBytes),
-      header = "Monday",
+      page = Some(Page(MediaType.TEXT_HTML.toString, "sdf".getBytes)),
+      header = Some("Monday"),
       doctext = "sdf",
-      othtext = "sdf",
-      keywords = "nothing",
+      othtext = Some("sdf"),
+      keywords = Some("nothing"),
         vectors = Map {"something" -> vec},
       autoGenKws = None)
     println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
     val reprCopy = reprOrig.copy(
-      page = Page(MediaType.TEXT_HTML.toString, "sывфывdf".getBytes),
-      header = "something",
+      page = Some(Page(MediaType.TEXT_HTML.toString, "sывфывdf".getBytes)),
+      header = Some("something"),
       doctext = "sasdasdf",
-      othtext = "ssadasddf",
-      keywords = "something",
+      othtext = Some("ssadasddf"),
+      keywords = Some("something"),
         vectors = Map {"month" -> vec2})
 
     println(s"Creating 2 representations with ids ${reprOrig.id} and ${reprCopy.id}")
