@@ -1,21 +1,29 @@
 package com.hamstoo.services
 
+import java.io.{ByteArrayInputStream, InputStream}
 import java.net.{URI, URL}
 import javax.activation.MimeType
 
+import akka.util.ByteString
 import com.hamstoo.models.Page
+import com.hamstoo.utils.MediaType
 import org.apache.tika.io.IOUtils
+import org.apache.tika.metadata.{PDF, TikaCoreProperties}
+import org.apache.tika.parser.Parser
 import play.api.Logger
 import play.api.libs.ws.{WSClient, WSResponse}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
+import scala.util.matching.Regex
 
 /**
   * ContentRetriever companion class.
   */
 object ContentRetriever {
+
   val logger = Logger(classOf[ContentRetriever])
+  val titleRgx: Regex = "(?i)<title.*>([^<]+)</title>".r.unanchored
 
   /** Make sure the provided String is an absolute link. */
   def checkLink(s: String): String = if (s.isEmpty) s else new URI(s) match {
@@ -25,6 +33,32 @@ object ContentRetriever {
 
   /** Moved from hamstoo repo LinkageService class.  Used to take a MarkData as input and produce one as output. */
   def fixLink(url: String): String = Try(checkLink(url)).getOrElse("http://" + url)
+
+  /** Implicit MimeType class implementing a method which looks up a RepresentationService and calls its `process`. */
+  implicit class PageFunctions(private val page: Page) /*extends AnyVal*/ {
+
+    /** Look for a RepresentationService that supports this mime type and let it construct a representation. */
+    def getTitle: Option[String] = MediaType(page.mimeType) match {
+
+      // using a different method here than in HTMLRepresentationService
+      case mt if MediaTypeSupport.isHTML(mt) =>
+        ByteString(page.content.toArray).utf8String match {
+          case titleRgx(title) => Some(title.trim)
+          case _ => None
+        }
+
+      // this is basically the same technique as in PDFRepresentationService
+      case mt if MediaTypeSupport.isPDF(mt) || MediaTypeSupport.isText(mt) || MediaTypeSupport.isMedia(mt) =>
+        val is: InputStream = new ByteArrayInputStream(page.content.toArray)
+        val (contentHandler, metadata, parseContext, parser) = TikaInstance.constructCommon()
+        parseContext.set(classOf[Parser], parser) // TODO: is this necessary?
+        parser.parse(is, contentHandler, metadata, parseContext)
+        val titleKey = if (MediaTypeSupport.isPDF(mt)) PDF.DOC_INFO_TITLE else TikaCoreProperties.TITLE
+        Option(metadata.get(titleKey)).filter(!_.isEmpty)
+
+      case _ => None
+    }
+  }
 }
 
 /**

@@ -68,7 +68,10 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
         // normalize w.r.t. cubrt(char count ratio) b/c `doctext` can be many, many times longer than the others
         if (str.isEmpty) Seq.empty[WordMass] else {
           val r = wgt * math.pow(maxLen.toDouble / str.length, 0.333333)
-          val (topWords, docLength) = Await.result(text2TopWords(str), 60 seconds) // TODO: remove this Await!
+
+          // TODO: remove this Await! 60 seconds is not long enough when loading word vectors (issue #190)
+          val (topWords, docLength) = Await.result(text2TopWords(str), 300 seconds)
+
           nWords += docLength * wgt // this weighting gets "undone" below
           topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))
         }
