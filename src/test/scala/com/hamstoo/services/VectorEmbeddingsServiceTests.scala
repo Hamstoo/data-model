@@ -29,8 +29,6 @@ class VectorEmbeddingsServiceTests
   // skip all of these tests because CircleCI doesn't have access to the conceptnet-vectors container
 
   "VectorEmbeddingsService" should "IDF vectorize" ignore {
-
-
     val header0 = "Futures and Promises - Scala Documentation Futures and Promises"
     //val header0 = "Getting Started Building a Google Chrome Extension"
     val header1 = "Futures% !&and 'Promises' - Scala Documentation, \"Futures,$ and? Promises."
@@ -42,8 +40,6 @@ class VectorEmbeddingsServiceTests
   }
 
   it should "produce similar vecs in some cases (test is NON-DETERMINISTIC; if it fails try re-running it" ignore {
-
-
     import com.hamstoo.models.Representation._
 
     val terms_ = Seq("man", "woman",
@@ -89,7 +85,6 @@ class VectorEmbeddingsServiceTests
   }
 
   it should "produce similar vectors in other cases" ignore {
-
     import com.hamstoo.models.Representation._
 
     val terms = Seq("otter", "european_otter",
@@ -126,8 +121,6 @@ class VectorEmbeddingsServiceTests
   }
 
   it should "select top words" ignore {
-
-
     val txt = "otter otter european_otter otters otterlike toyota ford car"
     val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt).futureValue._1
     // 2 words are duplicates and out of the remaining 7 only 5 are kept per `text2TopWords.desiredFracWords` function
@@ -136,16 +129,14 @@ class VectorEmbeddingsServiceTests
   }
 
   it should "k-means vectorize" ignore {
-
-
     val txt = "otter european_otter otter otters otterlike toyota ford car"
     val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt).futureValue._1
     val (vecs, _) = vecSvc.text2KMeansVecs(topWords, 2)
 
-    Seq(("otter", 0.956, -0.590),
-      ("car", -0.374, 0.423), // note that "car" is filtered out by `text2TopWords`
-      ("ford", -0.626, 0.630),
-      ("toyota", -0.482, 0.846)).foreach { case (w, s0, s1) =>
+    Seq(("otter" ,  0.956, -0.590),
+        ("car"   , -0.374,  0.423), // note that "car" is filtered out by `text2TopWords`
+        ("ford"  , -0.626,  0.630),
+        ("toyota", -0.482,  0.846)).foreach { case (w, s0, s1) =>
 
       val wordVec = vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, w).futureValue.get._1
       vecs.head.cosine(wordVec) shouldEqual s0 +- 1e-3
