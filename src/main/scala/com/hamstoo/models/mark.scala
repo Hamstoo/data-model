@@ -56,7 +56,21 @@ case class MarkData(
     // issue 121 needs to be implemented here, before `Jsoup.clean` to safeguard against XSS
 
     // example: <p><img></p>
-    Jsoup.clean(html2, htmlTagsWhitelist)
+    val cleanText = Jsoup.clean(html2, htmlTagsWhitelist)
+
+    markdownLinksToHtmlLinks(cleanText)
+
+    //Should it detect links in text and make them clickable?
+    /* val linkFoundInText = """(http|ftp)://(.*)\.([/a-z]+)""".r
+     linkFoundInText.replaceAllIn(cleanText, m => "<a href=\""+m.toString+"\">"+m.toString+"</a>")*/
+  }
+
+  def markdownLinksToHtmlLinks(cleanText: String): String = {
+    //Find all markdown urls and convert them to links
+    val markDownRegexLink = """\[(?<text>[^\]]*)\]\((?<link>[^\)]*)\)""".r
+    val markDownUrlstext = markDownRegexLink.replaceAllIn(cleanText,
+      m => "<a href=\""+m.group(2)+"\">"+m.group(2)+"</a>")
+    markDownUrlstext
   }
 
   /**
