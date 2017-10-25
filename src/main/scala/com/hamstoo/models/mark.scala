@@ -180,10 +180,8 @@ case class Mark(
     // TODO: how do we ensure that additional fields added to the constructor are accounted for here?
     // TODO: how do we ensure that other data (like highlights) that reference markIds are accounted for?
     copy(mark = mark.merge(oth.mark),
-         aux  = for {
-           a <- aux
-           oa <- oth.aux
-         } yield a.merge(oa),
+
+         aux = if (oth.aux.isDefined) aux.map(_.merge(oth.aux.get)).orElse(oth.aux) else aux,
 
          // `page`s should all have been processed already if any private repr is defined, so only merge them if
          // that is not the case; in which case it's very unlikely that both will be defined, but use newer one if so

@@ -165,13 +165,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       exst = d :~ "$exists" -> true :~ "$ne" -> ""
       sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
-      dropFields =  d :~ (PAGE -> BSONInteger(0))  :~ (TABBG -> BSONInteger(0)) :~
-        (URLPRFX -> BSONInteger(0)) :~ (AUX -> BSONInteger(0)) :~ (MERGEID -> BSONInteger(0)) :~
-        (URL -> BSONInteger(0)) :~ (STARS -> BSONInteger(0)) :~ (TAGS -> BSONInteger(0)) :~
-        (COMNT -> BSONInteger(0)) :~ (COMNTENC -> BSONInteger(0)) :~ (TABVIS -> BSONInteger(0)) :~
-        SCORE -> (d :~ "$meta" -> "textScore")
-
-      seq <- c.find(sel1,dropFields).coll[Mark, Seq]()
+      seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} repred marks were successfully retrieved")
       seq
@@ -194,6 +188,10 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     }
   }
 
+  // exclude these fields from the returned results of search-related methods to conserve memory during search
+  val searchExcludedFields: BSONDocument = d :~ (PAGE -> 0)  :~ (TABBG -> 0) :~ (URLPRFX -> 0) :~ (AUX -> 0) :~
+    (MERGEID -> 0) :~ (URL -> 0) :~ (STARS -> 0) :~ (TAGS -> 0) :~ (COMNT -> 0) :~ (COMNTENC -> 0) :~ (TABVIS -> 0)
+
   /**
     * Executes a search using text index with sorting in user's marks, constrained by tags. Mark state must be
     * current and have all tags to qualify.
@@ -204,14 +202,13 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       c <- futColl
       sel0 = d :~ USR -> user :~ curnt
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags)
-      pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-      dropFields =  d :~ (PAGE -> BSONInteger(0))  :~ (TABBG -> BSONInteger(0)) :~
-        (URLPRFX -> BSONInteger(0)) :~ (AUX -> BSONInteger(0)) :~ (MERGEID -> BSONInteger(0)) :~
-        (URL -> BSONInteger(0)) :~ (STARS -> BSONInteger(0)) :~ (TAGS -> BSONInteger(0)) :~
-        (COMNT -> BSONInteger(0)) :~ (COMNTENC -> BSONInteger(0)) :~ (TABVIS -> BSONInteger(0)) :~
-         SCORE -> (d :~ "$meta" -> "textScore")
-      seq <- c.find(sel1 :~ "$text" -> (d :~ "$search" -> query), dropFields).sort(pjn).coll[Mark, Seq]()
 
+      // this projection doesn't have any effect without this selection
+      searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
+      searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
+
+      seq <- c.find(sel1 :~ searchScoreSelection,
+                    searchExcludedFields :~ searchScoreProjection).sort(searchScoreProjection).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} marks were successfully retrieved")
       seq

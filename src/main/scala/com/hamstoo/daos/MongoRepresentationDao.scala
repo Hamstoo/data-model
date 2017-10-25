@@ -135,16 +135,21 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     */
   def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
     c <- futColl
-    sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
-    pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-    dropFields =  d :~ (PAGE -> BSONInteger(0)) :~ (OTXT -> BSONInteger(0)) :~
-                       (LPREFX -> BSONInteger(0)) :~ (HEADR -> BSONInteger(0)) :~
-                       (KWORDS -> BSONInteger(0)) :~ (HEADR -> BSONInteger(0)) :~
-                        SCORE -> (d :~ "$meta" -> "textScore")
+    sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
 
-    seq <- c.find(sel, dropFields).sort(pjn).coll[Representation, Seq]()
+    // exclude these fields from the returned results to conserve memory during search
+    searchExcludedFields = d :~ (PAGE -> 0) :~ (OTXT -> 0) :~ (LPREFX -> 0) :~ (HEADR -> 0) :~ (KWORDS -> 0)
+
+    // this projection doesn't have any effect without this selection
+    searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
+    searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
+
+    seq <- c.find(sel :~ searchScoreSelection,
+                  searchExcludedFields :~ searchScoreProjection).sort(searchScoreProjection).coll[Representation, Seq]()
+
   } yield seq.map { repr =>
     repr.id -> repr
+
   }(breakOut[
     Seq[Representation],
     (String, Representation),
