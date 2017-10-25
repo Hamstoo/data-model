@@ -217,6 +217,9 @@ case class Mark(
 object Mark extends BSONHandlers {
   val logger: Logger = Logger(classOf[Mark])
 
+  // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once
+  logger.info("data-model version " + Option(getClass.getPackage.getImplementationVersion).getOrElse("null"))
+
   case class RangeMils(begin: Long, end: Long)
 
   /** Auxiliary stats pertaining to a `Mark`. */
