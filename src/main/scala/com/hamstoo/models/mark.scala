@@ -44,14 +44,16 @@ case class MarkData(
 
   commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
-    /* example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
-    // https://github.com/atlassian/commonmark-java */
+    // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
+    // https://github.com/atlassian/commonmark-java
     val document: Node = parser.parse(c)
     val html = renderer.render(document)
 
-    /* example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
-    // convert that &ldquo; back to a < character */
+    // example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
+    // convert that &ldquo; back to a < character
     val html2 = StringEscapeUtils.unescapeHtml4(html)
+
+    // issue 121 needs to be implemented here, before `Jsoup.clean` to safeguard against XSS
 
     // example: <p><img></p>
     val cleanText = Jsoup.clean(html2, htmlTagsWhitelist)
@@ -152,7 +154,7 @@ case class Mark(
                  userId: UUID,
                  id: String = generateDbId(Mark.ID_LENGTH),
                  mark: MarkData,
-                 aux: MarkAux = MarkAux(None, None),
+                 aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
                  page: Option[Page] = None,
                  pubRepr: Option[String] = None,
@@ -170,7 +172,7 @@ case class Mark(
 
   /** Return true if the mark is representable but not yet represented. */
   def representablePublic: Boolean = pubRepr.isEmpty && mark.url.isDefined
-  def representablePrivate: Boolean = page.isDefined // TODO: should we check for `privRepr.isEmpty` also here?
+  def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
@@ -190,8 +192,10 @@ case class Mark(
       logger.warn(s"Merging two marks, $id and ${oth.id}, with different private representations ${privRepr.get} and ${oth.privRepr.get}; ignoring latter")
 
     // TODO: how do we ensure that additional fields added to the constructor are accounted for here?
+    // TODO: how do we ensure that other data (like highlights) that reference markIds are accounted for?
     copy(mark = mark.merge(oth.mark),
-         aux  = aux .merge(oth.aux ),
+
+         aux = if (oth.aux.isDefined) aux.map(_.merge(oth.aux.get)).orElse(oth.aux) else aux,
 
          // `page`s should all have been processed already if any private repr is defined, so only merge them if
          // that is not the case; in which case it's very unlikely that both will be defined, but use newer one if so
@@ -227,6 +231,9 @@ case class Mark(
 object Mark extends BSONHandlers {
   val logger: Logger = Logger(classOf[Mark])
 
+  // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once
+  logger.info("data-model version " + Option(getClass.getPackage.getImplementationVersion).getOrElse("null"))
+
   case class RangeMils(begin: Long, end: Long)
 
   /** Auxiliary stats pertaining to a `Mark`. */
@@ -240,7 +247,7 @@ object Mark extends BSONHandlers {
 
   val ID_LENGTH: Int = 16
 
-  val USER: String = nameOf[Mark](_.userId)
+  val USR: String = nameOf[Mark](_.userId)
   val ID: String = nameOf[Mark](_.id)
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)

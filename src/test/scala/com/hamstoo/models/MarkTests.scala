@@ -2,14 +2,15 @@ package com.hamstoo.models
 
 import java.util.UUID
 
-import com.hamstoo.utils.{DataInfo, FlatSpecWithMatchers}
+import com.hamstoo.test.FlatSpecWithMatchers
+import com.hamstoo.utils.DataInfo
 
 /**
   * Mark model tests.
   */
-class MarkSpec extends FlatSpecWithMatchers with DataInfo {
+class MarkTests extends FlatSpecWithMatchers with DataInfo {
 
-  "Mark" should "* be consistently hashable, regardless of its `score`" in {
+  "Mark" should "(UNIT) be consistently hashable, regardless of its `score`" in {
     val uuid = UUID.randomUUID
     val a = Mark(uuid, mark = MarkData("a subject", None))
     val b = a.copy(score = Some(3.4))
@@ -17,7 +18,7 @@ class MarkSpec extends FlatSpecWithMatchers with DataInfo {
     a shouldEqual b
   }
 
-  it should "* markdown" in {
+  it should "(UNIT) markdown" in {
     val a = MarkData("", None, None, None, Some("* a lonely list item"), None)
     a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
     val b = a.copy(comment = Some("hello markdown link conversion text [I'm an inline-style link](https://www.google.com)"))
@@ -26,7 +27,7 @@ class MarkSpec extends FlatSpecWithMatchers with DataInfo {
       "I'm an inline-style link</a></p>"
   }
 
-  it should "* try to prevent XSS attacks" in {
+  it should "(UNIT) try to prevent XSS attacks" in {
     // https://www.owasp.org/index.php/XSS_Filter_Evasion_Cheat_Sheet
     val a = MarkData("", None, None, None, Some("<SCRIPT SRC=http://xss.rocks/xss.js></SCRIPT>"), None)
     a.commentEncoded.get shouldEqual ""
@@ -44,7 +45,7 @@ class MarkSpec extends FlatSpecWithMatchers with DataInfo {
     g.commentEncoded.get shouldEqual "<p>hello <a rel=\"nofollow noopener noreferrer\" target=\"_blank\"><em>you</em></a></p>"
   }
 
-  it should "* be mergeable" in {
+  it should "(UNIT) be mergeable" in {
     // test merge (would be nice to test warning messages due to non matching field values also)
     val merged = mA.merge(mB)
 
@@ -58,14 +59,14 @@ class MarkSpec extends FlatSpecWithMatchers with DataInfo {
 
   }
 
-  //    it should "* throw exception in different UUID" in {
-  //      // different userIds should throw an AssertionError
-  //
-  //      val thrown = intercept[AssertionError] {
-  //        val c = Mark(UUID.randomUUID, mark = mdB)
-  //        mA.merge(c)
-  //      }
-  //
-  //      thrown shouldBe a [AssertionError]
-  //    }
+//    it should "throw exception in different UUID" in {
+//      // different userIds should throw an AssertionError
+//
+//      val thrown = intercept[AssertionError] {
+//        val c = Mark(UUID.randomUUID, mark = mdB)
+//        mA.merge(c)
+//      }
+//
+//      thrown shouldBe a [AssertionError]
+//    }
 }

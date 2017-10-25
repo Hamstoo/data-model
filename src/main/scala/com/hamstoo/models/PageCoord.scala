@@ -6,6 +6,9 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * Created by
   * Author: fayaz.sanaulla@gmail.com
   * Date: 2017-09-10
+  *
+  * @param x  Relative horizontal position of annotation--used for annotation sorting.
+  * @param y  Relative vertical position of annotation--used for annotation sorting.
   */
 case class PageCoord(x: Double, y: Double)
 
