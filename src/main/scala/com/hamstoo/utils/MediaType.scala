@@ -10,10 +10,14 @@ object MediaType /*extends Enumeration*/ {
   // TODO: use Guava.MediaType instead of these strings?
   //   https://stackoverflow.com/questions/7904497/is-there-an-enum-with-mime-types-in-java
 
+  /** Convenience method to construct a new MimeType from a string. */
+  def apply(strMimeType: String): MimeType = new MimeType(strMimeType)
+
   // HTML
   lazy val TEXT_HTML = new MimeType("text/html")
   lazy val APPLICATION_OCTET_STREAM = new MimeType("application/octet-stream")
   lazy val TEXT_X_PHP = new MimeType("text/x-php")
+  lazy val APPLICATION_XHTML_XML = new MimeType("application/xhtml+xml")
 
   // PDF
   lazy val APPLICATION_PDF = new MimeType("application/pdf")

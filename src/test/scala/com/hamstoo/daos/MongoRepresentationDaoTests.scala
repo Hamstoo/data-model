@@ -1,6 +1,8 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.{MarkData, Representation, Page}
+import com.hamstoo.models.{MarkData, Page, Representation}
+import com.hamstoo.test.env.MongoEnvironment
+import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.{MediaType, TestHelper}
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -9,14 +11,18 @@ import scala.util.Random
 /**
   * MongoRepresentationDao tests.
   */
-class MongoRepresentationDaoSpec extends TestHelper {
+class MongoRepresentationDaoTests
+  extends FlatSpecWithMatchers
+    with MongoEnvironment
+    with FutureHandler
+    with TestHelper {
 
   lazy val reprsDao = new MongoRepresentationDao(getDB)
 
   /** Create new mark. */
   def randomMarkData: MarkData = {
     val alpha = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    val size = alpha.size
+    val size = alpha.length
 
     def randStr(n:Int) = (1 to n).map(x => alpha.charAt(Random.nextInt.abs % size)).mkString
     val domain = randStr(10)
@@ -24,7 +30,7 @@ class MongoRepresentationDaoSpec extends TestHelper {
   }
 
   /*"MongoRepresentaionDao" should {
-    "* create mark to update rep id and retrieve rep id" in new system {
+    "create mark to update rep id and retrieve rep id" in new system {
 
     val markData = randomMarkData
 
@@ -122,60 +128,57 @@ class MongoRepresentationDaoSpec extends TestHelper {
     }
   }*/
 
-  "MongoRepresentaionDao" should "* save representation" in {
+  "MongoRepresentationDao" should "(UNIT) save representation" in {
 
-    withEmbedMongoFixture() { _ =>
+    //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").drop(true), Duration(testDuration, MILLISECONDS))
+    //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").create(false), Duration(testDuration, MILLISECONDS))
 
-      //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").drop(true), Duration(testDuration, MILLISECONDS))
-      //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").create(false), Duration(testDuration, MILLISECONDS))
+    val url: Option[String] = randomMarkData.url
+    //val url = "http://nymag.com/daily/intelligencer/2017/04/andrew-sullivan-why-the-reactionary-right-must-be-taken-seriously.html"
+    //val url = "https://developer.chrome.com/extensions/getstarted"
+    val vec: Representation.Vec = Seq(2304932.039423, 39402.3043)
+    val vec2: Representation.Vec = Seq(2304932.039423, 39402.3043, 2304932.039423, 39402.3043, 2304932.039423, 39402.3043)
 
-      val url: Option[String] = randomMarkData.url
-      //val url = "http://nymag.com/daily/intelligencer/2017/04/andrew-sullivan-why-the-reactionary-right-must-be-taken-seriously.html"
-      //val url = "https://developer.chrome.com/extensions/getstarted"
-      val vec: Representation.Vec = Seq(2304932.039423, 39402.3043)
-      val vec2: Representation.Vec = Seq(2304932.039423, 39402.3043, 2304932.039423, 39402.3043, 2304932.039423, 39402.3043)
-
-      val reprOrig = Representation(link = url,
-        page = Page(MediaType.TEXT_HTML.toString, "sdf".getBytes),
-        header = "Monday",
-        doctext = "sdf",
-        othtext = "sdf",
-        keywords = "nothing",
+    val reprOrig = Representation(link = url,
+      page = Some(Page(MediaType.TEXT_HTML.toString, "sdf".getBytes)),
+      header = Some("Monday"),
+      doctext = "sdf",
+      othtext = Some("sdf"),
+      keywords = Some("nothing"),
         vectors = Map {"something" -> vec},
-        autoGenKws = None)
-      println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
+      autoGenKws = None)
+    println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
-      val reprCopy = reprOrig.copy(
-        page = Page(MediaType.TEXT_HTML.toString, "sывфывdf".getBytes),
-        header = "something",
-        doctext = "sasdasdf",
-        othtext = "ssadasddf",
-        keywords = "something",
+    val reprCopy = reprOrig.copy(
+      page = Some(Page(MediaType.TEXT_HTML.toString, "sывфывdf".getBytes)),
+      header = Some("something"),
+      doctext = "sasdasdf",
+      othtext = Some("ssadasddf"),
+      keywords = Some("something"),
         vectors = Map {"month" -> vec2})
 
-      println(s"Creating 2 representations with ids ${reprOrig.id} and ${reprCopy.id}")
-      val id: String = reprsDao.save(reprOrig).futureValue /*.map(id => id)*/
-      println(s"Created representation id $id")
+    println(s"Creating 2 representations with ids ${reprOrig.id} and ${reprCopy.id}")
+    val id: String = reprsDao.save(reprOrig).futureValue /*.map(id => id)*/
+    println(s"Created representation id $id")
 
-      id should not equal null
-      id should not equal ""
-      Thread.sleep(2500)
-      val id2: String = reprsDao.save(reprCopy).futureValue /*.map(id => id)*/
-      println(s"Updated representation 2 id $id2")
-      id shouldEqual id2 // this is because they have the same ID
+    id should not equal null
+    id should not equal ""
+    Thread.sleep(2500)
+    val id2: String = reprsDao.save(reprCopy).futureValue /*.map(id => id)*/
+    println(s"Updated representation 2 id $id2")
+    id shouldEqual id2 // this is because they have the same ID
 
-      //val repr1 = Await.result(reprsDao retrieveById id map (repr => repr), Duration(1000, MILLISECONDS))
-      //val repr2 = Await.result(reprsDao retrieveById id2 map (repr => repr), Duration(1000, MILLISECONDS))
+    //val repr1 = Await.result(reprsDao retrieveById id map (repr => repr), Duration(1000, MILLISECONDS))
+    //val repr2 = Await.result(reprsDao retrieveById id2 map (repr => repr), Duration(1000, MILLISECONDS))
 
-      // use `retrieveAllById` to get both previous and updated reprs from the db
-      val reprs: Seq[Representation] = reprsDao.retrieveAllById(id2).futureValue
-      println(s"Print SIZE ${reprs.size}")
-      reprs.foreach(r => println(s"Print Seq ${r.timeThru}"))
+    // use `retrieveAllById` to get both previous and updated reprs from the db
+    val reprs: Seq[Representation] = reprsDao.retrieveAllById(id2).futureValue
+    println(s"Print SIZE ${reprs.size}")
+    reprs.foreach(r => println(s"Print Seq ${r.timeThru}"))
 
-      reprs.size shouldEqual 2
-      reprs.head.timeThru should be < Long.MaxValue
-      reprs.head.timeFrom should not equal  reprs.tail.head.timeFrom
-      reprs.head.timeThru should be < reprs.tail.head.timeThru
-    }
+    reprs.size shouldEqual 2
+    reprs.head.timeThru should be < Long.MaxValue
+    reprs.head.timeFrom should not equal reprs.tail.head.timeFrom
+    reprs.head.timeThru should be < reprs.tail.head.timeThru
   }
 }
