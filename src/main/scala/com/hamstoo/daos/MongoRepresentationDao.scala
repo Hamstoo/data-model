@@ -145,7 +145,8 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
     seq <- c.find(sel :~ searchScoreSelection,
-                  searchExcludedFields :~ searchScoreProjection).sort(searchScoreProjection).coll[Representation, Seq]()
+                  searchExcludedFields :~ searchScoreProjection)/*.sort(searchScoreProjection)*/
+      .coll[Representation, Seq]()
 
   } yield seq.map { repr =>
     repr.id -> repr

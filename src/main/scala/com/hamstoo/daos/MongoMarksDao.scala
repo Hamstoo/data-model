@@ -13,9 +13,19 @@ import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
+//import reactivemongo.core.errors.DriverException
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+/*
+
+object MongoMarksDao {
+  var thrw = true
+  class SubDriverException extends DriverException {
+    def message: String = "+++++++++++++++++++++++++++++++++++++++++++++++++++++"
+  }
+}
+*/
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -90,7 +100,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Retrieves a mark by user and ID, None if not found.  Retrieves current mark unless timeThru is specified. */
   def retrieve(user: UUID, id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
-    logger.debug(s"Retrieving mark for uuid: $user and id: $id")
+    logger.debug(s"Retrieving mark for user $user and id $id")
     for {
       c <- futColl
       optEnt <- (c find d :~ USR -> user :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
@@ -102,7 +112,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Retrieves all current marks for the user, sorted by `timeFrom` descending. */
   def retrieve(user: UUID): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving marks by uuid: $user")
+    logger.debug(s"Retrieving marks by user $user")
     for {
       c <- futColl
       seq <- c.find(d :~ USR -> user :~ curnt).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
@@ -114,7 +124,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Retrieves all marks by ID, including previous versions, sorted by `timeFrom` descending. */
   def retrieveAllById(id: String): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving all marks by id: $id")
+    logger.debug(s"Retrieving all marks by id $id")
     for {
       c <- futColl
       seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
@@ -130,7 +140,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * implement more complex logic based on representations similar to repr-engine's `dupSearch`.
     */
   def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = {
-    logger.debug(s"Retrieving marks by url: $url and uuid: $user")
+    logger.debug(s"Retrieving marks by url $url and user $user")
     for {
       c <- futColl
       seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ curnt).coll[Mark, Seq]()
@@ -143,7 +153,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
   def retrieveTagged(user: UUID, tags: Set[String]): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieve tagged marks for uuid: $user and tags: $tags")
+    logger.debug(s"Retrieve tagged marks for user $user and tags $tags")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> (d :~ "$all" -> tags) :~ curnt
@@ -159,7 +169,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * all tags to qualify.
     */
   def retrieveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieve repred marks for user: $user and tags: $tags")
+    logger.debug(s"Retrieve repred marks for user $user and tags $tags")
     for {
       c <- futColl
       exst = d :~ "$exists" -> true :~ "$ne" -> ""
@@ -174,7 +184,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Retrieves all tags existing in current marks for the user. */
   def retrieveTags(user: UUID): Future[Set[String]] = {
-    logger.debug(s"Retrieve tags for user: $user")
+    logger.debug(s"Retrieve tags for user $user")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ curnt
@@ -197,7 +207,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * current and have all tags to qualify.
     */
   def search(user: UUID, query: String, tags: Set[String]): Future[Seq[Mark]] = {
-    logger.debug(s"Searching for marks for user: $user by text query: $query and tags: $tags")
+    logger.debug(s"Searching for marks for user $user by text query '$query' and tags $tags")
     for {
       c <- futColl
       sel0 = d :~ USR -> user :~ curnt
@@ -208,7 +218,9 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
       seq <- c.find(sel1 :~ searchScoreSelection,
-                    searchExcludedFields :~ searchScoreProjection).sort(searchScoreProjection).coll[Mark, Seq]()
+                    searchExcludedFields :~ searchScoreProjection)/*.sort(searchScoreProjection)*/
+        .coll[Mark, Seq]()
+
     } yield {
       logger.debug(s"${seq.size} marks were successfully retrieved")
       seq
@@ -286,7 +298,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * Returns updated mark states number.
     */
   def updateTag(user: UUID, tag: String, rename: String): Future[Int] = {
-    logger.debug(s"Updating tag: $tag for user: $user")
+    logger.debug(s"Updating tag '$tag' for user $user")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> tag
@@ -308,18 +320,18 @@ class MongoMarksDao(db: Future[DefaultDB]) {
   } yield ()
 
   /**
-    * Updates all user's marks with new user id, effectively moving them to another user.
+    * Updates all user's marks with new user ID, effectively moving them to another user.
     * Returns the number of mark states moved.
     */
   def move(thisUser: UUID, thatUser: UUID): Future[Int] = {
-    logger.debug(s"Moving marks from user: $thisUser to user: $thatUser")
+    logger.debug(s"Moving marks from user $thisUser to user $thatUser")
     for {
       c <- futColl
       wr <- c update(d :~ USR -> thatUser, d :~ "$set" -> (d :~ USR -> thisUser), multi = true)
       _ <- wr failIfError
     } yield {
       val count = wr.nModified
-      logger.debug(s"$count were successfully moveed from user: $thisUser to user: $thatUser")
+      logger.debug(s"$count were successfully moved from user $thisUser to user $thatUser")
       count
     }
   }
@@ -350,7 +362,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Removes a tag from all user's marks that have it. */
   def deleteTag(user: UUID, tag: String): Future[Int] = {
-    logger.debug(s"Deleting tag: $tag from all user's marks for user: $user")
+    logger.debug(s"Deleting tag '$tag' from all user's marks for user $user")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ s"$MARK.$TAGS" -> tag
@@ -365,7 +377,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Adds a set of tags to each current mark from a list of IDs. */
   def tag(user: UUID, ids: Seq[String], tags: Set[String]): Future[Int] = {
-    logger.debug(s"Adding tags to marks for user: $user")
+    logger.debug(s"Adding tags to marks for user $user")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
@@ -380,7 +392,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Removes a set of tags from each current mark from a list of IDs if they have any of the tags. */
   def untag(user: UUID, ids: Seq[String], tags: Set[String]): Future[Int] = {
-    logger.debug(s"Removing tags from marks for user: $user")
+    logger.debug(s"Removing tags from marks for user $user")
     for {
       c <- futColl
       sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
@@ -397,6 +409,15 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     logger.debug("Finding marks with missing public representation")
     for {
       c <- futColl
+
+/*
+
+      e <- if (MongoMarksDao.thrw) {
+        MongoMarksDao.thrw = false
+        Future.failed(new MongoMarksDao.SubDriverException())
+      } else Future.successful {}
+
+*/
 
       // selPub and selPriv must be consistent with Mark.representablePublic/Private
       selPub = d :~ PUBREPR -> (d :~ "$exists" -> false) :~
@@ -428,7 +449,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
       wr <- c update(sel, d :~ "$set" -> (d :~ PUBREPR -> reprId))
       _ <- wr failIfError;
-      _ = logger.debug(s"Updated mark $id with public representation ID $reprId")
+      _ = logger.debug(s"Updated mark $id with public representation $reprId")
     } yield ()
   }
 
