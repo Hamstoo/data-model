@@ -27,6 +27,36 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
       "I'm an inline-style link</a></p>"
   }
 
+  it should "(UNIT) find embedded links and tag them to html tags" in {
+
+    val nonFilteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
+      // this html link should be found and wrapped to anchor tag <a>
+      "https://www.inTextEmbeddedUntaggedLink.com </p>" +
+      // this html link should be skipped and stay as is
+      " <p>hello markdown link conversion text " +
+      "<a href=\"https://www.google.com\">" +
+      "I'm an inline-style link</a></p>" +
+      // this markdown link should be skipped and stay as is"+
+      "<p>hello markdown link conversion text " +
+      "[I'm markdown link](https://www.google.com)</p>"
+
+    val filteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
+      "<a href=\"https://www.inTextEmbeddedUntaggedLink.com\">" +
+      "https://www.inTextEmbeddedUntaggedLink.com</a> </p>" +
+      " <p>hello markdown link conversion text " +
+      "<a href=\"https://www.google.com\">" +
+      "I'm an inline-style link</a></p>" +
+      "<p>hello markdown link conversion text " +
+      "[I'm markdown link](https://www.google.com)</p>"
+
+   val s1 =  MarkData.embedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    println(filteredOfEmbeddedLinksTags)
+    println(s1)
+    s1 shouldEqual filteredOfEmbeddedLinksTags
+
+  }
+
+
   it should "(UNIT) try to prevent XSS attacks" in {
     // https://www.owasp.org/index.php/XSS_Filter_Evasion_Cheat_Sheet
     val a = MarkData("", None, None, None, Some("<SCRIPT SRC=http://xss.rocks/xss.js></SCRIPT>"), None)
