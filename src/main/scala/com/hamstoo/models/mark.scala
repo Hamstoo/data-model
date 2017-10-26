@@ -53,7 +53,7 @@ case class MarkData(
     // https://github.com/atlassian/commonmark-java
     // as well parses and renders markdown markup language
     val document: Node = parser.parse(embeddedLinksTagged)
-    
+
     val html = renderer.render(document)
 
     // example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
