@@ -4,6 +4,8 @@ import com.hamstoo.models.{MarkData, Page, Representation}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.{MediaType, TestHelper}
+import org.joda.time.DateTime
+import org.scalatest.OptionValues
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
@@ -15,6 +17,7 @@ class MongoRepresentationDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler
+    with OptionValues
     with TestHelper {
 
   lazy val reprsDao = new MongoRepresentationDao(getDB)
@@ -29,104 +32,17 @@ class MongoRepresentationDaoTests
     MarkData("a subject", Some(s"http://$domain.com"))
   }
 
-  /*"MongoRepresentaionDao" should {
-    "create mark to update rep id and retrieve rep id" in new system {
+  val repr = Representation(
+    link = None,
+    page = None,
+    header = None,
+    doctext = "doctext",
+    othtext = None,
+    keywords = None,
+    vectors = Map.empty[String, Representation.Vec],
+    autoGenKws = None)
 
-    val markData = randomMarkData
-
-      val mark = Mark(
-        UUID.fromString(uuid),
-        mark = markData,
-        repIds = Some(BSONObjectID.generate.stringify :: Nil))
-
-      //Create mark in DB
-      Try {
-        Await.result(
-          marksDao.create(mark),
-          Duration(testDuration, MILLISECONDS))
-      } map println
-      //  Results.Accepted mustEqual (resultCreateMark)
-      Thread.sleep(testDuration)
-
-      //Retrive marks
-      val marks = Await.result(
-        marksDao.receive(UUID.fromString(uuid)),
-        Duration(testDuration, MILLISECONDS))
-      marks.foreach(mark => mark.repIds.foreach(println))
-      val markIdToUpdate = marks.last.id
-      println("Last mark id to update " + markIdToUpdate)
-
-      val id = marks.head.repIds.get.last
-      println("Last repr id to update " + id)
-
-      val createdRepresentation = Await.result(
-        reprsDao.retrieveById(id),
-        Duration(testDuration, MILLISECONDS))
-
-      val newReprId = BSONObjectID.generate.stringify
-      println("newReprId to be recorded " + newReprId)
-      //Update Mark
-      val resultUpdateReprIdOfMark = Await.result(
-        marksDao
-          .updateMarkReprId(Set(mark.id), newReprId)
-          .map(_ => Results.Accepted),
-        Duration(testDuration, MILLISECONDS))
-      println(resultUpdateReprIdOfMark)
-      //   Results.Accepted mustEqual(resultUpdateReprIdOfMark)
-
-      //Retrieve update mark
-      val repIds: Seq[String] =
-        Await.result(
-          marksDao.receive(UUID.fromString(uuid), mark.id),
-          Duration(testDuration, MILLISECONDS))
-          .get
-          .repIds
-          .get
-      repIds.foreach(x => println("ID new " + x))
-      val getUodatedReprIdOfMark = repIds.last
-      repIds.contains(newReprId) mustEqual true
-      newReprId mustEqual getUodatedReprIdOfMark
-
-      /* val updatedRepresentation = Await.result(reprsDao.retrieveById(getUodatedReprIdOfMark),
-        Duration(testDuration, MILLISECONDS))
-      updatedRepresentation.get.timeThru should be > createdRepresentation.get.timeThru*/
-
-    }
-  }
-
-  // create new mark
-  "MongoMarksDao" should {
-    "* return mark if mark aleady exists and return Future[Option][None]" +
-      "if mark is created on a Mark creation moment" in new system {
-
-      val markData = randomMarkData
-      val mark = Mark(
-        UUID.fromString(uuid),
-        mark = markData,
-        repIds = Some(BSONObjectID.generate.stringify :: Nil))
-
-      //Create mark in DB
-     def createMark =  marksDao.create(mark)
-
-    val firstlyCreatedMark =   Await.result(createMark, Duration(testDuration, MILLISECONDS))
-    val secondlyCreatedMark = Await.result(createMark, Duration(testDuration, MILLISECONDS))
-
-      /**Test success conditions*/
-
-      /**Test condition 1 */
-      firstlyCreatedMark shouldNotEqual secondlyCreatedMark
-
-      /**Test condition 2 */
-      firstlyCreatedMark.isDefined shouldEqual  false
-
-      /**Test condition 3 */
-      secondlyCreatedMark.isDefined shouldEqual  true
-
-      /**Test condition 4 */
-      secondlyCreatedMark.get.mark.url shouldEqual markData.url
-
-    }
-  }*/
+  val nRepr = repr.copy(link = Some("link"))
 
   "MongoRepresentationDao" should "(UNIT) save representation" in {
 
@@ -163,7 +79,7 @@ class MongoRepresentationDaoTests
 
     id should not equal null
     id should not equal ""
-    Thread.sleep(2500)
+
     val id2: String = reprsDao.save(reprCopy).futureValue /*.map(id => id)*/
     println(s"Updated representation 2 id $id2")
     id shouldEqual id2 // this is because they have the same ID
@@ -181,4 +97,24 @@ class MongoRepresentationDaoTests
     reprs.head.timeFrom should not equal reprs.tail.head.timeFrom
     reprs.head.timeThru should be < reprs.tail.head.timeThru
   }
+
+  it should "(UNIT) insert representation" in {
+    reprsDao.insert(repr).futureValue shouldEqual repr
+  }
+
+  it should "(UNIT) retrieve representaton by id" in {
+    reprsDao.retrieveById(repr.id).futureValue.value shouldEqual repr
+  }
+
+  it should "(UNIT) update representation" in {
+    val time: Long = DateTime.now().getMillis
+
+    println(time)
+    reprsDao.update(nRepr, time).futureValue shouldEqual nRepr.copy(timeFrom = time)
+  }
+
+  it should "(UNIT) retrieve all by id" in {
+    reprsDao.retrieveAllById(repr.id).futureValue.size shouldEqual 2
+  }
+
 }
