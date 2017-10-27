@@ -8,7 +8,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocumentHandler, BSONInteger, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -79,49 +79,122 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
       key = DTXT -> Text :: OTXT -> Text :: KWORDS -> Text :: LNK -> Text :: Nil,
       options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
         s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
-    Nil toMap;
+      Nil toMap
 
   futColl map (_.indexesManager ensure indxs)
+
+  /**
+    * Inserting representation to database
+    * @param repr - representation
+    * @return - inserted representation
+    */
+  def insert(repr: Representation): Future[Representation] = {
+
+    val reprId = repr.id // for logging only
+    logger.info(s"Inserting Representation with id: $reprId")
+
+    for {
+      c <- futColl
+      wr <- c.insert(repr)
+      _ <- wr.failIfError
+    } yield {
+      logger.info(s"Representation with id: $reprId was successfully inserted")
+      repr
+    }
+  }
+
+  /**
+    * Update representation
+    * @param repr - new representation
+    * @param now - time
+    * @return - updated representation
+    */
+  def update(repr: Representation, now: Long = DateTime.now().getMillis): Future[Representation] = {
+    val reprId = repr.id
+    logger.info(s"Updating Representation with id: $reprId")
+
+    for {
+      c <- futColl
+      wr <- c update(d :~ ID -> reprId :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now)) // retire the old one
+      _ <- wr failIfError; // semicolon wouldn't be necessary if used `wr.failIfError` (w/ the dot) instead--weird
+      updatedRepr <- insert(repr.copy(timeFrom = now))
+    } yield {
+      logger.info(s"Representation with id: $reprId was successfully updated")
+      updatedRepr
+    }
+  }
 
   /**
     * Stores provided representation, optionally updating current state if repr ID already exists in database.
     * @return  Returns a `Future` repr ID of either updated or inserted repr.
     */
-  def save(repr: Representation, now: Long = DateTime.now.getMillis): Future[String] = for {
-    c <- futColl
+//  def save(repr: Representation, now: Long = DateTime.now.getMillis): Future[String] =
+  // for {
+//    c <- futColl
+//    // No longer checking if ID and (in case of public repr) link exist in the db, failing on conflict.  Instead
+//    // let the caller decide when to update an existing repr based on passing in a Representation with an ID that
+//    // already exists or doesn't.
+//    opRepr <- retrieveById(repr.id)
+//
+//    wr <- opRepr match {
+//      case Some(r) =>
+//        logger.info(s"Updating existing Representation(id=${r.id}, link=${r.link}, timeFrom=${r.timeFrom}, dt=${r.timeFrom.dt})")
+//        for {
+//          wr <- c update(d :~ ID -> repr.id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now)) // retire the old one
+//          _ <- wr failIfError; // semicolon wouldn't be necessary if used `wr.failIfError` (w/ the dot) instead--weird
+//          wr <- c insert repr.copy(timeFrom = now, timeThru = INF_TIME) // insert the new one
+//        } yield wr
+//
+//      case _ =>
+//        logger.info(s"Inserting new Representation(id=${repr.id}, link=${repr.link})")
+//        c insert repr.copy(timeFrom = now)
+//    }
+//    _ <- wr failIfError
+//
+//  } yield repr.id
 
-    // No longer checking if ID and (in case of public repr) link exist in the db, failing on conflict.  Instead
-    // let the caller decide when to update an existing repr based on passing in a Representation with an ID that
-    // already exists or doesn't.
-    opRepr <- retrieveById(repr.id)
+  /**
+    * Stores provided representation, optionally updating current state if repr ID already exists in database.
+    * @return  Returns a `Future` repr ID of either updated or inserted repr.
+    */
+  def save(repr: Representation, now: Long = DateTime.now.getMillis): Future[String] = {
+    val reprId = repr.id
 
-    wr <- opRepr match {
-      case Some(r) =>
-        logger.info(s"Updating existing Representation(id=${r.id}, link=${r.link}, timeFrom=${r.timeFrom}, dt=${r.timeFrom.dt})")
-        for {
-          wr <- c update(d :~ ID -> repr.id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now)) // retire the old one
-          _ <- wr failIfError; // semicolon wouldn't be necessary if used `wr.failIfError` (w/ the dot) instead--weird
-          wr <- c insert repr.copy(timeFrom = now, timeThru = INF_TIME) // insert the new one
-        } yield wr
+    logger.info(s"Saving Representation: $reprId")
 
+    retrieveById(reprId).flatMap {
+      case Some(_) =>
+        logger.info(s"Updating existing Representation(id=$reprId, link=${repr.link}, timeFrom=${repr.timeFrom}, dt=${repr.timeFrom.dt})")
+        update(repr, now)
       case _ =>
         logger.info(s"Inserting new Representation(id=${repr.id}, link=${repr.link})")
-        c insert repr.copy(timeFrom = now)
-    }
-    _ <- wr failIfError
-  } yield repr.id
+        insert(repr.copy(timeFrom = DateTime.now().getMillis))
+    } map(_.id)
+  }
 
   /** Retrieves a current (latest) representation by id. */
-  def retrieveById(id: String): Future[Option[Representation]] = for {
-    c <- futColl
-    opRep <- c.find(d :~ ID -> id :~ curnt).one[Representation]
-  } yield opRep
+  def retrieveById(id: String): Future[Option[Representation]] = {
+    logger.info(s"Retrieving Representation by id: $id")
+    for {
+      c <- futColl
+      opRep <- c.find(d :~ ID -> id :~ curnt).one[Representation]
+    } yield {
+      logger.info(s"Representation: $opRep was successfully retrieved")
+      opRep
+    }
+  }
 
   /** Retrieves all representations, including private and previous versions, by Id. */
-  def retrieveAllById(id: String): Future[Seq[Representation]] = for {
-    c <- futColl
-    seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
-  } yield seq
+  def retrieveAllById(id: String): Future[Seq[Representation]] = {
+    logger.info("Retrieving Representation by id")
+    for {
+      c <- futColl
+      seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
+    } yield {
+      logger.info(s"${seq.size} Representations were retrieved")
+      seq
+    }
+  }
 
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
