@@ -35,21 +35,18 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
       // this html link should be skipped and stay as is
       " <p>hello markdown link conversion text " +
       "<a href=\"https://www.google.com\">" +
-      "I'm an inline-style link</a></p>" +
-      // this markdown link should be skipped and stay as is"+
-      "<p>hello markdown link conversion text " +
-      "[I'm markdown link](https://www.google.com)</p>"
+      "I'm an inline-style link</a></p>"
+
 
     val filteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
       "<a href=\"https://www.inTextEmbeddedUntaggedLink.com\">" +
       "https://www.inTextEmbeddedUntaggedLink.com</a> </p>" +
       " <p>hello markdown link conversion text " +
       "<a href=\"https://www.google.com\">" +
-      "I'm an inline-style link</a></p>" +
-      "<p>hello markdown link conversion text " +
-      "[I'm markdown link](https://www.google.com)</p>"
+      "I'm an inline-style link</a></p>"
 
-   val s1 =  MarkData.embedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+
+   val s1 =  MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
     println(filteredOfEmbeddedLinksTags)
     println(s1)
     s1 shouldEqual filteredOfEmbeddedLinksTags
