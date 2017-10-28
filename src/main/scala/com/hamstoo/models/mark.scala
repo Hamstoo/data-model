@@ -44,21 +44,22 @@ case class MarkData(
 
   commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
-    // detects links in text only and make them clickable.
-    // ignores markdown links and html links to avoid double tags
-    // because they will be double tagged like <a><a>Link</a></a>...
-    val embeddedLinksTagged = embedLinksToHtmlLinks(c)
 
     // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
     // https://github.com/atlassian/commonmark-java
     // as well parses and renders markdown markup language
-    val document: Node = parser.parse(embeddedLinksTagged)
+    val document: Node = parser.parse(c)
 
     val html = renderer.render(document)
 
+    // detects embedded links in text only and make them clickable.
+    // ignores markdown links and html links (anchors) to avoid double tags
+    // because they will be double tagged like <a><a>Link</a></a>...
+    val embeddedLinksTagged = embeddedLinksToHtmlLinks(html)
+
     // example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
     // convert that &ldquo; back to a < character
-    val html2 = StringEscapeUtils.unescapeHtml4(html)
+    val html2 = StringEscapeUtils.unescapeHtml4(embeddedLinksTagged)
 
     // issue 121 needs to be implemented here, before `Jsoup.clean` to safeguard against XSS
 
@@ -103,11 +104,11 @@ object MarkData {
 
   val commentMergeSeparator: String = "\n\n---\n\n"
 
-  // Find all markdown urls and convert them to links
-  // original val ignoreTagsAndfindLinksInText = """(http|ftp)://(.*)\.([/a-z]+)""".r
-  def embedLinksToHtmlLinks(text: String): String = {
+  // Find all embed urls and convert them to html <a> links (anchors)
+  // regex designed to ignore html link tag and markdown link tag
+  def embeddedLinksToHtmlLinks(text: String): String = {
     val ignoreTagsAndFindLinksInText =
-      """(?<!href="|\]\()(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])""".r
+      """(?<!href=")(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])""".r
     ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\""+m.group(0)+"\">"+m.group(0)+"</a>")
 
   }
