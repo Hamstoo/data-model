@@ -29,11 +29,11 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
   }
 
   it should "(UNIT) markdown should detect embedded domain link" in {
-    val a = MarkData("", None, None, None, Some("* a lonely list item"), None)
-    a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
-    val b = a.copy(comment = Some("hello markdown link conversion text "+
+
+    val b = emptyMarkData.copy(comment = Some("hello markdown link conversion text "+
       StringEscapeUtils.unescapeHtml4("https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'" +
         "&kjdk9238493kmfdsdfdsf='sdf'")))
+    
     b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
       "<a href=\""+StringEscapeUtils.escapeHtml4(
       "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'")+
@@ -43,10 +43,10 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
   }
 
   it should "(UNIT) markdown should detect embedded ip link" in {
-    val a = MarkData("", None, None, None, Some("* a lonely list item"), None)
-    a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
-    val b = a.copy(comment = Some("hello markdown link conversion text "+
+
+    val b = emptyMarkData.copy(comment = Some("hello markdown link conversion text "+
       StringEscapeUtils.unescapeHtml4("https://216.58.209.99:90/")))
+
     b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
       "<a href=\""+StringEscapeUtils.escapeHtml4(
       "https://216.58.209.99:90/")+"\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
@@ -105,10 +105,10 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
     }
 
   it should "(UNIT) skip and whitelist <a> tagged link in function `commentEncoded`" in {
-    val a = MarkData("", None, None, None, Some("* a lonely list item"), None)
-    a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
-    val b = a.copy(comment = Some("hello markdown link conversion text "+
+
+    val b = emptyMarkData.copy(comment = Some("hello markdown link conversion text "+
       StringEscapeUtils.unescapeHtml4("<a href=\"https://www.google.com\">I'm an inline-style link</a>")))
+
     b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
       "<a href=\""+StringEscapeUtils.escapeHtml4(
       "https://www.google.com")+"\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
