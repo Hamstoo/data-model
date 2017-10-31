@@ -33,7 +33,7 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
     val b = emptyMarkData.copy(comment = Some("hello markdown link conversion text "+
       StringEscapeUtils.unescapeHtml4("https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'" +
         "&kjdk9238493kmfdsdfdsf='sdf'")))
-    
+
     b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
       "<a href=\""+StringEscapeUtils.escapeHtml4(
       "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'")+
@@ -66,7 +66,6 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
     println(filteredOfEmbeddedLinksTags)
     println(s1)
     s1 shouldEqual filteredOfEmbeddedLinksTags
-
   }
 
     it should "(UNIT) find embedded link with domain name and tag it as <a> tag" in {
@@ -82,7 +81,6 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
       println(filteredOfEmbeddedLinksTags)
       println(s1)
       s1 shouldEqual filteredOfEmbeddedLinksTags
-
     }
 
     it should "(UNIT) skip <a> tagged link in function `embeddedLinksToHtmlLinks` " in {
@@ -101,7 +99,6 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
       println(filteredOfEmbeddedLinksTags)
       println(s1)
       s1 shouldEqual filteredOfEmbeddedLinksTags
-
     }
 
   it should "(UNIT) skip and whitelist <a> tagged link in function `commentEncoded`" in {
@@ -144,7 +141,6 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
       merged.mark.comment.get shouldEqual (mdA.comment.get + "\n\n---\n\n" + mdB.comment.get)
       merged.pubRepr shouldEqual mA.pubRepr
       merged.privRepr shouldEqual mA.privRepr
-
     }
 
 //    it should "throw exception in different UUID" in {
