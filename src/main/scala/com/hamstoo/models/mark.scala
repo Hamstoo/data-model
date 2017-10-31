@@ -46,12 +46,10 @@ case class MarkData(
 
   commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
-
     // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
     // https://github.com/atlassian/commonmark-java
     // as well parses and renders markdown markup language
     val document: Node = parser.parse(c)
-
 
     /* detects embedded links in text only and make them clickable.
     ignores html links (anchors) to avoid double tags because
@@ -128,7 +126,6 @@ object MarkData {
       "([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" // allowed symbols and parameters
     val ignoreTagsAndFindLinksInText: Regex = regexStr.r
        ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\""+m.group(0)+"\">"+m.group(0)+"</a>")
-
   }
 }
 
