@@ -42,7 +42,7 @@ package object utils {
     MongoConnection.parseURI(uri).map(MongoDriver().connection) match {
       case Success(c) =>
         Logger.info(s"Established connection to MongoDB via URI: $uri")
-        c.database(name)
+        c.database(name) // this can fail on startup, but that doesn't mean we should re-instantiate the entire connection pool
       case Failure(e) =>
         e.printStackTrace()
         println("Failed to establish connection to MongoDB; retrying...")

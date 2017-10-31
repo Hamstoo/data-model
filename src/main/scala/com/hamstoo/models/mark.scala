@@ -156,8 +156,12 @@ case class Mark(
   /** Use the private repr when available, o/w use the public one. */
   def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
 
-  /** Return true if the mark is representable but not yet represented. */
-  def representablePublic: Boolean = pubRepr.isEmpty && mark.url.isDefined
+  /**
+    * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
+    * representations, even if the mark doesn't have a URL, we'll still try to derive a representation from the subject
+    * in case LinkageService.digest timed out when originally trying to generate a title for the mark (issue #195).
+    */
+  def representablePublic: Boolean = pubRepr.isEmpty
   def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
@@ -244,16 +248,21 @@ object Mark extends BSONHandlers {
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
   val MERGEID: String = nameOf[Mark](_.mergeId)
+
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)
-  val SUBJ: String = nameOf[MarkData](_.subj)
-  val URL: String = nameOf[MarkData](_.url)
-  val STARS: String = nameOf[MarkData](_.rating)
-  val TAGS: String = nameOf[MarkData](_.tags)
-  val COMNT: String = nameOf[MarkData](_.comment)
-  val COMNTENC: String = nameOf[MarkData](_.commentEncoded)
-  val TABVIS: String = nameOf[MarkAux](_.tabVisible)
-  val TABBG: String = nameOf[MarkAux](_.tabBground)
+
+  // the 'x' is for "extended" (changing these from non-x has already identified one bug)
+  val SUBJx: String = MARK + "." + nameOf[MarkData](_.subj)
+  val URLx: String = MARK + "." + nameOf[MarkData](_.url)
+  val STARSx: String = MARK + "." + nameOf[MarkData](_.rating)
+  val TAGSx: String = MARK + "." + nameOf[MarkData](_.tags)
+  val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
+  val COMNTENCx: String = MARK + "." + nameOf[MarkData](_.commentEncoded)
+
+  val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
+  val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
+
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
