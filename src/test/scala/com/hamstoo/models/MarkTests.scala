@@ -27,26 +27,51 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
       "I'm an inline-style link</a></p>"
   }
 
-  it should "(UNIT) find embedded links and tag them to html tags" in {
+  it should "(UNIT) find embedded link with ip and tag it as <a> tag" in {
 
     val nonFilteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
-      // this html link should be found and wrapped to anchor tag <a>
-      "https://www.inTextEmbeddedUntaggedLink.com </p>" +
-      // this html link should be skipped and stay as is
-      " <p>hello markdown link conversion text " +
-      "<a href=\"https://www.google.com\">" +
-      "I'm an inline-style link</a></p>"
-
+      "https://234.234.234.com:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf' </p>"
 
     val filteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
-      "<a href=\"https://www.inTextEmbeddedUntaggedLink.com\">" +
-      "https://www.inTextEmbeddedUntaggedLink.com</a> </p>" +
+      "<a href=\"https://234.234.234.com:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'\">" +
+      "https://234.234.234.com:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'</a> </p>"
+
+    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    println(filteredOfEmbeddedLinksTags)
+    println(s1)
+    s1 shouldEqual filteredOfEmbeddedLinksTags
+
+  }
+
+  it should "(UNIT) find embedded link with domain name and tag it as <a> tag" in {
+
+    val nonFilteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
+      "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf' </p>"
+
+    val filteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
+      "<a href=\"https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'\">" +
+      "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'</a> </p>"
+
+    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    println(filteredOfEmbeddedLinksTags)
+    println(s1)
+    s1 shouldEqual filteredOfEmbeddedLinksTags
+
+  }
+
+  it should "(UNIT) skip <a> tagged link" in {
+
+    val nonFilteredOfEmbeddedLinksTags =
       " <p>hello markdown link conversion text " +
       "<a href=\"https://www.google.com\">" +
       "I'm an inline-style link</a></p>"
 
+    val filteredOfEmbeddedLinksTags =
+      " <p>hello markdown link conversion text " +
+      "<a href=\"https://www.google.com\">" +
+      "I'm an inline-style link</a></p>"
 
-   val s1 =  MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
     println(filteredOfEmbeddedLinksTags)
     println(s1)
     s1 shouldEqual filteredOfEmbeddedLinksTags

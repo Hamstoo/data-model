@@ -104,16 +104,23 @@ object MarkData {
 
   val commentMergeSeparator: String = "\n\n---\n\n"
 
-  // Find all embed urls and convert them to html <a> links (anchors)
-  // regex designed to ignore html link tag and markdown link tag
+  /** Find all embed urls and convert them to html <a> links (anchors)
+    *regex designed to ignore html link tag and markdown link tag
+    * 1st regex part is (?<!href="), it checks that found link should not be prepended by href=" expression,
+    * i.e. take if 2nd regex part is "not prepended by" 1st part.
+    * 2nd regex part which follows after (?<!href=") is looking for urls format
+      1st part of 2nd regex part ((?:https?|ftp)://) checks protocol
+      2nd part of 2nd regex part checks  www, domain/ip/port, zone, endpoint, query paramters*/
   def embeddedLinksToHtmlLinks(text: String): String = {
     val ignoreTagsAndFindLinksInText =
-      """(?<!href=")(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])""".r
-    ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\""+m.group(0)+"\">"+m.group(0)+"</a>")
+    """(?<!href=")((?:https?|ftp)://)((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])+\.[a-zA-Z]{2,3}(:[a-zA-‌​Z0-9]*)?/?([a-zA-Z0-‌​9\-\._\?\,\'/\\\+&am‌​p;%\$#\=~])*[^\.\,\)‌​\(\s])""".r
+       ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\""+m.group(0)+"\">"+m.group(0)+"</a>")
 
   }
-
 }
+
+//  (?:\\S+(?::\\S*)?@)?(?:(?!(?:10|127)(?:\\.\\d{1,3}){3})(?!(?:169\\.254|192\\.168)(?:\\.\\d{1,3}){2})(?!172\\.(?:1[6-9]|2\\d|3[0-1])(?:\\.\\d{1,3}){2})(?:[1-9]\\d?|1\\d\\d|2[01]\\d|22[0-3])(?:\\.(?:1?\\d{1,2}|2[0-4]\\d|25[0-5])){2}(?:\\.(?:[1-9]\\d?|1\\d\\d|2[0-4]\\d|25[0-4]))|(?:(?:[a-z\\u00a1-\\uffff0-9]-*)*[a-z\\u00a1-\\uffff0-9]+)(?:\\.(?:[a-z\\u00a1-\\uffff0-9]-*)*[a-z\\u00a1-\\uffff0-9]+)*(?:\\.(?:[a-z\\u00a1-\\uffff]{2,}))\\.?)(?::\\d{2,5})?(?:[/?#]\\S*)?$
+
 
 /**
   * This is the data structure used to store external content, e.g. HTML files or PDFs.  It could be private content
