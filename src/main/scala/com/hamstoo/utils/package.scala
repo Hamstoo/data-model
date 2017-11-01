@@ -59,7 +59,11 @@ package object utils {
     /** Short for `.cursor` with `.collect` consecutive calls with default error handler. */
     def coll[E, C[_] <: Iterable[_]](n: Int = -1)
                                     (implicit r: Reader[E], cbf: CanBuildFrom[C[_], E, C[E]]): Future[C[E]] = {
-      qb.cursor[E]().collect[C](n, Cursor.FailOnError[C[E]]())
+
+      // "In most cases, modifying the batch size will not affect the user or the application, as the mongo shell and
+      // most drivers return results as if MongoDB returned a single batch."
+      //   [https://docs.mongodb.com/manual/reference/method/cursor.batchSize/]
+      qb/*.options(QueryOpts().batchSize(n))*/.cursor[E]().collect[C](n, Cursor.FailOnError[C[E]]())
     }
   }
 
