@@ -90,7 +90,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Retrieves a mark by user and ID, None if not found.  Retrieves current mark unless timeThru is specified. */
   def retrieve(user: UUID, id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
-    logger.debug(s"Retrieving mark for user $user and id $id")
+    logger.debug(s"Retrieving mark for user $user and ID $id")
     for {
       c <- futColl
       optEnt <- c.find(d :~ USR -> user :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
@@ -114,12 +114,12 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   /** Retrieves all marks by ID, including previous versions, sorted by `timeFrom` descending. */
   def retrieveAllById(id: String): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving all marks by id $id")
+    logger.debug(s"Retrieving all marks by ID $id")
     for {
       c <- futColl
       seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
-      logger.debug(s"${seq.size} marks were successfully retrieved by id")
+      logger.debug(s"${seq.size} marks were successfully retrieved by ID")
       seq
     }
   }
@@ -130,7 +130,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * implement more complex logic based on representations similar to repr-engine's `dupSearch`.
     */
   def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = {
-    logger.debug(s"Retrieving marks by url $url and user $user")
+    logger.debug(s"Retrieving marks by URL $url and user $user")
     for {
       c <- futColl
       seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ curnt).coll[Mark, Seq]()
@@ -252,7 +252,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       sel = d :~ USR -> user :~ ID -> id :~ curnt :~ URLx -> (d :~ "$exists" -> false)
       doc <- c.find(sel, d :~ SUBJx -> 1 :~ "_id" -> 0).one[BSONDocument]
       oldSubj = doc.get.getAs[BSONDocument](MARK).get.getAs[String](SUBJx.split(raw"\.")(1)).getOrElse("")
-      _ = logger.debug(s"Updating subject from '$oldSubj' to '$newSubj' for mark $id")
+      _ = logger.info(s"Updating subject from '$oldSubj' to '$newSubj' for mark $id")
       wr <- c.update(sel, d :~ "$set" -> (d :~ SUBJx -> newSubj :~ URLx -> oldSubj))
       _ <- wr.failIfError
     } yield {
@@ -432,9 +432,11 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       selPriv = d :~ PRVREPR -> (d :~ "$exists" -> false) :~
                      PAGE -> (d :~ "$exists" -> true)
 
-      seq <- c.find(d :~ "$or" -> BSONArray(selPub, selPriv)).coll[Mark, Seq](n)
+      sel = d :~ "$or" -> Seq(selPub, selPriv) // Seq gets automatically converted to BSONArray
+      //_ = logger.info(BSONDocument.pretty(sel))
+      seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
-      logger.debug(s"${seq.size} marks without pub repr were retrieved")
+      logger.debug(s"${seq.size} marks with missing representations were retrieved")
       seq
     }
   }
