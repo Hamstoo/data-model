@@ -110,14 +110,14 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
             case 308 =>
               res.header("Location") match {
                 case Some(newUrl) =>
-                  //Logger.info(s"Following redirect: ${response.status} newUrl = $newUrl, response.headers = ${response.headers}") // Logger.debug doesn't work
+                  Logger.info(s"Following redirect: ${res.status} newUrl = $newUrl, res.headers = ${res.headers}") // Logger.debug doesn't work
                   recget(newUrl, depth + 1)
                 case _ =>
-                  //Logger.info(s"Not following redirect: ${response.status} url = $url, response.headers = ${response.headers}") // Logger.debug doesn't work
+                  Logger.info(s"Not following redirect: ${res.status} url = $url, res.headers = ${res.headers}") // Logger.debug doesn't work
                   Future.successful((url, res))
               }
             case _ =>
-              //Logger.info(s"No redirect: ${response.status} url = $url, response.headers = ${response.headers}, response.body = ${response.body.take(100)}") // Logger.debug doesn't work
+              Logger.info(s"No redirect: ${res.status} url = $url, res.headers = ${res.headers}, res.body = ${res.body.take(100)}") // Logger.debug doesn't work
               Future.successful((url, res))
           }
         }
