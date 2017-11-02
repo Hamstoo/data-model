@@ -15,7 +15,9 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
+import scala.util.control.NonFatal
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -448,15 +450,21 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * marks over and over.
     */
   def updatePublicReprId(id: String, timeFrom: Long, reprId: String): Future[Unit] = {
-    logger.debug(s"Updating mark $id with public representation ID $reprId")
+    logger.info(s"Updating mark $id ($timeFrom) with public representation ID: '$reprId'")
 
-    for {
+    val fut = for {
       c <- futColl
       sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
       wr <- c update(sel, d :~ "$set" -> (d :~ PUBREPR -> reprId))
+      _ = logger.info(s"Mark $id failIfError?")
       _ <- wr failIfError;
-      _ = logger.debug(s"Updated mark $id with public representation $reprId")
+      _ = logger.info(s"Updated mark $id with public representation $reprId")
     } yield ()
+
+    // the c.update above seems to be hanging--too many concurrent database requests perhaps?
+    // and there isn't an Await in any of the calling code so it just hangs the app forever and ever
+    logger.info(s"Awaiting future of mark $id")
+    Await.ready(fut, 29 seconds)
   }
 
   /**
@@ -493,6 +501,6 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       _ <- wr.failIfError
     } yield () else Future.successful {}
 
-    _ = logger.debug(s"Updated mark $id with private representation $reprId")
+    _ = logger.info(s"Updated mark $id with private representation $reprId")
   } yield ()
 }
