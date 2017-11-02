@@ -20,12 +20,12 @@ class MongoStatsDaoTests extends FlatSpecWithMatchers
   lazy val marksDao = new MongoMarksDao(getDB)
 
   val usrId: UUID = UUID.randomUUID()
-  val tagSet = Some(Set("tag1, tag2"))
-  val cmt = Some("Query")
-  val pubRepr = Some("repr")
-  val newMarkData = MarkData("a NEW subject1", Some("https://github.com"))
-  val m1 = Mark(usrId, mark =  MarkData("a subject342", Some("http://hamstoo.com"), tags = tagSet, comment = cmt))
-  val m2 = Mark(usrId, mark = MarkData("a subject1", Some("http://hamstoo2.com"), tags = tagSet), pubRepr = pubRepr)
+  val tagSet = Some(Set("tag1asdasda, tag2adasd"))
+  val cmt = Some("Queryasdasd")
+  val pubRepr = Some("reprasdsad")
+  val newMarkData = MarkData("a NEW subjфывыфвect1", Some("https://github.com"))
+  val m1 = Mark(usrId, mark =  MarkData("a subjasdect342", Some("http://hamstoo231321.com"), tags = tagSet, comment = cmt))
+  val m2 = Mark(usrId, mark = MarkData("a subasdject1", Some("http://hamstoo223.com"), tags = tagSet), pubRepr = pubRepr)
 
 
   "MongoHighlightDao" should "(UNIT) insert highlights" in {
