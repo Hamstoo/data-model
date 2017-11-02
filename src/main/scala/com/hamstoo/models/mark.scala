@@ -121,9 +121,7 @@ object MarkData {
     val regexStr =
       "(?<!href=\")"+ // ignore http pattern prepended by 'href=' expression
       "((?:https?|ftp)://)"+ // check protocol
-      "((([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*"+ // domain name
-      "(([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])+\\.[a-zA-Z]{2,3}(:[a-zA-‌​Z0-9]*))?/?"+ // domain zone
-      "([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" // allowed symbols and parameters
+      "(([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" //allowed anything which is allowed in url
     val ignoreTagsAndFindLinksInText: Regex = regexStr.r
        ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\""+m.group(0)+"\">"+m.group(0)+"</a>")
   }
