@@ -32,4 +32,6 @@ trait DataInfo {
 
   val urlHTML = "http://docs.scala-lang.org/overviews/core/futures.html"
   val urlPDF = "http://www.softwareresearch.net/fileadmin/src/docs/teaching/SS13/ST/ActorsInScala.pdf"
+
+  val emptyMarkData = MarkData("", None, None, None, None, None)
 }
