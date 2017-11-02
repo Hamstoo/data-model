@@ -58,4 +58,5 @@ pomExtra :=
     <connection>scm:git:git@github.com:Hamstoo/data-model.git</connection>
   </scm>
 
+// there are unfortunate dependencies between the tests in MongoMarksDaoTests, and likely in other places as well
 parallelExecution := false

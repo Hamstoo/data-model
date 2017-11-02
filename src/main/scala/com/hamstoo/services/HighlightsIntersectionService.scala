@@ -20,7 +20,10 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
     // get all highlights by markId
     hls <- hlightsDao.retrieveByMarkId(highlight.usrId, highlight.markId)
 
-    // merge same-element text of the new highlight (is `sortBy(_.path)` required here?)
+    // merge same-element text of the new highlight (It's assumed that frontend sends xpaths sorted by their position
+    // in the document. Ideally there should be a check leading to rejecting requests to add highlights with error
+    // message for a frontend dev to be aware of invalid requests.
+    //   [https://github.com/Hamstoo/hamstoo/issues/178#issuecomment-339381263])
     hl = highlight.copy(pos = highlight.pos.copy(elements = mergeSameElems(highlight.pos.elements)))
 
     // collect overlapping/touching/joinable existing highlights
