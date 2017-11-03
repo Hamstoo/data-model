@@ -26,6 +26,7 @@ class MongoStatsDaoTests extends FlatSpecWithMatchers
   val newMarkData = MarkData("a NEW subjфывыфвect1", Some("https://github.com"))
   val m1 = Mark(usrId, mark =  MarkData("a subjasdect342", Some("http://hamstoo231321.com"), tags = tagSet, comment = cmt))
   val m2 = Mark(usrId, mark = MarkData("a subasdject1", Some("http://hamstoo223.com"), tags = tagSet), pubRepr = pubRepr)
+  val m3 = Mark(usrId, mark = MarkData("a subasdject1asdasd", Some("http://hamstooasdasd223.com"), tags = tagSet), pubRepr = pubRepr)
 
 
   "MongoStatsDao" should "(UNIT) calculate marks inserted by userId" in {
@@ -44,8 +45,12 @@ class MongoStatsDaoTests extends FlatSpecWithMatchers
     //TODO update marks
     val totalMarks: Future[Stats] =
       for {
-        mi1 <- marksDao.insert(m1)
-        mi2 <- marksDao.insert(m2)
+        mi1 <- marksDao.update(m1)
+        mi2 <- marksDao.update(m2)
+        mi3 <- marksDao.update(m1)
+        mi4 <- marksDao.update(m2)
+        mi5 <- marksDao.insert(m3)
+        intresult <- marksDao.delete()
         totalMarks <- statsDao.stats(usrId, 0)
       } yield totalMarks
 
