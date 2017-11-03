@@ -28,15 +28,27 @@ class MongoStatsDaoTests extends FlatSpecWithMatchers
   val m2 = Mark(usrId, mark = MarkData("a subasdject1", Some("http://hamstoo223.com"), tags = tagSet), pubRepr = pubRepr)
 
 
-  "MongoHighlightDao" should "(UNIT) insert highlights" in {
+  "MongoStatsDao" should "(UNIT) calculate marks inserted by userId" in {
 
-   val totalMarks: Future[Stats] = for {
-     mi1 <- marksDao.insert(m1)
-     mi2 <- marksDao.insert(m2)
-     totalMarks <- statsDao.stats(usrId, 0)
-    } yield {
-      totalMarks
-    }
+    val totalMarks: Future[Stats] =
+      for {
+        mi1 <- marksDao.insert(m1)
+        mi2 <- marksDao.insert(m2)
+        totalMarks <- statsDao.stats(usrId, 0)
+      } yield totalMarks
+
+      totalMarks.futureValue.marks shouldEqual 2
+  }
+
+  it should "(UNIT) calculate marks updated by userId" in {
+    //TODO update marks
+    val totalMarks: Future[Stats] =
+      for {
+        mi1 <- marksDao.insert(m1)
+        mi2 <- marksDao.insert(m2)
+        totalMarks <- statsDao.stats(usrId, 0)
+      } yield totalMarks
+
     totalMarks.futureValue.marks shouldEqual 2
   }
 
