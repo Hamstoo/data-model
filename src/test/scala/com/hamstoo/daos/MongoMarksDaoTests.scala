@@ -82,6 +82,14 @@ class MongoMarksDaoTests
     marksDao.update(uuid1, m1.id, newMarkData).futureValue.mark shouldEqual newMarkData
   }
 
+  it should "(UNIT) delete mark by uuid, id" in {
+    marksDao.delete(uuid1, m1.id).futureValue shouldEqual 1
+  }
+
+  it should "(UNIT) check if mark isAutosavable (false if it was manually deleted) by mark url, uuid" in {
+    marksDao.isAutosavable(m1.mark.url.get, uuid1).futureValue shouldEqual false
+  }
+
   it should "(UNIT) find marks with missing reprs, both current and not" in {
     marksDao.findMissingReprs(-1).futureValue.filter(_.userId == uuid1).map(_.id) shouldEqual Seq(m1.id, m1.id)
   }
