@@ -503,4 +503,28 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
     _ = logger.info(s"Updated mark $id with private representation $reprId")
   } yield ()
+
+  /**
+    * 1st it checks if there is actual mark exists and returns false
+    * to avoid autosave
+    * 2nd it retrieves count of deleted marks by user and URL, 0 if not found.
+    * if previosly deleted marks found then it returns false to avoid resave mark, issue-193
+    * This is used in the Chrome extension to
+    * avoid autosaving of same mark if it was deleted by user and if it already exists.
+    */
+  def isAutosavable(url: String, user: UUID): Future[Boolean] = {
+    logger.debug(s"Check isMarkDeleted by URL $url and user $user")
+
+    def checkForDeletedMarks() = {
+      for {
+        c <- futColl
+        seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> ( d :~ "$lt" -> Long.MaxValue)).coll[Mark, Seq]()
+      } yield {
+        val optMark = seq find (_.mark.url.contains(url))
+        logger.debug(s"$optMark mark was successfully retrieved")
+        optMark.isEmpty
+      }
+    }
+    retrieveByUrl(url, user).flatMap(_.fold(checkForDeletedMarks)(m => Future.successful(false)))
+  }
 }
