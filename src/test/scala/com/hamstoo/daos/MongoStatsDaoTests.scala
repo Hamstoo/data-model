@@ -71,9 +71,4 @@ class MongoStatsDaoTests extends FlatSpecWithMatchers
 
     //TODO tests for: punch, import
 
-    //TODO
-
-    move Daos vars to constants in projects
-
-
 }
