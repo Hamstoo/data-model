@@ -512,7 +512,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * This is used in the Chrome extension to
     * avoid autosaving of same mark if it was deleted by user and if it already exists.
     */
-  def isAutosavable(url: String, user: UUID): Future[Boolean] = {
+  def isNotSavedAndNotDeletedPreviosly(url: String, user: UUID): Future[Boolean] = {
     logger.debug(s"Check isMarkDeleted by URL $url and user $user")
 
     def checkForDeletedMarks() = {
