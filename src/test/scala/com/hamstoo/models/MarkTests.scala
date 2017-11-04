@@ -1,7 +1,4 @@
 package com.hamstoo.models
-
-import java.util.UUID
-
 import com.hamstoo.test.FlatSpecWithMatchers
 import com.hamstoo.utils.DataInfo
 import org.apache.commons.text.StringEscapeUtils
@@ -12,8 +9,7 @@ import org.apache.commons.text.StringEscapeUtils
 class MarkTests extends FlatSpecWithMatchers with DataInfo {
 
   "Mark" should "(UNIT) be consistently hashable, regardless of its `score`" in {
-    val uuid = UUID.randomUUID
-    val a = Mark(uuid, mark = MarkData("a subject", None))
+    val a = Mark(userId, mark = MarkData("a subject", None))
     val b = a.copy(score = Some(3.4))
     a.hashCode shouldEqual b.hashCode
     a shouldEqual b
@@ -143,11 +139,11 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
       merged.privRepr shouldEqual mA.privRepr
     }
 
-//    it should "throw exception in different UUID" in {
+//    it should "throw exception in different userId" in {
 //      // different userIds should throw an AssertionError
 //
 //      val thrown = intercept[AssertionError] {
-//        val c = Mark(UUID.randomUUID, mark = mdB)
+//        val c = Mark(userId.randomuserId, mark = mdB)
 //        mA.merge(c)
 //      }
 //
