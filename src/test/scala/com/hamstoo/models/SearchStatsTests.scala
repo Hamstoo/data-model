@@ -3,6 +3,9 @@ package com.hamstoo.models
 import com.hamstoo.models.SearchStats.{ResultStats, Stat}
 import com.hamstoo.test.FlatSpecWithMatchers
 
+/**
+  * SearchStat model unit tests
+  */
 class SearchStatsTests extends FlatSpecWithMatchers {
 
   val query = "some query"

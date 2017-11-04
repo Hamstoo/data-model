@@ -3,7 +3,7 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
-import com.hamstoo.models.{Stats, StatsDay}
+import com.hamstoo.models.{Mark, Stats, StatsDay}
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -26,7 +26,7 @@ class MongoStatsDao(db: Future[DefaultDB]) {
 
   private val IMPT = "imports"
   private val TIME = "time"
-  private val USR = "user"
+  private val USR = Mark.USR
 
   /* Ensure the mongo collection has proper index: */
   private val indxs: Map[String, Index] =
@@ -52,7 +52,7 @@ class MongoStatsDao(db: Future[DefaultDB]) {
     cS <- futStatsCol
     cI <- futImportsCol
     cE <- futEntriesCol
-    marks <- cE count Some(d :~ USR -> userId.toString :~ TIMETHRU -> Long.MaxValue)
+    marks <- cE count Some(d :~ USR -> userId :~ TIMETHRU -> INF_TIME)
     imports <- cI.find(d :~ "_id" -> userId.toString).one[BSONDocument]
     /* Count total number of times user added a mark: */
     total <- cS count Some(d :~ USR -> userId.toString)

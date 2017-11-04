@@ -18,10 +18,8 @@ class MongoMarksDaoTests
     with OptionValues
     with TestHelper {
 
-  lazy val marksDao = new MongoMarksDao(getDB)
-
-  val uuid1 = UUID.randomUUID()
-  val uuid2 = UUID.randomUUID()
+  val uuid1 = userId
+  val uuid2 = userId
 
   val tagSet = Some(Set("tag1, tag2"))
   val cmt = Some("Query")

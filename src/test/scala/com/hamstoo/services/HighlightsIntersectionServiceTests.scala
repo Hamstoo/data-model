@@ -3,9 +3,9 @@ package com.hamstoo.services
 import java.util.UUID
 
 import com.hamstoo.daos.MongoHighlightDao
-import com.hamstoo.models.{Highlight, Mark}
+import com.hamstoo.models.Highlight
 import com.hamstoo.test.FlatSpecWithMatchers
-import com.hamstoo.utils.generateDbId
+import com.hamstoo.utils.DataInfo
 import org.scalatest.mockito.MockitoSugar
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -13,12 +13,10 @@ import scala.concurrent.ExecutionContext.Implicits.global
 /**
   * Tests of highlights intersection code.
   */
-class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with MockitoSugar {
+class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with MockitoSugar with DataInfo {
 
   val hlightsDao: MongoHighlightDao = mock[MongoHighlightDao]
   val hlIntersectionSvc: HighlightsIntersectionService = new HighlightsIntersectionService(hlightsDao)
-
-  val markId: String = generateDbId(Mark.ID_LENGTH)
 
   val paths: Seq[String] = for {i <- 0 to 9} yield s"html/body/p$i"
 
@@ -54,7 +52,7 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mocki
     }
     Highlight(
       UUID.randomUUID(),
-      markId = markId,
+      markId = this.markId,
       pos = Highlight.Position(els, initIndx),
       preview = Highlight.Preview("", ("" /: els) (_ + _.text), ""))
   }

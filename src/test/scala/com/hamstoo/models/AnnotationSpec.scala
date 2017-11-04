@@ -4,6 +4,9 @@ import java.util.UUID
 
 import com.hamstoo.test.FlatSpecWithMatchers
 
+/**
+  * Unit tests for annotations sorting
+  */
 class AnnotationSpec extends FlatSpecWithMatchers {
 
   import AnnotationSpec._

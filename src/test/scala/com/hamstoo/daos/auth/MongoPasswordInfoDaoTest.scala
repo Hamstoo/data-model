@@ -10,7 +10,9 @@ import com.hamstoo.utils.TestHelper
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import org.scalatest.OptionValues
-
+/**
+  * CRUD Unit tests for class MongoPasswordInfoDao
+  **/
 class MongoPasswordInfoDaoTest
   extends FlatSpecWithMatchers
     with MongoEnvironment
@@ -18,17 +20,13 @@ class MongoPasswordInfoDaoTest
     with OptionValues
     with TestHelper {
 
-  lazy val userDao = new MongoUserDao(getDB)
-  lazy val passDao = new MongoPasswordInfoDao(getDB)
-
   val provider = "some provider"
-  val uuid: UUID = UUID.randomUUID()
 
-  val loginInfo = LoginInfo(provider, uuid.toString)
+  val loginInfo = LoginInfo(provider,userId.toString)
 
   val passInfo = PasswordInfo("token", "secret")
 
-  val user = User(uuid, UserData(), Profile(loginInfo, confirmed = true, None, None, None, None) :: Nil)
+  val user = User(userId, UserData(), Profile(loginInfo, confirmed = true, None, None, None, None) :: Nil)
 
   "MongoOAuth1InfoDao" should "* (UNIT) add auth1 info" in {
     userDao.save(user).futureValue shouldEqual {}
