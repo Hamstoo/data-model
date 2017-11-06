@@ -108,6 +108,10 @@ object MarkData {
 
   val commentMergeSeparator: String = "\n\n---\n\n"
 
+  // tag which is present in save mark request when browser extension autosave feature is on
+  // used in hamstoo to detect if current request is performed by autosave function
+  val tagAutosave = "Autosave"
+
   /** Find all embed urls and convert them to html <a> links (anchors)
     *regex designed to ignore html link tag and markdown link tag
     * 1st regex part is (?<!href="), it checks that found link should not be prepended by href=" expression,
