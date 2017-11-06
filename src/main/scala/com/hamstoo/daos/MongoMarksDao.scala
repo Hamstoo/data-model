@@ -521,7 +521,6 @@ class MongoMarksDao(db: Future[DefaultDB]) {
         seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> ( d :~ "$lt" -> INF_TIME)).coll[Mark, Seq]()
       } yield {
         val optMark = seq find (_.mark.url.contains(url))
-        logger.debug(s"$optMark mark was successfully retrieved")
         optMark.isEmpty
       }
     }
