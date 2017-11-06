@@ -525,6 +525,6 @@ class MongoMarksDao(db: Future[DefaultDB]) {
         optMark.isEmpty
       }
     }
-    retrieveByUrl(url, user).flatMap(_.fold(checkForDeletedMarks)(m => Future.successful(false)))
+    retrieveByUrl(url, user).flatMap(_.map(_ => Future.successful(false)).getOrElse(checkForDeletedMarks))
   }
 }
