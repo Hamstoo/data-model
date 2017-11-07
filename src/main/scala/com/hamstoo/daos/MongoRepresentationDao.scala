@@ -66,7 +66,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     _ <- Future.sequence { longPfxed.map { repr => // lprefx will have been overwritten upon construction
       c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ LPREFX -> repr.lprefx), multi = true)
     }}
-  } yield (), 300 seconds)
+  } yield (), 306 seconds)
 
   /* Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
    weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
