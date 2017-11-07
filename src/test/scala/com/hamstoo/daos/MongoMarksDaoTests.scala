@@ -83,7 +83,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) delete mark by uuid, id" in {
-    marksDao.delete(uuid1, m1.id).futureValue shouldEqual 1
+    marksDao.delete(uuid1, m1.id :: Nil).futureValue shouldEqual 1
   }
 
   it should "(UNIT) check if mark was every previously deleted" in {
