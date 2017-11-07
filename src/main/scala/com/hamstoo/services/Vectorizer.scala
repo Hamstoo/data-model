@@ -4,6 +4,7 @@ import java.util.{Locale, UUID}
 
 import com.hamstoo.daos.MongoVectorsDao
 import com.hamstoo.models.Representation.Vec
+import play.api.Logger
 import play.api.libs.json.{JsObject, Json}
 import play.api.libs.ws._
 
@@ -18,6 +19,8 @@ object Vectorizer {
   var gCount: Int = 0
   var dbCount: Int = 0
   var fCount: Int = 0
+
+  val logger: Logger = Logger(classOf[Vectorizer])
 }
 
 /**
@@ -26,7 +29,14 @@ object Vectorizer {
   * are coming from.
   */
 class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink: String) {
-  
+
+  import Vectorizer._
+
+  // reinitialize these so that we can use them in Akka systems when actors get restarted
+  gCount = 0
+  dbCount = 0
+  fCount = 0
+
   // should be a 2-letter language code, e.g. "en"
   // TODO: https://github.com/Hamstoo/hamstoo/issues/68
   val ENGLISH: String = Locale.ENGLISH.getLanguage
@@ -78,7 +88,9 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
     * Vector lookup with caching in database. This method looks up the term first, then the URI, and
     * only queries the vectors service if no cached entry found.
     */
-  def dbCachedLookupFuture(language: String, term: String): Future[Option[(Vec, String)]] =
+  def dbCachedLookupFuture(language: String, term: String): Future[Option[(Vec, String)]] = {
+
+    val verbose: Boolean = Vectorizer.dbCount < 100 || Vectorizer.dbCount % 100 == 0
 
     // `mtch` appears to have trailing punctuation removed (was that the intent?)
     termRgx.findFirstMatchIn(term.toLowerCase(Locale.ENGLISH)).map { mtch =>
@@ -86,44 +98,50 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
       // `standardizedTerm` appears to have leading punctuation removed (was that the intent?)
       val standardizedTerm = mtch.group(1).replaceAll("’", "'").replaceAll(s"($spcrRgx)+", "_")
       val uri = s"/$language/$standardizedTerm"
-      //      println(s"Match [$standardizedTerm] for term [$term]")
+      //println(s"Match [$standardizedTerm] for term [$term]")
 
+      /** If a word vec isn't in the DB, then attempt to fetch it from the conceptnet-vectors service. */
       def fetch(rec: Boolean): Future[Option[Vec]] = {
-        if (rec) synchronized(Thread.sleep(100)) // if recurring wait for conceptnet-vectors to become responsive
+        if (rec) synchronized(Thread.sleep(100)) // if recursing, wait for conceptnet-vectors to become responsive
         httpClient.url(s"$vectorsLink$uri").get map handleResponse(_.json.as[Vec]) recoverWith {
           case _: NumberFormatException => Future.successful(None)
-          //              case _: Throwable => fetch(true)
+          //case _: Throwable => fetch(true)
         }
       }
 
-      vectorsDao.getUri(uri) flatMap {
+      if (verbose) logger.debug(s"Looking up URI '$uri'")
+      vectorsDao.retrieve(uri) flatMap {
         case Some(ve) =>
+          if (verbose) logger.debug(s"Successful database vector lookup for URI '$uri'")
           Vectorizer.dbCount += 1
           Future.successful(ve.vector.map((_, standardizedTerm)))
         case None =>
           Vectorizer.fCount += 1
-          val future = fetch(false)
-          future map (vectorsDao.addUri(None, uri, _))
-          future map (_.map((_, standardizedTerm)))
+          if (verbose) logger.debug(s"Fetching URI '$uri' from service API")
+          for {
+            optVec <- fetch(false)
+            _ = if (verbose) logger.debug(s"Successful service API vector lookup for URI '$uri': ${optVec.map(_.take(3))}")
+            _ <- vectorsDao.addUri(uri, optVec)
+          } yield optVec.map(_ -> standardizedTerm)
       }
     }.getOrElse(Future.successful(None))
+  }
 
   /** Preserves original `dbCachedLookup` behavior: what does the future hold? */
   @deprecated("Deprecated in favor of dbCachedLookupFuture.", "0.9.11")
   def dbCachedLookup(language: String, term: String): Option[(Vec, String)] =
     Await.result(dbCachedLookupFuture(language, term), 7 seconds)
 
-  /**
-    * Handle vector response from APIs that return vectors.
-    */
+  /** Handle vector response from APIs that return vectors. */
   private def handleResponse[T](f: WSResponse => T)(response: WSResponse): Option[T] = {
     response.status match {
       case 200 => Some(f(response))
       case 404 => None
       case 500 => None
       case x =>
-        println(s"Unexpected vector service response: $x")
-        throw new Exception
+        val msg = s"Unexpected vector service response: $x"
+        logger.warn(msg)
+        throw new Exception(msg)
     }
   }
 
