@@ -485,7 +485,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
 
     // writes new private representation ID into the mark and retrieves updated document in the result
-    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> reprId), fetchNewObject = true)
+    wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> reprId), fetchNewObject = true)
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
       logger.warn(s"Unable to findAndUpdate mark $id's (timeFrom = $timeFrom) private representation to $reprId; wr.lastError = ${wr.lastError.get}")
@@ -497,33 +497,19 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
     // removes page source from the mark in case it's the same as the one processed
     _ <- if (page.exists(mk.page.contains)) for {
-      wr <- c update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
+      wr <- c.update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
       _ <- wr.failIfError
     } yield () else Future.successful {}
 
     _ = logger.info(s"Updated mark $id with private representation $reprId")
   } yield ()
 
-  /**
-    * 1st it checks if there is actual mark exists and returns false
-    * to avoid autosave
-    * 2nd it retrieves count of deleted marks by user and URL, 0 if not found.
-    * if previosly deleted marks found then it returns false to avoid resave mark, issue-193
-    * This is used in the Chrome extension to
-    * avoid autosaving of same mark if it was deleted by user and if it already exists.
-    */
-  def isNotSavedAndNotDeletedPreviosly(url: String, user: UUID): Future[Boolean] = {
-    logger.debug(s"Check isMarkDeleted by URL $url and user $user")
-
-    def checkForDeletedMarks() = {
-      for {
-        c <- futColl
-        seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> ( d :~ "$lt" -> INF_TIME)).coll[Mark, Seq]()
-      } yield {
-        val optMark = seq find (_.mark.url.contains(url))
-        optMark.isEmpty
-      }
-    }
-    retrieveByUrl(url, user).flatMap(_.map(_ => Future.successful(false)).getOrElse(checkForDeletedMarks))
+  /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */
+  def isDeleted(user: UUID, url: String): Future[Boolean] = {
+    for {
+      c <- futColl
+      sel = d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> (d :~ "$lt" -> INF_TIME)
+      seq <- c.find(sel).coll[Mark, Seq]()
+    } yield seq.exists(_.mark.url.contains(url))
   }
 }
