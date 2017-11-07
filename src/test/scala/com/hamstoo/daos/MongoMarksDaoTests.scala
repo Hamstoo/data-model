@@ -86,8 +86,8 @@ class MongoMarksDaoTests
     marksDao.delete(uuid1, m1.id).futureValue shouldEqual 1
   }
 
-  it should "(UNIT) check if mark isAutosavable (false if it was manually deleted) by mark url, uuid" in {
-    marksDao.isNotSavedAndNotDeletedPreviosly(m1.mark.url.get, uuid1).futureValue shouldEqual false
+  it should "(UNIT) check if mark was every previously deleted" in {
+    marksDao.isDeleted(uuid1, m1.mark.url.get).futureValue shouldEqual true
   }
 
   it should "(UNIT) find marks with missing reprs, both current and not" in {
