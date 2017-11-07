@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
+import com.hamstoo.models.MarkData.embeddedLinksToHtmlLinks
 import com.hamstoo.services.TikaInstance
 import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
@@ -18,6 +19,7 @@ import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
+import scala.util.matching.Regex
 
 
 /**
@@ -46,14 +48,22 @@ case class MarkData(
 
     // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
     // https://github.com/atlassian/commonmark-java
+    // as well parses and renders markdown markup language
     val document: Node = parser.parse(c)
+
+    // detects embedded links in text only and make them clickable (issue #136)
+    // ignores html links (anchors) to avoid double tags because
+    // commonmark.parser.parse(...) does not allocate <a>
+    // (anchor tag) from text as a separate node
+    // and such tags will be double tagged like <a href...><a href...>Link</a></a>
+    val visitor = new TextNodesVisitor
+    document.accept(visitor)
+
     val html = renderer.render(document)
 
     // example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
     // convert that &ldquo; back to a < character
     val html2 = StringEscapeUtils.unescapeHtml4(html)
-
-    // issue 121 needs to be implemented here, before `Jsoup.clean` to safeguard against XSS
 
     // example: <p><img></p>
     Jsoup.clean(html2, htmlTagsWhitelist)
@@ -95,6 +105,25 @@ object MarkData {
     .addEnforcedAttribute("a", "target", "_blank")
 
   val commentMergeSeparator: String = "\n\n---\n\n"
+
+  /**
+    * Find all embedded URLs and convert them to html <a> links (anchors).
+    * Regex designed to ignore HTML link tag and markdown link tag.
+    * 1st regex part is (?<!href="), it checks that found link should not be prepended by href=" expression,
+    *   i.e. take if 2nd regex part is "not prepended by" 1st part.
+    * 2nd regex part which follows after (?<!href=") is looking for urls format
+    *   1st part of 2nd regex part ((?:https?|ftp)://) checks protocol
+    * (?<!href=") - this ignore condition should stay because commonmark.parser.parse(...) does not allocate <a>
+    *   (anchor tag) from text as a separate node
+    */
+  def embeddedLinksToHtmlLinks(text: String): String = {
+    val regexStr =
+      "(?<!href=\")" + // ignore http pattern prepended by 'href=' expression
+      "((?:https?|ftp)://)" + // check protocol
+      "(([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" // allowed anything which is allowed in url
+    val ignoreTagsAndFindLinksInText: Regex = regexStr.r
+    ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\"" + m.group(0) + "\">" + m.group(0) + "</a>")
+  }
 }
 
 /**
@@ -110,6 +139,20 @@ object Page {
   def apply(content: mutable.WrappedArray[Byte]): Page = {
     val mimeType = TikaInstance.detect(content.toArray[Byte])
     Page(mimeType, content)
+  }
+}
+
+/**
+  * This class is used to detect embedded links in text and wrap them w/ <a> anchor tags.  It visits
+  * only text nodes.
+  */
+class TextNodesVisitor extends AbstractVisitor {
+
+  override def visit(text: Text): Unit = {
+    // find and wrap links
+    val wrappedEmbeddedLinks = embeddedLinksToHtmlLinks(text.getLiteral)
+    // apply changes to currently visiting text node
+    text.setLiteral(wrappedEmbeddedLinks)
   }
 }
 
