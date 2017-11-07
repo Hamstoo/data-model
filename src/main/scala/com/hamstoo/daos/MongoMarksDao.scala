@@ -373,9 +373,6 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     }
   }
 
-  /** Delete a single mark. */
-  def delete(user: UUID, id: String): Future[Int] = delete(user, id :: Nil)
-
   /** Removes a tag from all user's marks that have it. */
   def deleteTag(user: UUID, tag: String): Future[Int] = {
     logger.debug(s"Deleting tag '$tag' from all user's marks for user $user")
