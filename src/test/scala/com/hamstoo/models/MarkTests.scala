@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.hamstoo.test.FlatSpecWithMatchers
 import com.hamstoo.utils.DataInfo
+import org.apache.commons.text.StringEscapeUtils
 
 /**
   * Mark model tests.
@@ -21,6 +22,94 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
   it should "(UNIT) markdown" in {
     val a = MarkData("", None, None, None, Some("* a lonely list item"), None)
     a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
+    val b = a.copy(comment = Some("hello markdown link conversion text [I'm an inline-style link](https://www.google.com)"))
+    b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
+      "<a href=\"https://www.google.com\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
+      "I'm an inline-style link</a></p>"
+  }
+
+  it should "(UNIT) markdown should detect embedded domain link" in {
+
+    val b = emptyMarkData.copy(comment = Some("hello markdown link conversion text "+
+      StringEscapeUtils.unescapeHtml4("https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'" +
+        "&kjdk9238493kmfdsdfdsf='sdf'")))
+
+    b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
+      "<a href=\""+StringEscapeUtils.escapeHtml4(
+      "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'")+
+      "\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
+      StringEscapeUtils.escapeHtml4("https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'" +
+        "&kjdk9238493kmfdsdfdsf='sdf'")+"</a></p>"
+  }
+
+  it should "(UNIT) markdown should detect embedded ip link" in {
+
+    val b = emptyMarkData.copy(comment = Some("hello markdown link conversion text "+
+      StringEscapeUtils.unescapeHtml4("https://216.58.209.99:90/")))
+
+    b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
+      "<a href=\""+StringEscapeUtils.escapeHtml4(
+      "https://216.58.209.99:90/")+"\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
+      StringEscapeUtils.escapeHtml4("https://216.58.209.99:90/")+"</a></p>"
+  }
+
+  it should "(UNIT) find embedded link with ip and tag it as <a> tag" in {
+
+    val nonFilteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
+      "https://234.234.234:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf' </p>"
+
+    val filteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
+      "<a href=\"https://234.234.234:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'\">" +
+      "https://234.234.234:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'</a> </p>"
+
+    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    println(filteredOfEmbeddedLinksTags)
+    println(s1)
+    s1 shouldEqual filteredOfEmbeddedLinksTags
+  }
+
+  it should "(UNIT) find embedded link with domain name and tag it as <a> tag" in {
+
+    val nonFilteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
+      "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf' </p>"
+
+    val filteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
+      "<a href=\"https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'\">" +
+      "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'</a> </p>"
+
+    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    println(filteredOfEmbeddedLinksTags)
+    println(s1)
+    s1 shouldEqual filteredOfEmbeddedLinksTags
+  }
+
+  it should "(UNIT) skip <a> tagged link in function `embeddedLinksToHtmlLinks` " in {
+
+    val nonFilteredOfEmbeddedLinksTags =
+      " <p>hello markdown link conversion text " +
+      "<a href=\"https://www.google.com\">" +
+      "I'm an inline-style link</a></p>"
+
+    val filteredOfEmbeddedLinksTags =
+      " <p>hello markdown link conversion text " +
+      "<a href=\"https://www.google.com\">" +
+      "I'm an inline-style link</a></p>"
+
+    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    println(filteredOfEmbeddedLinksTags)
+    println(s1)
+    s1 shouldEqual filteredOfEmbeddedLinksTags
+  }
+
+  it should "(UNIT) skip and whitelist <a> tagged link in function `commentEncoded`" in {
+
+    val b = emptyMarkData.copy(comment = Some("hello markdown link conversion text "+
+      StringEscapeUtils.unescapeHtml4("<a href=\"https://www.google.com\">I'm an inline-style link</a>")))
+
+    b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
+      "<a href=\""+StringEscapeUtils.escapeHtml4(
+      "https://www.google.com")+"\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
+      StringEscapeUtils.escapeHtml4("I'm an inline-style link")+"</a></p>"
   }
 
   it should "(UNIT) try to prevent XSS attacks" in {
@@ -52,17 +141,16 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
     merged.mark.comment.get shouldEqual (mdA.comment.get + "\n\n---\n\n" + mdB.comment.get)
     merged.pubRepr shouldEqual mA.pubRepr
     merged.privRepr shouldEqual mA.privRepr
-
   }
 
-//    it should "throw exception in different UUID" in {
-//      // different userIds should throw an AssertionError
+//  it should "throw exception in different UUID" in {
+//    // different userIds should throw an AssertionError
 //
-//      val thrown = intercept[AssertionError] {
-//        val c = Mark(UUID.randomUUID, mark = mdB)
-//        mA.merge(c)
-//      }
-//
-//      thrown shouldBe a [AssertionError]
+//    val thrown = intercept[AssertionError] {
+//      val c = Mark(UUID.randomUUID, mark = mdB)
+//      mA.merge(c)
 //    }
+//
+//    thrown shouldBe a [AssertionError]
+//  }
 }
