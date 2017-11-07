@@ -1,11 +1,10 @@
 package com.hamstoo.services
 
-import java.util.{Locale, UUID}
+import java.util.Locale
 
 import com.hamstoo.daos.MongoVectorsDao
 import com.hamstoo.models.Representation.Vec
 import play.api.Logger
-import play.api.libs.json.{JsObject, Json}
 import play.api.libs.ws._
 
 import scala.collection.mutable
@@ -16,7 +15,6 @@ import scala.util.matching.Regex
 
 object Vectorizer {
   // for testing only
-  var gCount: Int = 0
   var dbCount: Int = 0
   var fCount: Int = 0
 
@@ -33,7 +31,6 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
   import Vectorizer._
 
   // reinitialize these so that we can use them in Akka systems when actors get restarted
-  gCount = 0
   dbCount = 0
   fCount = 0
 
@@ -150,7 +147,7 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
     * * the system standartizes post uri to bring the uri to appropriate view of REST endpoint,
     * f.e. s"$vectorsLink/$endpoint/$uuid"
     */
-  private def standardizePost(language: String, term: String, endpoint: String): (String, JsObject) = {
+  /*private def standardizePost(language: String, term: String, endpoint: String): (String, JsObject) = {
 
     Vectorizer.gCount += 1
 
@@ -158,5 +155,5 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
     val link = s"$vectorsLink/$endpoint/$uuid"
     val data = Json.obj("language" -> language, "term" -> term)
     (link, data)
-  }
+  }*/
 }
