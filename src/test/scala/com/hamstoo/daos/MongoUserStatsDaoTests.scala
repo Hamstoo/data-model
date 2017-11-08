@@ -56,7 +56,7 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
         mi3 <- marksDao.update(userId, m1.id, m1.mark)
         mi4 <- marksDao.update(userId, m2.id, m2.mark)
         mi5 <- marksDao.insert(m3)
-        intResult <- marksDao.delete(userId, m2.id)
+        intResult <- marksDao.delete(userId, m2.id :: Nil)
         totalMarks <- statsDao.stats(userId, 0)
       } yield totalMarks
 
