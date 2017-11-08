@@ -371,9 +371,6 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     }
   }
 
-  /** Delete a single mark. */
-  def delete(user: UUID, id: String): Future[Int] = delete(user, id :: Nil)
-
   /** Removes a tag from all user's marks that have it. */
   def deleteTag(user: UUID, tag: String): Future[Int] = {
     logger.debug(s"Deleting tag '$tag' from all user's marks for user $user")
@@ -477,7 +474,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
 
     // writes new private representation ID into the mark and retrieves updated document in the result
-    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> reprId), fetchNewObject = true)
+    wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> reprId), fetchNewObject = true)
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
       logger.warn(s"Unable to findAndUpdate mark $id's (timeFrom = $timeFrom) private representation to $reprId; wr.lastError = ${wr.lastError.get}")
@@ -489,10 +486,19 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
     // removes page source from the mark in case it's the same as the one processed
     _ <- if (page.exists(mk.page.contains)) for {
-      wr <- c update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
+      wr <- c.update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
       _ <- wr.failIfError
     } yield () else Future.successful {}
 
     _ = logger.debug(s"Updated mark $id with private representation ID: '$reprId'")
   } yield ()
+
+  /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */
+  def isDeleted(user: UUID, url: String): Future[Boolean] = {
+    for {
+      c <- futColl
+      sel = d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> (d :~ "$lt" -> INF_TIME)
+      seq <- c.find(sel).coll[Mark, Seq]()
+    } yield seq.exists(_.mark.url.contains(url))
+  }
 }
