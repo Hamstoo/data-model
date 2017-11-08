@@ -15,7 +15,8 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -29,7 +30,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   // reduce size of existing `urlPrfx`s down to URL_PREFIX_LENGTH to prevent indexes below from being too large
   // and causing exceptions when trying to update marks with reprIds (version 0.9.16)
-  for {
+  Await.result(for {
     c <- futColl
     sel = d :~ "$where" -> s"Object.bsonsize({$URLPRFX:this.$URLPRFX})>$URL_PREFIX_LENGTH+19"
     longPfxed <- c.find(sel).coll[Mark, Seq]()
@@ -37,9 +38,9 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     _ <- Future.sequence { longPfxed.map { m => // urlPrfx will have been overwritten upon `Mark` construction
         c.update(d :~ ID -> m.id :~ TIMEFROM -> m.timeFrom, d :~ "$set" -> (d :~ URLPRFX -> m.urlPrfx))
     }}
-  } yield ()
+  } yield (), 73 seconds)
 
-  /* Indexes with names for this mongo collection: */
+  // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: Nil) % s"bin-$USR-1" ::
     Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
@@ -51,9 +52,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     Index(SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) %
       s"txt-$SUBJx-$TAGSx-$COMNTx" ::
     Index(TAGSx -> Ascending :: Nil) % s"bin-$TAGSx-1" ::
-    Nil toMap
-
-  futColl map (_.indexesManager ensure indxs)
+    Nil toMap;
+  Await.result(futColl map (_.indexesManager ensure indxs), 89 seconds)
 
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
   def insert(mark: Mark): Future[Mark] = {

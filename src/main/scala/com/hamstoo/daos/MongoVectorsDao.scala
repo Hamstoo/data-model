@@ -11,7 +11,8 @@ import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
 
 /**
   * Data access object for conceptnet-vectors API's MongoDB-based storage.  `services.Vectorizer` provides
@@ -28,7 +29,7 @@ class MongoVectorsDao(db: Future[DefaultDB]) {
   private val indxs: Map[String, Index] =
     Index(URI -> Ascending :: Nil) % s"bin-$URI-1" ::
     Nil toMap;
-  futColl map (_.indexesManager ensure indxs)
+  Await.result(futColl map (_.indexesManager ensure indxs), 34 seconds)
 
   /** Saves or updates uri-vector pair. */
   def addUri(uri: String, vec: Option[Vec]): Future[Unit] = for {
