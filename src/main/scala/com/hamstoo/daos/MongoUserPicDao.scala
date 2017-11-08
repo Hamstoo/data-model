@@ -14,12 +14,12 @@ class MongoUserPicDao(db: Future[DefaultDB]) {
 
   import com.hamstoo.utils.{ExtendedWriteResult, d}
 
-  private val futCol: Future[BSONCollection] = db map (_ collection "userpics")
+  private val futColl: Future[BSONCollection] = db map (_ collection "userpics")
   private val PKEY = "pic"
 
   /** Saves or updates file bytes by id. */
   def store(id: String, bytes: Array[Byte]): Future[Unit] = for {
-    c <- futCol
+    c <- futColl
     upd = d :~ "_id" -> id :~ PKEY -> BSONBinary(bytes, Subtype.GenericBinarySubtype)
     wr <- c update(d :~ "_id" -> id, upd, upsert = true)
     _ <- wr failIfError
@@ -27,7 +27,7 @@ class MongoUserPicDao(db: Future[DefaultDB]) {
 
   /** Retrieves file bytes by id. */
   def retrieve(id: String): Future[Option[Array[Byte]]] = for {
-    c <- futCol
+    c <- futColl
     optDoc <- (c find d :~ "_id" -> id).one
   } yield for {
     doc <- optDoc
