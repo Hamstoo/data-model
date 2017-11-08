@@ -1,7 +1,4 @@
 package com.hamstoo.models
-
-import java.util.UUID
-
 import com.hamstoo.test.FlatSpecWithMatchers
 import com.hamstoo.utils.DataInfo
 import org.apache.commons.text.StringEscapeUtils
@@ -12,8 +9,7 @@ import org.apache.commons.text.StringEscapeUtils
 class MarkTests extends FlatSpecWithMatchers with DataInfo {
 
   "Mark" should "(UNIT) be consistently hashable, regardless of its `score`" in {
-    val uuid = UUID.randomUUID
-    val a = Mark(uuid, mark = MarkData("a subject", None))
+    val a = Mark(constructUserId(), mark = MarkData("a subject", None))
     val b = a.copy(score = Some(3.4))
     a.hashCode shouldEqual b.hashCode
     a shouldEqual b
@@ -68,38 +64,38 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
     s1 shouldEqual filteredOfEmbeddedLinksTags
   }
 
-    it should "(UNIT) find embedded link with domain name and tag it as <a> tag" in {
+  it should "(UNIT) find embedded link with domain name and tag it as <a> tag" in {
 
-      val nonFilteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
-        "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf' </p>"
+    val nonFilteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
+      "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf' </p>"
 
-      val filteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
-        "<a href=\"https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'\">" +
-        "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'</a> </p>"
+    val filteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
+      "<a href=\"https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'\">" +
+      "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'</a> </p>"
 
-      val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
-      println(filteredOfEmbeddedLinksTags)
-      println(s1)
-      s1 shouldEqual filteredOfEmbeddedLinksTags
-    }
+    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    println(filteredOfEmbeddedLinksTags)
+    println(s1)
+    s1 shouldEqual filteredOfEmbeddedLinksTags
+  }
 
-    it should "(UNIT) skip <a> tagged link in function `embeddedLinksToHtmlLinks` " in {
+  it should "(UNIT) skip <a> tagged link in function `embeddedLinksToHtmlLinks` " in {
 
-      val nonFilteredOfEmbeddedLinksTags =
-        " <p>hello markdown link conversion text " +
-        "<a href=\"https://www.google.com\">" +
-        "I'm an inline-style link</a></p>"
+    val nonFilteredOfEmbeddedLinksTags =
+      " <p>hello markdown link conversion text " +
+      "<a href=\"https://www.google.com\">" +
+      "I'm an inline-style link</a></p>"
 
-      val filteredOfEmbeddedLinksTags =
-        " <p>hello markdown link conversion text " +
-        "<a href=\"https://www.google.com\">" +
-        "I'm an inline-style link</a></p>"
+    val filteredOfEmbeddedLinksTags =
+      " <p>hello markdown link conversion text " +
+      "<a href=\"https://www.google.com\">" +
+      "I'm an inline-style link</a></p>"
 
-      val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
-      println(filteredOfEmbeddedLinksTags)
-      println(s1)
-      s1 shouldEqual filteredOfEmbeddedLinksTags
-    }
+    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    println(filteredOfEmbeddedLinksTags)
+    println(s1)
+    s1 shouldEqual filteredOfEmbeddedLinksTags
+  }
 
   it should "(UNIT) skip and whitelist <a> tagged link in function `commentEncoded`" in {
 
@@ -143,14 +139,14 @@ class MarkTests extends FlatSpecWithMatchers with DataInfo {
       merged.privRepr shouldEqual mA.privRepr
     }
 
-//    it should "throw exception in different UUID" in {
-//      // different userIds should throw an AssertionError
+//  it should "throw an exception when merging marks with different userIds" in {
+//    // different userIds should throw an AssertionError
 //
-//      val thrown = intercept[AssertionError] {
-//        val c = Mark(UUID.randomUUID, mark = mdB)
-//        mA.merge(c)
-//      }
-//
-//      thrown shouldBe a [AssertionError]
+//    val thrown = intercept[AssertionError] {
+//      val c = Mark(constructUserId(), mark = mdB)
+//      mA.merge(c)
 //    }
+//
+//    thrown shouldBe a [AssertionError]
+//  }
 }

@@ -17,7 +17,6 @@ import reactivemongo.bson._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
-import scala.util.control.NonFatal
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -31,7 +30,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
 
   // reduce size of existing `urlPrfx`s down to URL_PREFIX_LENGTH to prevent indexes below from being too large
   // and causing exceptions when trying to update marks with reprIds (version 0.9.16)
-  for {
+  Await.result(for {
     c <- futColl
     sel = d :~ "$where" -> s"Object.bsonsize({$URLPRFX:this.$URLPRFX})>$URL_PREFIX_LENGTH+19"
     longPfxed <- c.find(sel).coll[Mark, Seq]()
@@ -39,9 +38,9 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     _ <- Future.sequence { longPfxed.map { m => // urlPrfx will have been overwritten upon `Mark` construction
         c.update(d :~ ID -> m.id :~ TIMEFROM -> m.timeFrom, d :~ "$set" -> (d :~ URLPRFX -> m.urlPrfx))
     }}
-  } yield ()
+  } yield (), 73 seconds)
 
-  /* Indexes with names for this mongo collection: */
+  // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: Nil) % s"bin-$USR-1" ::
     Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
@@ -53,9 +52,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     Index(SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) %
       s"txt-$SUBJx-$TAGSx-$COMNTx" ::
     Index(TAGSx -> Ascending :: Nil) % s"bin-$TAGSx-1" ::
-    Nil toMap
-
-  futColl map (_.indexesManager ensure indxs)
+    Nil toMap;
+  Await.result(futColl map (_.indexesManager ensure indxs), 89 seconds)
 
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
   def insert(mark: Mark): Future[Mark] = {
@@ -379,8 +377,8 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     for {
       c <- futColl
       sel = d :~ USR -> user :~ TAGSx -> tag
-      wr <- c update(sel, d :~ "$pull" -> (d :~ TAGSx -> tag), multi = true)
-      _ <- wr failIfError
+      wr <- c.update(sel, d :~ "$pull" -> (d :~ TAGSx -> tag), multi = true)
+      _ <- wr.failIfError
     } yield {
       val count = wr.nModified
       logger.debug(s"Tag '$tag' was removed from $count marks")
@@ -395,7 +393,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       c <- futColl
       sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
       wr <- c update(sel, d :~ "$push" -> (d :~ TAGSx -> (d :~ "$each" -> tags)), multi = true)
-      _ <- wr failIfError
+      _ <- wr.failIfError
     } yield {
       val count = wr.nModified
       logger.debug(s"Tags were added to $count marks")
@@ -409,7 +407,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     for {
       c <- futColl
       sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
-      wr <- c update(sel, d :~ "$pull" -> (d :~ TAGSx -> (d :~ "$in" -> tags)), multi = true)
+      wr <- c.update(sel, d :~ "$pull" -> (d :~ TAGSx -> (d :~ "$in" -> tags)), multi = true)
     } yield {
       val count = wr.nModified
       logger.debug(s"Tags were removed from $count marks")
@@ -447,21 +445,15 @@ class MongoMarksDao(db: Future[DefaultDB]) {
     * marks over and over.
     */
   def updatePublicReprId(id: String, timeFrom: Long, reprId: String): Future[Unit] = {
-    logger.info(s"Updating mark $id ($timeFrom) with public representation ID: '$reprId'")
+    logger.debug(s"Updating mark $id ($timeFrom) with public representation ID: '$reprId'")
 
-    val fut = for {
+    for {
       c <- futColl
       sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
       wr <- c update(sel, d :~ "$set" -> (d :~ PUBREPR -> reprId))
-      _ = logger.info(s"Mark $id failIfError?")
-      _ <- wr failIfError;
-      _ = logger.info(s"Updated mark $id with public representation $reprId")
+      _ <- wr.failIfError;
+      _ = logger.debug(s"Updated mark $id with public representation ID: '$reprId'")
     } yield ()
-
-    // the c.update above seems to be hanging--too many concurrent database requests perhaps?
-    // and there isn't an Await in any of the calling code so it just hangs the app forever and ever
-    logger.info(s"Awaiting future of mark $id")
-    Await.ready(fut, 29 seconds)
   }
 
   /**
@@ -498,7 +490,7 @@ class MongoMarksDao(db: Future[DefaultDB]) {
       _ <- wr.failIfError
     } yield () else Future.successful {}
 
-    _ = logger.info(s"Updated mark $id with private representation $reprId")
+    _ = logger.debug(s"Updated mark $id with private representation ID: '$reprId'")
   } yield ()
 
   /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */
