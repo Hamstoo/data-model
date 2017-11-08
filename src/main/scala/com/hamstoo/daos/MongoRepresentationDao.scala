@@ -40,7 +40,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
 
   // data migration
   case class WeeRepr(id: String, timeFrom: Long, page: String)
-  Await.result( for {
+  Await.result(for {
     c <- futColl
 
     // ensure every repr has a page String before changing them all to Pages
@@ -68,8 +68,8 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     }}
   } yield (), 306 seconds)
 
-  /* Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
-   weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
+  // Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
+  // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
   private val indxs: Map[String, Index] =
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
@@ -80,8 +80,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
       options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
         s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
     Nil toMap;
-
-  futColl map (_.indexesManager ensure indxs)
+  Await.result(futColl map (_.indexesManager ensure indxs), 93 seconds)
 
   /**
     * Stores provided representation, optionally updating current state if repr ID already exists in database.
