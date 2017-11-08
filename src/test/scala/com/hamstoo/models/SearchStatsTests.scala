@@ -3,6 +3,9 @@ package com.hamstoo.models
 import com.hamstoo.models.SearchStats.{ResultStats, Stat}
 import com.hamstoo.test.FlatSpecWithMatchers
 
+/**
+  * SearchStats model unit tests
+  */
 class SearchStatsTests extends FlatSpecWithMatchers {
 
   val query = "some query"
@@ -23,7 +26,7 @@ class SearchStatsTests extends FlatSpecWithMatchers {
   lazy val searchStats2: SearchStats = searchStats1.incFpv(None, id, weight, index)
   lazy val searchStats3: SearchStats = searchStats2.incFpv(Some(url2), id2, weight2, index2)
 
-  "SearchStats" should "* (UNIT) be incrementable with full page view event with some url" in {
+  "SearchStats" should "(UNIT) be incrementable with full page view event with some url" in {
 
     searchStats1 shouldEqual SearchStats(
       query,
@@ -39,7 +42,7 @@ class SearchStatsTests extends FlatSpecWithMatchers {
         indexesMap = Seq(Stat[Int](index, fpvClicks = Some(1))))))
   }
 
-  it should "* (UNIT) be incrementable with full page view event without url" in {
+  it should "(UNIT) be incrementable with full page view event without url" in {
     searchStats2 shouldEqual SearchStats(
       query,
       marksMap = IndexedSeq(ResultStats(
@@ -54,7 +57,7 @@ class SearchStatsTests extends FlatSpecWithMatchers {
         indexesMap = Seq(Stat[Int](index, fpvClicks = Some(1))))))
   }
 
-  it should "* (UNIT) be incrementable with full page view event with other url" in {
+  it should "(UNIT) be incrementable with full page view event with other url" in {
     searchStats3 shouldEqual SearchStats(
       query,
       marksMap = IndexedSeq(
