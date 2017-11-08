@@ -20,15 +20,14 @@ object TikaInstance extends Tika() {
   def createContext(enableOCR: Boolean): ParseContext = {
    val parseContext = new ParseContext()
 
-    if(!enableOCR){
-      return parseContext
+    if (enableOCR) {
+      val config: TesseractOCRConfig = new TesseractOCRConfig()
+      val pdfConfig: PDFParserConfig = new PDFParserConfig()
+      pdfConfig.setExtractInlineImages(true)
+      parseContext.set(classOf[TesseractOCRConfig], config)
+      parseContext.set(classOf[PDFParserConfig], pdfConfig)
     }
 
-    val config: TesseractOCRConfig = new TesseractOCRConfig()
-    val pdfConfig: PDFParserConfig = new PDFParserConfig()
-    pdfConfig.setExtractInlineImages(true)
-    parseContext.set(classOf[TesseractOCRConfig], config)
-    parseContext.set(classOf[PDFParserConfig], pdfConfig)
     parseContext
   }
 }
