@@ -5,20 +5,20 @@ import java.util.UUID
 import com.hamstoo.models.{Profile, User, UserData}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.TestHelper
 import com.mohiva.play.silhouette.api.LoginInfo
-import com.mohiva.play.silhouette.api.util.PasswordInfo
+import com.mohiva.play.silhouette.impl.providers.OAuth2Info
 import org.scalatest.OptionValues
 
 /**
-  * CRUD Unit tests for class MongoPasswordInfoDao
+  * CRUD Unit tests for class MongoOAuth2InfoDao
   */
-class MongoPasswordInfoDaoTest
+class MongoAuth2InfoDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler
-    with OptionValues
-    with TestHelper {
+    with OptionValues {
+
+  import com.hamstoo.utils.DataInfo._
 
   // TODO: shouldn't this test fail if these are different?
   val u0: UUID = constructUserId()
@@ -26,19 +26,19 @@ class MongoPasswordInfoDaoTest
 
   val provider = "some provider"
   val loginInfo = LoginInfo(provider, u0.toString)
-  val passInfo = PasswordInfo("token", "secret")
+  val auth2Info = OAuth2Info("access token")
   val user = User(u1, UserData(), Profile(loginInfo, confirmed = true, None, None, None, None) :: Nil)
 
-  "MongoOAuth1InfoDao" should "(UNIT) add auth1 info" in {
+  "MongoOAuth2InfoDao" should "(UNIT) add auth2 info" in {
     userDao.save(user).futureValue shouldEqual {}
-    passDao.add(loginInfo, passInfo).futureValue shouldEqual passInfo
+    auth2Dao.add(loginInfo, auth2Info).futureValue shouldEqual auth2Info
   }
 
-  it should "(UNIT) find auth1 info" in {
-    passDao.find(loginInfo).futureValue.value shouldEqual passInfo
+  it should "(UNIT) find auth2 info" in {
+    auth2Dao.find(loginInfo).futureValue.value shouldEqual auth2Info
   }
 
-  it should "(UNIT) remove auth1 info" in {
-    passDao.remove(loginInfo).futureValue shouldEqual {}
+  it should "(UNIT) remove auth2 info" in {
+    auth2Dao.remove(loginInfo).futureValue shouldEqual {}
   }
 }

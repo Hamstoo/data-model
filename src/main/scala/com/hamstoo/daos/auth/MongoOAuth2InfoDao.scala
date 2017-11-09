@@ -10,4 +10,7 @@ import scala.concurrent.Future
 /**
   * Data access object for users' auth tokens.
   */
-class MongoOAuth2InfoDao(db: Future[DefaultDB]) extends MongoAuthDao[OAuth2Info](db.map(_.collection("users")), Logger(classOf[MongoOAuth2InfoDao]))
+class MongoOAuth2InfoDao(db: () => Future[DefaultDB]) extends MongoAuthDao[OAuth2Info](db) {
+
+  override val logger = Logger(classOf[MongoOAuth2InfoDao])
+}

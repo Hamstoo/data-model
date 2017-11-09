@@ -6,7 +6,9 @@ import org.apache.commons.text.StringEscapeUtils
 /**
   * Mark model tests.
   */
-class MarkTests extends FlatSpecWithMatchers with DataInfo {
+class MarkTests extends FlatSpecWithMatchers {
+
+  import com.hamstoo.utils.DataInfo._
 
   "Mark" should "(UNIT) be consistently hashable, regardless of its `score`" in {
     val a = Mark(constructUserId(), mark = MarkData("a subject", None))
