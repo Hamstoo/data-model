@@ -64,11 +64,12 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
   } yield h // return produced, updated, or existing highlight
 
   /** Recursively joins same-element text pieces of a highlight. */
-  def mergeSameElems(es: Seq[Highlight.PositionElement],
-                     acc: Seq[Highlight.PositionElement] = Nil): Seq[Highlight.PositionElement] = {
+  def mergeSameElems(
+      es: Seq[Highlight.PositionElement],
+      acc: Seq[Highlight.PositionElement] = Nil): Seq[Highlight.PositionElement] = {
     if (es.size < 2) return es ++ acc reverse
     val t = es.tail
-    if (es.head.path == t.head.path) mergeSameElems(t.tail, es.head.copy(text = es.head.text + t.head.text) +: acc)
+    if (es.head.path == t.head.path) mergeSameElems(es.head.copy(text = es.head.text + t.head.text) +: t.tail, acc)
     else mergeSameElems(t, es.head +: acc)
   }
 
