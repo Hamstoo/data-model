@@ -13,7 +13,8 @@ import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.{BSONArray, BSONDocumentHandler, Macros}
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
 
 /**
   * Data access object for highlights.
@@ -31,7 +32,8 @@ class MongoHighlightDao(db: Future[DefaultDB]) extends MongoAnnotationDao[Highli
   // convert url/uPrefs to markIds
   case class WeeHighlight(usrId: UUID, id: String, timeFrom: Long, url: String)
 
-  for {
+  // data migration
+  Await.result(for {
     c <- futColl
     mc <- marksColl
 
@@ -54,16 +56,15 @@ class MongoHighlightDao(db: Future[DefaultDB]) extends MongoAnnotationDao[Highli
                     d :~ "$unset" -> (d :~ "url" -> 1 :~ "uPref" -> 1) :~ "$set" -> {d :~ "markId" -> markId},
                     multi = true)
     } yield () }}
-  } yield ()
+  } yield (), 105 seconds)
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: MARKID -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1" ::
     Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
       s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
-    Nil toMap
-  
-  futColl map (_.indexesManager ensure indxs)
+    Nil toMap;
+  Await.result(futColl map (_.indexesManager ensure indxs), 45 seconds)
 
   /** Update timeThru on an existing highlight and insert a new one with modified values. */
   def update(usr: UUID,

@@ -8,7 +8,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, BSONInteger, Macros}
 
 import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -40,7 +40,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
 
   // data migration
   case class WeeRepr(id: String, timeFrom: Long, page: String)
-  Await.result( for {
+  Await.result(for {
     c <- futColl
 
     // ensure every repr has a page String before changing them all to Pages
@@ -66,10 +66,10 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     _ <- Future.sequence { longPfxed.map { repr => // lprefx will have been overwritten upon construction
       c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ LPREFX -> repr.lprefx), multi = true)
     }}
-  } yield (), 300 seconds)
+  } yield (), 306 seconds)
 
-  /* Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
-   weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
+  // Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
+  // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
   private val indxs: Map[String, Index] =
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
@@ -80,8 +80,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
       options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
         s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
     Nil toMap;
-
-  futColl map (_.indexesManager ensure indxs)
+  Await.result(futColl map (_.indexesManager ensure indxs), 93 seconds)
 
   /**
     * Stores provided representation, optionally updating current state if repr ID already exists in database.
@@ -135,11 +134,22 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     */
   def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
     c <- futColl
-    sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt :~ "$text" -> (d :~ "$search" -> query)
-    pjn = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-    seq <- c.find(sel, pjn).coll[Representation, Seq]()
+    sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
+
+    // exclude these fields from the returned results to conserve memory during search
+    searchExcludedFields = d :~ (PAGE -> 0) :~ (OTXT -> 0) :~ (LPREFX -> 0) :~ (HEADR -> 0) :~ (KWORDS -> 0)
+
+    // this projection doesn't have any effect without this selection
+    searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
+    searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
+
+    seq <- c.find(sel :~ searchScoreSelection,
+                  searchExcludedFields :~ searchScoreProjection)/*.sort(searchScoreProjection)*/
+      .coll[Representation, Seq]()
+
   } yield seq.map { repr =>
     repr.id -> repr
+
   }(breakOut[
     Seq[Representation],
     (String, Representation),

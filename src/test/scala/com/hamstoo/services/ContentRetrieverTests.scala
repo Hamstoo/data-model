@@ -4,6 +4,7 @@ import akka.stream.ActorMaterializer
 import com.hamstoo.models.Page
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
+import com.hamstoo.utils.DataInfo
 import play.api.libs.ws.ahc.AhcWSClient
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -14,7 +15,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
   */
 class ContentRetrieverTests
   extends AkkaEnvironment("ContentRetrieverTests-ActorSystem")
-    with FutureHandler {
+    with FutureHandler with DataInfo {
 
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
@@ -25,8 +26,16 @@ class ContentRetrieverTests
     intercept[Exception] { contriever.retrieve(bogusURL).futureValue }
   }
 
-  it should "(UNIT) succeed on non-bogus URL" in {
-    val url = "http://hamstoo.com"
-    contriever.retrieve(url).futureValue shouldBe a [Page]
+  it should "(UNIT) succeed on non-bogus URL and be able to get its title" in {
+    val page = contriever.retrieve(urlHTML).futureValue
+    page shouldBe a [Page]
+    import com.hamstoo.services.ContentRetriever.PageFunctions
+    page.getTitle shouldBe Some("Futures and Promises | Scala Documentation")
+  }
+
+  it should "(UNIT) get PDF titles" in {
+    val page = contriever.retrieve(urlPDF).futureValue
+    import com.hamstoo.services.ContentRetriever.PageFunctions
+    page.getTitle shouldBe Some("Actors in Scala")
   }
 }

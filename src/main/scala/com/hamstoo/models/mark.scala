@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
+import com.hamstoo.models.MarkData.embeddedLinksToHtmlLinks
 import com.hamstoo.services.TikaInstance
 import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
@@ -18,6 +19,7 @@ import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
+import scala.util.matching.Regex
 
 
 /**
@@ -46,14 +48,22 @@ case class MarkData(
 
     // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
     // https://github.com/atlassian/commonmark-java
+    // as well parses and renders markdown markup language
     val document: Node = parser.parse(c)
+
+    // detects embedded links in text only and make them clickable (issue #136)
+    // ignores html links (anchors) to avoid double tags because
+    // commonmark.parser.parse(...) does not allocate <a>
+    // (anchor tag) from text as a separate node
+    // and such tags will be double tagged like <a href...><a href...>Link</a></a>
+    val visitor = new TextNodesVisitor
+    document.accept(visitor)
+
     val html = renderer.render(document)
 
     // example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
     // convert that &ldquo; back to a < character
     val html2 = StringEscapeUtils.unescapeHtml4(html)
-
-    // issue 121 needs to be implemented here, before `Jsoup.clean` to safeguard against XSS
 
     // example: <p><img></p>
     Jsoup.clean(html2, htmlTagsWhitelist)
@@ -95,6 +105,28 @@ object MarkData {
     .addEnforcedAttribute("a", "target", "_blank")
 
   val commentMergeSeparator: String = "\n\n---\n\n"
+
+  // tag which is present in save mark request when browser extension autosave feature is on
+  // used in hamstoo to detect if current request is performed by autosave function
+  val AUTOSAVE_TAG = "Autosave"
+
+  /** Find all embed urls and convert them to html <a> links (anchors)
+    *regex designed to ignore html link tag and markdown link tag
+    * 1st regex part is (?<!href="), it checks that found link should not be prepended by href=" expression,
+    *   i.e. take if 2nd regex part is "not prepended by" 1st part.
+    * 2nd regex part which follows after (?<!href=") is looking for urls format
+    *   1st part of 2nd regex part ((?:https?|ftp)://) checks protocol
+    * (?<!href=") - this ignore condition should stay because commonmark.parser.parse(...) does not allocate <a>
+    *   (anchor tag) from text as a separate node
+    */
+  def embeddedLinksToHtmlLinks(text: String): String = {
+    val regexStr =
+      "(?<!href=\")" + // ignore http pattern prepended by 'href=' expression
+      "((?:https?|ftp)://)" + // check protocol
+      "(([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" // allowed anything which is allowed in url
+    val ignoreTagsAndFindLinksInText: Regex = regexStr.r
+    ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\"" + m.group(0) + "\">" + m.group(0) + "</a>")
+  }
 }
 
 /**
@@ -110,6 +142,20 @@ object Page {
   def apply(content: mutable.WrappedArray[Byte]): Page = {
     val mimeType = TikaInstance.detect(content.toArray[Byte])
     Page(mimeType, content)
+  }
+}
+
+/**
+  * This class is used to detect embedded links in text and wrap them w/ <a> anchor tags.  It visits
+  * only text nodes.
+  */
+class TextNodesVisitor extends AbstractVisitor {
+
+  override def visit(text: Text): Unit = {
+    // find and wrap links
+    val wrappedEmbeddedLinks = embeddedLinksToHtmlLinks(text.getLiteral)
+    // apply changes to currently visiting text node
+    text.setLiteral(wrappedEmbeddedLinks)
   }
 }
 
@@ -140,7 +186,7 @@ case class Mark(
                  userId: UUID,
                  id: String = generateDbId(Mark.ID_LENGTH),
                  mark: MarkData,
-                 aux: MarkAux = MarkAux(None, None),
+                 aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
                  page: Option[Page] = None,
                  pubRepr: Option[String] = None,
@@ -156,8 +202,12 @@ case class Mark(
   /** Use the private repr when available, o/w use the public one. */
   def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
 
-  /** Return true if the mark is representable but not yet represented. */
-  def representablePublic: Boolean = pubRepr.isEmpty && mark.url.isDefined
+  /**
+    * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
+    * representations, even if the mark doesn't have a URL, we'll still try to derive a representation from the subject
+    * in case LinkageService.digest timed out when originally trying to generate a title for the mark (issue #195).
+    */
+  def representablePublic: Boolean = pubRepr.isEmpty
   def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
@@ -180,7 +230,8 @@ case class Mark(
     // TODO: how do we ensure that additional fields added to the constructor are accounted for here?
     // TODO: how do we ensure that other data (like highlights) that reference markIds are accounted for?
     copy(mark = mark.merge(oth.mark),
-         aux  = aux .merge(oth.aux ),
+
+         aux = if (oth.aux.isDefined) aux.map(_.merge(oth.aux.get)).orElse(oth.aux) else aux,
 
          // `page`s should all have been processed already if any private repr is defined, so only merge them if
          // that is not the case; in which case it's very unlikely that both will be defined, but use newer one if so
@@ -216,6 +267,9 @@ case class Mark(
 object Mark extends BSONHandlers {
   val logger: Logger = Logger(classOf[Mark])
 
+  // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once
+  logger.info("data-model version " + Option(getClass.getPackage.getImplementationVersion).getOrElse("null"))
+
   case class RangeMils(begin: Long, end: Long)
 
   /** Auxiliary stats pertaining to a `Mark`. */
@@ -240,16 +294,21 @@ object Mark extends BSONHandlers {
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
   val MERGEID: String = nameOf[Mark](_.mergeId)
+
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)
-  val SUBJ: String = nameOf[MarkData](_.subj)
-  val URL: String = nameOf[MarkData](_.url)
-  val STARS: String = nameOf[MarkData](_.rating)
-  val TAGS: String = nameOf[MarkData](_.tags)
-  val COMNT: String = nameOf[MarkData](_.comment)
-  val COMNTENC: String = nameOf[MarkData](_.commentEncoded)
-  val TABVIS: String = nameOf[MarkAux](_.tabVisible)
-  val TABBG: String = nameOf[MarkAux](_.tabBground)
+
+  // the 'x' is for "extended" (changing these from non-x has already identified one bug)
+  val SUBJx: String = MARK + "." + nameOf[MarkData](_.subj)
+  val URLx: String = MARK + "." + nameOf[MarkData](_.url)
+  val STARSx: String = MARK + "." + nameOf[MarkData](_.rating)
+  val TAGSx: String = MARK + "." + nameOf[MarkData](_.tags)
+  val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
+  val COMNTENCx: String = MARK + "." + nameOf[MarkData](_.commentEncoded)
+
+  val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
+  val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
+
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]

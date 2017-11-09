@@ -20,11 +20,11 @@ class RepresentationTests extends FlatSpecWithMatchers {
     def rep = Representation(
       id = "",
       link = Some("xyz"),
-      page = Page(MediaType.TEXT_HTML.toString, "".getBytes),
-      header = "",
+      page = Some(Page(MediaType.TEXT_HTML.toString, "".getBytes)),
+      header = Some(""),
       doctext = "",
-      othtext = "",
-      keywords = "",
+      othtext = Some(""),
+      keywords = Some(""),
       vectors = Map.empty[String, Vec],
       autoGenKws = Some(Seq("keyword0", "keyword1")),
       timeFrom = 0)
