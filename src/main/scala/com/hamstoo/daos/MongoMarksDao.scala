@@ -4,7 +4,7 @@ import java.nio.file.Files
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
-import com.hamstoo.models.{Mark, MarkData, Page}
+import com.hamstoo.models.{Mark, MarkData, Page, Representation}
 import org.joda.time.DateTime
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
@@ -446,8 +446,10 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     */
   def updatePublicReprId(id: String, timeFrom: Long, reprId: String): Future[Unit] = {
     logger.debug(s"Updating mark $id ($timeFrom) with public representation ID: '$reprId'")
+    if (reprId.length > Representation.ID_LENGTH)
+      Future.failed(new Exception(s"Attempt to update mark $id ($timeFrom) with public representation ID '$reprId' failed; long ID length could break index"))
 
-    for {
+    else for {
       c <- dbColl()
       sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
       wr <- c update(sel, d :~ "$set" -> (d :~ PUBREPR -> reprId))
@@ -468,30 +470,35 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * @param reprId   - representation ID
     * @param page     - processed page source to clear out from the mark
     */
-  def updatePrivateReprId(user: UUID, id: String, timeFrom: Long, reprId: String, page: Option[Page]):
-                                                                                          Future[Unit] = for {
-    c <- dbColl()
-    sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
+  def updatePrivateReprId(user: UUID, id: String, timeFrom: Long, reprId: String, page: Option[Page]): Future[Unit] = {
+    logger.debug(s"Updating mark $id ($timeFrom) with private representation ID: '$reprId'")
+    if (reprId.length > Representation.ID_LENGTH)
+      Future.failed(new Exception(s"Attempt to update mark $id ($timeFrom) with private representation ID '$reprId' failed; long ID length could break index"))
 
-    // writes new private representation ID into the mark and retrieves updated document in the result
-    wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> reprId), fetchNewObject = true)
+    else for {
+      c <- dbColl()
+      sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
 
-    _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
-      logger.warn(s"Unable to findAndUpdate mark $id's (timeFrom = $timeFrom) private representation to $reprId; wr.lastError = ${wr.lastError.get}")
-      Future.failed(new NoSuchElementException("MongoMarksDao.updatePrivateReprId"))
-    }
+      // writes new private representation ID into the mark and retrieves updated document in the result
+      wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> reprId), fetchNewObject = true)
 
-    // this will "NoSuchElementException: None.get" when `get` is called if `wr.result[Mark]` is None
-    mk = wr.result[Mark].get
+      _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
+        logger.warn(s"Unable to findAndUpdate mark $id's (timeFrom = $timeFrom) private representation to $reprId; wr.lastError = ${wr.lastError.get}")
+        Future.failed(new NoSuchElementException("MongoMarksDao.updatePrivateReprId"))
+      }
 
-    // removes page source from the mark in case it's the same as the one processed
-    _ <- if (page.exists(mk.page.contains)) for {
-      wr <- c.update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
-      _ <- wr.failIfError
-    } yield () else Future.successful {}
+      // this will "NoSuchElementException: None.get" when `get` is called if `wr.result[Mark]` is None
+      mk = wr.result[Mark].get
 
-    _ = logger.debug(s"Updated mark $id with private representation ID: '$reprId'")
-  } yield ()
+      // removes page source from the mark in case it's the same as the one processed
+      _ <- if (page.exists(mk.page.contains)) for {
+        wr <- c.update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
+        _ <- wr.failIfError
+      } yield () else Future.successful {}
+
+      _ = logger.debug(s"Updated mark $id with private representation ID: '$reprId'")
+    } yield ()
+  }
 
   /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */
   def isDeleted(user: UUID, url: String): Future[Boolean] = {
