@@ -18,14 +18,14 @@ import scala.concurrent.duration._
 /**
   * Data access object for usage stats.
   */
-class MongoUserStatsDao(db: Future[DefaultDB]) {
+class MongoUserStatsDao(db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._
 
   // database collections
-  private val futStatsColl: Future[BSONCollection] = db map (_ collection "userstats")
-  private val futImportsColl: Future[BSONCollection] = db map (_ collection "imports")
-  private val futEntriesColl: Future[BSONCollection] = db map (_ collection "entries")
+  private def statsColl(): Future[BSONCollection] = db().map(_ collection "userstats")
+  private def importsColl(): Future[BSONCollection] = db().map(_ collection "imports")
+  private def marksColl(): Future[BSONCollection] = db().map(_ collection "entries")
 
   // `imports` collection fields
   private val U_ID = "_id" // yes, the "_id" field in the `imports` collection is truly a user UUID, not an ObjectId
@@ -38,18 +38,18 @@ class MongoUserStatsDao(db: Future[DefaultDB]) {
   // ensure the mongo collection has the proper indexes
   private val indxs: Map[String, Index] =
     Map(Index(USER -> Ascending :: TIME -> Ascending :: Nil) % s"bin-$USER-1-$TIME-1")
-  Await.result(futStatsColl map (_.indexesManager ensure indxs), 46 seconds)
+  Await.result(statsColl() map (_.indexesManager ensure indxs), 46 seconds)
 
   /** Adds a timestamp record for the user. */
   def punch(userId: UUID): Future[Unit] = for {
-    c <- futStatsColl
+    c <- statsColl()
     wr <- c.insert(d :~ USER -> userId.toString :~ TIME -> DateTime.now.getMillis)
     _ <- wr.failIfError
   } yield ()
 
   /** Increments user's imports count by `n`. */
   def imprt(userId: UUID, n: Int): Future[Unit] = for {
-    c <- futImportsColl
+    c <- importsColl()
     wr <- c.update(d :~ U_ID -> userId.toString, d :~ "$inc" -> (d :~ IMPT -> n), upsert = true)
     _ <- wr.failIfError
   } yield ()
@@ -60,9 +60,9 @@ class MongoUserStatsDao(db: Future[DefaultDB]) {
   /** Retrieves user's usage stats. */
   // TODO: what is the meaning of offsetMinutes????
   def stats(userId: UUID, offsetMinutes: Int): Future[UserStats] = for {
-    cS <- futStatsColl
-    cI <- futImportsColl
-    cE <- futEntriesColl
+    cS <- statsColl()
+    cI <- importsColl()
+    cE <- marksColl()
     marks <- cE.count(Some(d :~ Mark.USR -> userId.toString :~ Mark.TIMETHRU -> INF_TIME))
     imports <- cI.find(d :~ U_ID -> userId.toString).one[BSONDocument]
 

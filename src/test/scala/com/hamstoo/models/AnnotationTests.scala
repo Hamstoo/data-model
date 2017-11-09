@@ -7,9 +7,9 @@ import com.hamstoo.test.FlatSpecWithMatchers
 /**
   * Unit tests for annotations sorting
   */
-class AnnotationSpec extends FlatSpecWithMatchers {
+class AnnotationTests extends FlatSpecWithMatchers {
 
-  import AnnotationSpec._
+  import AnnotationTests._
 
   "Annotation sorting" should "(UNIT) sort correctly with defined page coordinates" in {
     import FullyDefined._
@@ -34,7 +34,7 @@ class AnnotationSpec extends FlatSpecWithMatchers {
   }
 }
 
-object AnnotationSpec {
+object AnnotationTests {
 
   val uuid: UUID = UUID.randomUUID()
   val id = "someId"

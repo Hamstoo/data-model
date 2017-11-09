@@ -25,8 +25,8 @@ import scala.util.{Failure, Random, Success, Try}
 package object utils {
 
   /**
-    * Returns a new database connection from a new MongoDriver instance, which could easily be used against the
-    * suggestion of the documentation quoted below.  Perhaps we should make this a singleton?
+    * Construct database connection pool, which should only happen once (for a given URI) because it instantiates
+    * a whole actor system with its own thread pool and whatnot.
     *
     * From the docs:
     *   "A MongoDriver instance manages the shared resources (e.g. the actor system for the asynchronous processing).
@@ -34,21 +34,23 @@ package object utils {
     *  instantiated more than once."
     *    [http://reactivemongo.org/releases/0.12/documentation/tutorial/connect-database.html]
     *
-    * @param uri  The database server's URI.
-    * @param name  The default database name.
+    * @param uri        The database server's URI.
+    * @param nAttempts  The default database name.
     */
   @tailrec
-  final def getDB(uri: String, name: String): Future[DefaultDB] =
+  final def getDbConnection(uri: String, nAttempts: Int = 5): MongoConnection =
     MongoConnection.parseURI(uri).map(MongoDriver().connection) match {
       case Success(c) =>
         Logger.info(s"Established connection to MongoDB via URI: $uri")
-        c.database(name) // this can fail on startup, but that doesn't mean we should re-instantiate the entire connection pool
+        c
       case Failure(e) =>
         e.printStackTrace()
-        println("Failed to establish connection to MongoDB; retrying...")
         Logger.warn("Failed to establish connection to MongoDB; retrying...")
         synchronized(wait(1000))
-        getDB(uri, name)
+        if (nAttempts == 0)
+          throw new RuntimeException("Failed to establish connection to MongoDB; aborting")
+        else
+          getDbConnection(uri, nAttempts = nAttempts - 1)
     }
 
   /** Only used by AuthController. */

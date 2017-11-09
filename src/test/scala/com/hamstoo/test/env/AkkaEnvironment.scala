@@ -18,7 +18,7 @@ abstract class AkkaEnvironment(actorSystemName: String)
 
   override def afterAll(): Unit = {
 
-    //stopping actor system
+    // stopping actor system
     TestKit.shutdownActorSystem(system)
   }
 
