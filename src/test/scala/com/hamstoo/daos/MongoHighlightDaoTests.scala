@@ -2,13 +2,15 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Highlight, Mark, PageCoord}
+import com.hamstoo.models.{Highlight, PageCoord}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.{TestHelper, generateDbId}
+import com.hamstoo.utils.TestHelper
 import org.scalatest.OptionValues
 
-
+/**
+  * Unit tests for all (basically CRUD) methods of MongoHighlightDao class
+  */
 class MongoHighlightDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
@@ -16,12 +18,10 @@ class MongoHighlightDaoTests
     with FutureHandler
     with TestHelper {
 
-  lazy val highlightDao = new MongoHighlightDao(getDB)
-
-  val usrId: UUID = UUID.randomUUID()
-  val markId: String = generateDbId(Mark.ID_LENGTH)
-
-  val h = Highlight(usrId = usrId, markId = markId, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("first", "", ""))
+  val userId: UUID = constructUserId()
+  val markId: String = constructMarkId()
+  val h = Highlight(usrId = userId, markId = markId, pos = Highlight.Position(Nil, 0),
+                    pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("first", "", ""))
 
   "MongoHighlightDao" should "(UNIT) insert highlights" in {
     highlightDao.insert(h).futureValue shouldEqual h
@@ -46,4 +46,6 @@ class MongoHighlightDaoTests
     highlightDao.delete(h.usrId, h.id).futureValue shouldEqual {}
     highlightDao.retrieveByMarkId(h.usrId, h.markId).futureValue shouldEqual Nil
   }
+
+  // TODO: test merge
 }
