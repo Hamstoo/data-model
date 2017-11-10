@@ -1,7 +1,5 @@
 package com.hamstoo.daos
 
-import java.util.UUID
-
 import com.hamstoo.models.{Mark, MarkData}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}

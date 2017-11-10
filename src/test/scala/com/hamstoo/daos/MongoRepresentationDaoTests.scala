@@ -3,9 +3,9 @@ package com.hamstoo.daos
 import com.hamstoo.models.{MarkData, Page, Representation}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
+import com.hamstoo.utils.MediaType
 import org.joda.time.DateTime
 import org.scalatest.OptionValues
-import com.hamstoo.utils.MediaType
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
@@ -102,8 +102,6 @@ class MongoRepresentationDaoTests
 
   it should "(UNIT) update representation" in {
     val time: Long = DateTime.now().getMillis
-
-    println(time)
     reprsDao.update(nRepr, time).futureValue shouldEqual nRepr.copy(timeFrom = time)
   }
 
