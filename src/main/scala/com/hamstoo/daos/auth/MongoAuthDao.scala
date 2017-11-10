@@ -7,6 +7,7 @@ import com.mohiva.play.silhouette.api.{AuthInfo, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
 import com.mohiva.play.silhouette.persistence.daos.DelegableAuthInfoDAO
 import play.api.Logger
+import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.bson.BSONDocument
 
@@ -19,10 +20,14 @@ import scala.reflect.runtime.universe._
   * That class define functionality for daos that works with subtypes of AuthInfo,
   * like OAuth1Info, OAuth2Info, PasswordInfo.
   */
-abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](coll: Future[BSONCollection], log: Logger) extends DelegableAuthInfoDAO[A] {
+abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](db: () => Future[DefaultDB])
+                                                                      extends DelegableAuthInfoDAO[A] {
 
   import com.hamstoo.models.Profile._
   import com.hamstoo.utils._
+
+  val logger: Logger
+  protected def dbColl(): Future[BSONCollection] = db().map(_.collection("users"))
 
   /**
     * Retrive auth information, by login information, depending on type parameter A.
@@ -30,7 +35,7 @@ abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](coll: Future[BSONC
     * @return - future value with option auth information
     */
   def find(loginInfo: LoginInfo): Future[Option[A]] = for {
-    c <- coll
+    c <- dbColl()
     optUser <- c.find(d :~ PLGNF -> loginInfo).one[User]
   } yield for {
     user <- optUser
@@ -45,7 +50,7 @@ abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](coll: Future[BSONC
     * @return - future with added auth information
     */
   override def add(loginInfo: LoginInfo, authInfo: A): Future[A] = for {
-      c <- coll
+      c <- dbColl()
       wr <- c update(d :~ PLGNF -> loginInfo, d :~ "$set" -> produceBson(authInfo))
       _ <- wr failIfError
     } yield authInfo
@@ -60,7 +65,7 @@ abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](coll: Future[BSONC
     * @return - empty future
     */
   override def remove(loginInfo: LoginInfo): Future[Unit] = for {
-    c <- coll
+    c <- dbColl()
     wr <- c update(d :~ PLGNF -> loginInfo, d :~ "$pull" -> (d :~ PROF -> (d :~ "loginInfo" -> loginInfo)))
     _ <- wr failIfError
   } yield ()

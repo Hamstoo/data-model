@@ -15,7 +15,9 @@ import scala.concurrent.ExecutionContext.Implicits.global
   */
 class ContentRetrieverTests
   extends AkkaEnvironment("ContentRetrieverTests-ActorSystem")
-    with FutureHandler with DataInfo {
+    with FutureHandler {
+
+  import com.hamstoo.utils.DataInfo._
 
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
