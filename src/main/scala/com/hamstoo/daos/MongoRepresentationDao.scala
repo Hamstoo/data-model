@@ -40,6 +40,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
 
   // data migration
   case class WeeRepr(id: String, timeFrom: Long, page: String)
+
   Await.result(for {
     c <- dbColl()
 
@@ -122,35 +123,6 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
       updatedRepr
     }
   }
-
-  /**
-    * Stores provided representation, optionally updating current state if repr ID already exists in database.
-    * @return  Returns a `Future` repr ID of either updated or inserted repr.
-    */
-//  def save(repr: Representation, now: Long = DateTime.now.getMillis): Future[String] =
-  // for {
-//    c <- futColl
-//    // No longer checking if ID and (in case of public repr) link exist in the db, failing on conflict.  Instead
-//    // let the caller decide when to update an existing repr based on passing in a Representation with an ID that
-//    // already exists or doesn't.
-//    opRepr <- retrieveById(repr.id)
-//
-//    wr <- opRepr match {
-//      case Some(r) =>
-//        logger.info(s"Updating existing Representation(id=${r.id}, link=${r.link}, timeFrom=${r.timeFrom}, dt=${r.timeFrom.dt})")
-//        for {
-//          wr <- c update(d :~ ID -> repr.id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now)) // retire the old one
-//          _ <- wr failIfError; // semicolon wouldn't be necessary if used `wr.failIfError` (w/ the dot) instead--weird
-//          wr <- c insert repr.copy(timeFrom = now, timeThru = INF_TIME) // insert the new one
-//        } yield wr
-//
-//      case _ =>
-//        logger.info(s"Inserting new Representation(id=${repr.id}, link=${repr.link})")
-//        c insert repr.copy(timeFrom = now)
-//    }
-//    _ <- wr failIfError
-//
-//  } yield repr.id
 
   /**
     * Stores provided representation, optionally updating current state if repr ID already exists in database.
