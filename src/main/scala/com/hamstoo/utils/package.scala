@@ -25,8 +25,11 @@ import scala.util.{Failure, Random, Success, Try}
 package object utils {
 
   /**
-    * Returns a new database connection from a new MongoDriver instance, which could easily be used against the
-    * suggestion of the documentation quoted below.  Perhaps we should make this a singleton?
+    * Construct database connection pool, which should only happen once (for a given URI) because it instantiates a
+    * whole actor system with its own thread pool and whatnot.  If we ever start using more than one database (node
+    * or replica set), then we'll want to separate the construction of the actor system (MongoDriver), which we'd
+    * only want one of, away from that of the connection pools (MongoConnections), which we'd want to have multiple
+    * of, one for each database.
     *
     * From the docs:
     *   "A MongoDriver instance manages the shared resources (e.g. the actor system for the asynchronous processing).
@@ -34,22 +37,28 @@ package object utils {
     *  instantiated more than once."
     *    [http://reactivemongo.org/releases/0.12/documentation/tutorial/connect-database.html]
     *
-    * @param uri  The database server's URI.
-    * @param name  The default database name.
+    * @param uri        The database server's URI.
+    * @param nAttempts  The default database name.
     */
   @tailrec
-  final def getDB(uri: String, name: String): Future[DefaultDB] =
-    MongoConnection.parseURI(uri).map(MongoDriver().connection) match {
-      case Success(c) =>
+  final def getDbConnection(uri: String, nAttempts: Int = 5): (MongoDriver, MongoConnection) = {
+    MongoConnection.parseURI(uri).map { parsedUri =>
+      val driver = MongoDriver()
+      (driver, driver.connection(parsedUri))
+    } match {
+      case Success(dc) =>
         Logger.info(s"Established connection to MongoDB via URI: $uri")
-        c.database(name)
+        dc
       case Failure(e) =>
         e.printStackTrace()
-        println("Failed to establish connection to MongoDB; retrying...")
         Logger.warn("Failed to establish connection to MongoDB; retrying...")
         synchronized(wait(1000))
-        getDB(uri, name)
+        if (nAttempts == 0)
+          throw new RuntimeException("Failed to establish connection to MongoDB; aborting")
+        else
+          getDbConnection(uri, nAttempts = nAttempts - 1)
     }
+  }
 
   /** Only used by AuthController. */
   def createLink(endpoint: Call)(implicit request: Request[Any]): String =
@@ -59,7 +68,11 @@ package object utils {
     /** Short for `.cursor` with `.collect` consecutive calls with default error handler. */
     def coll[E, C[_] <: Iterable[_]](n: Int = -1)
                                     (implicit r: Reader[E], cbf: CanBuildFrom[C[_], E, C[E]]): Future[C[E]] = {
-      qb.cursor[E]().collect[C](n, Cursor.FailOnError[C[E]]())
+
+      // "In most cases, modifying the batch size will not affect the user or the application, as the mongo shell and
+      // most drivers return results as if MongoDB returned a single batch."
+      //   [https://docs.mongodb.com/manual/reference/method/cursor.batchSize/]
+      qb/*.options(QueryOpts().batchSize(n))*/.cursor[E]().collect[C](n, Cursor.FailOnError[C[E]]())
     }
   }
 

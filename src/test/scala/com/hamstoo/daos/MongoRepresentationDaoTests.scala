@@ -3,9 +3,9 @@ package com.hamstoo.daos
 import com.hamstoo.models.{MarkData, Page, Representation}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.{MediaType, TestHelper}
 import org.joda.time.DateTime
 import org.scalatest.OptionValues
+import com.hamstoo.utils.MediaType
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
@@ -17,10 +17,7 @@ class MongoRepresentationDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler
-    with OptionValues
-    with TestHelper {
-
-  lazy val reprsDao = new MongoRepresentationDao(getDB)
+    with OptionValues {
 
   /** Create new mark. */
   def randomMarkData: MarkData = {
@@ -46,9 +43,6 @@ class MongoRepresentationDaoTests
 
   "MongoRepresentationDao" should "(UNIT) save representation" in {
 
-    //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").drop(true), Duration(testDuration, MILLISECONDS))
-    //Await.result(getDB.value.get.get.collection[BSONCollection]("representations").create(false), Duration(testDuration, MILLISECONDS))
-
     val url: Option[String] = randomMarkData.url
     //val url = "http://nymag.com/daily/intelligencer/2017/04/andrew-sullivan-why-the-reactionary-right-must-be-taken-seriously.html"
     //val url = "https://developer.chrome.com/extensions/getstarted"
@@ -73,6 +67,7 @@ class MongoRepresentationDaoTests
       keywords = Some("something"),
         vectors = Map {"month" -> vec2})
 
+    // save representation
     println(s"Creating 2 representations with ids ${reprOrig.id} and ${reprCopy.id}")
     val id: String = reprsDao.save(reprOrig).futureValue /*.map(id => id)*/
     println(s"Created representation id $id")
@@ -80,20 +75,19 @@ class MongoRepresentationDaoTests
     id should not equal null
     id should not equal ""
 
+    // saves representation copy
     val id2: String = reprsDao.save(reprCopy).futureValue /*.map(id => id)*/
     println(s"Updated representation 2 id $id2")
     id shouldEqual id2 // this is because they have the same ID
-
-    //val repr1 = Await.result(reprsDao retrieveById id map (repr => repr), Duration(1000, MILLISECONDS))
-    //val repr2 = Await.result(reprsDao retrieveById id2 map (repr => repr), Duration(1000, MILLISECONDS))
 
     // use `retrieveAllById` to get both previous and updated reprs from the db
     val reprs: Seq[Representation] = reprsDao.retrieveAllById(id2).futureValue
     println(s"Print SIZE ${reprs.size}")
     reprs.foreach(r => println(s"Print Seq ${r.timeThru}"))
 
+    // reprs must be sorted and 1st repr must be actual
     reprs.size shouldEqual 2
-    reprs.head.timeThru should be < Long.MaxValue
+    reprs.head.timeThru should be < com.hamstoo.utils.INF_TIME
     reprs.head.timeFrom should not equal reprs.tail.head.timeFrom
     reprs.head.timeThru should be < reprs.tail.head.timeThru
   }

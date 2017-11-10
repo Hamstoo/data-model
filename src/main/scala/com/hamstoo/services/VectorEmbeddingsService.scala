@@ -69,11 +69,20 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
         if (str.isEmpty) Seq.empty[WordMass] else {
           val r = wgt * math.pow(maxLen.toDouble / str.length, 0.333333)
 
-          // TODO: remove this Await! 60 seconds is not long enough when loading word vectors (issue #190)
-          val (topWords, docLength) = Await.result(text2TopWords(str), 300 seconds)
+          // it helps for this to be synchronized because countWords via text2TopWords can issue a massive number of
+          // database calls all at the same time (e.g. 50 marks being processed for representations each with 500 words
+          // each needing vector lookups) leading to an unrecoverable cascade of TimeoutExceptions/DriverExceptions
+          val t0 = System.currentTimeMillis()
+          this.synchronized {
+            val t1 = System.currentTimeMillis()
+            // TODO: remove this Await! 60 seconds is not long enough when loading word vectors (issue #190)
+            val (topWords, docLength) = Await.result(text2TopWords(str), 151 seconds)
+            val t2 = System.currentTimeMillis()
+            logger.info(s"Await(text2TopWords) elapsed time " + (t2-t1)/1e3 + "s, waited " + (t1-t0)/1e3 + "s")
 
-          nWords += docLength * wgt // this weighting gets "undone" below
-          topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))
+            nWords += docLength * wgt // this weighting gets "undone" below
+            topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))
+          }
         }
       }.groupBy(_.word)
         .map { case (w: String, wms: Seq[WordMass]) =>
@@ -334,11 +343,46 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     }
   }
 
-  /** Count words in the document that have word vectors. */
+  /**
+    * Count words in the document that have word vectors.
+    */
   def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] = {
+    logger.info(s"Counting words ($wCount, ${Vectorizer.dbCount}, ${Vectorizer.fCount})")
+
+    // count number of occurrences of each (non-standardized) word so that we only have to lookup a vec for each once
+    val grouped0: Seq[(String, Int)] = words.groupBy(identity).mapValues(_.length).toSeq
+
+    /**
+      * This is an older implementation of countWords that doesn't make use of ReactiveMongo's asynchronicity
+      * but rather issues all of the futures sequentially.  It was originally re-implemented while debugging
+      * issue #202, but it wasn't the cause of the bug.  Still, it may be useful for debugging again in the future
+      * so I'm leaving it commented-out here for that purpose.
+      */
+    //@tailrec
+    def rec(grouped: Seq[(String, Int)], wordCounts: Map[String, (Int, Vec)] = Map.empty[String, (Int, Vec)]):
+                                              Future[Map[String, (Int, Vec)]] = {
+
+      if (grouped.isEmpty) Future.successful(wordCounts) else {
+
+        // call dbCachedLookupFuture for each non-standardized/raw word in `grouped`
+        // TODO: it would be nice if we could standardize the word first before calling `dbCachedLookup`
+        // TODO: this would cut down on re-querying vectors for words that have already been found
+        vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, grouped.head._1)
+          .map { optWordVec =>
+            optWordVec.collect { case (vec, standardizedWord) =>
+              val updt = wordCounts.getOrElse(standardizedWord, (0, vec))
+              wCount += 1 // not threadsafe, but just for testing, so who cares
+              wordCounts.updated(standardizedWord, (updt._1 + grouped.head._2, vec))
+            }.getOrElse(wordCounts)
+          }
+          .flatMap { wcs => rec(grouped.drop(1), wcs) }
+      }
+    }
+
+    rec(grouped0)
 
     // call dbCachedLookupFuture for each non-standardized/raw word in `words`
-    val withVecs = words.groupBy(identity).mapValues(_.length).map { case (w, n) =>
+    /*val withVecs = grouped0.map { case (w, n) =>
 
       // TODO: it would be nice if we could standardize the word first before calling `dbCachedLookup`
       // TODO: this would cut down on re-querying vectors for words that have already been found
@@ -354,7 +398,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     val fseq: Future[Iterable[Option[(String, (Int, Vec))]]] = Future.sequence(withVecs)
 
     // group by standardized words (just in case any non-standardized words map to the same standardized word)
-    fseq.map(_.flatten.groupBy(_._1).mapValues(it => (it.map(_._2._1).sum, it.head._2._2)))
+    fseq.map(_.flatten.groupBy(_._1).mapValues(it => (it.map(_._2._1).sum, it.head._2._2)))*/
   }
 
   /** Converts from number of unique words in a document to the number that are desired by `text2TopWords`. */

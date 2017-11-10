@@ -8,41 +8,41 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.BSONDocument
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
+
 
 /**
   * Data access object for confirmation tokens.
   */
-class MongoUserTokenDao(db: Future[DefaultDB]) {
+class MongoUserTokenDao(db: () => Future[DefaultDB]) {
 
-  import com.hamstoo.models.UserToken.tokenHandler
   import com.hamstoo.utils._
 
-  private val futCol: Future[BSONCollection] = db map (_ collection "tokens")
+  private def dbColl(): Future[BSONCollection] = db().map(_ collection "tokens")
 
-  /* Ensure mongo collection has proper index: */
+  // ensure mongo collection has proper index
   private val indxs = Map(Index(ID -> Ascending :: Nil) % s"bin-$ID-1")
-  futCol map (_.indexesManager ensure indxs)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 24 seconds)
 
   /** Retrieves a token by id. */
   def find(id: UUID): Future[Option[UserToken]] = for {
-    c <- futCol
+    c <- dbColl()
     optTkn <- c.find(d :~ ID -> id.toString).one[UserToken]
   } yield optTkn
 
   /** Saves provided token. */
   def save(token: UserToken): Future[Unit] = for {
-    c <- futCol
+    c <- dbColl()
     wr <- c insert token
     _ <- wr failIfError
   } yield ()
 
   /** Removes a token by id. */
   def remove(id: UUID): Future[Unit] = for {
-    c <- futCol
+    c <- dbColl()
     wr <- c remove d :~ ID -> id.toString
     _ <- wr failIfError
   } yield ()

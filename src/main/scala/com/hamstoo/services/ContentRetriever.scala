@@ -1,20 +1,19 @@
 package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
-import java.net.{URI, URL}
+import java.net.URI
 import javax.activation.MimeType
 
 import akka.util.ByteString
 import com.hamstoo.models.Page
 import com.hamstoo.utils.MediaType
-import org.apache.tika.io.IOUtils
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.apache.tika.parser.Parser
 import play.api.Logger
 import play.api.libs.ws.{WSClient, WSResponse}
 
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 import scala.util.matching.Regex
 
 /**
@@ -26,9 +25,10 @@ object ContentRetriever {
   val titleRgx: Regex = "(?i)<title.*>([^<]+)</title>".r.unanchored
 
   /** Make sure the provided String is an absolute link. */
-  def checkLink(s: String): String = if (s.isEmpty) s else new URI(s) match {
-    case uri if uri.isAbsolute => uri.toASCIIString
-    case uri => "http://" + uri.toASCIIString
+  def checkLink(s: String): String = if (s.isEmpty) s else Try(new URI(s)) match {
+    case Success(uri) if uri.isAbsolute => uri.toASCIIString
+    case Success(uri) => "http://" + uri.toASCIIString
+    case Failure(t) => logger.info(s"String '$s' is probably not a URL; ${t.getMessage}"); s
   }
 
   /** Moved from hamstoo repo LinkageService class.  Used to take a MarkData as input and produce one as output. */
@@ -71,22 +71,13 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
   /** Retrieve mime type and content (e.g. HTML) given a URL. */
   def retrieve(url: String): Future[Page] = {
-    logger.debug(s"Retrieving URL $url with MIME type ${new MimeType(TikaInstance.detect(url))}")
-    // TODO: it doesn't seem like we need to check for type here if everything can just be gotten as
-    retrieveBinary(url).map(Page(_))
-      /*.recoverWith {
-        case e =>
-          logger.warn(s"ContentRetriever.retrieve exception: ${e.getMessage}")
-          retrieveHTML(url).map(x => Page(x.getBytes))
-      }*/
-      .recoverWith {
-        case e =>
-          logger.warn(s"ContentRetriever.retrieve exception: ${e.getMessage}")
-          digest(url).map(x => Page(x._2.bodyAsBytes.toArray))
-      }
+    logger.debug(s"Retrieving URL '$url' with MIME type '${new MimeType(TikaInstance.detect(url))}'")
+
+    // switched to using `digest` only and never using `retrieveBinary` (issue #205)
+    digest(url).map(x => Page(x._2.bodyAsBytes.toArray))
   }
 
-  /** This code was formerly part of the hamstoo repo's LinkageService. */
+  /** This code was formerly part of the 'hamstoo' repo's LinkageService. */
   def digest(url: String): Future[(String, WSResponse)] = {
     val link: String = checkLink(url)
 
@@ -110,14 +101,11 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
             case 308 =>
               res.header("Location") match {
                 case Some(newUrl) =>
-                  Logger.info(s"Following redirect: ${res.status} newUrl = $newUrl, res.headers = ${res.headers}") // Logger.debug doesn't work
                   recget(newUrl, depth + 1)
                 case _ =>
-                  Logger.info(s"Not following redirect: ${res.status} url = $url, res.headers = ${res.headers}") // Logger.debug doesn't work
                   Future.successful((url, res))
               }
             case _ =>
-              Logger.info(s"No redirect: ${res.status} url = $url, res.headers = ${res.headers}, res.body = ${res.body.take(100)}") // Logger.debug doesn't work
               Future.successful((url, res))
           }
         }
@@ -156,24 +144,21 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     * As of 2017-10-17 this is now returning 403s for some sites.  For example, these:
     *   http://marginalrevolution.com/marginalrevolution/2017/10/richard-thaler-wins-nobel.html and
     *   https://doc.akka.io/docs/akka/2.5/scala/stream/index.html
-    * This may be related to the following log message:
-    *   2017-10-23 08:45:46,532 [�[33mwarn�[0m] a.a.ActorSystemImpl - Sending an 2xx 'early' response before end of
-    *   request was received... Note that the connection will be closed after this response. Also, many clients will
-    *   not read early responses! Consider only issuing this response after the request data has been completely read!
+    * As of 2017-11-06 this has been causing repr-engine to fail.  See 'hamstoo' issue #202.
     */
-  private def retrieveBinary(url: String): Future[Array[Byte]] = Future {
+  /*private def retrieveBinary(url: String): Future[Array[Byte]] = Future {
     // PDFs do not have page source that can be represented as text, so
     // to save text in appropriate encoding it will be required to use Apache Tika
     // deeply here to detect encoding of document
     //   http://tika.apache.org/1.5/api/org/apache/tika/detect/EncodingDetector.html
     // Below idea is the example but I am not sure if it is good because PDF might consist of
     // scanned images or can consist images inside text.
-    val is = new URL(url).openStream()
+    val is = Try_would_be_needed_here(new URL(url)).openStream()
     //val encDet = new Icu4jEncodingDetector
     //val metadata = new Metadata()
     //val encodingCharset = encDet.detect(is, metadata)
     val byteArray = IOUtils.toByteArray(is)
     //val text = ByteString(byteArray).decodeString(encodingCharset)
     byteArray
-  }
+  }*/
 }

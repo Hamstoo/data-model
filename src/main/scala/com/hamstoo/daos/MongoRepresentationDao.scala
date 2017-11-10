@@ -28,20 +28,20 @@ object MongoRepresentationDao {
   * Data access object for MongoDB `representations` collection.
   * @param db  Future[DefaultDB] database connection.
   */
-class MongoRepresentationDao(db: Future[DefaultDB]) {
-
-  val logger: Logger = Logger(classOf[MongoRepresentationDao])
+class MongoRepresentationDao(db: () => Future[DefaultDB]) {
 
   import MongoRepresentationDao._
   import com.hamstoo.models.Mark.{SCORE, TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
 
-  private val futColl: Future[BSONCollection] = db map (_ collection "representations")
+  val logger: Logger = Logger(classOf[MongoRepresentationDao])
+
+  private def dbColl(): Future[BSONCollection] = db().map(_ collection "representations")
 
   // data migration
   case class WeeRepr(id: String, timeFrom: Long, page: String)
-  Await.result( for {
-    c <- futColl
+  Await.result(for {
+    c <- dbColl()
 
     // ensure every repr has a page String before changing them all to Pages
     _ <- c.update(d :~ PAGE -> (d :~ "$exists" -> 0), d :~ "$set" -> (d :~ PAGE -> ""), multi = true)
@@ -66,22 +66,21 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     _ <- Future.sequence { longPfxed.map { repr => // lprefx will have been overwritten upon construction
       c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ LPREFX -> repr.lprefx), multi = true)
     }}
-  } yield (), 300 seconds)
+  } yield (), 306 seconds)
 
-  /* Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
-   weights must be integers, and if there's any error in how they're specified the index is silently ignored. */
+  // Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
+  // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
   private val indxs: Map[String, Index] =
-    Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
+  Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
     Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
     Index(LPREFX -> Ascending :: Nil) % s"bin-$LPREFX-1" ::
     Index(
       key = DTXT -> Text :: OTXT -> Text :: KWORDS -> Text :: LNK -> Text :: Nil,
       options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
-        s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
-      Nil toMap
-
-  futColl map (_.indexesManager ensure indxs)
+      s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
+    Nil toMap;
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 93 seconds)
 
   /**
     * Inserting representation to database
@@ -94,7 +93,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     logger.info(s"Inserting Representation with id: $reprId")
 
     for {
-      c <- futColl
+      c <- dbColl()
       wr <- c.insert(repr)
       _ <- wr.failIfError
     } yield {
@@ -114,7 +113,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     logger.info(s"Updating Representation with id: $reprId")
 
     for {
-      c <- futColl
+      c <- dbColl()
       wr <- c update(d :~ ID -> reprId :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now)) // retire the old one
       _ <- wr failIfError; // semicolon wouldn't be necessary if used `wr.failIfError` (w/ the dot) instead--weird
       updatedRepr <- insert(repr.copy(timeFrom = now))
@@ -176,7 +175,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   def retrieveById(id: String): Future[Option[Representation]] = {
     logger.info(s"Retrieving Representation by id: $id")
     for {
-      c <- futColl
+      c <- dbColl()
       opRep <- c.find(d :~ ID -> id :~ curnt).one[Representation]
     } yield {
       logger.info(s"Representation: $opRep was successfully retrieved")
@@ -188,7 +187,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
   def retrieveAllById(id: String): Future[Seq[Representation]] = {
     logger.info("Retrieving Representation by id")
     for {
-      c <- futColl
+      c <- dbColl()
       seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
     } yield {
       logger.info(s"${seq.size} Representations were retrieved")
@@ -207,7 +206,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     * --ORDER BY score DESC -- actually this is not happening, would require '.sort' after '.find'
     */
   def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
-    c <- futColl
+    c <- dbColl()
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
 
     // exclude these fields from the returned results to conserve memory during search
