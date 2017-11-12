@@ -19,14 +19,14 @@ import scala.concurrent.{Await, Future}
 /**
   * Data access object for user accounts.
   */
-class MongoUserDao(db: Future[DefaultDB]) extends IdentityService[User] {
+class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}
   import com.hamstoo.utils._
 
   // get the "users" collection (in the future); the `map` is `Future.map`
   // http://reactivemongo.org/releases/0.12/api/#reactivemongo.api.DefaultDB
-  private val futColl: Future[BSONCollection] = db map (_ collection "users")
+  private def dbColl(): Future[BSONCollection] = db().map(_ collection "users")
 
   // ensure mongo collection has proper indexes
   private val indxs: Map[String, Index] =
@@ -34,63 +34,63 @@ class MongoUserDao(db: Future[DefaultDB]) extends IdentityService[User] {
       Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
       Index(s"$PROF.$EMAIL" -> Ascending :: Nil) % s"bin-$PROF.$EMAIL-1" ::
       Nil toMap;
-  Await.result(futColl map (_.indexesManager ensure indxs), 23 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 23 seconds)
 
   /** Saves or updates user account data by matching provided `User`'s `.id`. */
   def save(u: User): Future[Unit] = for {
-    c <- futColl
+    c <- dbColl()
     wr <- c update(d :~ ID -> u.id.toString, u, upsert = true)
     _ <- wr failIfError
   } yield ()
 
   /** Retrieves user account data by login. */
   def retrieve(loginInfo: LoginInfo): Future[Option[User]] = for {
-    c <- futColl
+    c <- dbColl()
     optUsr <- c.find(d :~ PLGNF -> loginInfo).one[User]
   } yield optUsr
 
   /** Retrieves user account data by user id. */
   def retrieve(userId: UUID): Future[Option[User]] = for {
-    c <- futColl
+    c <- dbColl()
     optUsr <- c.find(d :~ ID -> userId.toString).one[User]
   } yield optUsr
 
   /** Retrieves user account data by email. */
   def retrieve(email: String): Future[Option[User]] = for {
-    c <- futColl
+    c <- dbColl()
     optUsr <- c.find(d :~ s"$PROF.$EMAIL" -> email).one[User]
   } yield optUsr
 
   /** Attaches provided `Profile` to user account by user id. */
   def link(userId: UUID, profile: Profile): Future[User] = for {
-    c <- futColl
+    c <- dbColl()
     wr <- c findAndUpdate(d :~ ID -> userId.toString, d :~ "$push" -> (d :~ PROF -> profile), fetchNewObject = true)
   } yield wr.result[User].get
 
   /** Detaches provided login from user account by id. */
   def unlink(userId: UUID, loginInfo: LoginInfo): Future[User] = for {
-    c <- futColl
+    c <- dbColl()
     upd = d :~ "$pull" -> (d :~ s"$PROF.$LGNF" -> loginInfo)
     wr <- c findAndUpdate(d :~ ID -> userId.toString, upd, fetchNewObject = true)
   } yield wr.result[User].get
 
   /** Updates one of user account's profiles by login. */
   def update(profile: Profile): Future[User] = for {
-    c <- futColl
+    c <- dbColl()
     upd = d :~ "$set" -> (d :~ s"$PROF.$$" -> profile)
     wr <- c findAndUpdate(d :~ PLGNF -> profile.loginInfo, upd, fetchNewObject = true)
   } yield wr.result[User].get
 
   /** Sets one of user account profiles to 'confirmed' by login. */
   def confirm(loginInfo: LoginInfo): Future[User] = for {
-    c <- futColl
+    c <- dbColl()
     upd = d :~ "$set" -> (d :~ s"$PROF.$$.$CONF" -> true)
     wr <- c findAndUpdate(d :~ PLGNF -> loginInfo, upd, fetchNewObject = true)
   } yield wr.result[User].get
 
   /** Removes user account by id. */
   def delete(userId: UUID): Future[Unit] = for {
-    c <- futColl
+    c <- dbColl()
     wr <- c remove d :~ ID -> userId.toString
     _ <- wr failIfError
   } yield ()

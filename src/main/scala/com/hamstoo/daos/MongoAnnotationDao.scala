@@ -7,6 +7,7 @@ import com.hamstoo.models._
 import com.hamstoo.utils._
 import org.joda.time.DateTime
 import play.api.Logger
+import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.bson.BSONDocumentHandler
 
@@ -18,12 +19,13 @@ import scala.concurrent.{ExecutionContext, Future}
   * @param ex   execution context
   * @tparam A - this type param must be subtype of Annotations and have defined BSONDocument handler
   */
-abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: String)
+abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: String, db: () => Future[DefaultDB])
                                                                        (implicit ex: ExecutionContext)
           extends AnnotationInfo {
 
-  val futColl: Future[BSONCollection]
   val logger: Logger
+  def dbColl(): Future[BSONCollection]
+  protected def marksColl(): Future[BSONCollection] = db().map(_ collection "entries")
 
   /**
     * Insert annotation instance into mongodb collection
@@ -31,10 +33,10 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     * @return - Future value with successfully inserted annotations object
     */
   def insert(annotation: A): Future[A] = {
-    logger.debug(s"Inserting $name: ${annotation.id}")
+    logger.debug(s"Inserting $name ${annotation.id}")
 
     for {
-      c <- futColl
+      c <- dbColl()
       wr <- c.insert(annotation)
       _ <- wr failIfError
     } yield {
@@ -50,10 +52,10 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     * @return - option value with annotation object
     */
   def retrieve(usr: UUID, id: String): Future[Option[A]] = {
-    logger.debug(s"Retrieving $name by uuid: $usr and id: $id")
+    logger.debug(s"Retrieving $name $id for user $usr")
 
     for {
-      c <- futColl
+      c <- dbColl()
       mbHl <- c.find(d :~ USR -> usr :~ ID -> id :~ curnt).projection(d :~ POS -> 1).one[A]
     } yield {
       logger.debug(s"$name: $mbHl was successfully retrieved")
@@ -68,10 +70,10 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     * @return - future with sequence of annotations that match condition
     */
   def retrieveByMarkId(usr: UUID, markId: String): Future[Seq[A]] = {
-    logger.debug(s"Retrieving ${name + "s"} by uuid: $usr and markId: $markId")
+    logger.debug(s"Retrieving ${name + "s"} for user $usr and mark $markId")
 
     for {
-      c <- futColl
+      c <- dbColl()
       seq <- c.find(d :~ USR -> usr :~ MARKID -> markId :~ curnt).coll[A, Seq]()
     } yield {
       logger.debug(s"${seq.size} ${name + "s"} was successfully retrieved")
@@ -86,10 +88,10 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     * @return - empty future
     */
   def delete(usr: UUID, id: String): Future[Unit] = {
-    logger.debug(s"Deleting $name by uuid: $usr and id: $id")
+    logger.debug(s"Deleting $name $id for user $usr")
 
     for {
-      c <- futColl
+      c <- dbColl()
       wr <- c.update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> DateTime.now.getMillis))
       _ <- wr failIfError
     } yield logger.debug(s"$name was successfully deleted")
@@ -101,10 +103,10 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     */
   @deprecated("Not really deprecated, but sure seems expensive, so warn if it's being used.", "0.9.34")
   def retrieveAll(): Future[Seq[A]] = {
-    logger.debug(s"Retrieving all ${name + "s"}")
+    logger.debug(s"Retrieving all ${name + "s"} (FOR ALL USERS!)")
 
     for {
-      c <- futColl
+      c <- dbColl()
       seq <- c.find(d).coll[A, Seq]()
     } yield {
       logger.debug(s"${seq.size} ${name + "s"} was successfully retrieved")
@@ -119,7 +121,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
   def merge(oldMark: Mark, newMark: Mark,
             insrt: (A, String, Long) => Future[A],
             now: Long = DateTime.now.getMillis): Future[Unit] = for {
-    c <- futColl
+    c <- dbColl()
 
     // previous impl in RepresentationActor.merge
     //hls <- hlightsDao.retrieveByMarkId(newMark.userId, newMark.id)

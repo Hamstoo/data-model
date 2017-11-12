@@ -28,20 +28,20 @@ object MongoRepresentationDao {
   * Data access object for MongoDB `representations` collection.
   * @param db  Future[DefaultDB] database connection.
   */
-class MongoRepresentationDao(db: Future[DefaultDB]) {
-
-  val logger: Logger = Logger(classOf[MongoRepresentationDao])
+class MongoRepresentationDao(db: () => Future[DefaultDB]) {
 
   import MongoRepresentationDao._
   import com.hamstoo.models.Mark.{SCORE, TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
 
-  private val futColl: Future[BSONCollection] = db map (_ collection "representations")
+  val logger: Logger = Logger(classOf[MongoRepresentationDao])
+
+  private def dbColl(): Future[BSONCollection] = db().map(_ collection "representations")
 
   // data migration
   case class WeeRepr(id: String, timeFrom: Long, page: String)
   Await.result(for {
-    c <- futColl
+    c <- dbColl()
 
     // ensure every repr has a page String before changing them all to Pages
     _ <- c.update(d :~ PAGE -> (d :~ "$exists" -> 0), d :~ "$set" -> (d :~ PAGE -> ""), multi = true)
@@ -80,14 +80,14 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
       options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
         s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
     Nil toMap;
-  Await.result(futColl map (_.indexesManager ensure indxs), 93 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 93 seconds)
 
   /**
     * Stores provided representation, optionally updating current state if repr ID already exists in database.
     * @return  Returns a `Future` repr ID of either updated or inserted repr.
     */
   def save(repr: Representation, now: Long = DateTime.now.getMillis): Future[String] = for {
-    c <- futColl
+    c <- dbColl()
 
     // No longer checking if ID and (in case of public repr) link exist in the db, failing on conflict.  Instead
     // let the caller decide when to update an existing repr based on passing in a Representation with an ID that
@@ -112,13 +112,13 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
 
   /** Retrieves a current (latest) representation by id. */
   def retrieveById(id: String): Future[Option[Representation]] = for {
-    c <- futColl
+    c <- dbColl()
     opRep <- c.find(d :~ ID -> id :~ curnt).one[Representation]
   } yield opRep
 
   /** Retrieves all representations, including private and previous versions, by Id. */
   def retrieveAllById(id: String): Future[Seq[Representation]] = for {
-    c <- futColl
+    c <- dbColl()
     seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
   } yield seq
 
@@ -133,7 +133,7 @@ class MongoRepresentationDao(db: Future[DefaultDB]) {
     * --ORDER BY score DESC -- actually this is not happening, would require '.sort' after '.find'
     */
   def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
-    c <- futColl
+    c <- dbColl()
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
 
     // exclude these fields from the returned results to conserve memory during search

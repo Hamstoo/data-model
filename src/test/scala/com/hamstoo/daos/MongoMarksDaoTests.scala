@@ -5,7 +5,7 @@ import java.util.UUID
 import com.hamstoo.models.{Mark, MarkData}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.{INF_TIME, TestHelper}
+import com.hamstoo.utils.INF_TIME
 import org.scalatest.OptionValues
 
 /**
@@ -15,8 +15,9 @@ class MongoMarksDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler
-    with OptionValues
-    with TestHelper {
+    with OptionValues {
+
+  import com.hamstoo.utils.DataInfo._
 
   val uuid1 = constructUserId()
   val uuid2 = constructUserId()

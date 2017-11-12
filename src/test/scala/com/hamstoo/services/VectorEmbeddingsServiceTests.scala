@@ -7,7 +7,6 @@ import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingService.WordMass
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
-import com.hamstoo.utils.TestHelper
 import play.api.libs.ws.ahc.AhcWSClient
 
 /**
@@ -18,11 +17,12 @@ import play.api.libs.ws.ahc.AhcWSClient
   */
 class VectorEmbeddingsServiceTests
   extends AkkaMongoEnvironment("VectorEmbeddingsServiceSpec-ActorSystem")
-    with FutureHandler
-    with TestHelper {
+    with FutureHandler {
+
+  import com.hamstoo.utils.DataInfo._
 
   implicit val materializer: ActorMaterializer = ActorMaterializer()
-  lazy val vectorizer = new Vectorizer(AhcWSClient(), new MongoVectorsDao(getDB), vectorsLink)
+  lazy val vectorizer = new Vectorizer(AhcWSClient(), vectorsDao, vectorsLink)
   lazy val idfModel = new IDFModel(idfsResource)
   lazy val vecSvc = new VectorEmbeddingsService(vectorizer, idfModel)
 

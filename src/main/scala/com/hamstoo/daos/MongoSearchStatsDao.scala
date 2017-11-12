@@ -16,19 +16,19 @@ import scala.concurrent.{Await, Future}
   * MongoDB data access object for `searchstats` collection.  Search stats are stats on the number of times
   * a user has visited a mark's URL (via Hamstoo) or its full-page view.
   */
-class MongoSearchStatsDao(db: Future[DefaultDB]) {
+class MongoSearchStatsDao(db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._
 
-  private val futColl: Future[BSONCollection] = db map (_ collection "searchstats")
+  private def dbColl(): Future[BSONCollection] = db().map(_ collection "searchstats")
 
   private val indxs: Map[String, Index] =
     Index(QUERY -> Ascending :: Nil, unique = true) % s"bin-$QUERY-1-uniq" :: Nil toMap;
-  Await.result(futColl map (_.indexesManager ensure indxs), 34 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 34 seconds)
 
   def addUrlClick(query: String, id: String, url: String, weight: Double, index: Int): Future[Unit] =
     for {
-      c <- futColl
+      c <- dbColl()
       sel = d :~ QUERY -> query
       mbss <- (c find sel).one[SearchStats]
       upd = mbss getOrElse SearchStats(query) incUrl(url, id, weight, index)
@@ -38,7 +38,7 @@ class MongoSearchStatsDao(db: Future[DefaultDB]) {
 
   def addFpvClick(query: String, id: String, url: Option[String], weight: Double, index: Int): Future[Unit] =
     for {
-      c <- futColl
+      c <- dbColl()
       sel = d :~ QUERY -> query
       mbss <- (c find sel).one[SearchStats]
       upd = mbss getOrElse SearchStats(query) incFpv(url, id, weight, index)

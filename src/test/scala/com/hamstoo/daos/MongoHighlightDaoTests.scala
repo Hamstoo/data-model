@@ -5,7 +5,6 @@ import java.util.UUID
 import com.hamstoo.models.{Highlight, PageCoord}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.TestHelper
 import org.scalatest.OptionValues
 
 /**
@@ -15,8 +14,9 @@ class MongoHighlightDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with OptionValues
-    with FutureHandler
-    with TestHelper {
+    with FutureHandler {
+
+  import com.hamstoo.utils.DataInfo._
 
   val userId: UUID = constructUserId()
   val markId: String = constructMarkId()

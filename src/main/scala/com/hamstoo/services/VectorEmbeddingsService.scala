@@ -72,16 +72,17 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
           // it helps for this to be synchronized because countWords via text2TopWords can issue a massive number of
           // database calls all at the same time (e.g. 50 marks being processed for representations each with 500 words
           // each needing vector lookups) leading to an unrecoverable cascade of TimeoutExceptions/DriverExceptions
-          this.synchronized {
-            val t0 = System.currentTimeMillis()
+          val t0 = System.currentTimeMillis()
+          //this.synchronized {
+            val t1 = System.currentTimeMillis()
             // TODO: remove this Await! 60 seconds is not long enough when loading word vectors (issue #190)
             val (topWords, docLength) = Await.result(text2TopWords(str), 151 seconds)
-            val t1 = System.currentTimeMillis()
-            logger.info(s"Await(text2TopWords) elapsed time: " + (t1 - t0) / 1e3 + "s")
+            val t2 = System.currentTimeMillis()
+            logger.info(s"Await(text2TopWords) elapsed time " + (t2-t1)/1e3 + "s, waited " + (t1-t0)/1e3 + "s")
 
             nWords += docLength * wgt // this weighting gets "undone" below
             topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))
-          }
+          //}
         }
       }.groupBy(_.word)
         .map { case (w: String, wms: Seq[WordMass]) =>

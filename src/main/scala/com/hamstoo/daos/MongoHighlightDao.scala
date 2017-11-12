@@ -19,23 +19,21 @@ import scala.concurrent.duration._
 /**
   * Data access object for highlights.
   */
-class MongoHighlightDao(db: Future[DefaultDB]) extends MongoAnnotationDao[Highlight]("Highlight") {
+class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[Highlight]("highlight", db) {
 
   import com.hamstoo.models.Highlight._
   import com.hamstoo.utils._
 
-  override val futColl: Future[BSONCollection] = db map (_ collection "highlights")
-  private val marksColl: Future[BSONCollection] = db map (_ collection "entries")
-
   override val logger = Logger(classOf[MongoHighlightDao])
+  override def dbColl(): Future[BSONCollection] = db().map(_ collection "highlights")
 
   // convert url/uPrefs to markIds
   case class WeeHighlight(usrId: UUID, id: String, timeFrom: Long, url: String)
 
   // data migration
   Await.result(for {
-    c <- futColl
-    mc <- marksColl
+    c <- dbColl()
+    mc <- marksColl()
 
     oldIdx = s"bin-$USR-1-uPref-1"
     _ = logger.info(s"Dropping index $oldIdx")
@@ -64,7 +62,7 @@ class MongoHighlightDao(db: Future[DefaultDB]) extends MongoAnnotationDao[Highli
     Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
       s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
     Nil toMap;
-  Await.result(futColl map (_.indexesManager ensure indxs), 45 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 45 seconds)
 
   /** Update timeThru on an existing highlight and insert a new one with modified values. */
   def update(usr: UUID,
@@ -72,7 +70,7 @@ class MongoHighlightDao(db: Future[DefaultDB]) extends MongoAnnotationDao[Highli
              pos: Highlight.Position,
              prv: Highlight.Preview,
              coord: Option[PageCoord]): Future[Highlight] = for {
-    c <- futColl
+    c <- dbColl()
     now = DateTime.now.getMillis
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
     wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
