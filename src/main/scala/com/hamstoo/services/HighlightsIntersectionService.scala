@@ -91,7 +91,8 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
       if (intersection.size > 1) elsA.init ++ elsB.drop(intersection.size - 1)
       // otherwise merge by concatenating parts of the same element text
       else {
-        val element = Highlight.PositionElement(elsB.head.path, elsA.last.text.take(posB.initIndex) + elsB.head.text)
+        val text = elsA.last.text.take(posB.initIndex - (if (elsA.length > 1) 0 else posA.initIndex)) + elsB.head.text
+        val element = elsB.head.copy(text = text)
         elsA.init ++ (element +: elsB.tail)
       }
     }
