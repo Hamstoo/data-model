@@ -207,4 +207,15 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mocki
     hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe 0
     hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe 0
   }
+
+  it should "(UNIT) case 10: correctly merge same elements in highlight position sequence" in {
+    val highlight = makeHighlight(1, 2, 10, htmlMock(2)._2.length - 10)
+    val es = highlight.pos.elements
+    val sliced = highlight.copy(pos = highlight.pos.copy(
+      elements = es.head.copy(text = es.head.text.substring(0, 20)) +:
+        es.head.copy(text = es.head.text.substring(20, 40)) +:
+        es.head.copy(text = es.head.text.substring(40)) +: es.tail))
+
+    hlIntersectionSvc.mergeSameElems(sliced.pos.elements) shouldEqual highlight.pos.elements
+  }
 }
