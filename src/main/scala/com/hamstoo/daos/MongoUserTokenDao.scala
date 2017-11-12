@@ -10,8 +10,8 @@ import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 
 
 /**
@@ -28,13 +28,13 @@ class MongoUserTokenDao(db: () => Future[DefaultDB]) {
   Await.result(dbColl() map (_.indexesManager ensure indxs), 24 seconds)
 
   /** Retrieves a token by id. */
-  def find(id: UUID): Future[Option[UserToken]] = for {
+  def retrieve(id: UUID): Future[Option[UserToken]] = for {
     c <- dbColl()
     optTkn <- c.find(d :~ ID -> id.toString).one[UserToken]
   } yield optTkn
 
   /** Saves provided token. */
-  def save(token: UserToken): Future[Unit] = for {
+  def insert(token: UserToken): Future[Unit] = for {
     c <- dbColl()
     wr <- c insert token
     _ <- wr failIfError

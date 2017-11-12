@@ -6,6 +6,7 @@ import com.hamstoo.daos.auth.{MongoOAuth1InfoDao, MongoOAuth2InfoDao, MongoPassw
 import com.hamstoo.utils.getDbConnection
 import de.flapdoodle.embed.mongo.distribution.Version
 import org.scalatest.{BeforeAndAfterAll, Suite}
+import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.{DefaultDB, MongoConnection}
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -57,6 +58,10 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   // this (lightweight) function is called every time a DAO method is invoked
   lazy val db: () => Future[DefaultDB] = () => dbConn.database(dbName)
 
+  // for defining custom query, only for tests purpose
+  def coll(name: String): Future[BSONCollection] = db().map(_ collection name)
+
+
   lazy val statsDao = new MongoUserStatsDao(db)
   lazy val marksDao = new MongoMarksDao(db)
   lazy val notesDao = new MongoInlineNoteDao(db)
@@ -68,6 +73,7 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   lazy val auth2Dao = new MongoOAuth2InfoDao(db)
   lazy val passDao = new MongoPasswordInfoDao(db)
   lazy val searchDao = new MongoSearchStatsDao(db)
+  lazy val tokenDao = new MongoUserTokenDao(db)
 }
 
 object MongoEnvironment {
