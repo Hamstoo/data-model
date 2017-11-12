@@ -1,8 +1,8 @@
 package com.hamstoo.test.env
 
 import com.github.simplyscala.{MongoEmbedDatabase, MongodProps}
-import com.hamstoo.daos.auth.{MongoOAuth1InfoDao, MongoOAuth2InfoDao, MongoPasswordInfoDao}
 import com.hamstoo.daos._
+import com.hamstoo.daos.auth.{MongoOAuth1InfoDao, MongoOAuth2InfoDao, MongoPasswordInfoDao}
 import com.hamstoo.utils.getDbConnection
 import de.flapdoodle.embed.mongo.distribution.Version
 import org.scalatest.{BeforeAndAfterAll, Suite}
@@ -67,6 +67,7 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   lazy val auth1Dao = new MongoOAuth1InfoDao(db)
   lazy val auth2Dao = new MongoOAuth2InfoDao(db)
   lazy val passDao = new MongoPasswordInfoDao(db)
+  lazy val searchDao = new MongoSearchStatsDao(db)
 }
 
 object MongoEnvironment {
