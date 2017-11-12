@@ -7,7 +7,7 @@ import com.hamstoo.models.{Mark, MarkData}
 /**
   * Trait that contain test information
   */
-trait DataInfo {
+object DataInfo {
 
   // vector service address
   lazy val vectorsLink = "http://localhost:5000"
@@ -15,18 +15,12 @@ trait DataInfo {
   // idfs zip file address
   lazy val idfsResource = "idfs/text8.json.zip"
 
-  // mongodb uri
-  lazy val uri = "mongodb://localhost:12345"
-
-  // mongo database name
-  lazy val dbName = "hamstoo"
-
   // these used to be `userId` and `markId` constants but were changed to functions to avoid collisions between tests
   def constructUserId(): UUID = UUID.randomUUID()
   def constructMarkId(): String = generateDbId(Mark.ID_LENGTH)
 
   // "val" to distinguish it from `def userId` (which has now been changed to `def constructUserId()`)
-  val valUserId = constructUserId()
+  val valUserId: UUID = constructUserId()
 
   val mdA = MarkData("a subject", Some("http://a.com"), Some(3.0), Some(Set("atag")), Some("a comment"))
   val mdB = MarkData("b subject", Some("http://b.com"), Some(4.0), Some(Set("btag")), Some("b comment"))

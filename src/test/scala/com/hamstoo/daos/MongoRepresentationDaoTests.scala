@@ -3,7 +3,7 @@ package com.hamstoo.daos
 import com.hamstoo.models.{MarkData, Page, Representation}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.{MediaType, TestHelper}
+import com.hamstoo.utils.MediaType
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
@@ -14,8 +14,9 @@ import scala.util.Random
 class MongoRepresentationDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
-    with FutureHandler
-    with TestHelper {
+    with FutureHandler {
+
+  import com.hamstoo.utils.DataInfo._
 
   /** Create new mark. */
   def randomMarkData: MarkData = {

@@ -11,7 +11,9 @@ import scala.concurrent.ExecutionContext.Implicits.global
 /**
   * Tests of highlights intersection code.
   */
-class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with MockitoSugar with DataInfo {
+class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with MockitoSugar {
+
+  import com.hamstoo.utils.DataInfo._
 
   val hlightsDao: MongoHighlightDao = mock[MongoHighlightDao]
   val hlIntersectionSvc: HighlightsIntersectionService = new HighlightsIntersectionService(hlightsDao)

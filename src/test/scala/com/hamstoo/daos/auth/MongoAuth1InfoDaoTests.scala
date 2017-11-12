@@ -5,7 +5,6 @@ import java.util.UUID
 import com.hamstoo.models.{Profile, User, UserData}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.TestHelper
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.impl.providers.OAuth1Info
 import org.scalatest.OptionValues
@@ -13,12 +12,13 @@ import org.scalatest.OptionValues
 /**
   * CRUD Unit tests for class MongoOAuth1InfoDao
   */
-class MongoAuth1InfoDaoTest
+class MongoAuth1InfoDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler
-    with OptionValues
-    with TestHelper {
+    with OptionValues {
+
+  import com.hamstoo.utils.DataInfo._
 
   // TODO: shouldn't this test fail if these are different?
   val u0: UUID = constructUserId()

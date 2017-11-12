@@ -10,4 +10,7 @@ import scala.concurrent.Future
 /**
   * Data access object for users' password info.
   */
-class MongoPasswordInfoDao(db: Future[DefaultDB]) extends MongoAuthDao[PasswordInfo](db.map(_.collection("users")), Logger(classOf[MongoPasswordInfoDao]))
+class MongoPasswordInfoDao(db: () => Future[DefaultDB]) extends MongoAuthDao[PasswordInfo](db) {
+
+  override val logger = Logger(classOf[MongoPasswordInfoDao])
+}

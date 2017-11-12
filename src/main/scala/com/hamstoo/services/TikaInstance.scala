@@ -6,6 +6,7 @@ import org.apache.tika.parser.ocr.TesseractOCRConfig
 import org.apache.tika.parser.pdf.PDFParserConfig
 import org.apache.tika.parser.{AutoDetectParser, ParseContext}
 import org.apache.tika.sax.BodyContentHandler
+import play.api.Logger
 
 /**
   * Singleton object for Tika.
@@ -13,8 +14,23 @@ import org.apache.tika.sax.BodyContentHandler
   */
 object TikaInstance extends Tika() {
 
+  val logger = Logger(TikaInstance.getClass)
+
+  // this directory is used for storing fonts for OCR purposes, set the property to avoid the following error
+  // "2017-11-07 19:20:42,734 [WARN] o.a.p.p.f.FileSystemFontProvider - You can assign a directory to the
+  //   'pdfbox.fontcache' property java.io.FileNotFoundException: /usr/sbin/.pdfbox.cache (Permission denied)"
+  val propertyName = "pdfbox.fontcache"
+  logger.info(s"$propertyName = " +
+    Option(System.getProperty(propertyName)).getOrElse {
+      val default = "/tmp"
+      System.setProperty(propertyName, default)
+      default
+    }
+  )
+
   /** Common constructs used in more than one place. */
-  def constructCommon(enableOCR: Boolean = true) = (new BodyContentHandler(-1), new Metadata(), createContext(enableOCR), new AutoDetectParser())
+  def constructCommon(enableOCR: Boolean = true) =
+    (new BodyContentHandler(-1), new Metadata(), createContext(enableOCR), new AutoDetectParser())
 
   /** Enables OCR, enabled by default*/
   def createContext(enableOCR: Boolean): ParseContext = {

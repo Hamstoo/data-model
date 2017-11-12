@@ -5,7 +5,6 @@ import java.util.UUID
 import com.hamstoo.models.{Mark, MarkData, UserStats}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.TestHelper
 import org.scalatest.OptionValues
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -17,10 +16,11 @@ import scala.concurrent.Future
   * They are designed to test the counting of marks after marks modifications operations.
   */
 class MongoUserStatsDaoTests extends FlatSpecWithMatchers
-  with MongoEnvironment
-  with OptionValues
-  with FutureHandler
-  with TestHelper {
+    with MongoEnvironment
+    with OptionValues
+    with FutureHandler {
+
+  import com.hamstoo.utils.DataInfo._
 
   // construct a new userId for these tests alone
   val userId: UUID = constructUserId()
