@@ -75,13 +75,15 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     digest(url).map(x => Page(x._2.bodyAsBytes.toArray))
   }
 
+  val MAX_REDIRECTS = 8
+
   /** This code was formerly part of the 'hamstoo' repo's LinkageService. */
   def digest(url: String): Future[(String, WSResponse)] = {
     val link: String = checkLink(url)
 
     //@tailrec
     def recget(url: String, depth: Int = 1): Future[(String, WSResponse)] = {
-      if (depth >= 5)
+      if (depth >= MAX_REDIRECTS)
         Future.failed(new IllegalArgumentException(s"Too many redirects for $url"))
       else {
 
