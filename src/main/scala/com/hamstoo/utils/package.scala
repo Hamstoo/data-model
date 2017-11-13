@@ -171,4 +171,8 @@ package object utils {
     if (t.isFailure) println(t.failed.get)
     t
   }
+
+  /** Returns a string of memory statistics. */
+  def memoryString: String =
+    f"total: ${Runtime.getRuntime.totalMemory/1e6}%.0f, free: ${Runtime.getRuntime.freeMemory/1e6}%.0f"
 }
