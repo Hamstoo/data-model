@@ -8,7 +8,6 @@ import akka.util.ByteString
 import com.hamstoo.models.Page
 import com.hamstoo.utils.MediaType
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
-import org.apache.tika.parser.Parser
 import play.api.Logger
 import play.api.libs.ws.{WSClient, WSResponse}
 
@@ -50,8 +49,7 @@ object ContentRetriever {
       // this is basically the same technique as in PDFRepresentationService
       case mt if MediaTypeSupport.isPDF(mt) || MediaTypeSupport.isText(mt) || MediaTypeSupport.isMedia(mt) =>
         val is: InputStream = new ByteArrayInputStream(page.content.toArray)
-        val (contentHandler, metadata, parseContext, parser) = TikaInstance.constructCommon()
-        parseContext.set(classOf[Parser], parser) // TODO: is this necessary?
+        val (contentHandler, metadata, parseContext, parser) = TikaInstance()
         parser.parse(is, contentHandler, metadata, parseContext)
         val titleKey = if (MediaTypeSupport.isPDF(mt)) PDF.DOC_INFO_TITLE else TikaCoreProperties.TITLE
         Option(metadata.get(titleKey)).filter(!_.isEmpty)
