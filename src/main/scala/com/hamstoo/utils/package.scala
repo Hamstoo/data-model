@@ -31,11 +31,13 @@ package object utils {
   def initDbDriver(): Unit = {
     if (dbDriver.isDefined)
       throw new Exception("Database driver already defined")
+    Logger.info("Initializing database driver")
     dbDriver = Some(MongoDriver())
   }
 
   /** Close the singleton database driver instance. */
   def closeDbDriver(): Unit = {
+    Logger.info("Closing database driver")
     dbDriver.foreach(_.close())
     dbDriver = None
   }
