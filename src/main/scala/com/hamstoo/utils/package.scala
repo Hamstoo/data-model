@@ -17,6 +17,7 @@ import scala.collection.generic.CanBuildFrom
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.concurrent.duration._
 import scala.language.higherKinds
 import scala.util.matching.Regex
 import scala.util.{Failure, Random, Success, Try}
@@ -31,15 +32,25 @@ package object utils {
   def initDbDriver(): Unit = {
     if (dbDriver.isDefined)
       throw new Exception("Database driver already defined")
-    Logger.info("Initializing database driver")
+    Logger.info("Initializing database driver...")
     dbDriver = Some(MongoDriver())
+    Logger.info("Done initializing database driver")
   }
 
   /** Close the singleton database driver instance. */
-  def closeDbDriver(): Unit = {
-    Logger.info("Closing database driver")
-    dbDriver.foreach(_.close())
+  def closeDbDriver(timeout: FiniteDuration = 2 seconds): Option[Boolean] = {
+    Logger.info("Closing database driver...")
+    val tri = dbDriver.map { d =>
+      Try(d.close(timeout)) match {
+        case Success(_) => true
+        case Failure(t) =>
+          Logger.warn(s"Exception while attempting to close database driver; proceeding anyway", t)
+          false
+      }
+    } // `close` calls Await.result
+    Logger.info("Done closing database driver...")
     dbDriver = None
+    tri
   }
 
   /**
@@ -67,12 +78,13 @@ package object utils {
         conn
       case Failure(e) =>
         e.printStackTrace()
-        Logger.warn("Failed to establish connection to MongoDB; retrying...")
         synchronized(wait(1000))
         if (nAttempts == 0)
-          throw new RuntimeException("Failed to establish connection to MongoDB; aborting")
-        else
-          getDbConnection(uri, nAttempts = nAttempts - 1)
+          throw new RuntimeException("Failed to establish connection to MongoDB; aborting", e)
+        else {
+          Logger.warn(s"Failed to establish connection to MongoDB; retrying (${nAttempts-1} attempts remaining)", e)
+          getDbConnection(uri, nAttempts = 1)
+        }
     }
   }
 
