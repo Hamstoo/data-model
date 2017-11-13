@@ -24,12 +24,25 @@ import scala.util.{Failure, Random, Success, Try}
 
 package object utils {
 
+  /** Singleton database driver (actor system) instance. */
+  private var dbDriver: Option[MongoDriver] = None
+
+  /** Initialize the singleton database driver instance. */
+  def initDbDriver(): Unit = {
+    if (dbDriver.isDefined)
+      throw new Exception("Database driver already defined")
+    dbDriver = Some(MongoDriver())
+  }
+
+  /** Close the singleton database driver instance. */
+  def closeDbDriver(): Unit = {
+    dbDriver.foreach(_.close())
+    dbDriver = None
+  }
+
   /**
     * Construct database connection pool, which should only happen once (for a given URI) because it instantiates a
-    * whole actor system with its own thread pool and whatnot.  If we ever start using more than one database (node
-    * or replica set), then we'll want to separate the construction of the actor system (MongoDriver), which we'd
-    * only want one of, away from that of the connection pools (MongoConnections), which we'd want to have multiple
-    * of, one for each database.
+    * whole thread pool of connections.
     *
     * From the docs:
     *   "A MongoDriver instance manages the shared resources (e.g. the actor system for the asynchronous processing).
@@ -41,14 +54,15 @@ package object utils {
     * @param nAttempts  The default database name.
     */
   @tailrec
-  final def getDbConnection(uri: String, nAttempts: Int = 5): (MongoDriver, MongoConnection) = {
+  final def getDbConnection(uri: String, nAttempts: Int = 5): MongoConnection = {
     MongoConnection.parseURI(uri).map { parsedUri =>
-      val driver = MongoDriver()
-      (driver, driver.connection(parsedUri))
+      if (dbDriver.isEmpty)
+        initDbDriver()
+      dbDriver.get.connection(parsedUri)
     } match {
-      case Success(dc) =>
+      case Success(conn) =>
         Logger.info(s"Established connection to MongoDB via URI: $uri")
-        dc
+        conn
       case Failure(e) =>
         e.printStackTrace()
         Logger.warn("Failed to establish connection to MongoDB; retrying...")
