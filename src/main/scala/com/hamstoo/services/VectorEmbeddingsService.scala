@@ -347,7 +347,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     * Count words in the document that have word vectors.
     */
   def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] = {
-    logger.info(s"Counting words ($wCount, ${Vectorizer.dbCount}, ${Vectorizer.fCount})")
+    logger.debug(s"Counting words ($wCount, ${Vectorizer.dbCount}, ${Vectorizer.fCount})")
 
     // count number of occurrences of each (non-standardized) word so that we only have to lookup a vec for each once
     val grouped0: Seq[(String, Int)] = words.groupBy(identity).mapValues(_.length).toSeq
