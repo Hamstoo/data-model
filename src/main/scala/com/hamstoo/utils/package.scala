@@ -74,6 +74,7 @@ package object utils {
     } match {
       case Success(conn) =>
         Logger.info(s"Established connection to MongoDB via URI: $uri")
+        synchronized(wait(2000))
         conn
       case Failure(e) =>
         e.printStackTrace()
