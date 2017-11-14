@@ -78,7 +78,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
             // TODO: remove this Await! 60 seconds is not long enough when loading word vectors (issue #190)
             val (topWords, docLength) = Await.result(text2TopWords(str), 151 seconds)
             val t2 = System.currentTimeMillis()
-            logger.info(s"Await(text2TopWords) elapsed time " + (t2-t1)/1e3 + "s, waited " + (t1-t0)/1e3 + "s")
+            logger.debug(s"Await(text2TopWords) elapsed time " + (t2-t1)/1e3 + "s, waited " + (t1-t0)/1e3 + "s")
 
             nWords += docLength * wgt // this weighting gets "undone" below
             topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))

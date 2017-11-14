@@ -39,16 +39,15 @@ package object utils {
 
   /** Close the singleton database driver instance. */
   def closeDbDriver(timeout: FiniteDuration = 2 seconds): Option[Boolean] = {
-    Logger.info("Closing database driver...")
     val tri = dbDriver.map { d =>
-      Try(d.close(timeout)) match {
-        case Success(_) => true
-        case Failure(t) =>
-          Logger.warn(s"Exception while attempting to close database driver; proceeding anyway", t)
+      Logger.info("Closing database driver...")
+      Try(d.close(timeout)) match { // `MongoDriver.close` calls Await.result (which can throw an exception)
+        case Success(_) => Logger.info("Done closing database driver")
+          true
+        case Failure(t) => Logger.warn(s"Exception while attempting to close database driver; proceeding anyway", t)
           false
       }
-    } // `close` calls Await.result
-    Logger.info("Done closing database driver...")
+    }
     dbDriver = None
     tri
   }
