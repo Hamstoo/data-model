@@ -109,6 +109,7 @@ object MarkData {
   // tag which is present in save mark request when browser extension autosave feature is on
   // used in hamstoo to detect if current request is performed by autosave function
   val AUTOSAVE_TAG = "Autosave"
+  val IMPORT_TAG = "Import"
 
   /** Find all embed urls and convert them to html <a> links (anchors)
     *regex designed to ignore html link tag and markdown link tag
