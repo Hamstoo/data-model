@@ -280,6 +280,12 @@ object Mark extends BSONHandlers {
     def merge(oth: MarkAux) =
       MarkAux(Some(tabVisible.getOrElse(Nil) ++ oth.tabVisible.getOrElse(Nil)),
               Some(tabBground.getOrElse(Nil) ++ oth.tabBground.getOrElse(Nil)))
+
+    /** These methods return the total aggregated amount of time in the respective sequences of ranges. */
+    def totalVisible: Long = total(tabVisible)
+    def totalBground: Long = total(tabBground)
+    private def total(tabSomething: Option[Seq[RangeMils]]): Long =
+      tabSomething.map(_.foldLeft(0L)((agg, range) => agg + range.end - range.begin)).getOrElse(0L)
   }
 
   val ID_LENGTH: Int = 16
