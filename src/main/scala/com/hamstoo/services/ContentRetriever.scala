@@ -2,7 +2,6 @@ package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
 import java.net.URI
-import javax.activation.MimeType
 
 import akka.util.ByteString
 import com.hamstoo.models.Page
@@ -69,7 +68,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
   /** Retrieve mime type and content (e.g. HTML) given a URL. */
   def retrieve(url: String): Future[Page] = {
-    logger.debug(s"Retrieving URL '$url' with MIME type '${new MimeType(TikaInstance.detect(url))}'")
+    logger.debug(s"Retrieving URL '$url' with MIME type '${Try(MediaType(TikaInstance.detect(url)))}'")
 
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
     digest(url).map(x => Page(x._2.bodyAsBytes.toArray))
