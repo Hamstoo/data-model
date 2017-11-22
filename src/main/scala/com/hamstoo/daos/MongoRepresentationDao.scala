@@ -43,6 +43,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
 
   Await.result(for {
     c <- dbColl()
+    _ = logger.info(s"Performing data migration for `representations` collection")
 
     // ensure every repr has a page String before changing them all to Pages
     _ <- c.update(d :~ PAGE -> (d :~ "$exists" -> 0), d :~ "$set" -> (d :~ PAGE -> ""), multi = true)

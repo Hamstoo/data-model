@@ -47,7 +47,7 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
         totalMarks <- statsDao.stats(userId, 0)
       } yield totalMarks
 
-      totalMarks.futureValue.marks shouldEqual 2
+      totalMarks.futureValue.nMarks shouldEqual 2
   }
 
   /** This test is designed to modify marks, but to keep only two actual marks for user. */
@@ -64,7 +64,7 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
         totalMarks <- statsDao.stats(userId, 0)
       } yield totalMarks
 
-    totalMarks.futureValue.marks shouldEqual 2
+    totalMarks.futureValue.nMarks shouldEqual 2
   }
 
   it should "punch user timestamp record" in {

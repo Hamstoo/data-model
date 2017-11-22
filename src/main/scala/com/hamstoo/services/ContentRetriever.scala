@@ -2,13 +2,11 @@ package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
 import java.net.URI
-import javax.activation.MimeType
 
 import akka.util.ByteString
 import com.hamstoo.models.Page
 import com.hamstoo.utils.MediaType
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
-import org.apache.tika.parser.Parser
 import play.api.Logger
 import play.api.libs.ws.{WSClient, WSResponse}
 
@@ -50,8 +48,7 @@ object ContentRetriever {
       // this is basically the same technique as in PDFRepresentationService
       case mt if MediaTypeSupport.isPDF(mt) || MediaTypeSupport.isText(mt) || MediaTypeSupport.isMedia(mt) =>
         val is: InputStream = new ByteArrayInputStream(page.content.toArray)
-        val (contentHandler, metadata, parseContext, parser) = TikaInstance.constructCommon()
-        parseContext.set(classOf[Parser], parser) // TODO: is this necessary?
+        val (contentHandler, metadata, parseContext, parser) = TikaInstance()
         parser.parse(is, contentHandler, metadata, parseContext)
         val titleKey = if (MediaTypeSupport.isPDF(mt)) PDF.DOC_INFO_TITLE else TikaCoreProperties.TITLE
         Option(metadata.get(titleKey)).filter(!_.isEmpty)
@@ -71,11 +68,13 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
   /** Retrieve mime type and content (e.g. HTML) given a URL. */
   def retrieve(url: String): Future[Page] = {
-    logger.debug(s"Retrieving URL '$url' with MIME type '${new MimeType(TikaInstance.detect(url))}'")
+    logger.debug(s"Retrieving URL '$url' with MIME type '${Try(MediaType(TikaInstance.detect(url)))}'")
 
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
     digest(url).map(x => Page(x._2.bodyAsBytes.toArray))
   }
+
+  val MAX_REDIRECTS = 8
 
   /** This code was formerly part of the 'hamstoo' repo's LinkageService. */
   def digest(url: String): Future[(String, WSResponse)] = {
@@ -83,7 +82,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
     //@tailrec
     def recget(url: String, depth: Int = 1): Future[(String, WSResponse)] = {
-      if (depth >= 5)
+      if (depth >= MAX_REDIRECTS)
         Future.failed(new IllegalArgumentException(s"Too many redirects for $url"))
       else {
 

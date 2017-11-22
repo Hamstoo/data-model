@@ -73,16 +73,16 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
           // database calls all at the same time (e.g. 50 marks being processed for representations each with 500 words
           // each needing vector lookups) leading to an unrecoverable cascade of TimeoutExceptions/DriverExceptions
           val t0 = System.currentTimeMillis()
-          this.synchronized {
+          //this.synchronized {
             val t1 = System.currentTimeMillis()
             // TODO: remove this Await! 60 seconds is not long enough when loading word vectors (issue #190)
             val (topWords, docLength) = Await.result(text2TopWords(str), 151 seconds)
             val t2 = System.currentTimeMillis()
-            logger.info(s"Await(text2TopWords) elapsed time " + (t2-t1)/1e3 + "s, waited " + (t1-t0)/1e3 + "s")
+            logger.debug(s"Await(text2TopWords) elapsed time " + (t2-t1)/1e3 + "s, waited " + (t1-t0)/1e3 + "s")
 
             nWords += docLength * wgt // this weighting gets "undone" below
             topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))
-          }
+          //}
         }
       }.groupBy(_.word)
         .map { case (w: String, wms: Seq[WordMass]) =>
@@ -347,7 +347,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     * Count words in the document that have word vectors.
     */
   def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] = {
-    logger.info(s"Counting words ($wCount, ${Vectorizer.dbCount}, ${Vectorizer.fCount})")
+    logger.debug(s"Counting words ($wCount, ${Vectorizer.dbCount}, ${Vectorizer.fCount})")
 
     // count number of occurrences of each (non-standardized) word so that we only have to lookup a vec for each once
     val grouped0: Seq[(String, Int)] = words.groupBy(identity).mapValues(_.length).toSeq

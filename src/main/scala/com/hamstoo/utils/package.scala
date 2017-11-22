@@ -17,6 +17,7 @@ import scala.collection.generic.CanBuildFrom
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.concurrent.duration._
 import scala.language.higherKinds
 import scala.util.matching.Regex
 import scala.util.{Failure, Random, Success, Try}
@@ -24,12 +25,36 @@ import scala.util.{Failure, Random, Success, Try}
 
 package object utils {
 
+  /** Singleton database driver (actor system) instance. */
+  private var dbDriver: Option[MongoDriver] = None
+
+  /** Initialize the singleton database driver instance. */
+  def initDbDriver(): Unit = {
+    if (dbDriver.isDefined)
+      throw new Exception("Database driver already defined")
+    Logger.info("Initializing database driver...")
+    dbDriver = Some(MongoDriver())
+    Logger.info("Done initializing database driver")
+  }
+
+  /** Close the singleton database driver instance. */
+  def closeDbDriver(timeout: FiniteDuration = 2 seconds): Option[Boolean] = {
+    val tri = dbDriver.map { d =>
+      Logger.info("Closing database driver...")
+      Try(d.close(timeout)) match { // `MongoDriver.close` calls Await.result (which can throw an exception)
+        case Success(_) => Logger.info("Done closing database driver")
+          true
+        case Failure(t) => Logger.warn(s"Exception while attempting to close database driver; proceeding anyway", t)
+          false
+      }
+    }
+    dbDriver = None
+    tri
+  }
+
   /**
     * Construct database connection pool, which should only happen once (for a given URI) because it instantiates a
-    * whole actor system with its own thread pool and whatnot.  If we ever start using more than one database (node
-    * or replica set), then we'll want to separate the construction of the actor system (MongoDriver), which we'd
-    * only want one of, away from that of the connection pools (MongoConnections), which we'd want to have multiple
-    * of, one for each database.
+    * whole thread pool of connections.
     *
     * From the docs:
     *   "A MongoDriver instance manages the shared resources (e.g. the actor system for the asynchronous processing).
@@ -41,22 +66,25 @@ package object utils {
     * @param nAttempts  The default database name.
     */
   @tailrec
-  final def getDbConnection(uri: String, nAttempts: Int = 5): (MongoDriver, MongoConnection) = {
+  final def getDbConnection(uri: String, nAttempts: Int = 5): MongoConnection = {
     MongoConnection.parseURI(uri).map { parsedUri =>
-      val driver = MongoDriver()
-      (driver, driver.connection(parsedUri))
+      if (dbDriver.isEmpty)
+        initDbDriver()
+      dbDriver.get.connection(parsedUri)
     } match {
-      case Success(dc) =>
+      case Success(conn) =>
         Logger.info(s"Established connection to MongoDB via URI: $uri")
-        dc
+        synchronized(wait(2000))
+        conn
       case Failure(e) =>
         e.printStackTrace()
-        Logger.warn("Failed to establish connection to MongoDB; retrying...")
         synchronized(wait(1000))
         if (nAttempts == 0)
-          throw new RuntimeException("Failed to establish connection to MongoDB; aborting")
-        else
-          getDbConnection(uri, nAttempts = nAttempts - 1)
+          throw new RuntimeException("Failed to establish connection to MongoDB; aborting", e)
+        else {
+          Logger.warn(s"Failed to establish connection to MongoDB; retrying (${nAttempts-1} attempts remaining)", e)
+          getDbConnection(uri, nAttempts = 1)
+        }
     }
   }
 
@@ -171,4 +199,8 @@ package object utils {
     if (t.isFailure) println(t.failed.get)
     t
   }
+
+  /** Returns a string of memory statistics. */
+  def memoryString: String =
+    f"total: ${Runtime.getRuntime.totalMemory/1e6}%.0f, free: ${Runtime.getRuntime.freeMemory/1e6}%.0f"
 }

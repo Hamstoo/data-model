@@ -1,7 +1,5 @@
 package com.hamstoo.services
 
-import javax.activation.MimeType
-
 import com.hamstoo.utils.MediaType
 
 /**
@@ -11,17 +9,17 @@ object MediaTypeSupport {
 
   import MediaType._
 
-  val HTMLMimeTypes: Seq[MimeType] = TEXT_HTML ::
+  val HTMLMimeTypes: Seq[MediaType] = TEXT_HTML ::
                                      APPLICATION_OCTET_STREAM ::
                                      TEXT_X_PHP ::
                                      APPLICATION_XHTML_XML ::
                                      Nil
 
-  val PDFMimeTypes: Seq[MimeType] = APPLICATION_PDF ::
+  val PDFMimeTypes: Seq[MediaType] = APPLICATION_PDF ::
                                     Nil
 
   // TODO: complete list, issue #121
-  val MediaMimeTypes: Seq[MimeType] = AUDIO_ANY ::
+  val MediaMimeTypes: Seq[MediaType] = AUDIO_ANY ::
                                       MP3 ::
                                       MP4 ::
                                       OGG ::
@@ -45,7 +43,7 @@ object MediaTypeSupport {
                                       WEBP ::
                                       Nil
 
-  val TextMimeTypes: Seq[MimeType] = TEXT_ANY :: CSV :: PLAIN :: XML :: DOC :: DOCX :: DOTX :: XLS ::
+  val TextMimeTypes: Seq[MediaType] = TEXT_ANY :: CSV :: PLAIN :: XML :: DOC :: DOCX :: DOTX :: XLS ::
     XLSX :: XLTX :: XLSM :: XLTM :: XLAM :: XLSB :: PPT :: PPTX :: PPSX :: POTX :: PPTM :: PPAM ::
     POTM :: PPSM :: OCTET_STREAM :: OOXML_DOCUMENT :: OOXML_PRESENTATION :: OOXML_SHEET :: OPENDOCUMENT_GRAPHICS ::
     OPENDOCUMENT_GRAPHICS :: OPENDOCUMENT_PRESENTATION :: OPENDOCUMENT_SPREADSHEET :: OPENDOCUMENT_TEXT ::
@@ -56,16 +54,16 @@ object MediaTypeSupport {
     XSTARIMPR :: XSTARMATH :: XSTARCH :: KEYNOTE :: PAGES :: NUMBERS ::
     Nil
 
-  private def isMimeType(mimeTypes: Seq[MimeType])(mt: MimeType): Boolean = mimeTypes.exists(_ `match` mt)
-  def isHTML(mt: MimeType): Boolean = isMimeType(HTMLMimeTypes)(mt)
-  def isPDF(mt: MimeType): Boolean = isMimeType(PDFMimeTypes)(mt)
+  private def isMimeType(mimeTypes: Seq[MediaType])(mt: MediaType): Boolean = mimeTypes.exists(_ `match` mt)
+  def isHTML(mt: MediaType): Boolean = isMimeType(HTMLMimeTypes)(mt)
+  def isPDF(mt: MediaType): Boolean = isMimeType(PDFMimeTypes)(mt)
 
-  def isText(mt: MimeType): Boolean =
+  def isText(mt: MediaType): Boolean =
     mt.getPrimaryType == "text" || isMimeType(TextMimeTypes)(mt)
 
   // TODO: this was changed from _.contains(mt.getPrimaryType) to mt.getPrimaryType.contains(_), please confirm correct
   // TODO: it was also changed from a long complicated !.map.filter.isEmpty expression to `exists`, also please confirm
   // TODO: it was also changed to use a Seq rather than a List (in this case they both give the same thing, and there's no reason to choose an explicit implementation of Seq)
-  def isMedia(mt: MimeType): Boolean =
+  def isMedia(mt: MediaType): Boolean =
     Seq("audio", "video", "image").exists(mt.getPrimaryType.contains(_)) || isMimeType(MediaMimeTypes)(mt)
 }

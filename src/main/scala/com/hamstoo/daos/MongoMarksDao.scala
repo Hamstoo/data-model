@@ -32,6 +32,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   // and causing exceptions when trying to update marks with reprIds (version 0.9.16)
   Await.result(for {
     c <- dbColl()
+    _ = logger.info(s"Performing data migration for `marks` collection")
     sel = d :~ "$where" -> s"Object.bsonsize({$URLPRFX:this.$URLPRFX})>$URL_PREFIX_LENGTH+19"
     longPfxed <- c.find(sel).coll[Mark, Seq]()
     _ = logger.info(s"Updating ${longPfxed.size} `Mark.urlPrfx`s to length $URL_PREFIX_LENGTH bytes")
@@ -192,7 +193,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   // TODO: doesn't it make more sense to do an explicit include than an exclude; i.e. just include the required fields
   // TODO: or perhaps it would make more sense to make a MarkStub base class so that users know they're dealing with a partially populated Mark
   val searchExcludedFields: BSONDocument = d :~ (PAGE -> 0)  :~ (URLPRFX -> 0) :~ (AUX -> 0) :~
-    (MERGEID -> 0) :~ (URLx -> 0) :~ (STARSx -> 0) :~ (TAGSx -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
+    (MERGEID -> 0) :~ (STARSx -> 0) :~ (TAGSx -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
 
   /**
     * Executes a search using text index with sorting in user's marks, constrained by tags. Mark state must be
