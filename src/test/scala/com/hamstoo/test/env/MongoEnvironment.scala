@@ -53,7 +53,7 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   // this should only happen once (per mongodb instance) but since we start a new instance every time
   // MongoEnvironment is extended (by nature of MongoEnvironment being a trait and not an object) it gets
   // called multiple times during testing
-  lazy val dbConn: MongoConnection = getDbConnection(dbUri)._2
+  lazy val dbConn: MongoConnection = getDbConnection(dbUri)
 
   // this (lightweight) function is called every time a DAO method is invoked
   lazy val db: () => Future[DefaultDB] = () => dbConn.database(dbName)

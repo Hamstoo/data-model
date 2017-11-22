@@ -35,6 +35,7 @@ class MongoInlineNoteDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao
   Await.result(for {
     c <- dbColl()
     mc <- marksColl()
+    _ = logger.info(s"Performing data migration for `comments` collection")
 
     oldIdx = s"bin-$USR-1-uPref-1"
     _ = logger.info(s"Dropping index $oldIdx")
