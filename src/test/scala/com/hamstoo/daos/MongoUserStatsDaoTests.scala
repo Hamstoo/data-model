@@ -67,30 +67,6 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
     totalMarks.futureValue.nMarks shouldEqual 2
   }
 
-  it should "punch user timestamp record" in {
-
-    val statCollName = "userstats"
-
-    /** testing punch count*/
-    def retrieveQuery = for {
-      c <- coll(statCollName)
-      total <- c.count(Some(BSONDocument("user" -> userId.toString)))
-    } yield total
-
-    retrieveQuery.futureValue shouldEqual 0
-
-    // let's make first punch
-    statsDao.punch(userId).futureValue shouldEqual {}
-
-    retrieveQuery.futureValue shouldEqual 1
-
-    // let's make second punch
-    statsDao.punch(userId).futureValue shouldEqual {}
-
-    retrieveQuery.futureValue shouldEqual 2
-
-  }
-
   it should "increment user's imports count" in {
 
     implicit val handler: BSONDocumentReader[Test] = Macros.reader[Test]
