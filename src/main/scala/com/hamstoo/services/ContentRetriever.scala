@@ -4,13 +4,18 @@ import java.io.{ByteArrayInputStream, InputStream}
 import java.net.URI
 import javax.activation.MimeType
 
+import scala.collection.JavaConverters._
 import akka.util.ByteString
 import com.hamstoo.models.Page
 import com.hamstoo.utils.MediaType
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
 import play.api.Logger
 import play.api.libs.ws.{WSClient, WSResponse}
 
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 import scala.util.matching.Regex
@@ -72,7 +77,53 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     logger.debug(s"Retrieving URL '$url' with MIME type '${new MimeType(TikaInstance.detect(url))}'")
 
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
-    digest(url).map(x => Page(x._2.bodyAsBytes.toArray))
+    digest(url).map(x => Page(x._2.bodyAsBytes.toArray)).map { page =>
+      val html = ByteString(page.content.toArray).utf8String
+      println(html) // todo removethis line, leave space between existing lines
+    val docJsoup = Jsoup.parse(html) //htmlParser.parseString(html)
+
+      //Additional function to check frame and frameset, get content from frames and return as doc
+      def loadFrame(frameElement: Element): Future[Element] = {
+        retrieve(url + frameElement.attr("src")).map(page =>
+          frameElement.html(ByteString(page.content.toArray).utf8String))
+      }
+
+      def checkFrameset(framesetElement: Element): List[Future[Element]] = {
+        /* framesetElement.tagName match {
+        case "frame" => contentRetriever.retrieve(url + framesetElement.attr("src"))
+        case _ =>
+      }*/
+        framesetElement.children.iterator().asScala.toList.map(elementZipped => loadFrame(elementZipped))
+      }
+
+      val framesetElems = docJsoup.getElementsByTag("frameset")
+      val loadedFramesets = new ArrayBuffer[List[Future[Element]]]()
+      if (!framesetElems.isEmpty) {
+        framesetElems.iterator().asScala.foreach(element =>
+          if (element.parent().tag() != "frameset") {
+            loadedFramesets += checkFrameset(element)
+          })
+      }
+
+
+      val framesElems = docJsoup.getElementsByTag("frame")
+
+      val loadedFrames = new ArrayBuffer[Future[Element]]
+
+      if (!framesElems.isEmpty) {
+        framesElems.iterator().asScala.foreach(element => {
+          loadedFrames += loadFrame(element)
+        })
+      }
+
+      val loadedAll: Future[List[Element]] = Future.sequence {
+        (loadedFramesets.flatten ++= loadedFrames.toList).toList
+      }
+
+      loadedAll.map { _ =>
+        page.copy(content = docJsoup.html().getBytes("UTF-8"))
+      }
+    }.flatten
   }
 
   val MAX_REDIRECTS = 8
