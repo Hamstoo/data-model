@@ -32,6 +32,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   // and causing exceptions when trying to update marks with reprIds (version 0.9.16)
   Await.result(for {
     c <- dbColl()
+    _ = logger.info(s"Performing data migration for `marks` collection")
     sel = d :~ "$where" -> s"Object.bsonsize({$URLPRFX:this.$URLPRFX})>$URL_PREFIX_LENGTH+19"
     longPfxed <- c.find(sel).coll[Mark, Seq]()
     _ = logger.info(s"Updating ${longPfxed.size} `Mark.urlPrfx`s to length $URL_PREFIX_LENGTH bytes")
