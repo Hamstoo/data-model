@@ -78,7 +78,6 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
     digest(url).map(x => Page(x._2.bodyAsBytes.toArray)).map { page =>
       val html = ByteString(page.content.toArray).utf8String
-
       val docJsoup = Jsoup.parse(html) //htmlParser.parseString(html)
 
       // `withFramesLoaded` detect and load framesets' frames and individual frames
