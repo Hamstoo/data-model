@@ -9,7 +9,7 @@ import com.hamstoo.models.Page
 import com.hamstoo.utils.MediaType
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Element
+import org.jsoup.nodes.{Document, Element}
 import play.api.Logger
 import play.api.libs.ws.{WSClient, WSResponse}
 
@@ -78,51 +78,63 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
     digest(url).map(x => Page(x._2.bodyAsBytes.toArray)).map { page =>
       val html = ByteString(page.content.toArray).utf8String
-      println(html) // todo removethis line, leave space between existing lines
-    val docJsoup = Jsoup.parse(html) //htmlParser.parseString(html)
 
-      //Additional function to check frame and frameset, get content from frames and return as doc
-      def loadFrame(frameElement: Element): Future[Element] = {
-        retrieve(url + frameElement.attr("src")).map(page =>
-          frameElement.html(ByteString(page.content.toArray).utf8String))
-      }
+      val docJsoup = Jsoup.parse(html) //htmlParser.parseString(html)
 
-      def checkFrameset(framesetElement: Element): List[Future[Element]] = {
-        /* framesetElement.tagName match {
-        case "frame" => contentRetriever.retrieve(url + framesetElement.attr("src"))
-        case _ =>
-      }*/
-        framesetElement.children.iterator().asScala.toList.map(elementZipped => loadFrame(elementZipped))
-      }
-
-      val framesetElems = docJsoup.getElementsByTag("frameset")
-      val loadedFramesets = new ArrayBuffer[List[Future[Element]]]()
-      if (!framesetElems.isEmpty) {
-        framesetElems.iterator().asScala.foreach(element =>
-          if (element.parent().tag() != "frameset") {
-            loadedFramesets += checkFrameset(element)
-          })
-      }
-
-
-      val framesElems = docJsoup.getElementsByTag("frame")
-
-      val loadedFrames = new ArrayBuffer[Future[Element]]
-
-      if (!framesElems.isEmpty) {
-        framesElems.iterator().asScala.foreach(element => {
-          loadedFrames += loadFrame(element)
-        })
-      }
-
-      val loadedAll: Future[List[Element]] = Future.sequence {
-        (loadedFramesets.flatten ++= loadedFrames.toList).toList
-      }
-
-      loadedAll.map { _ =>
+      // `withFramesLoaded` detect and load framesets' frames and individual frames
+      // and put loaded data into initial document
+      withFramesLoaded(url, docJsoup).map { _ =>
         page.copy(content = docJsoup.html().getBytes("UTF-8"))
       }
     }.flatten
+  }
+
+  /** Additional function to check frame and frameset, get content from frames and return as doc */
+  def withFramesLoaded(url: String, docJsoup: Document): Future[List[Element]] = {
+
+    // simple method to retrive data by url
+    //takes Element instance as parameter and
+    // sets loaded data into content of that Element of docJsoup val
+    def loadFrame(frameElement: Element): Future[Element] = {
+      retrieve(url + frameElement.attr("src")).map(page =>
+        frameElement.html(ByteString(page.content.toArray).utf8String))
+    }
+
+    // checks <freameset> tag and loads every <frame> fround
+    def checkFrameset(framesetElement: Element): List[Future[Element]] = {
+      framesetElement.children.iterator().asScala.toList.map(elementZipped => loadFrame(elementZipped))
+    }
+
+    val framesetElems = docJsoup.getElementsByTag("frameset")
+
+    // mutable collection to easy dynamic adding of loaded data
+    val loadedFramesets = new ArrayBuffer[List[Future[Element]]]()
+
+    // check if <freameset> elements were found than check them and load data
+    if (!framesetElems.isEmpty) {
+      framesetElems.iterator().asScala.foreach(element =>
+        if (element.parent().tag() != "frameset") {
+          loadedFramesets += checkFrameset(element)
+        })
+    }
+
+    val framesElems = docJsoup.getElementsByTag("frame")
+    // mutable collection for easy dynamic adding of loaded data
+    val loadedFrames = new ArrayBuffer[Future[Element]]
+
+    // check if <frames> elements were found without <frameset> parent and load data
+    if (!framesElems.isEmpty) {
+      framesElems.iterator().asScala.foreach(element => {
+        loadedFrames += loadFrame(element)
+      })
+    }
+
+    // Concat framesets loaded data and separate frames loaded data
+    // the data is all set into correct Elements in loadFrame method which takes Element instance as parameter
+    // and changes data inside that element
+    Future.sequence {
+      (loadedFramesets.flatten ++= loadedFrames.toList).toList
+    }
   }
 
   val MAX_REDIRECTS = 8
