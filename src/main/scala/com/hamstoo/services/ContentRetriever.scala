@@ -73,33 +73,43 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
   /** Retrieve mime type and content (e.g. HTML) given a URL. */
   def retrieve(url: String): Future[Page] = {
-    logger.debug(s"Retrieving URL '$url' with MIME type '${Try(MediaType(TikaInstance.detect(url)))}'")
+    val mediaType = MediaType(TikaInstance.detect(url))
+    logger.debug(s"Retrieving URL '$url' with MIME type '${Try(mediaType)}'")
 
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
-    digest(url).map(x => Page(x._2.bodyAsBytes.toArray)).map { page =>
-      val html = ByteString(page.content.toArray).utf8String
-      val docJsoup = Jsoup.parse(html) //htmlParser.parseString(html)
+    val futPage = digest(url).map(x => Page(x._2.bodyAsBytes.toArray))
 
-      // `withFramesLoaded` detect and load framesets' frames and individual frames
-      // and put loaded data into initial document
-      withFramesLoaded(url, docJsoup).map { _ =>
-        page.copy(content = docJsoup.html().getBytes("UTF-8"))
+      // check if html, than try to load frame tags if they found in body
+      if (!MediaTypeSupport.isHTML(mediaType)){
+        futPage
       }
-    }.flatten
+      else{
+        futPage.map { page =>
+          val html = ByteString(page.content.toArray).utf8String
+          val docJsoup = Jsoup.parse(html)
+
+          // `withFramesLoaded` detects and loads frames of framesets and individual frames
+          // and puts loaded data into initial document
+          withFramesLoaded(url, docJsoup).map { _ =>
+            page.copy(content = docJsoup.html().getBytes("UTF-8"))
+          }
+        }.flatten
+      }
   }
 
-  /** Additional function to check frame and frameset, get content from frames and return as doc */
+  /** Additional function to check frame and frameset tags, get content from frames and return as doc */
   def withFramesLoaded(url: String, docJsoup: Document): Future[List[Element]] = {
 
-    // simple method to retrive data by url
-    //takes Element instance as parameter and
-    // sets loaded data into content of that Element of docJsoup val
+    // simple method to retrieve data by url
+    // takes Element instance as parameter and
+    // sets loaded data into content of that Element instance of docJsoup val
     def loadFrame(frameElement: Element): Future[Element] = {
-      retrieve(url + frameElement.attr("src")).map(page =>
-        frameElement.html(ByteString(page.content.toArray).utf8String))
+      retrieve(url + frameElement.attr("src")).map{page =>
+        frameElement.html(ByteString(page.content.toArray).utf8String)
+      }
     }
 
-    // checks <freameset> tag and loads every <frame> fround
+    // checks <frameset> tag and loads every <frame> fround inside
     def checkFrameset(framesetElement: Element): List[Future[Element]] = {
       framesetElement.children.iterator().asScala.toList.map(elementZipped => loadFrame(elementZipped))
     }
@@ -109,7 +119,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     // mutable collection to easy dynamic adding of loaded data
     val loadedFramesets = new ArrayBuffer[List[Future[Element]]]()
 
-    // check if <freameset> elements were found than check them and load data
+    // check if <frameset> elements were found than check them and load data
     if (!framesetElems.isEmpty) {
       framesetElems.iterator().asScala.foreach(element =>
         if (element.parent().tag() != "frameset") {
@@ -128,7 +138,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
       })
     }
 
-    // Concat framesets loaded data and separate frames loaded data
+    // Concat framesets loaded data with separate frames loaded data,
     // the data is all set into correct Elements in loadFrame method which takes Element instance as parameter
     // and changes data inside that element
     Future.sequence {
