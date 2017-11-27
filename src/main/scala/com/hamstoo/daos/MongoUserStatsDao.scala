@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Mark, UserStats, UserStatsDay}
+import com.hamstoo.models.{Mark, MarkData, UserStats, UserStatsDay}
 import org.joda.time.DateTime
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -43,11 +43,12 @@ class MongoUserStatsDao(db: () => Future[DefaultDB]) {
     cI <- importsColl()
     cE <- marksColl()
     sel0 = d :~ Mark.USR -> userId.toString :~ Mark.TIMETHRU -> INF_TIME
-    marks <- cE.count(Some(sel0))
+    nMarks <- cE.count(Some(sel0))
     imports <- cI.find(d :~ U_ID -> userId.toString).one[BSONDocument]
 
     // query all records in past four weeks, correcting for user's current timezone
-    sel1 = sel0 :~ Mark.TIMEFROM -> (d :~ "$gt" -> DateTime.now.minusWeeks(nWeeks).getMillis)
+    sel1 = sel0 :~ Mark.TIMEFROM -> (d :~ "$gt" -> DateTime.now.minusWeeks(nWeeks).getMillis) :~
+                   Mark.TAGSx -> (d :~ "$not" -> (d :~ "$all" -> Seq(MarkData.IMPORT_TAG)))
     seq <- cE.find(sel1).projection(d :~ Mark.TIMEFROM -> 1).coll[BSONDocument, Seq]()
 
   } yield {
@@ -67,7 +68,7 @@ class MongoUserStatsDao(db: () => Future[DefaultDB]) {
       UserStatsDay(s, values(s))
     }
 
-    val imported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
-    UserStats(marks, imported, days, (0 /: days) (_ + _.nMarks), days.reverse maxBy (_.nMarks))
+    val nImported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
+    UserStats(nMarks, nImported, days, (0 /: days) (_ + _.nMarks), days.reverse maxBy (_.nMarks))
   }
 }
