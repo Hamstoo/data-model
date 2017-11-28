@@ -82,44 +82,33 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     // check if html, than try to load frame tags if they are found in body
     if (!MediaTypeSupport.isHTML(mediaType)) futPage else {
       futPage.flatMap { page =>
-        val html = ByteString(page.content.toArray).utf8String
-        val docJsoup = Jsoup.parse(html)
-
         // `withFramesLoaded` detects and loads frames of framesets and individual frames
         // and puts loaded data into initial document
-        withFramesLoaded(url, docJsoup).map { _ =>
-          page.copy(content = docJsoup.html().getBytes("UTF-8"))
+        loadFrames(url, page).map { framesLoaded =>
+          page.copy(content = framesLoaded._1.getBytes("UTF-8"))
         }
       }
     }
   }
 
   /** Additional function to check frame and frameset tags, get content from frames and return as doc. */
-  def withFramesLoaded(url: String, docJsoup: Document): Future[Seq[Element]] = {
-
+  def loadFrames(url: String, page: Page): Future[(String, Int)] = {
+    val html = ByteString(page.content.toArray).utf8String
+    val docJsoup = Jsoup.parse(html)
     // simple method to retrieve data by url
     // takes Element instance as parameter and
     // sets loaded data into content of that Element instance of docJsoup val
     def loadFrame(frameElement: Element): Future[Element] = retrieve(url + frameElement.attr("src")).map { page =>
       frameElement.html(ByteString(page.content.toArray).utf8String)
     }
-
-    // checks <frameset> tag and loads every <frame> found inside
-    def checkFrameset(framesetElement: Element): Iterator[Future[Element]] =
-      framesetElement.children.asScala.toIterator.map(element => loadFrame(element))
-
-    // check if <frameset> elements were found than check them and load data
-    val framesetElems = docJsoup.getElementsByTag("frameset").asScala.toIterator
-    val loadedFramesets = framesetElems.filter(_.parent().tag() != "frameset").flatMap(checkFrameset)
-
-    // check if <frames> elements were found without <frameset> parent and load data
+    // find all frames in framesets and load them
     val framesElems = docJsoup.getElementsByTag("frame").asScala.toIterator
     val loadedFrames = framesElems.map(loadFrame)
 
-    // concat framesets loaded data with separate frames loaded data,
     // the data is all set into correct Elements in loadFrame method which takes Element instance as parameter
     // and changes data inside that element
-    Future.sequence { (loadedFramesets ++ loadedFrames).toSeq }
+    Future.sequence { loadedFrames }
+      .map( framesLoaded => (docJsoup.html(), framesLoaded.size))
   }
 
   val MAX_REDIRECTS = 8

@@ -32,5 +32,17 @@ object DataInfo {
   val urlHTML = "http://docs.scala-lang.org/overviews/core/futures.html"
   val urlPDF = "http://www.softwareresearch.net/fileadmin/src/docs/teaching/SS13/ST/ActorsInScala.pdf"
 
+  val htmlWithFrames = """<html>
+    <head>
+      <meta http-equiv="Content-Language" content="en-us">
+        <title>Apache Ant&trade; User Manual</title>
+        </head>
+        <frameset cols="26%,74%">
+          <frame src="toc.html" name="navFrame">
+          <frame src="cover.html" name="mainFrame">
+          <frame src="cover.html" name="mainFrame">
+        </frameset>
+    </html>"""
+
   val emptyMarkData = MarkData("", None, None, None, None, None)
 }
