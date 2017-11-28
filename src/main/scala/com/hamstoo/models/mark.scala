@@ -106,8 +106,8 @@ object MarkData {
 
   val commentMergeSeparator: String = "\n\n---\n\n"
 
-  // tag which is present in save mark request when browser extension autosave feature is on
-  // used in hamstoo to detect if current request is performed by autosave function
+  // this tag is present in calls to backend's MarksController.saveMark when browser extension automark feature is on,
+  // this value must match the value in chrome-extension's timeTracker.js
   val AUTOSAVE_TAG = "Automarked"
   val IMPORT_TAG = "Imported"
 
