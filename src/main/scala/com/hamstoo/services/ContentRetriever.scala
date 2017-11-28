@@ -106,7 +106,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
     // checks <frameset> tag and loads every <frame> found inside
     def checkFrameset(framesetElement: Element): Iterator[Future[Element]] =
-      framesetElement.children.asScala.toIterator.map(elementZipped => loadFrame(elementZipped))
+      framesetElement.children.asScala.toIterator.map(element => loadFrame(element))
 
     // check if <frameset> elements were found than check them and load data
     val framesetElems = docJsoup.getElementsByTag("frameset").asScala.toIterator
