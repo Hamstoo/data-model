@@ -42,11 +42,11 @@ class ContentRetrieverTests
     page.getTitle shouldBe Some("Actors in Scala")
   }
 
-  it should "(UNIT) not duplicate frames which are nested in framesets and" +
+  it should "(UNIT) not duplicate frames which are nested in framesets and " +
             "load frames which are not nested in framesets" in {
     val elems = contriever.loadFrames("https://ant.apache.org/manual/",
-      new Page("text/html", htmlWithFrames.toCharArray.map(_.toByte))).futureValue
-    //Should load only 3 frames total
+                                      new Page("text/html", htmlWithFrames.toCharArray.map(_.toByte))).futureValue
+    // should load only 3 frames total
     elems._2 shouldBe 3
   }
 }

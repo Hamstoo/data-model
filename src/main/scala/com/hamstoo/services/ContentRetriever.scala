@@ -84,8 +84,8 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
       futPage.flatMap { page =>
         // `withFramesLoaded` detects and loads frames of framesets and individual frames
         // and puts loaded data into initial document
-        loadFrames(url, page).map { framesLoaded =>
-          page.copy(content = framesLoaded._1.getBytes("UTF-8"))
+        loadFrames(url, page).map { framesLoadedHtml =>
+          page.copy(content = framesLoadedHtml._1.getBytes("UTF-8"))
         }
       }
     }
@@ -95,20 +95,21 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
   def loadFrames(url: String, page: Page): Future[(String, Int)] = {
     val html = ByteString(page.content.toArray).utf8String
     val docJsoup = Jsoup.parse(html)
+
     // simple method to retrieve data by url
     // takes Element instance as parameter and
     // sets loaded data into content of that Element instance of docJsoup val
     def loadFrame(frameElement: Element): Future[Element] = retrieve(url + frameElement.attr("src")).map { page =>
       frameElement.html(ByteString(page.content.toArray).utf8String)
     }
+
     // find all frames in framesets and load them
     val framesElems = docJsoup.getElementsByTag("frame").asScala.toIterator
     val loadedFrames = framesElems.map(loadFrame)
 
     // the data is all set into correct Elements in loadFrame method which takes Element instance as parameter
-    // and changes data inside that element
-    Future.sequence { loadedFrames }
-      .map( framesLoaded => (docJsoup.html(), framesLoaded.size))
+    // and changes data inside that element (lf.size is only used in ContentRetrieverTests)
+    Future.sequence(loadedFrames).map(lf => (docJsoup.html(), lf.size))
   }
 
   val MAX_REDIRECTS = 8
