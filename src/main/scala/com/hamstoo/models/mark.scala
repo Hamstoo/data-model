@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
+import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
 import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
@@ -194,12 +194,12 @@ case class Mark(
                  id: String = generateDbId(Mark.ID_LENGTH),
                  mark: MarkData,
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
-                 var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
+                 var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
                  page: Option[Page] = None,
-                 pubRepr: Option[String] = None,
-                 privRepr: Option[String] = None,
-                 pubExpRating: Option[ExpectedRating] = None,
-                 privExpRating: Option[ExpectedRating] = None,
+                 pubRepr: Option[String] = None,       // it's helpful for these fields to be (foreign key'ish)
+                 privRepr: Option[String] = None,      // strings rather than objects so that they can be set to
+                 pubExpRating: Option[String] = None,  // "failed" or "none" if desired (e.g. see
+                 privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
                  timeFrom: Long = DateTime.now.getMillis,
                  timeThru: Long = INF_TIME,
                  mergeId: Option[String] = None,
@@ -213,7 +213,7 @@ case class Mark(
     * here, but returning the empty string just makes things a lot cleaner on the other end.
     */
   def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
-  def expectedRating: Option[ExpectedRating] = privExpRating.orElse(pubExpRating)
+  def expectedRating: Option[String] = privExpRating.orElse(pubExpRating)
 
   /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
@@ -222,6 +222,8 @@ case class Mark(
     */
   def representablePublic: Boolean = pubRepr.isEmpty
   def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined
+  def eratablePublic: Boolean = pubExpRating.isEmpty && pubRepr.isDefined
+  def eratablePrivate: Boolean = privExpRating.isEmpty && privRepr.isDefined
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
@@ -304,9 +306,14 @@ object Mark extends BSONHandlers {
 
   /**
     * Expected rating for a mark including the number of other marks that went into generating it and when
-    * it was generated.
+    * it was generated (and how long it was "active" for).
     */
-  case class ExpectedRating(value: Double, n: Int, timestamp: Long = DateTime.now.getMillis)
+  case class ExpectedRating(id: String = generateDbId(Mark.ID_LENGTH),
+                            value: Double,
+                            n: Int,
+                            similarReprs: Seq[String],
+                            timeFrom: Long = DateTime.now.getMillis,
+                            timeThru: Long = INF_TIME)
 
   val ID_LENGTH: Int = 16
 

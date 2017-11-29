@@ -159,7 +159,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * Retrieves all current marks with representations for the user, constrained by a list of tags. Mark must have
     * all tags to qualify.
     */
-  def retrieveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = {
+  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
     logger.debug(s"Retrieve repred marks for user $user and tags $tags")
     for {
       c <- dbColl()
@@ -193,7 +193,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   // TODO: doesn't it make more sense to do an explicit include than an exclude; i.e. just include the required fields
   // TODO: or perhaps it would make more sense to make a MarkStub base class so that users know they're dealing with a partially populated Mark
   val searchExcludedFields: BSONDocument = d :~ (PAGE -> 0)  :~ (URLPRFX -> 0) :~ (AUX -> 0) :~
-    (MERGEID -> 0) :~ (STARSx -> 0) :~ (TAGSx -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
+    (MERGEID -> 0) :~ (TAGSx -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
 
   /**
     * Executes a search using text index with sorting in user's marks, constrained by tags. Mark state must be
@@ -433,6 +433,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       sel = d :~ "$or" -> Seq(selPub, selPriv) // Seq gets automatically converted to BSONArray
       //_ = logger.info(BSONDocument.pretty(sel))
       // TODO: we need an index for this query (and probably need a `pageExists` proxy field along with it)
+      // TODO: the "bin-$URLPRFX-1-$PUBREPR-1" index can probably be removed as URL is no longer selected-on here
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
       logger.debug(s"${seq.size} marks with missing representations were retrieved")
@@ -455,37 +456,59 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     }
   }
 
+  def fkSel(id: String, timeFrom: Long): BSONDocument = d :~ ID -> id :~ TIMEFROM -> timeFrom
+
   /**
-    * Updates a mark state with provided representation id. this method is typically called as a result
-    * of findMissingReprs, so if the latter is picking up non-`curnt` marks, then the former needs to be also, o/w
-    * repr-engine's MongoClient.refresh could get stuck hopelessly trying to assign reprs to the same non-current
-    * marks over and over.
+    * Updates a mark's state with provided foreign key ID.  This method is typically called as a result of
+    * findMissingReprs or findMissingExpectedRatings, so if they are picking up non-`curnt` marks, then this method
+    * needs to be also, o/w repr-engine's MongoClient.refresh could get stuck hopelessly trying to re-process
+    * the same non-current marks over and over.
+    *
+    * @param user      - mark's user ID; serves as a safeguard against inadvertent private content mixups
+    * @param id        - mark ID
+    * @param timeFrom  - mark timestamp
+    * @param fkId      - "foreign key" ID; probably either a representation ID or an expected rating ID
+    * @param fieldName - the field name in the Mark model to update
+    * @param logName   - the field name for logging purposes
     */
-  def updatePublicReprId(id: String, timeFrom: Long, reprId: String): Future[Unit] = {
-    logger.debug(s"Updating mark $id ($timeFrom) with public representation ID: '$reprId'")
-    if (reprId.length > Representation.ID_LENGTH)
-      Future.failed(new Exception(s"Attempt to update mark $id ($timeFrom) with public representation ID '$reprId' failed; long ID length could break index"))
+  def updateForeignKeyId(user: UUID, id: String, timeFrom: Long, fkId: String, fieldName: String, logName: String):
+                                                                                                      Future[Mark] = {
+    logger.debug(s"Updating mark $id ($timeFrom) with $logName ID: '$fkId'")
+    if (fkId.endsWith("Repr") && fkId.length > Representation.ID_LENGTH) // TODO: remove this after updating indexes
+      Future.failed(new Exception(s"Attempt to update mark $id ($timeFrom) with $logName ID '$fkId' failed; long ID length could break index"))
 
     else for {
       c <- dbColl()
-      sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
-      wr <- c update(sel, d :~ "$set" -> (d :~ PUBREPR -> reprId))
-      _ <- wr.failIfError;
-      _ = logger.debug(s"Updated mark $id with public representation ID: '$reprId'")
-    } yield ()
+
+      // writes new foreign key ID into the mark and retrieves updated document in the result
+      wr <- c.findAndUpdate(fkSel(id, timeFrom), d :~ "$set" -> (d :~ fieldName -> fkId), fetchNewObject = true)
+
+      _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
+        logger.warn(s"Unable to findAndUpdate $logName of mark $id [$timeFrom] to $fkId; wr.lastError = ${wr.lastError.get}")
+        Future.failed(new NoSuchElementException(s"MongoMarksDao.update($fieldName)"))
+      }
+
+      // this will "NoSuchElementException: None.get" when `get` is called if `wr.result[Mark]` is None
+      mk = wr.result[Mark].get
+
+      _ = logger.debug(s"Updated mark $id with $logName ID: '$fkId'")
+    } yield mk
   }
 
-  /**
-    * Updates a mark state with provided private representation id and clears out processed page source. this method is
-    * typically called as a result of findMissingReprs, so if the latter is picking up non-`curnt` marks, then the
-    * former needs to be also, o/w repr-engine's MongoClient.refresh could get stuck hopelessly trying to assign
-    * reprs to the same non-current marks over and over.
-    *
-    * @param user     - user ID of mark's owner; serves as a safeguard against inadvertent private content mixups
-    * @param id       - mark ID
-    * @param timeFrom - mark version timestamp
-    * @param reprId   - representation ID
-    * @param page     - processed page source to clear out from the mark
+  /** Updates a mark state with provided expected rating ID. */
+  def updatePublicERatingId(user: UUID, id: String, timeFrom: Long, erId: String): Future[Unit] =
+    updateForeignKeyId(user, id, timeFrom, erId, PUBESTARS, "public expected rating").map(_ => {})
+
+  /** Updates a mark state with provided private expected rating ID. */
+  def updatePrivateERatingId(user: UUID, id: String, timeFrom: Long, erId: String): Future[Unit] =
+    updateForeignKeyId(user, id, timeFrom, erId, PRIVESTARS, "private expected rating").map(_ => {})
+
+  /** Updates a mark state with provided representation ID. */
+  def updatePublicReprId(user: UUID, id: String, timeFrom: Long, reprId: String): Future[Unit] =
+    updateForeignKeyId(user, id, timeFrom, reprId, PUBREPR, "public representation").map(_ => {})
+
+  /** Updates a mark state with provided private representation ID and clears out processed page source.
+    * @param page - processed page source to clear out from the mark
     */
   def updatePrivateReprId(user: UUID, id: String, timeFrom: Long, reprId: String, page: Option[Page]): Future[Unit] = {
     logger.debug(s"Updating mark $id ($timeFrom) with private representation ID: '$reprId'")
@@ -494,22 +517,11 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
     else for {
       c <- dbColl()
-      sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
-
-      // writes new private representation ID into the mark and retrieves updated document in the result
-      wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> reprId), fetchNewObject = true)
-
-      _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
-        logger.warn(s"Unable to findAndUpdate mark $id's (timeFrom = $timeFrom) private representation to $reprId; wr.lastError = ${wr.lastError.get}")
-        Future.failed(new NoSuchElementException("MongoMarksDao.updatePrivateReprId"))
-      }
-
-      // this will "NoSuchElementException: None.get" when `get` is called if `wr.result[Mark]` is None
-      mk = wr.result[Mark].get
+      mk <- updateForeignKeyId(user, id, timeFrom, reprId, PRVREPR, "private representation")
 
       // removes page source from the mark in case it's the same as the one processed
       _ <- if (page.exists(mk.page.contains)) for {
-        wr <- c.update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
+        wr <- c.update(fkSel(id, timeFrom), d :~ "$unset" -> (d :~ PAGE -> 1))
         _ <- wr.failIfError
       } yield () else Future.successful {}
 

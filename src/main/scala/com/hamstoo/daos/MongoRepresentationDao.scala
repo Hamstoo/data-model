@@ -8,7 +8,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocumentHandler, BSONInteger, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -26,7 +26,7 @@ object MongoRepresentationDao {
 
 /**
   * Data access object for MongoDB `representations` collection.
-  * @param db  Future[DefaultDB] database connection.
+  * @param db  Future[DefaultDB] database connection returning function.
   */
 class MongoRepresentationDao(db: () => Future[DefaultDB]) {
 
@@ -93,9 +93,9 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     // No longer checking if ID and (in case of public repr) link exist in the db, failing on conflict.  Instead
     // let the caller decide when to update an existing repr based on passing in a Representation with an ID that
     // already exists or doesn't.
-    opRepr <- retrieveById(repr.id)
+    optRepr <- retrieve(repr.id)
 
-    wr <- opRepr match {
+    wr <- optRepr match {
       case Some(r) =>
         logger.info(s"Updating existing Representation(id=${r.id}, link=${r.link}, timeFrom=${r.timeFrom}, dt=${r.timeFrom.dt})")
         for {
@@ -111,14 +111,14 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     _ <- wr failIfError
   } yield repr.id
 
-  /** Retrieves a current (latest) representation by id. */
-  def retrieveById(id: String): Future[Option[Representation]] = for {
+  /** Retrieves a current (latest) representation by ID. */
+  def retrieve(id: String): Future[Option[Representation]] = for {
     c <- dbColl()
     opRep <- c.find(d :~ ID -> id :~ curnt).one[Representation]
   } yield opRep
 
-  /** Retrieves all representations, including private and previous versions, by Id. */
-  def retrieveAllById(id: String): Future[Seq[Representation]] = for {
+  /** Retrieves all representations, including previous versions, by ID. */
+  def retrieveAll(id: String): Future[Seq[Representation]] = for {
     c <- dbColl()
     seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
   } yield seq
@@ -135,6 +135,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     */
   def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
     c <- dbColl()
+    _ = logger.debug(s"Searching with query '$query' for reprs (first 5): ${ids.take(5)}")
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
 
     // exclude these fields from the returned results to conserve memory during search
