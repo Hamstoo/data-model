@@ -68,8 +68,8 @@ class MongoRepresentationDaoTests
     println(s"Updated representation 2 id $id2")
     id shouldEqual id2 // this is because they have the same ID
 
-    // use `retrieveAllById` to get both previous and updated reprs from the db
-    val reprs: Seq[Representation] = reprsDao.retrieveAllById(id2).futureValue
+    // use `retrieveAll` to get both previous and updated reprs from the db
+    val reprs: Seq[Representation] = reprsDao.retrieveAll(id2).futureValue
     println(s"Print SIZE ${reprs.size}")
     reprs.foreach(r => println(s"Print Seq ${r.timeThru}"))
 
