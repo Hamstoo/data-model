@@ -418,7 +418,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
   /** Retrieves a list of n marks that require representations. Intentionally not filtering for `curnt` marks. */
   def findMissingReprs(n: Int): Future[Seq[Mark]] = {
-    logger.debug("Finding marks with missing public representation")
+    logger.debug("Finding marks with missing representations")
     for {
       c <- dbColl()
 
@@ -432,9 +432,25 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
       sel = d :~ "$or" -> Seq(selPub, selPriv) // Seq gets automatically converted to BSONArray
       //_ = logger.info(BSONDocument.pretty(sel))
+      // TODO: we need an index for this query (and probably need a `pageExists` proxy field along with it)
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
       logger.debug(s"${seq.size} marks with missing representations were retrieved")
+      seq
+    }
+  }
+
+  /** Retrieves a list of n marks that require expected ratings. Intentionally not filtering for `curnt` marks. */
+  def findMissingExpectedRatings(n: Int): Future[Seq[Mark]] = {
+    logger.debug("Finding marks with missing expected ratings")
+    for {
+      c <- dbColl()
+      sel = d :~ "$or" -> Seq(d :~ PUBESTARS -> (d :~ "$exists" -> false) :~ PUBREPR -> (d :~ "$exists" -> true),
+                              d :~ PRIVESTARS -> (d :~ "$exists" -> false) :~ PRVREPR -> (d :~ "$exists" -> true))
+      // TODO: we need an index for this query
+      seq <- c.find(sel).coll[Mark, Seq](n)
+    } yield {
+      logger.debug(s"${seq.size} marks with missing E[rating]s were retrieved")
       seq
     }
   }
