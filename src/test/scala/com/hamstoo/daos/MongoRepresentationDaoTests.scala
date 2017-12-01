@@ -16,8 +16,6 @@ class MongoRepresentationDaoTests
     with MongoEnvironment
     with FutureHandler {
 
-  import com.hamstoo.utils.DataInfo._
-
   /** Create new mark. */
   def randomMarkData: MarkData = {
     val alpha = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"

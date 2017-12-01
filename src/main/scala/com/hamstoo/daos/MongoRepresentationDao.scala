@@ -105,7 +105,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
         } yield wr
 
       case _ =>
-        logger.info(s"Inserting new Representation(id=${repr.id}, link=${repr.link})")
+        logger.debug(s"Inserting new Representation(id=${repr.id}, link=${repr.link})")
         c insert repr.copy(timeFrom = now)
     }
     _ <- wr failIfError
