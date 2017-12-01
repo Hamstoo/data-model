@@ -485,7 +485,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
       _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
         logger.warn(s"Unable to findAndUpdate $logName of mark $id [$timeFrom] to $fkId; wr.lastError = ${wr.lastError.get}")
-        Future.failed(new NoSuchElementException(s"MongoMarksDao.update($fieldName)"))
+        Future.failed(new NoSuchElementException(s"Unable to find mark $id [$timeFrom] in order to update its $fieldName"))
       }
 
       // this will "NoSuchElementException: None.get" when `get` is called if `wr.result[Mark]` is None
