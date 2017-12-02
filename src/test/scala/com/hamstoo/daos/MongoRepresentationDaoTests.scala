@@ -4,6 +4,8 @@ import com.hamstoo.models.{MarkData, Page, Representation}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.MediaType
+import org.joda.time.DateTime
+import org.scalatest.OptionValues
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
@@ -14,9 +16,8 @@ import scala.util.Random
 class MongoRepresentationDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
-    with FutureHandler {
-
-  import com.hamstoo.utils.DataInfo._
+    with FutureHandler
+    with OptionValues {
 
   /** Create new mark. */
   def randomMarkData: MarkData = {
@@ -27,6 +28,18 @@ class MongoRepresentationDaoTests
     val domain = randStr(10)
     MarkData("a subject", Some(s"http://$domain.com"))
   }
+
+  val repr = Representation(
+    link = None,
+    page = None,
+    header = None,
+    doctext = "doctext",
+    othtext = None,
+    keywords = None,
+    vectors = Map.empty[String, Representation.Vec],
+    autoGenKws = None)
+
+  val nRepr = repr.copy(link = Some("link"))
 
   "MongoRepresentationDao" should "(UNIT) save representation" in {
 
@@ -61,7 +74,6 @@ class MongoRepresentationDaoTests
 
     id should not equal null
     id should not equal ""
-    Thread.sleep(2500)
 
     // saves representation copy
     val id2: String = reprsDao.save(reprCopy).futureValue /*.map(id => id)*/
@@ -79,4 +91,22 @@ class MongoRepresentationDaoTests
     reprs.head.timeFrom should not equal reprs.tail.head.timeFrom
     reprs.head.timeThru should be < reprs.tail.head.timeThru
   }
+
+  it should "(UNIT) insert representation" in {
+    reprsDao.insert(repr).futureValue shouldEqual repr
+  }
+
+  it should "(UNIT) retrieve representaton by id" in {
+    reprsDao.retrieveById(repr.id).futureValue.value shouldEqual repr
+  }
+
+  it should "(UNIT) update representation" in {
+    val time: Long = DateTime.now().getMillis
+    reprsDao.update(nRepr, time).futureValue shouldEqual nRepr.copy(timeFrom = time)
+  }
+
+  it should "(UNIT) retrieve all by id" in {
+    reprsDao.retrieveAllById(repr.id).futureValue.size shouldEqual 2
+  }
+
 }
