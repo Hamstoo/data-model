@@ -2,11 +2,19 @@ package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
 import java.net.URI
+import java.nio.ByteBuffer
 
 import scala.collection.JavaConverters._
 import akka.util.ByteString
+import com.gargoylesoftware.htmlunit.html.HtmlPage
+import com.gargoylesoftware.htmlunit.{AjaxController, BrowserVersion, WebClient, WebRequest}
+import play.api.libs.ws.ahc.{AhcWSResponse, StandaloneAhcWSResponse}
+import play.shaded.ahc.org.asynchttpclient.HttpResponseBodyPart
+import play.shaded.ahc.org.asynchttpclient.Response.ResponseBuilder
+//import com.gargoylesoftware.htmlunit.BrowserVersion
 import com.hamstoo.models.Page
 import com.hamstoo.utils.MediaType
+//import net.ruippeixotog.scalascraper.browser.HtmlUnitBrowser
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.{Document, Element}
@@ -114,6 +122,66 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
   val MAX_REDIRECTS = 8
 
+
+  /**
+    * This method is called if "incapsula" keyword found in page response
+    * Soon new WAFs will be added to be detected
+    * the method uses HtmlUnit testing tool which runs JavaScript scripts
+    * and waits until all scripts are loaded, as well it runs loaded scripts
+    * what provides necessary calculations to bypass WAF
+    *
+    *
+    */
+  //Todo add check for other WAFs
+  def bypassWAF(url: String): Future[(String, WSResponse)] = {
+    // these settings are important to run JavaScript in loaded page by emulated browser
+    val webClient: WebClient = new WebClient(BrowserVersion.EDGE)
+    webClient.setAjaxController(new AjaxController(){
+      override def processSynchron(page: HtmlPage, request: WebRequest, async: Boolean) = true
+    })
+
+    // this low timeout is required because WAFs can include several redirects and
+    // heavy JavaScripts to be loaded from Wordpress CMS sites (usually used with Incapsula plugin)
+    // dependtly on client/server bandwidth or server capacity (Php sites usually take much resourses)
+    webClient.waitForBackgroundJavaScript(60000)
+    webClient.getOptions().setJavaScriptEnabled(true)
+    webClient.getOptions().setThrowExceptionOnFailingStatusCode(false);
+    webClient.getOptions().setThrowExceptionOnScriptError(false);
+    webClient.getOptions().setCssEnabled(true)
+    webClient.getOptions().setRedirectEnabled(true)
+    webClient.getOptions().setUseInsecureSSL(true)
+    val htmlPage: HtmlPage = webClient.getPage(url);
+
+    val html = htmlPage.asText()
+    println(html) // Todo remove this line
+
+    //Todo if incapsula still found then 5 retries to reload because sometimes the scripts are not loaded and run in time
+
+    val contentByte = html.toCharArray.map(_.toByte)
+    println(html) // Todo remove this line
+
+    val response = new ResponseBuilder().accumulate(new HttpResponseBodyPart(true){
+
+      override def getBodyPartBytes: Array[Byte] = contentByte
+      override def length(): Int = contentByte.length
+      override def getBodyByteBuffer: ByteBuffer = ByteBuffer.allocate(contentByte.length)
+    }).build()
+
+    Future.successful(url, AhcWSResponse(StandaloneAhcWSResponse(response)))
+  }
+
+  /** this method will detect capchas of popular WAFs by checking hmlt page for specific keywords*/
+  def detectCapcha(html: String): Boolean = {
+    //Todo optimize regex
+    if (html.matches(".*SiteLock.*") || html.matches(".*sitelock.*")) {
+      throw CaptchaException("SiteLock captcha detected")
+      true
+    }
+    else{
+      false
+    }
+  }
+
   /** This code was formerly part of the 'hamstoo' repo's LinkageService. */
   def digest(url: String): Future[(String, WSResponse)] = {
     val link: String = checkLink(url)
@@ -131,7 +199,6 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
         // remedy, this call either needs to not be the first Future in the for-comprehension (an odd limitation that
         // callers shouldn't really have to worry about) or be wrapped in a Try, as has been done here.
         Try(httpClient.url(url).withFollowRedirects(true).get).fold(Future.failed, identity).flatMap { res =>
-
           res.status match {
             // withFollowRedirects follows only 301 and 302 redirects.
             // We need to cover 308 - Permanent Redirect also. The new url can be found in "Location" header.
@@ -142,8 +209,9 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
                 case _ =>
                   Future.successful((url, res))
               }
-            case _ =>
-              Future.successful((url, res))
+            case _ => println(res.body) //Todo remove this line
+              //Todo optimize regex
+              if (res.body.matches(".*Incapsula.*") || res.body.matches(".*incapsula.*")) bypassWAF(url) else Future.successful((url, res))
           }
         }
       }
@@ -199,3 +267,6 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     byteArray
   }*/
 }
+
+/** This exception is throwed if captcha on webpage detected*/
+case class CaptchaException(msg:String)  extends Exception(msg)
