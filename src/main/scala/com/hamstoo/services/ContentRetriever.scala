@@ -3,11 +3,13 @@ package com.hamstoo.services
 import java.io.{ByteArrayInputStream, InputStream}
 import java.net.URI
 import java.nio.ByteBuffer
+import java.util.regex.Pattern
 
 import scala.collection.JavaConverters._
 import akka.util.ByteString
 import com.gargoylesoftware.htmlunit.html.HtmlPage
 import com.gargoylesoftware.htmlunit.{AjaxController, BrowserVersion, WebClient, WebRequest}
+import org.scalatest.fixture
 import play.api.libs.ws.ahc.{AhcWSResponse, StandaloneAhcWSResponse}
 import play.shaded.ahc.org.asynchttpclient.HttpResponseBodyPart
 import play.shaded.ahc.org.asynchttpclient.Response.ResponseBuilder
@@ -26,6 +28,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 import scala.util.matching.Regex
+import ContentRetriever._
 
 /**
   * ContentRetriever companion class.
@@ -34,6 +37,20 @@ object ContentRetriever {
 
   val logger = Logger(classOf[ContentRetriever])
   val titleRgx: Regex = "(?i)<title.*>([^<]+)</title>".r.unanchored
+  // (?i) - ignorecase
+  // .*? - allow (optinally) any characters before
+  // \b - word boundary
+  //%s - variable to be changed by String.format (quoted to avoid regex errors)
+  // \b - word boundary
+  // .*? - allow (optinally) any characters after
+  val REGEX_FIND_WORD = "(?i).*?%s.*?"
+  val incapsulaRgx: Regex =  REGEX_FIND_WORD.format("Incapsula").r.unanchored
+  // If incapsula incident detected and try to use HTMLUnit, then Sitelock captcha appears and HtmlUnit is just hanged
+  // so detect incident ahead
+  val incapsulaIncidentRgx: Regex =  REGEX_FIND_WORD.format("Incapsula\\sincident\\sID").r.unanchored
+  // standalone Sitelock captcha for case if it raises without Incapsula
+  // Not sure but it seems Sitelock is using Google's reCAPTCHA
+  val sitelockCaptchaRgx: Regex =  REGEX_FIND_WORD.format("Sitelock").r.unanchored
 
   /** Make sure the provided String is an absolute link. */
   def checkLink(s: String): String = if (s.isEmpty) s else Try(new URI(s)) match {
@@ -158,7 +175,6 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     //Todo if incapsula still found then 5 retries to reload because sometimes the scripts are not loaded and run in time
 
     val contentByte = html.toCharArray.map(_.toByte)
-    println(html) // Todo remove this line
 
     val response = new ResponseBuilder().accumulate(new HttpResponseBodyPart(true){
 
@@ -171,16 +187,6 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
   }
 
   /** this method will detect capchas of popular WAFs by checking hmlt page for specific keywords*/
-  def detectCapcha(html: String): Boolean = {
-    //Todo optimize regex
-    if (html.matches(".*SiteLock.*") || html.matches(".*sitelock.*")) {
-      throw CaptchaException("SiteLock captcha detected")
-      true
-    }
-    else{
-      false
-    }
-  }
 
   /** This code was formerly part of the 'hamstoo' repo's LinkageService. */
   def digest(url: String): Future[(String, WSResponse)] = {
@@ -210,14 +216,45 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
                   Future.successful((url, res))
               }
             case _ => println(res.body) //Todo remove this line
-              //Todo optimize regex
-              if (res.body.matches(".*Incapsula.*") || res.body.matches(".*incapsula.*")) bypassWAF(url) else Future.successful((url, res))
+              checkKnownProblems(url, res).map(_.getOrElse((url, res)))
           }
         }
       }
     }
 
     recget(link)
+  }
+
+  /** Detects known WAFs and captchas */
+  //Todo optimized order of different WAFs and different Capthas regexis
+  def checkKnownProblems(url: String, res: WSResponse): Future[Option[(String, WSResponse)]] = {
+    res.body match  {
+      case s if s.matches(incapsulaRgx.toString())  =>
+        res.body match {
+            // "Sitelock" captcha raised when incapsula suspects crawler
+          case  s if s.matches(sitelockCaptchaRgx.toString()) =>
+            throw CaptchaException ("SiteLock captcha detected")
+
+            // "Incapsula incident" is raised if incapsula detected suspected behavior and blacklisted ip or pc, or something else
+          case  s if s.matches(incapsulaIncidentRgx.toString()) =>
+            throw IncapsulaCaptchaIncidentException ("Incapsula incident (Sitelock captcha detected")
+            // if no problems detected except incapsula WAF raised => bypass WAF
+          case _ =>
+            bypassWAF (url).map(r => Some(r))
+        }
+        // Todo add popular WAFs detection and invoke HTMLUnit to bypass detected WAF
+      /*case waf2Rgx(body) =>
+      case waf3Rgx(body) =>
+      case waf4Rgx(body) =>
+      case waf5Rgx(body) =>
+      case waf6Rgx(body) =>
+      case waf7Rgx(body) =>
+      case waf8Rgx(body) =>
+      case waf9Rgx(body) =>*/
+
+        // if no WAFs or captchas detected then just process representation
+      case _ => Future.successful (Some(url, res) )
+    }
   }
 
   // TODO: do we even need this retrieveHTML function or can we always use retrieveBinary?
@@ -270,3 +307,5 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
 /** This exception is throwed if captcha on webpage detected*/
 case class CaptchaException(msg:String)  extends Exception(msg)
+/** This exception is throwed if Incapsula blacklisted ip or pc, or blacklisted something else*/
+case class IncapsulaCaptchaIncidentException(msg:String)  extends Exception(msg)
