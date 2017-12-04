@@ -60,8 +60,19 @@ class MongoExpectedRatingDao(db: () => Future[DefaultDB]) {
   } yield ()
 
   /** Retrieves a current (latest) expected rating by ID. */
-  def retrieve(id: String): Future[Option[ExpectedRating]] = for {
+  def retrieve(id: String): Future[Option[ExpectedRating]] = retrieve(Set(id)).map(_.get(id))
+
+  /** Given a set of ExpectedRating IDs, return a mapping from ID to instance. */
+  def retrieve(ids: Set[String]): Future[Map[String, ExpectedRating]] = for {
     c <- dbColl()
-    opRep <- c.find(d :~ ID -> id :~ curnt).one[ExpectedRating]
-  } yield opRep
+    _ = logger.debug(s"Retrieving with expected ratings (first 5): ${ids.take(5)}")
+    seq <- c.find(d :~ ID -> (d :~ "$in" -> ids) :~ curnt).coll[ExpectedRating, Seq]()
+
+  } yield seq.map { erating =>
+    erating.id -> erating
+
+  }.toMap/*(breakOut[
+    Seq[ExpectedRating],
+    (String, ExpectedRating),
+    Map[String, ExpectedRating]])*/
 }
