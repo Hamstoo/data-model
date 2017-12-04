@@ -1,6 +1,6 @@
 package com.hamstoo.models
+
 import com.hamstoo.test.FlatSpecWithMatchers
-import com.hamstoo.utils.DataInfo
 import org.apache.commons.text.StringEscapeUtils
 
 /**
@@ -60,7 +60,7 @@ class MarkTests extends FlatSpecWithMatchers {
       "<a href=\"https://234.234.234:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'\">" +
       "https://234.234.234:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'</a> </p>"
 
-    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    val s1 = TextNodesVisitor.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
     println(filteredOfEmbeddedLinksTags)
     println(s1)
     s1 shouldEqual filteredOfEmbeddedLinksTags
@@ -75,7 +75,7 @@ class MarkTests extends FlatSpecWithMatchers {
       "<a href=\"https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'\">" +
       "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'</a> </p>"
 
-    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    val s1 = TextNodesVisitor.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
     println(filteredOfEmbeddedLinksTags)
     println(s1)
     s1 shouldEqual filteredOfEmbeddedLinksTags
@@ -93,7 +93,7 @@ class MarkTests extends FlatSpecWithMatchers {
       "<a href=\"https://www.google.com\">" +
       "I'm an inline-style link</a></p>"
 
-    val s1 = MarkData.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
+    val s1 = TextNodesVisitor.embeddedLinksToHtmlLinks(nonFilteredOfEmbeddedLinksTags)
     println(filteredOfEmbeddedLinksTags)
     println(s1)
     s1 shouldEqual filteredOfEmbeddedLinksTags

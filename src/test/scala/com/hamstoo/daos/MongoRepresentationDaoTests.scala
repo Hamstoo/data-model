@@ -17,7 +17,7 @@ class MongoRepresentationDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler
-    with OptionValues {
+    /*with OptionValues*/ {
 
   /** Create new mark. */
   def randomMarkData: MarkData = {
@@ -39,8 +39,6 @@ class MongoRepresentationDaoTests
     vectors = Map.empty[String, Representation.Vec],
     autoGenKws = None)
 
-  val nRepr = repr.copy(link = Some("link"))
-
   "MongoRepresentationDao" should "(UNIT) save representation" in {
 
     val url: Option[String] = randomMarkData.url
@@ -55,7 +53,7 @@ class MongoRepresentationDaoTests
       doctext = "sdf",
       othtext = Some("sdf"),
       keywords = Some("nothing"),
-        vectors = Map {"something" -> vec},
+      vectors = Map("something" -> vec),
       autoGenKws = None)
     println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
@@ -65,7 +63,7 @@ class MongoRepresentationDaoTests
       doctext = "sasdasdf",
       othtext = Some("ssadasddf"),
       keywords = Some("something"),
-        vectors = Map {"month" -> vec2})
+      vectors = Map("month" -> vec2))
 
     // save representation
     println(s"Creating 2 representations with ids ${reprOrig.id} and ${reprCopy.id}")
@@ -80,8 +78,8 @@ class MongoRepresentationDaoTests
     println(s"Updated representation 2 id $id2")
     id shouldEqual id2 // this is because they have the same ID
 
-    // use `retrieveAllById` to get both previous and updated reprs from the db
-    val reprs: Seq[Representation] = reprsDao.retrieveAllById(id2).futureValue
+    // use `retrieveAll` to get both previous and updated reprs from the db
+    val reprs: Seq[Representation] = reprsDao.retrieveAll(id2).futureValue
     println(s"Print SIZE ${reprs.size}")
     reprs.foreach(r => println(s"Print Seq ${r.timeThru}"))
 
@@ -92,21 +90,20 @@ class MongoRepresentationDaoTests
     reprs.head.timeThru should be < reprs.tail.head.timeThru
   }
 
-  it should "(UNIT) insert representation" in {
+  it should "(UNIT) insert representations" in {
     reprsDao.insert(repr).futureValue shouldEqual repr
   }
 
-  it should "(UNIT) retrieve representaton by id" in {
-    reprsDao.retrieveById(repr.id).futureValue.value shouldEqual repr
+  it should "(UNIT) retrieve representatons" in {
+    reprsDao.retrieve(repr.id).futureValue.get shouldEqual repr
   }
 
   it should "(UNIT) update representation" in {
-    val time: Long = DateTime.now().getMillis
-    reprsDao.update(nRepr, time).futureValue shouldEqual nRepr.copy(timeFrom = time)
+    val repr2 = repr.copy(link = Some("link"), timeFrom = DateTime.now.getMillis)
+    reprsDao.update(repr2, repr2.timeFrom).futureValue shouldEqual repr2
   }
 
   it should "(UNIT) retrieve all by id" in {
-    reprsDao.retrieveAllById(repr.id).futureValue.size shouldEqual 2
+    reprsDao.retrieveAll(repr.id).futureValue.size shouldEqual 2
   }
-
 }
