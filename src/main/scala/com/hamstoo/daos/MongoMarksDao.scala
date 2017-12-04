@@ -30,6 +30,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
   // reduce size of existing `urlPrfx`s down to URL_PREFIX_LENGTH to prevent indexes below from being too large
   // and causing exceptions when trying to update marks with reprIds (version 0.9.16)
+  // (note that the offending `urlPrfx` indexes have now been removed)
   Await.result(for {
     c <- dbColl()
     _ = logger.info(s"Performing data migration for `marks` collection")
@@ -43,18 +44,24 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
-    Index(USR -> Ascending :: Nil) % s"bin-$USR-1" ::
-    Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
-    /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
+    Index(USR -> Ascending :: TIMETHRU -> Ascending :: Nil) % s"bin-$USR-1-$TIMETHRU-1" ::
+    // the following two indexes are set to unique to prevent messing up timelines of mark/entry states
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
-    Index(URLPRFX -> Ascending :: PUBREPR -> Ascending :: Nil) % s"bin-$URLPRFX-1-$PUBREPR-1" ::
-    Index(URLPRFX -> Ascending :: PRVREPR -> Ascending :: Nil) % s"bin-$URLPRFX-1-$PRVREPR-1" ::
-    Index(SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) %
-      s"txt-$SUBJx-$TAGSx-$COMNTx" ::
+    // findMissingReprs indexes
+    Index(PUBREPR -> Ascending :: Nil) % s"bin-$PUBREPR-1" ::
+    Index(PRVREPR -> Ascending :: Nil, partialFilter = Some(d :~ PAGE -> (d :~ "$exists" -> true))) %
+      s"bin-$PRVREPR-1-partial-$PAGE" ::
+    // findMissingExpectedRatings (partial) indexes
+    Index(PUBESTARS -> Ascending :: Nil, partialFilter = Some(d :~ PUBREPR -> (d :~ "$exists" -> true))) %
+      s"bin-$PUBESTARS-1-partial-$PUBREPR" ::
+    Index(PRIVESTARS -> Ascending :: Nil, partialFilter = Some(d :~ PRVREPR -> (d :~ "$exists" -> true))) %
+      s"bin-$PRIVESTARS-1-partial-$PRVREPR" ::
+    // text index (there can be only one per collection)
+    Index(SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) % s"txt-$SUBJx-$TAGSx-$COMNTx" ::
     Index(TAGSx -> Ascending :: Nil) % s"bin-$TAGSx-1" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 89 seconds)
+  Await.result(dbColl() map (_.indexesManager.ensure(indxs)), 89 seconds)
 
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
   def insert(mark: Mark): Future[Mark] = {
@@ -416,7 +423,12 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     }
   }
 
-  /** Retrieves a list of n marks that require representations. Intentionally not filtering for `curnt` marks. */
+  /**
+    * Retrieves a list of n marks that require representations. Intentionally not filtering for `curnt` marks.
+    *
+    * The following MongoDB shell command should show that this query is using two indexes via an "OR" inputStage.
+    *   `db.entries.find({$or:[{pubRepr:{$exists:0}}, {privRepr:{$exists:0}, page:{$exists:1}}]}).explain()`
+    */
   def findMissingReprs(n: Int): Future[Seq[Mark]] = {
     logger.debug("Finding marks with missing representations")
     for {
@@ -432,8 +444,6 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
       sel = d :~ "$or" -> Seq(selPub, selPriv) // Seq gets automatically converted to BSONArray
       //_ = logger.info(BSONDocument.pretty(sel))
-      // TODO: we need an index for this query (and probably need a `pageExists` proxy field along with it)
-      // TODO: the "bin-$URLPRFX-1-$PUBREPR-1" index can probably be removed as URL is no longer selected-on here
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
       logger.debug(s"${seq.size} marks with missing representations were retrieved")
@@ -441,14 +451,19 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     }
   }
 
-  /** Retrieves a list of n marks that require expected ratings. Intentionally not filtering for `curnt` marks. */
+  /**
+    * Retrieves a list of n marks that require expected ratings. Intentionally not filtering for `curnt` marks.
+    *
+    * The following MongoDB shell command should show that this query is using two indexes via an "OR" inputStage.
+    * db.entries.find({$or:[{pubExpRating:{$exists:0}, pubRepr:{$exists:1}},
+    *                       {privExpRating:{$exists:0}, privRepr:{$exists:1}}]}).explain()
+    */
   def findMissingExpectedRatings(n: Int): Future[Seq[Mark]] = {
     logger.debug("Finding marks with missing expected ratings")
     for {
       c <- dbColl()
       sel = d :~ "$or" -> Seq(d :~ PUBESTARS -> (d :~ "$exists" -> false) :~ PUBREPR -> (d :~ "$exists" -> true),
                               d :~ PRIVESTARS -> (d :~ "$exists" -> false) :~ PRVREPR -> (d :~ "$exists" -> true))
-      // TODO: we need an index for this query
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
       logger.debug(s"${seq.size} marks with missing E[rating]s were retrieved")
