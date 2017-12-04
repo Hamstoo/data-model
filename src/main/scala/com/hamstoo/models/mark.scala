@@ -109,6 +109,7 @@ object MarkData {
   // this value must match the value in chrome-extension's timeTracker.js
   val AUTOSAVE_TAG = "Automarked"
   val IMPORT_TAG = "Imported"
+  val UPLOAD_TAG = "Uploaded"
 }
 
 /**
