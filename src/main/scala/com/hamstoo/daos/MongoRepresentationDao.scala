@@ -26,7 +26,7 @@ object MongoRepresentationDao {
 
 /**
   * Data access object for MongoDB `representations` collection.
-  * @param db  Future[DefaultDB] database connection.
+  * @param db  Future[DefaultDB] database connection returning function.
   */
 class MongoRepresentationDao(db: () => Future[DefaultDB]) {
 
@@ -40,7 +40,6 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
 
   // data migration
   case class WeeRepr(id: String, timeFrom: Long, page: String)
-
   Await.result(for {
     c <- dbColl()
     _ = logger.info(s"Performing data migration for `representations` collection")
@@ -73,7 +72,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
   // Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
   // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
   private val indxs: Map[String, Index] =
-  Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
+    Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
     Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
     Index(LPREFX -> Ascending :: Nil) % s"bin-$LPREFX-1" ::
@@ -92,7 +91,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
   def insert(repr: Representation): Future[Representation] = {
 
     val reprId = repr.id // for logging only
-    logger.info(s"Inserting Representation with id: $reprId")
+    logger.debug(s"Inserting new Representation(id=${repr.id}, link=${repr.link})")
 
     for {
       c <- dbColl()
@@ -112,11 +111,11 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     */
   def update(repr: Representation, now: Long = DateTime.now().getMillis): Future[Representation] = {
     val reprId = repr.id
-    logger.info(s"Updating Representation with id: $reprId")
+    logger.info(s"Updating existing Representation(id=$reprId, link=${repr.link}, timeFrom=${repr.timeFrom}, dt=${repr.timeFrom.dt})")
 
     for {
       c <- dbColl()
-      wr <- c update(d :~ ID -> reprId :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now)) // retire the old one
+      wr <- c.update(d :~ ID -> reprId :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now)) // retire the old one
       _ <- wr failIfError; // semicolon wouldn't be necessary if used `wr.failIfError` (w/ the dot) instead--weird
       updatedRepr <- insert(repr.copy(timeFrom = now))
     } yield {
@@ -132,41 +131,23 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
   def save(repr: Representation, now: Long = DateTime.now.getMillis): Future[String] = {
     val reprId = repr.id
 
-    logger.info(s"Saving Representation: $reprId")
-
-    retrieveById(reprId).flatMap {
-      case Some(_) =>
-        logger.info(s"Updating existing Representation(id=$reprId, link=${repr.link}, timeFrom=${repr.timeFrom}, dt=${repr.timeFrom.dt})")
-        update(repr, now)
-      case _ =>
-        logger.info(s"Inserting new Representation(id=${repr.id}, link=${repr.link})")
-        insert(repr.copy(timeFrom = DateTime.now().getMillis))
+    retrieve(reprId).flatMap {
+      case Some(_) => update(repr, now = now)
+      case _       => insert(repr.copy(timeFrom = now))
     } map(_.id)
   }
 
-  /** Retrieves a current (latest) representation by id. */
-  def retrieveById(id: String): Future[Option[Representation]] = {
-    logger.info(s"Retrieving Representation by id: $id")
-    for {
-      c <- dbColl()
-      opRep <- c.find(d :~ ID -> id :~ curnt).one[Representation]
-    } yield {
-      logger.info(s"Representation: $opRep was successfully retrieved")
-      opRep
-    }
-  }
+  /** Retrieves a current (latest) representation by ID. */
+  def retrieve(id: String): Future[Option[Representation]] = for {
+    c <- dbColl()
+    optRepr <- c.find(d :~ ID -> id :~ curnt).one[Representation]
+  } yield optRepr
 
-  /** Retrieves all representations, including private and previous versions, by Id. */
-  def retrieveAllById(id: String): Future[Seq[Representation]] = {
-    logger.info("Retrieving Representation by id")
-    for {
-      c <- dbColl()
-      seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
-    } yield {
-      logger.info(s"${seq.size} Representations were retrieved")
-      seq
-    }
-  }
+  /** Retrieves all representations, including previous versions, by ID. */
+  def retrieveAll(id: String): Future[Seq[Representation]] = for {
+    c <- dbColl()
+    seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
+  } yield seq
 
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
@@ -180,6 +161,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     */
   def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
     c <- dbColl()
+    _ = logger.debug(s"Searching with query '$query' for reprs (first 5): ${ids.take(5)}")
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
 
     // exclude these fields from the returned results to conserve memory during search

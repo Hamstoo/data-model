@@ -4,7 +4,6 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
-import com.hamstoo.models.MarkData.embeddedLinksToHtmlLinks
 import com.hamstoo.services.TikaInstance
 import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
@@ -110,24 +109,6 @@ object MarkData {
   // this value must match the value in chrome-extension's timeTracker.js
   val AUTOSAVE_TAG = "Automarked"
   val IMPORT_TAG = "Imported"
-
-  /** Find all embed urls and convert them to html <a> links (anchors)
-    *regex designed to ignore html link tag and markdown link tag
-    * 1st regex part is (?<!href="), it checks that found link should not be prepended by href=" expression,
-    *   i.e. take if 2nd regex part is "not prepended by" 1st part.
-    * 2nd regex part which follows after (?<!href=") is looking for urls format
-    *   1st part of 2nd regex part ((?:https?|ftp)://) checks protocol
-    * (?<!href=") - this ignore condition should stay because commonmark.parser.parse(...) does not allocate <a>
-    *   (anchor tag) from text as a separate node
-    */
-  def embeddedLinksToHtmlLinks(text: String): String = {
-    val regexStr =
-      "(?<!href=\")" + // ignore http pattern prepended by 'href=' expression
-      "((?:https?|ftp)://)" + // check protocol
-      "(([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" // allowed anything which is allowed in url
-    val ignoreTagsAndFindLinksInText: Regex = regexStr.r
-    ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\"" + m.group(0) + "\">" + m.group(0) + "</a>")
-  }
 }
 
 /**
@@ -151,12 +132,36 @@ object Page {
   * only text nodes.
   */
 class TextNodesVisitor extends AbstractVisitor {
+  import TextNodesVisitor._
 
   override def visit(text: Text): Unit = {
     // find and wrap links
     val wrappedEmbeddedLinks = embeddedLinksToHtmlLinks(text.getLiteral)
     // apply changes to currently visiting text node
     text.setLiteral(wrappedEmbeddedLinks)
+  }
+}
+
+object TextNodesVisitor {
+
+  /**
+    * Find all embedded URLs and convert them to HTML <a> links (anchors). This regex is designed to ignore HTML link
+    * tags. It doesn't need to ignore markdown links because those have already been processed into HTML at this point.
+    *
+    * 1st regex part is (?<!href="), it checks that found link should not be prepended by href=" expression,
+    *   i.e. take if 2nd regex part is "not prepended by" 1st part.
+    * 2nd regex part which follows after (?<!href=") is looking for urls format
+    *   1st part of 2nd regex part ((?:https?|ftp)://) checks protocol
+    * (?<!href=") - this ignore condition should stay because commonmark.parser.parse(...) does not allocate <a>
+    *   (anchor tag) from text as a separate node
+    */
+  def embeddedLinksToHtmlLinks(text: String): String = {
+    val regexStr =
+      "(?<!href=\")" + // ignore http pattern prepended by 'href=' expression
+        "((?:https?|ftp)://)" + // check protocol
+        "(([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" // allowed anything which is allowed in url
+    val ignoreTagsAndFindLinksInText: Regex = regexStr.r
+    ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\"" + m.group(0) + "\">" + m.group(0) + "</a>")
   }
 }
 
@@ -176,6 +181,7 @@ class TextNodesVisitor extends AbstractVisitor {
   * @param page     - temporary holder for page sources, until a representation is constructed or assigned
   * @param pubRepr  - optional public page representation id for this mark
   * @param privRepr - optional personal user content representation id for this mark
+  * @param pubExpRating - expected rating of the mark given pubRepr and the user's rating history
   * @param timeFrom - timestamp of last edit
   * @param timeThru - the moment of time until which this version is latest
   * @param mergeId  - if this mark was merged into another, this will be the ID of that other
@@ -188,10 +194,12 @@ case class Mark(
                  id: String = generateDbId(Mark.ID_LENGTH),
                  mark: MarkData,
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
-                 var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
+                 var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
                  page: Option[Page] = None,
-                 pubRepr: Option[String] = None,
-                 privRepr: Option[String] = None,
+                 pubRepr: Option[String] = None,       // it's helpful for these fields to be (foreign key'ish)
+                 privRepr: Option[String] = None,      // strings rather than objects so that they can be set to
+                 pubExpRating: Option[String] = None,  // "failed" or "none" if desired (e.g. see
+                 privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
                  timeFrom: Long = DateTime.now.getMillis,
                  timeThru: Long = INF_TIME,
                  mergeId: Option[String] = None,
@@ -200,8 +208,12 @@ case class Mark(
 
   import Mark._
 
-  /** Use the private repr when available, o/w use the public one. */
+  /**
+    * Use the private repr when available, o/w use the public one. Returning an Option[String] would be more "correct"
+    * here, but returning the empty string just makes things a lot cleaner on the other end.
+    */
   def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
+  def expectedRating: Option[String] = privExpRating.orElse(pubExpRating)
 
   /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
@@ -210,6 +222,8 @@ case class Mark(
     */
   def representablePublic: Boolean = pubRepr.isEmpty
   def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined
+  def eratablePublic: Boolean = pubExpRating.isEmpty && pubRepr.isDefined
+  def eratablePrivate: Boolean = privExpRating.isEmpty && privRepr.isDefined
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
@@ -243,6 +257,8 @@ case class Mark(
          // it's remotely possible that these are different, which we warn about above
          pubRepr  = pubRepr .orElse(oth.pubRepr ),
          privRepr = privRepr.orElse(oth.privRepr)
+
+         // intentionally skip expectedRating, let the repr-engine generate a value for the new merged mark later on
     )
   }
 
@@ -288,6 +304,17 @@ object Mark extends BSONHandlers {
       tabSomething.map(_.foldLeft(0L)((agg, range) => agg + range.end - range.begin)).getOrElse(0L)
   }
 
+  /**
+    * Expected rating for a mark including the number of other marks that went into generating it and when
+    * it was generated (and how long it was "active" for).
+    */
+  case class ExpectedRating(id: String = generateDbId(Mark.ID_LENGTH),
+                            value: Double,
+                            n: Int,
+                            similarReprs: Seq[String],
+                            timeFrom: Long = DateTime.now.getMillis,
+                            timeThru: Long = INF_TIME)
+
   val ID_LENGTH: Int = 16
 
   val USR: String = nameOf[Mark](_.userId)
@@ -298,6 +325,8 @@ object Mark extends BSONHandlers {
   val PAGE: String = nameOf[Mark](_.page)
   val PUBREPR: String = nameOf[Mark](_.pubRepr)
   val PRVREPR: String = nameOf[Mark](_.privRepr)
+  val PUBESTARS: String = nameOf[Mark](_.pubExpRating)
+  val PRIVESTARS: String = nameOf[Mark](_.privExpRating)
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
   val MERGEID: String = nameOf[Mark](_.mergeId)
@@ -319,6 +348,7 @@ object Mark extends BSONHandlers {
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
+  implicit val eratingBsonHandler: BSONDocumentHandler[ExpectedRating] = Macros.handler[ExpectedRating]
   implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
