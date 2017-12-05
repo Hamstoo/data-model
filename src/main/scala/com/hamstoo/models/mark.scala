@@ -109,24 +109,6 @@ object MarkData {
   val AUTOSAVE_TAG = "Automarked"
   val IMPORT_TAG = "Imported"
   val UPLOAD_TAG = "Uploaded"
-
-  /** Find all embed urls and convert them to html <a> links (anchors)
-    *regex designed to ignore html link tag and markdown link tag
-    * 1st regex part is (?<!href="), it checks that found link should not be prepended by href=" expression,
-    *   i.e. take if 2nd regex part is "not prepended by" 1st part.
-    * 2nd regex part which follows after (?<!href=") is looking for urls format
-    *   1st part of 2nd regex part ((?:https?|ftp)://) checks protocol
-    * (?<!href=") - this ignore condition should stay because commonmark.parser.parse(...) does not allocate <a>
-    *   (anchor tag) from text as a separate node
-    */
-  def embeddedLinksToHtmlLinks(text: String): String = {
-    val regexStr =
-      "(?<!href=\")" + // ignore http pattern prepended by 'href=' expression
-      "((?:https?|ftp)://)" + // check protocol
-      "(([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" // allowed anything which is allowed in url
-    val ignoreTagsAndFindLinksInText: Regex = regexStr.r
-    ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\"" + m.group(0) + "\">" + m.group(0) + "</a>")
-  }
 }
 
 /**
