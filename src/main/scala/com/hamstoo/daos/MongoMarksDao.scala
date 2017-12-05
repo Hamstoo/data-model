@@ -40,7 +40,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     _ <- Future.sequence { longPfxed.map { m => // urlPrfx will have been overwritten upon `Mark` construction
         c.update(d :~ ID -> m.id :~ TIMEFROM -> m.timeFrom, d :~ "$set" -> (d :~ URLPRFX -> m.urlPrfx))
     }}
-  } yield (), 73 seconds)
+  } yield (), 373 seconds)
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
@@ -61,7 +61,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     Index(SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) % s"txt-$SUBJx-$TAGSx-$COMNTx" ::
     Index(TAGSx -> Ascending :: Nil) % s"bin-$TAGSx-1" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager.ensure(indxs)), 89 seconds)
+  Await.result(dbColl() map (_.indexesManager.ensure(indxs)), 389 seconds)
 
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
   def insert(mark: Mark): Future[Mark] = {

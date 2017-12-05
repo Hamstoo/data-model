@@ -37,7 +37,7 @@ class MongoExpectedRatingDao(db: () => Future[DefaultDB]) {
   private val indxs: Map[String, Index] =
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 94 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 394 seconds)
 
   /** Stores provided expected rating, optionally updating current state if er ID already exists in database. */
   def save(er: ExpectedRating, now: Long = DateTime.now.getMillis): Future[Unit] = for {

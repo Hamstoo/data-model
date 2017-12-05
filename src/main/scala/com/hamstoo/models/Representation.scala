@@ -2,7 +2,7 @@ package com.hamstoo.models
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Representation.VecEnum
-import com.hamstoo.utils.{ExtendedString, generateDbId}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId}
 import org.apache.commons.text.similarity.LevenshteinDistance
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
@@ -49,7 +49,7 @@ case class Representation(
                            vectors: Map[String, Representation.Vec],
                            autoGenKws: Option[Seq[String]],
                            timeFrom: Long = DateTime.now.getMillis,
-                           timeThru: Long = Long.MaxValue,
+                           timeThru: Long = INF_TIME,
                            var versions: Option[Map[String, String]] = None,
                            score: Option[Double] = None) {
 

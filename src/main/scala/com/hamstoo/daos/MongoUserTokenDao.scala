@@ -25,7 +25,7 @@ class MongoUserTokenDao(db: () => Future[DefaultDB]) {
 
   // ensure mongo collection has proper index
   private val indxs = Map(Index(ID -> Ascending :: Nil) % s"bin-$ID-1")
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 24 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 324 seconds)
 
   /** Retrieves a token by id. */
   def retrieve(id: UUID): Future[Option[UserToken]] = for {

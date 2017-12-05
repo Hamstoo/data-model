@@ -55,7 +55,7 @@ class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[
                     d :~ "$unset" -> (d :~ "url" -> 1 :~ "uPref" -> 1) :~ "$set" -> {d :~ "markId" -> markId},
                     multi = true)
     } yield () }}
-  } yield (), 105 seconds)
+  } yield (), 405 seconds)
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
@@ -63,7 +63,7 @@ class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[
     Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
       s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 45 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 345 seconds)
 
   /** Update timeThru on an existing highlight and insert a new one with modified values. */
   def update(usr: UUID,

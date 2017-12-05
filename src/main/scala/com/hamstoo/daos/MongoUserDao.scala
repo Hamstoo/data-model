@@ -33,7 +33,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
       Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
       Index(s"$PROF.$EMAIL" -> Ascending :: Nil) % s"bin-$PROF.$EMAIL-1" ::
       Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 23 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 323 seconds)
 
   /** Saves or updates user account data by matching provided `User`'s `.id`. */
   def save(u: User): Future[Unit] = for {
