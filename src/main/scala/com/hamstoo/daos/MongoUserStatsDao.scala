@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.hamstoo.models.{Mark, MarkData, UserStats, UserStatsDay}
 import org.joda.time.DateTime
+import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.bson._
@@ -18,6 +19,7 @@ import scala.concurrent.Future
 class MongoUserStatsDao(db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._
+  val logger: Logger = Logger(classOf[MongoUserStatsDao])
 
   // database collections
   private def importsColl(): Future[BSONCollection] = db().map(_ collection "imports")
@@ -49,6 +51,7 @@ class MongoUserStatsDao(db: () => Future[DefaultDB]) {
     // query all records in past four weeks, correcting for user's current timezone
     sel1 = sel0 :~ Mark.TIMEFROM -> (d :~ "$gt" -> DateTime.now.minusWeeks(nWeeks).getMillis) :~
                    Mark.TAGSx -> (d :~ "$not" -> (d :~ "$all" -> Seq(MarkData.IMPORT_TAG)))
+    _ = logger.debug(BSONDocument.pretty(sel1))
     seq <- cE.find(sel1).projection(d :~ Mark.TIMEFROM -> 1).coll[BSONDocument, Seq]()
 
   } yield {
@@ -61,6 +64,8 @@ class MongoUserStatsDao(db: () => Future[DefaultDB]) {
     val values: Map[String, Int] = seq groupBy { d =>
       (new DateTime(d.getAs[Long](Mark.TIMEFROM).get) minusMinutes offsetMinutes).toString(format)
     } mapValues (_.size) withDefaultValue 0
+
+    seq.foreach(x => logger.debug(BSONDocument.pretty(x)))
 
     // get last 28 dates in user's timezone and pair them with numbers of marks
     val days: Seq[UserStatsDay] = for (i <- 0 to extraDays) yield {

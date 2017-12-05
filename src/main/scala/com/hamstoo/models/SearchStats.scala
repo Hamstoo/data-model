@@ -20,44 +20,55 @@ case class SearchStats(
                         query: String,
                         marksMap: IndexedSeq[ResultStats[String]] = IndexedSeq.empty[ResultStats[String]],
                         urlsMap: IndexedSeq[ResultStats[String]] = IndexedSeq.empty[ResultStats[String]]) {
+
   /* I believe Monocle library has all this case class update stuff implemented, but it was quicker to implement it
   myself with a bit of type-fu than to get to know Monocle. */
   /** Implements element update or else insert logic for lists. */
-  private def mapUpdate[T, E <: MapEl[T], S[E] <: GenSeqLike[E, S[E]]](map: S[E], key: T, defEl: => E)
+  private def mapUpdate[T, E <: MapEl[T], S[E] <: GenSeqLike[E, S[E]]](seq: S[E], key: T, defaultElement: => E)
                                                                       (f: E => E)
                                                                       (implicit cbf: CanBuildFrom[S[_], E, S[E]]): S[E] =
-    map.indexWhere(_.key == key) match {
-      case -1 => f(defEl) +: map
-      case x => map.updated(x, f(map(x)))
+    seq.indexWhere(_.key == key) match {
+      case -1 => f(defaultElement) +: seq
+      case x => seq.updated(x, f(seq(x)))
     }
 
   /** Produces incremented statistics with one more link click event. */
   def incUrl(url: String, id: String, weight: Double, index: Int): SearchStats = {
-    def statInc[T]: (Stat[T]) => Stat[T] = e2 => e2.copy(urlClicks = e2.urlClicks.map(1 +) orElse Some(1))
 
+    //TODO: why not to use simple parameter definition, that will be look more naturally?
+    /** increase url clicks by 1, if defined, otherwise return default value Some(1) */
+    def statInc[T]: (Stat[T]) => Stat[T] = e2 => e2.copy(urlClicks = e2.urlClicks.map(increaseByOne) orElse Some(1))
+
+    //TODO: and here
     val statsInc: (ResultStats[String]) => ResultStats[String] = e1 => e1.copy(
-      urlClicksTotal = e1.urlClicksTotal.map(1 +) orElse Some(1),
+      urlClicksTotal = e1.urlClicksTotal.map(increaseByOne) orElse Some(1),
       weightsMap = mapUpdate[Double, Stat[Double], Seq](e1.weightsMap, weight, Stat(weight))(statInc),
       indexesMap = mapUpdate[Int, Stat[Int], Seq](e1.indexesMap, index, Stat(index))(statInc))
+
     copy(
       marksMap = mapUpdate[String, ResultStats[String], IndexedSeq](marksMap, id, ResultStats(id))(statsInc),
-      urlsMap = mapUpdate[String, ResultStats[String], IndexedSeq](urlsMap, url, ResultStats(url))(statsInc))
+      urlsMap = mapUpdate[String, ResultStats[String], IndexedSeq](urlsMap, url, ResultStats(url))(statsInc)
+    )
   }
 
   /** Produces incremented statistics with one more full page view event. */
   def incFpv(url: Option[String], id: String, weight: Double, index: Int): SearchStats = {
-    def statInc[T]: (Stat[T]) => Stat[T] = e2 => e2.copy(fpvClicks = e2.fpvClicks.map(1 +) orElse Some(1))
+    def statInc[T]: (Stat[T]) => Stat[T] = e2 => e2.copy(fpvClicks = e2.fpvClicks.map(increaseByOne) orElse Some(1))
 
     val statsInc: (ResultStats[String]) => ResultStats[String] = e1 => e1.copy(
-      fpvClicksTotal = e1.fpvClicksTotal.map(1 +) orElse Some(1),
+      fpvClicksTotal = e1.fpvClicksTotal.map(increaseByOne) orElse Some(1),
       weightsMap = mapUpdate[Double, Stat[Double], Seq](e1.weightsMap, weight, Stat(weight))(statInc),
       indexesMap = mapUpdate[Int, Stat[Int], Seq](e1.indexesMap, index, Stat(index))(statInc))
+
     copy(
       marksMap = mapUpdate[String, ResultStats[String], IndexedSeq](marksMap, id, ResultStats(id))(statsInc),
-      urlsMap = url map { u =>
-        mapUpdate[String, ResultStats[String], IndexedSeq](urlsMap, u, ResultStats(u))(statsInc)
+      urlsMap = url map { url =>
+        mapUpdate[String, ResultStats[String], IndexedSeq](urlsMap, url, ResultStats(url))(statsInc)
       } getOrElse urlsMap)
   }
+
+  /** simply helper function*/
+  def increaseByOne(i: Int): Int = i + 1
 }
 
 object SearchStats {

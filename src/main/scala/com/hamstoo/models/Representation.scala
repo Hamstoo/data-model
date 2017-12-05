@@ -2,14 +2,34 @@ package com.hamstoo.models
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Representation.VecEnum
-import com.hamstoo.utils.{ExtendedString, generateDbId}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId, TIME_NOW}
 import org.apache.commons.text.similarity.LevenshteinDistance
-import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 
+/**
+  * A ReprEngineProduct is something that is computed by the repr-engine.  Though perhaps all of our
+  * object models should extend this trait.
+  *
+  * See also: https://stackoverflow.com/questions/15441589/scala-copy-case-class-with-generic-type
+  */
+trait ReprEngineProduct[T <: ReprEngineProduct[T]] {
+
+  // "self-typing to T to force withTimeFrom to return this type" (see URL above)
+  //self: T => def timeFrom: Long
+
+  val id: String
+  val timeFrom: Long
+  val timeThru: Long
+
+  def withTimeFrom(timeFrom: Long): T
+
+  assert(nameOf[ReprEngineProduct[T]](_.id) == com.hamstoo.models.Mark.ID)
+  assert(nameOf[ReprEngineProduct[T]](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
+  assert(nameOf[ReprEngineProduct[T]](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
+}
 
 /**
   * This Representation class is used to store scraped and parsed textual
@@ -48,14 +68,16 @@ case class Representation(
                            nWords: Option[Long] = None,
                            vectors: Map[String, Representation.Vec],
                            autoGenKws: Option[Seq[String]],
-                           timeFrom: Long = DateTime.now.getMillis,
-                           timeThru: Long = Long.MaxValue,
+                           timeFrom: Long = TIME_NOW,
+                           timeThru: Long = INF_TIME,
                            var versions: Option[Map[String, String]] = None,
-                           score: Option[Double] = None) {
+                           score: Option[Double] = None) extends ReprEngineProduct[Representation] {
 
   lprefx = link.map(_.binaryPrefix)
   versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
                     .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
+
+  override def withTimeFrom(timeFrom: Long): Representation = this.copy(timeFrom = timeFrom)
 
   /**
     * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
@@ -210,7 +232,6 @@ object Representation extends BSONHandlers {
 
   val ID_LENGTH: Int = 12
 
-  val ID: String = nameOf[Representation](_.id)
   val LNK: String = nameOf[Representation](_.link)
   val LPREFX: String = nameOf[Representation](_.lprefx)
   val PAGE: String = nameOf[Representation](_.page)
@@ -220,8 +241,6 @@ object Representation extends BSONHandlers {
   val KWORDS: String = nameOf[Representation](_.keywords)
   val N_WORDS: String = nameOf[Representation](_.nWords)
   val VECS: String = nameOf[Representation](_.vectors)
-  assert(nameOf[Representation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
-  assert(nameOf[Representation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
   assert(nameOf[Representation](_.score) == com.hamstoo.models.Mark.SCORE)
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]

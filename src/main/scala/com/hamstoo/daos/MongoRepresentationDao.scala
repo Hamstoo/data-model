@@ -2,13 +2,12 @@ package com.hamstoo.daos
 
 import com.hamstoo.models.Representation._
 import com.hamstoo.models.{Page, Representation}
-import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocumentHandler, BSONInteger, Macros}
+import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, Macros}
 
 import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -26,17 +25,18 @@ object MongoRepresentationDao {
 
 /**
   * Data access object for MongoDB `representations` collection.
-  * @param db  Future[DefaultDB] database connection.
+  * @param db  Future[DefaultDB] database connection returning function.
   */
-class MongoRepresentationDao(db: () => Future[DefaultDB]) {
+class MongoRepresentationDao(db: () => Future[DefaultDB])
+    extends MongoReprEngineProductDao[Representation]("representation", db) {
 
   import MongoRepresentationDao._
-  import com.hamstoo.models.Mark.{SCORE, TIMEFROM, TIMETHRU}
+  import com.hamstoo.models.Mark.{ID, SCORE, TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
 
   val logger: Logger = Logger(classOf[MongoRepresentationDao])
 
-  private def dbColl(): Future[BSONCollection] = db().map(_ collection "representations")
+  override def dbColl(): Future[BSONCollection] = db().map(_ collection "representations")
 
   // data migration
   case class WeeRepr(id: String, timeFrom: Long, page: String)
@@ -67,7 +67,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     _ <- Future.sequence { longPfxed.map { repr => // lprefx will have been overwritten upon construction
       c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ LPREFX -> repr.lprefx), multi = true)
     }}
-  } yield (), 306 seconds)
+  } yield (), 606 seconds)
 
   // Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
   // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
@@ -79,49 +79,9 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     Index(
       key = DTXT -> Text :: OTXT -> Text :: KWORDS -> Text :: LNK -> Text :: Nil,
       options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
-        s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
+      s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 93 seconds)
-
-  /**
-    * Stores provided representation, optionally updating current state if repr ID already exists in database.
-    * @return  Returns a `Future` repr ID of either updated or inserted repr.
-    */
-  def save(repr: Representation, now: Long = DateTime.now.getMillis): Future[String] = for {
-    c <- dbColl()
-
-    // No longer checking if ID and (in case of public repr) link exist in the db, failing on conflict.  Instead
-    // let the caller decide when to update an existing repr based on passing in a Representation with an ID that
-    // already exists or doesn't.
-    opRepr <- retrieveById(repr.id)
-
-    wr <- opRepr match {
-      case Some(r) =>
-        logger.info(s"Updating existing Representation(id=${r.id}, link=${r.link}, timeFrom=${r.timeFrom}, dt=${r.timeFrom.dt})")
-        for {
-          wr <- c update(d :~ ID -> repr.id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now)) // retire the old one
-          _ <- wr failIfError; // semicolon wouldn't be necessary if used `wr.failIfError` (w/ the dot) instead--weird
-          wr <- c insert repr.copy(timeFrom = now, timeThru = INF_TIME) // insert the new one
-        } yield wr
-
-      case _ =>
-        logger.info(s"Inserting new Representation(id=${repr.id}, link=${repr.link})")
-        c insert repr.copy(timeFrom = now)
-    }
-    _ <- wr failIfError
-  } yield repr.id
-
-  /** Retrieves a current (latest) representation by id. */
-  def retrieveById(id: String): Future[Option[Representation]] = for {
-    c <- dbColl()
-    opRep <- c.find(d :~ ID -> id :~ curnt).one[Representation]
-  } yield opRep
-
-  /** Retrieves all representations, including private and previous versions, by Id. */
-  def retrieveAllById(id: String): Future[Seq[Representation]] = for {
-    c <- dbColl()
-    seq <- c.find(d :~ ID -> id).coll[Representation, Seq]()
-  } yield seq
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 393 seconds)
 
   /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
@@ -135,6 +95,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     */
   def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
     c <- dbColl()
+    _ = logger.debug(s"Searching with query '$query' for reprs (first 5): ${ids.take(5)}")
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
 
     // exclude these fields from the returned results to conserve memory during search
@@ -144,6 +105,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
     searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
+    _ = logger.debug(BSONDocument.pretty(sel :~ searchScoreSelection))
     seq <- c.find(sel :~ searchScoreSelection,
                   searchExcludedFields :~ searchScoreProjection)/*.sort(searchScoreProjection)*/
       .coll[Representation, Seq]()
