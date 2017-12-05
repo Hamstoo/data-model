@@ -24,7 +24,7 @@ class MongoSearchStatsDao(db: () => Future[DefaultDB]) {
 
   private val indxs: Map[String, Index] =
     Index(QUERY -> Ascending :: Nil, unique = true) % s"bin-$QUERY-1-uniq" :: Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 34 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 334 seconds)
 
   def addUrlClick(query: String, id: String, url: String, weight: Double, index: Int): Future[Unit] =
     for {

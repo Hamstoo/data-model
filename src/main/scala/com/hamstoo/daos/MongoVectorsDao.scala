@@ -29,7 +29,7 @@ class MongoVectorsDao(db: () => Future[DefaultDB]) {
   private val indxs: Map[String, Index] =
     Index(URI -> Ascending :: Nil) % s"bin-$URI-1" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 34 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 334 seconds)
 
   /** Saves or updates uri-vector pair. */
   def addUri(uri: String, vec: Option[Vec]): Future[Unit] = for {
