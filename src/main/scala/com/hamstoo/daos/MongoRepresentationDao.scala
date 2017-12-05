@@ -8,7 +8,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, Macros}
 
 import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -67,7 +67,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     _ <- Future.sequence { longPfxed.map { repr => // lprefx will have been overwritten upon construction
       c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ LPREFX -> repr.lprefx), multi = true)
     }}
-  } yield (), 306 seconds)
+  } yield (), 606 seconds)
 
   // Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
   // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
@@ -81,7 +81,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
       options = d :~ "weights" -> (d :~ DTXT -> CONTENT_WGT :~ KWORDS -> KWORDS_WGT :~ LNK -> LNK_WGT)) %
       s"txt-$DTXT-$OTXT-$KWORDS-$LNK" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 93 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 393 seconds)
 
   /**
     * Inserting representation to database
@@ -171,6 +171,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB]) {
     searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
     searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
+    _ = logger.debug(BSONDocument.pretty(sel :~ searchScoreSelection))
     seq <- c.find(sel :~ searchScoreSelection,
                   searchExcludedFields :~ searchScoreProjection)/*.sort(searchScoreProjection)*/
       .coll[Representation, Seq]()
