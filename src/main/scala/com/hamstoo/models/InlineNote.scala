@@ -3,8 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.generateDbId
-import org.joda.time.DateTime
+import com.hamstoo.utils.{generateDbId, INF_TIME, TIME_NOW}
 import play.api.libs.json.{JsObject, Json}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -27,8 +26,8 @@ case class InlineNote(
                        pos: InlineNote.Position,
                        pageCoord: Option[PageCoord] = None,
                        memeId: Option[String] = None,
-                       timeFrom: Long = DateTime.now.getMillis,
-                       timeThru: Long = Long.MaxValue) extends Annotation with HasJsonPreview {
+                       timeFrom: Long = TIME_NOW,
+                       timeThru: Long = INF_TIME) extends Annotation with HasJsonPreview {
 
   override def jsonPreview: JsObject = Json.obj(
     "id" -> id,

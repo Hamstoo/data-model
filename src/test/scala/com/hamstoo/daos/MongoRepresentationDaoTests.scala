@@ -3,11 +3,8 @@ package com.hamstoo.daos
 import com.hamstoo.models.{MarkData, Page, Representation}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.MediaType
-import org.joda.time.DateTime
-import org.scalatest.OptionValues
+import com.hamstoo.utils.{INF_TIME, MediaType, TIME_NOW}
 
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
 
 /**
@@ -16,8 +13,7 @@ import scala.util.Random
 class MongoRepresentationDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
-    with FutureHandler
-    /*with OptionValues*/ {
+    with FutureHandler {
 
   /** Create new mark. */
   def randomMarkData: MarkData = {
@@ -49,34 +45,35 @@ class MongoRepresentationDaoTests
 
     val reprOrig = Representation(link = url,
       page = Some(Page(MediaType.TEXT_HTML.toString, "sdf".getBytes)),
-      header = Some("Monday"),
+      header = None,
       doctext = "sdf",
-      othtext = Some("sdf"),
-      keywords = Some("nothing"),
+      othtext = None,
+      keywords = None,
       vectors = Map("something" -> vec),
       autoGenKws = None)
     println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
     val reprCopy = reprOrig.copy(
       page = Some(Page(MediaType.TEXT_HTML.toString, "sывфывdf".getBytes)),
-      header = Some("something"),
+      header = None,
       doctext = "sasdasdf",
-      othtext = Some("ssadasddf"),
-      keywords = Some("something"),
+      othtext = None,
+      keywords = None,
       vectors = Map("month" -> vec2))
 
     // save representation
-    println(s"Creating 2 representations with ids ${reprOrig.id} and ${reprCopy.id}")
-    val id: String = reprsDao.save(reprOrig).futureValue /*.map(id => id)*/
-    println(s"Created representation id $id")
+    println(s"Creating 2 representations with IDs ${reprOrig.id} [${reprOrig.timeFrom}] and ${reprCopy.id} [${reprCopy.timeFrom}]")
+    val id: String = reprsDao.save(reprOrig).futureValue
+    println(s"Created representation ID $id")
 
     id should not equal null
     id should not equal ""
+    id shouldEqual reprOrig.id
 
     // saves representation copy
-    val id2: String = reprsDao.save(reprCopy).futureValue /*.map(id => id)*/
-    println(s"Updated representation 2 id $id2")
-    id shouldEqual id2 // this is because they have the same ID
+    val id2: String = reprsDao.save(reprCopy).futureValue
+    println(s"Updated representation 2 ID $id2")
+    id shouldEqual id2
 
     // use `retrieveAll` to get both previous and updated reprs from the db
     val reprs: Seq[Representation] = reprsDao.retrieveAll(id2).futureValue
@@ -85,9 +82,9 @@ class MongoRepresentationDaoTests
 
     // reprs must be sorted and 1st repr must be actual
     reprs.size shouldEqual 2
-    reprs.head.timeThru should be < com.hamstoo.utils.INF_TIME
-    reprs.head.timeFrom should not equal reprs.tail.head.timeFrom
-    reprs.head.timeThru should be < reprs.tail.head.timeThru
+    reprs.head.timeFrom should be < reprs.head.timeThru
+    reprs.head.timeThru shouldEqual reprs.last.timeFrom
+    reprs.last.timeThru shouldEqual INF_TIME
   }
 
   it should "(UNIT) insert representations" in {
@@ -99,7 +96,7 @@ class MongoRepresentationDaoTests
   }
 
   it should "(UNIT) update representation" in {
-    val repr2 = repr.copy(link = Some("link"), timeFrom = DateTime.now.getMillis)
+    val repr2 = repr.copy(link = Some("link"), timeFrom = TIME_NOW)
     reprsDao.update(repr2, repr2.timeFrom).futureValue shouldEqual repr2
   }
 

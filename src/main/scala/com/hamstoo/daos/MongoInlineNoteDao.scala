@@ -3,7 +3,6 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.{InlineNote, Mark, PageCoord}
-import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -73,7 +72,7 @@ class MongoInlineNoteDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao
              pos: InlineNote.Position,
              coord: Option[PageCoord]): Future[InlineNote] = for {
     c <- dbColl()
-    now = DateTime.now.getMillis
+    now = TIME_NOW
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
     ct = wr.result[InlineNote].get.copy(pos = pos,

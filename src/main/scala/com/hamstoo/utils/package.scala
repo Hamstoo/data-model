@@ -156,6 +156,7 @@ package object utils {
     * For reference, Long.MaxValue is equal to 9223372036854775807.
     */
   val INF_TIME: Long = Long.MaxValue
+  def TIME_NOW: Long = DateTime.now.getMillis
 
   implicit class ExtendedLong(private val ms: Long) extends AnyVal {
     /** Converts from time in milliseconds to a Joda DateTime. */
