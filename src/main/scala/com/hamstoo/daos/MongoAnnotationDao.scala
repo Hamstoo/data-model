@@ -2,10 +2,8 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.Mark.PAGE
 import com.hamstoo.models._
 import com.hamstoo.utils._
-import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -14,13 +12,13 @@ import reactivemongo.bson.BSONDocumentHandler
 import scala.concurrent.{ExecutionContext, Future}
 
 /**
-  * This class define base mongodb related functionality for classes that extend Annotation trait
-  * @param name name of object like: 'Highlight' or 'InlineNote' for logging purpose only
-  * @param ex   execution context
-  * @tparam A - this type param must be subtype of Annotations and have defined BSONDocument handler
+  * This class defines base MongoDB related functionality for classes that extend the Annotation trait.
+  * @param name name of object like 'highlight' or 'inline note' for logging purpose only
+  * @param ec   execution context
+  * @tparam A   this type param must be subtype of Annotation and have a defined BSONDocument handler
   */
 abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: String, db: () => Future[DefaultDB])
-                                                                       (implicit ex: ExecutionContext)
+                                                                       (implicit ec: ExecutionContext)
           extends AnnotationInfo {
 
   val logger: Logger
@@ -92,7 +90,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
 
     for {
       c <- dbColl()
-      wr <- c.update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> DateTime.now.getMillis))
+      wr <- c.update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> TIME_NOW))
       _ <- wr failIfError
     } yield logger.debug(s"$name was successfully deleted")
   }
@@ -120,7 +118,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     */
   def merge(oldMark: Mark, newMark: Mark,
             insrt: (A, String, Long) => Future[A],
-            now: Long = DateTime.now.getMillis): Future[Unit] = for {
+            now: Long = TIME_NOW): Future[Unit] = for {
     c <- dbColl()
 
     // previous impl in RepresentationActor.merge

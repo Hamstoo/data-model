@@ -3,7 +3,6 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.{Highlight, Mark, PageCoord}
-import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -72,7 +71,7 @@ class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[
              prv: Highlight.Preview,
              coord: Option[PageCoord]): Future[Highlight] = for {
     c <- dbColl()
-    now = DateTime.now.getMillis
+    now = TIME_NOW
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
     wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
     hl = wr.result[Highlight].get.copy(pos = pos,

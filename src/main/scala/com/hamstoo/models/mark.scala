@@ -5,12 +5,11 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
-import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId}
+import com.hamstoo.utils.{ExtendedString, generateDbId, INF_TIME, TIME_NOW}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
-import org.joda.time.DateTime
 import org.jsoup.Jsoup
 import org.jsoup.safety.Whitelist
 import play.api.Logger
@@ -201,7 +200,7 @@ case class Mark(
                  privRepr: Option[String] = None,      // strings rather than objects so that they can be set to
                  pubExpRating: Option[String] = None,  // "failed" or "none" if desired (e.g. see
                  privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
-                 timeFrom: Long = DateTime.now.getMillis,
+                 timeFrom: Long = TIME_NOW,
                  timeThru: Long = INF_TIME,
                  mergeId: Option[String] = None,
                  score: Option[Double] = None) {
@@ -313,8 +312,11 @@ object Mark extends BSONHandlers {
                             value: Double,
                             n: Int,
                             similarReprs: Seq[String],
-                            timeFrom: Long = DateTime.now.getMillis,
-                            timeThru: Long = INF_TIME)
+                            timeFrom: Long = TIME_NOW,
+                            timeThru: Long = INF_TIME) extends ReprEngineProduct[ExpectedRating] {
+
+    override def withTimeFrom(timeFrom: Long): ExpectedRating = this.copy(timeFrom = timeFrom)
+  }
 
   val ID_LENGTH: Int = 16
 

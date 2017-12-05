@@ -5,7 +5,6 @@ import java.util.UUID
 
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.{Mark, MarkData, Page, Representation}
-import org.joda.time.DateTime
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
 import reactivemongo.api.DefaultDB
@@ -86,7 +85,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
     for {
       c <- dbColl()
-      now = DateTime.now.getMillis
+      now = TIME_NOW
       ms = marks map(_.copy(timeFrom = now)) map Mark.entryBsonHandler.write // map each mark into a `BSONDocument`
       wr <- c bulkInsert(ms, ordered = false)
     } yield {
@@ -235,7 +234,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   def update(user: UUID, id: String, mdata: MarkData): Future[Mark] = for {
     c <- dbColl()
     sel = d :~ USR -> user :~ ID -> id :~ curnt
-    now: Long = DateTime.now.getMillis
+    now: Long = TIME_NOW
     wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
     oldMk <- wr.result[Mark].map(Future.successful).getOrElse(
       Future.failed(new Exception(s"MongoMarksDao.update: unable to find mark $id")))
@@ -274,7 +273,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * Merge two marks by setting their `timeThru`s to the time of execution and inserting a new mark with the
     * same `timeFrom`.
     */
-  def merge(oldMark: Mark, newMark: Mark, now: Long = DateTime.now.getMillis): Future[Mark] = for {
+  def merge(oldMark: Mark, newMark: Mark, now: Long = TIME_NOW): Future[Mark] = for {
     c <- dbColl()
 
     // delete the newer mark and merge it into the older/pre-existing one
@@ -361,7 +360,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   /** Updates `timeThru` of a set of current marks (selected by user and a list of IDs) to time of execution. */
   def delete(user: UUID,
              ids: Seq[String],
-             now: Long = DateTime.now.getMillis,
+             now: Long = TIME_NOW,
              mergeId: Option[String] = None): Future[Int] = {
 
     logger.debug(s"Deleting marks for user $user: $ids")
