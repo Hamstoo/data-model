@@ -43,6 +43,7 @@ trait ReprEngineProduct[T <: ReprEngineProduct[T]] {
 class RSearchable(val id: String,
                   val header: Option[String],
                   val doctext: String,
+                  val nWords: Option[Long],
                   val vectors: Map[String, Representation.Vec],
                   val score: Option[Double]) {
   /**
@@ -85,13 +86,13 @@ class RSearchable(val id: String,
   */
 object RSearchable {
 
-  def apply(id: String, header: Option[String], doctext: String,
+  def apply(id: String, header: Option[String], doctext: String, nWords: Option[Long],
             vectors: Map[String, Representation.Vec], score: Option[Double]): RSearchable =
-    new RSearchable(id, header, doctext, vectors, score)
+    new RSearchable(id, header, doctext, nWords, vectors, score)
 
   def unapply(obj: RSearchable):
-               Option[(String, Option[String], String, Map[String, Representation.Vec], Option[Double])] =
-    Some(obj.id, obj.header, obj.doctext, obj.vectors, obj.score)
+           Option[(String, Option[String], String, Option[Long], Map[String, Representation.Vec], Option[Double])] =
+    Some(obj.id, obj.header, obj.doctext, obj.nWords, obj.vectors, obj.score)
 }
 
 /**
@@ -128,14 +129,14 @@ case class Representation(
                            override val doctext: String,
                            othtext: Option[String],
                            keywords: Option[String],
-                           nWords: Option[Long] = None,
+                           override val nWords: Option[Long] = None,
                            override val vectors: Map[String, Representation.Vec],
                            autoGenKws: Option[Seq[String]],
                            timeFrom: Long = TIME_NOW,
                            timeThru: Long = INF_TIME,
                            var versions: Option[Map[String, String]] = None,
                            override val score: Option[Double] = None)
-    extends RSearchable(id, header, doctext, vectors, score) with ReprEngineProduct[Representation] {
+    extends RSearchable(id, header, doctext, nWords, vectors, score) with ReprEngineProduct[Representation] {
 
   lprefx = link.map(_.binaryPrefix)
   versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
