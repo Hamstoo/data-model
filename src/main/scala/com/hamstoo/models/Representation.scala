@@ -2,7 +2,7 @@ package com.hamstoo.models
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Representation.VecEnum
-import com.hamstoo.utils.{ExtendedString, INF_TIME, generateDbId, TIME_NOW}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId}
 import org.apache.commons.text.similarity.LevenshteinDistance
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -32,6 +32,69 @@ trait ReprEngineProduct[T <: ReprEngineProduct[T]] {
 }
 
 /**
+  * Returning an incomplete Representation from MongoRepresentatinoDao.search (i.e. a Representation that has several
+  * of its fields set to None) by excluding fields from the MongoDB query is fragile because users of the returned
+  * objects may easily forget that they are incomplete.  Fortunately this is exactly what type safety is for, so we
+  * have this RSearchable base class that can be returned instead.
+  *
+  * This class cannot be a case class because `case class Representation` extends it, and a case class that extends
+  * another class will not automagically implement a `copy` method if one already exists.
+  */
+class RSearchable(val id: String,
+                  val header: Option[String],
+                  val doctext: String,
+                  val vectors: Map[String, Representation.Vec],
+                  val score: Option[Double]) {
+  /**
+    * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
+    * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
+    */
+  def isDuplicate(oth: RSearchable): Boolean = {
+
+    // quickly test for identical doctexts first and otherwise use header as a filter on top of vec/edit similarities
+    !doctext.isEmpty && doctext == oth.doctext || header == oth.header && (
+
+      // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
+      // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
+      // because it has too many false positives, like, e.g., when a site has very few English words.
+      vecSimilarity(oth) > Representation.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
+      editSimilarity(oth) > Representation.DUPLICATE_EDIT_SIMILARITY_THRESHOLD
+    )
+  }
+
+  /** Define `similarity` in one place so that it can be used in multiple. */
+  def vecSimilarity(oth: RSearchable): Double = (for {
+    thisVec <- vectors.get(VecEnum.IDF3.toString)
+    othVec <- oth.vectors.get(VecEnum.IDF3.toString)
+  } yield Representation.VecFunctions(thisVec).cosine(othVec)).getOrElse(0.0)
+
+  /** Another kind of similarity, the opposite of (relative) edit distance. */
+  def editSimilarity(oth: RSearchable): Double = {
+    if (doctext.isEmpty && oth.doctext.isEmpty) 1.0
+    else {
+      val editDist = LevenshteinDistance.getDefaultInstance.apply(doctext, oth.doctext)
+      val relDist = editDist / math.max(doctext.length, oth.doctext.length).toDouble // toDouble is important here
+      1.0 - relDist
+    }
+  }
+}
+
+/**
+  * Since RSearchable is a case class we need to implement these methods manually.  These methods are required by
+  * BSONDocumentHandler[RSearchable].
+  */
+object RSearchable {
+
+  def apply(id: String, header: Option[String], doctext: String,
+            vectors: Map[String, Representation.Vec], score: Option[Double]): RSearchable =
+    new RSearchable(id, header, doctext, vectors, score)
+
+  def unapply(obj: RSearchable):
+               Option[(String, Option[String], String, Map[String, Representation.Vec], Option[Double])] =
+    Some(obj.id, obj.header, obj.doctext, obj.vectors, obj.score)
+}
+
+/**
   * This Representation class is used to store scraped and parsed textual
   * representations of URLs.  The scraping and parsing are performed by an
   * instance of a RepresentationFactory.
@@ -57,60 +120,28 @@ trait ReprEngineProduct[T <: ReprEngineProduct[T]] {
   * @param versions   `data-model` project version and others, if provided.
   */
 case class Representation(
-                           id: String = generateDbId(Representation.ID_LENGTH),
+                           override val id: String = generateDbId(Representation.ID_LENGTH),
                            link: Option[String],
                            var lprefx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
                            page: Option[Page],
-                           header: Option[String],
-                           doctext: String,
+                           override val header: Option[String],
+                           override val doctext: String,
                            othtext: Option[String],
                            keywords: Option[String],
                            nWords: Option[Long] = None,
-                           vectors: Map[String, Representation.Vec],
+                           override val vectors: Map[String, Representation.Vec],
                            autoGenKws: Option[Seq[String]],
                            timeFrom: Long = TIME_NOW,
                            timeThru: Long = INF_TIME,
                            var versions: Option[Map[String, String]] = None,
-                           score: Option[Double] = None) extends ReprEngineProduct[Representation] {
+                           override val score: Option[Double] = None)
+    extends RSearchable(id, header, doctext, vectors, score) with ReprEngineProduct[Representation] {
 
   lprefx = link.map(_.binaryPrefix)
   versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
                     .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
 
   override def withTimeFrom(timeFrom: Long): Representation = this.copy(timeFrom = timeFrom)
-
-  /**
-    * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
-    * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
-    */
-  def isDuplicate(oth: Representation): Boolean = {
-
-    // quickly test for identical doctexts first and otherwise use header as a filter on top of vec/edit similarities
-    !doctext.isEmpty && doctext == oth.doctext || header == oth.header && (
-
-      // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
-      // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
-      // because it has too many false positives, like, e.g., when a site has very few English words.
-      vecSimilarity(oth) > Representation.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
-      editSimilarity(oth) > Representation.DUPLICATE_EDIT_SIMILARITY_THRESHOLD
-    )
-  }
-
-  /** Define `similarity` in one place so that it can be used in multiple. */
-  def vecSimilarity(oth: Representation): Double = (for {
-    thisVec <- vectors.get(VecEnum.IDF3.toString)
-    othVec <- oth.vectors.get(VecEnum.IDF3.toString)
-  } yield Representation.VecFunctions(thisVec).cosine(othVec)).getOrElse(0.0)
-
-  /** Another kind of similarity, the opposite of (relative) edit distance. */
-  def editSimilarity(oth: Representation): Double = {
-    if (doctext.isEmpty && oth.doctext.isEmpty) 1.0
-    else {
-      val editDist = LevenshteinDistance.getDefaultInstance.apply(doctext, oth.doctext)
-      val relDist = editDist / math.max(doctext.length, oth.doctext.length).toDouble // toDouble is important here
-      1.0 - relDist
-    }
-  }
 
   /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
   override def equals(other: Any): Boolean = other match {
@@ -244,4 +275,5 @@ object Representation extends BSONHandlers {
   assert(nameOf[Representation](_.score) == com.hamstoo.models.Mark.SCORE)
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
+  implicit val rsearchBsonHandler: BSONDocumentHandler[RSearchable] = Macros.handler[RSearchable]
 }

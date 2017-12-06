@@ -2,7 +2,6 @@ package com.hamstoo.daos
 
 import com.hamstoo.models.ReprEngineProduct
 import com.hamstoo.utils._
-import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
