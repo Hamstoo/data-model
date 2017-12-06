@@ -85,8 +85,8 @@ case class Representation(
     */
   def isDuplicate(oth: Representation): Boolean = {
 
-    // quickly test for identical doctexts
-    !doctext.isEmpty && doctext == oth.doctext || (
+    // quickly test for identical doctexts first and otherwise use header as a filter on top of vec/edit similarities
+    !doctext.isEmpty && doctext == oth.doctext || header == oth.header && (
 
       // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
       // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is

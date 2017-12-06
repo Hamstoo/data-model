@@ -82,7 +82,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     // check if html, than try to load frame tags if they are found in body
     if (!MediaTypeSupport.isHTML(mediaType)) futPage else {
       futPage.flatMap { page =>
-        // `withFramesLoaded` detects and loads frames of framesets and individual frames
+        // `loadFrames` detects and loads individual frames and those in framesets
         // and puts loaded data into initial document
         loadFrames(url, page).map { framesLoadedHtml =>
           page.copy(content = framesLoadedHtml._1.getBytes("UTF-8"))
