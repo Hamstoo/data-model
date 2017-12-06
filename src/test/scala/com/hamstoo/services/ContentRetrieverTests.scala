@@ -5,6 +5,7 @@ import com.hamstoo.models.Page
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
 import com.hamstoo.utils.DataInfo
+import org.jsoup.Jsoup
 import play.api.libs.ws.ahc.AhcWSClient
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -39,5 +40,13 @@ class ContentRetrieverTests
     val page = contriever.retrieve(urlPDF).futureValue
     import com.hamstoo.services.ContentRetriever.PageFunctions
     page.getTitle shouldBe Some("Actors in Scala")
+  }
+
+  it should "(UNIT) not duplicate frames which are nested in framesets and " +
+            "load frames which are not nested in framesets" in {
+    val elems = contriever.loadFrames("https://ant.apache.org/manual/",
+                                      new Page("text/html", htmlWithFrames.toCharArray.map(_.toByte))).futureValue
+    // should load only 3 frames total
+    elems._2 shouldBe 3
   }
 }
