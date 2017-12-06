@@ -1,7 +1,7 @@
 package com.hamstoo.daos
 
 import com.hamstoo.models.Representation._
-import com.hamstoo.models.{Page, Representation}
+import com.hamstoo.models.{Page, Representation, RSearchable}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -93,13 +93,10 @@ class MongoRepresentationDao(db: () => Future[DefaultDB])
     * WHERE ANY(SPLIT(doctext) IN @query)
     * --ORDER BY score DESC -- actually this is not happening, would require '.sort' after '.find'
     */
-  def search(ids: Set[String], query: String): Future[Map[String, Representation]] = for {
+  def search(ids: Set[String], query: String): Future[Map[String, RSearchable]] = for {
     c <- dbColl()
     _ = logger.debug(s"Searching with query '$query' for reprs (first 5): ${ids.take(5)}")
     sel = d :~ ID -> (d :~ "$in" -> ids) :~ curnt
-
-    // exclude these fields from the returned results to conserve memory during search
-    searchExcludedFields = d :~ (PAGE -> 0) :~ (OTXT -> 0) :~ (LPREFX -> 0) :~ (HEADR -> 0) :~ (KWORDS -> 0)
 
     // this projection doesn't have any effect without this selection
     searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
@@ -107,14 +104,14 @@ class MongoRepresentationDao(db: () => Future[DefaultDB])
 
     _ = logger.debug(BSONDocument.pretty(sel :~ searchScoreSelection))
     seq <- c.find(sel :~ searchScoreSelection,
-                  searchExcludedFields :~ searchScoreProjection)/*.sort(searchScoreProjection)*/
-      .coll[Representation, Seq]()
+                  searchScoreProjection)/*.sort(searchScoreProjection)*/
+      .coll[RSearchable, Seq]()
 
   } yield seq.map { repr =>
     repr.id -> repr
 
   }(breakOut[
-    Seq[Representation],
-    (String, Representation),
-    Map[String, Representation]])
+    Seq[RSearchable],
+    (String, RSearchable),
+    Map[String, RSearchable]])
 }

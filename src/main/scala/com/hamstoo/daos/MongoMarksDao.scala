@@ -196,8 +196,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   }
 
   // exclude these fields from the returned results of search-related methods to conserve memory during search
-  // TODO: doesn't it make more sense to do an explicit include than an exclude; i.e. just include the required fields
-  // TODO: or perhaps it would make more sense to make a MarkStub base class so that users know they're dealing with a partially populated Mark
+  // TODO: implement a MSearchable base class so that users know they're dealing with a partially populated Mark
   val searchExcludedFields: BSONDocument = d :~ (PAGE -> 0)  :~ (URLPRFX -> 0) :~ (AUX -> 0) :~
     (MERGEID -> 0) :~ (TAGSx -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
 
