@@ -309,9 +309,9 @@ object Mark extends BSONHandlers {
     * it was generated (and how long it was "active" for).
     */
   case class ExpectedRating(id: String = generateDbId(Mark.ID_LENGTH),
-                            value: Double,
+                            value: Option[Double],
                             n: Int,
-                            similarReprs: Seq[String],
+                            similarReprs: Option[Seq[String]] = None,
                             timeFrom: Long = TIME_NOW,
                             timeThru: Long = INF_TIME) extends ReprEngineProduct[ExpectedRating] {
 
