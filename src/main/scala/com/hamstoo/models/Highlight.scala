@@ -3,8 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.generateDbId
-import org.joda.time.DateTime
+import com.hamstoo.utils.{generateDbId, INF_TIME, TIME_NOW}
 import play.api.libs.json.{JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -30,8 +29,8 @@ case class Highlight(
                       pageCoord: Option[PageCoord] = None,
                       preview: Highlight.Preview,
                       memeId: Option[String] = None,
-                      timeFrom: Long = DateTime.now.getMillis,
-                      timeThru: Long = Long.MaxValue) extends Annotation with HasJsonPreview {
+                      timeFrom: Long = TIME_NOW,
+                      timeThru: Long = INF_TIME) extends Annotation with HasJsonPreview {
   import Highlight.fmt
 
   override def jsonPreview: JsObject = Json.obj(

@@ -5,7 +5,6 @@ import java.util.UUID
 
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.{Mark, MarkData, Page, Representation}
-import org.joda.time.DateTime
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
 import reactivemongo.api.DefaultDB
@@ -30,6 +29,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
   // reduce size of existing `urlPrfx`s down to URL_PREFIX_LENGTH to prevent indexes below from being too large
   // and causing exceptions when trying to update marks with reprIds (version 0.9.16)
+  // (note that the offending `urlPrfx` indexes have now been removed)
   Await.result(for {
     c <- dbColl()
     _ = logger.info(s"Performing data migration for `marks` collection")
@@ -39,22 +39,28 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     _ <- Future.sequence { longPfxed.map { m => // urlPrfx will have been overwritten upon `Mark` construction
         c.update(d :~ ID -> m.id :~ TIMEFROM -> m.timeFrom, d :~ "$set" -> (d :~ URLPRFX -> m.urlPrfx))
     }}
-  } yield (), 73 seconds)
+  } yield (), 373 seconds)
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
-    Index(USR -> Ascending :: Nil) % s"bin-$USR-1" ::
-    Index(TIMETHRU -> Ascending :: Nil) % s"bin-$TIMETHRU-1" ::
-    /* Following two indexes are set to unique to prevent messing up timeline of entry states. */
+    Index(USR -> Ascending :: TIMETHRU -> Ascending :: Nil) % s"bin-$USR-1-$TIMETHRU-1" ::
+    // the following two indexes are set to unique to prevent messing up timelines of mark/entry states
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
-    Index(URLPRFX -> Ascending :: PUBREPR -> Ascending :: Nil) % s"bin-$URLPRFX-1-$PUBREPR-1" ::
-    Index(URLPRFX -> Ascending :: PRVREPR -> Ascending :: Nil) % s"bin-$URLPRFX-1-$PRVREPR-1" ::
-    Index(SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) %
-      s"txt-$SUBJx-$TAGSx-$COMNTx" ::
+    // findMissingReprs indexes
+    Index(PUBREPR -> Ascending :: Nil) % s"bin-$PUBREPR-1" ::
+    Index(PRVREPR -> Ascending :: Nil, partialFilter = Some(d :~ PAGE -> (d :~ "$exists" -> true))) %
+      s"bin-$PRVREPR-1-partial-$PAGE" ::
+    // findMissingExpectedRatings (partial) indexes
+    Index(PUBESTARS -> Ascending :: Nil, partialFilter = Some(d :~ PUBREPR -> (d :~ "$exists" -> true))) %
+      s"bin-$PUBESTARS-1-partial-$PUBREPR" ::
+    Index(PRIVESTARS -> Ascending :: Nil, partialFilter = Some(d :~ PRVREPR -> (d :~ "$exists" -> true))) %
+      s"bin-$PRIVESTARS-1-partial-$PRVREPR" ::
+    // text index (there can be only one per collection)
+    Index(SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) % s"txt-$SUBJx-$TAGSx-$COMNTx" ::
     Index(TAGSx -> Ascending :: Nil) % s"bin-$TAGSx-1" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 89 seconds)
+  Await.result(dbColl() map (_.indexesManager.ensure(indxs)), 389 seconds)
 
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
   def insert(mark: Mark): Future[Mark] = {
@@ -79,7 +85,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
     for {
       c <- dbColl()
-      now = DateTime.now.getMillis
+      now = TIME_NOW
       ms = marks map(_.copy(timeFrom = now)) map Mark.entryBsonHandler.write // map each mark into a `BSONDocument`
       wr <- c bulkInsert(ms, ordered = false)
     } yield {
@@ -159,7 +165,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * Retrieves all current marks with representations for the user, constrained by a list of tags. Mark must have
     * all tags to qualify.
     */
-  def retrieveRepred(user: UUID, tags: Set[String]): Future[Seq[Mark]] = {
+  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
     logger.debug(s"Retrieve repred marks for user $user and tags $tags")
     for {
       c <- dbColl()
@@ -190,10 +196,9 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   }
 
   // exclude these fields from the returned results of search-related methods to conserve memory during search
-  // TODO: doesn't it make more sense to do an explicit include than an exclude; i.e. just include the required fields
-  // TODO: or perhaps it would make more sense to make a MarkStub base class so that users know they're dealing with a partially populated Mark
+  // TODO: implement a MSearchable base class so that users know they're dealing with a partially populated Mark
   val searchExcludedFields: BSONDocument = d :~ (PAGE -> 0)  :~ (URLPRFX -> 0) :~ (AUX -> 0) :~
-    (MERGEID -> 0) :~ (STARSx -> 0) :~ (TAGSx -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
+    (MERGEID -> 0) :~ (TAGSx -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
 
   /**
     * Executes a search using text index with sorting in user's marks, constrained by tags. Mark state must be
@@ -228,7 +233,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   def update(user: UUID, id: String, mdata: MarkData): Future[Mark] = for {
     c <- dbColl()
     sel = d :~ USR -> user :~ ID -> id :~ curnt
-    now: Long = DateTime.now.getMillis
+    now: Long = TIME_NOW
     wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
     oldMk <- wr.result[Mark].map(Future.successful).getOrElse(
       Future.failed(new Exception(s"MongoMarksDao.update: unable to find mark $id")))
@@ -267,7 +272,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * Merge two marks by setting their `timeThru`s to the time of execution and inserting a new mark with the
     * same `timeFrom`.
     */
-  def merge(oldMark: Mark, newMark: Mark, now: Long = DateTime.now.getMillis): Future[Mark] = for {
+  def merge(oldMark: Mark, newMark: Mark, now: Long = TIME_NOW): Future[Mark] = for {
     c <- dbColl()
 
     // delete the newer mark and merge it into the older/pre-existing one
@@ -354,7 +359,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   /** Updates `timeThru` of a set of current marks (selected by user and a list of IDs) to time of execution. */
   def delete(user: UUID,
              ids: Seq[String],
-             now: Long = DateTime.now.getMillis,
+             now: Long = TIME_NOW,
              mergeId: Option[String] = None): Future[Int] = {
 
     logger.debug(s"Deleting marks for user $user: $ids")
@@ -416,9 +421,14 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     }
   }
 
-  /** Retrieves a list of n marks that require representations. Intentionally not filtering for `curnt` marks. */
+  /**
+    * Retrieves a list of n marks that require representations. Intentionally not filtering for `curnt` marks.
+    *
+    * The following MongoDB shell command should show that this query is using two indexes via an "OR" inputStage.
+    *   `db.entries.find({$or:[{pubRepr:{$exists:0}}, {privRepr:{$exists:0}, page:{$exists:1}}]}).explain()`
+    */
   def findMissingReprs(n: Int): Future[Seq[Mark]] = {
-    logger.debug("Finding marks with missing public representation")
+    logger.debug("Finding marks with missing representations")
     for {
       c <- dbColl()
 
@@ -440,36 +450,78 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   }
 
   /**
-    * Updates a mark state with provided representation id. this method is typically called as a result
-    * of findMissingReprs, so if the latter is picking up non-`curnt` marks, then the former needs to be also, o/w
-    * repr-engine's MongoClient.refresh could get stuck hopelessly trying to assign reprs to the same non-current
-    * marks over and over.
+    * Retrieves a list of n marks that require expected ratings. Intentionally not filtering for `curnt` marks.
+    *
+    * The following MongoDB shell command should show that this query is using two indexes via an "OR" inputStage.
+    * db.entries.find({$or:[{pubExpRating:{$exists:0}, pubRepr:{$exists:1}},
+    *                       {privExpRating:{$exists:0}, privRepr:{$exists:1}}]}).explain()
     */
-  def updatePublicReprId(id: String, timeFrom: Long, reprId: String): Future[Unit] = {
-    logger.debug(s"Updating mark $id ($timeFrom) with public representation ID: '$reprId'")
-    if (reprId.length > Representation.ID_LENGTH)
-      Future.failed(new Exception(s"Attempt to update mark $id ($timeFrom) with public representation ID '$reprId' failed; long ID length could break index"))
+  def findMissingExpectedRatings(n: Int): Future[Seq[Mark]] = {
+    logger.debug("Finding marks with missing expected ratings")
+    for {
+      c <- dbColl()
+      sel = d :~ "$or" -> Seq(d :~ PUBESTARS -> (d :~ "$exists" -> false) :~ PUBREPR -> (d :~ "$exists" -> true),
+                              d :~ PRIVESTARS -> (d :~ "$exists" -> false) :~ PRVREPR -> (d :~ "$exists" -> true))
+      seq <- c.find(sel).coll[Mark, Seq](n)
+    } yield {
+      logger.debug(s"${seq.size} marks with missing E[rating]s were retrieved")
+      seq
+    }
+  }
+
+  def fkSel(id: String, timeFrom: Long): BSONDocument = d :~ ID -> id :~ TIMEFROM -> timeFrom
+
+  /**
+    * Updates a mark's state with provided foreign key ID.  This method is typically called as a result of
+    * findMissingReprs or findMissingExpectedRatings, so if they are picking up non-`curnt` marks, then this method
+    * needs to be also, o/w repr-engine's MongoClient.refresh could get stuck hopelessly trying to re-process
+    * the same non-current marks over and over.
+    *
+    * @param user      - mark's user ID; serves as a safeguard against inadvertent private content mixups
+    * @param id        - mark ID
+    * @param timeFrom  - mark timestamp
+    * @param fkId      - "foreign key" ID; probably either a representation ID or an expected rating ID
+    * @param fieldName - the field name in the Mark model to update
+    * @param logName   - the field name for logging purposes
+    */
+  def updateForeignKeyId(user: UUID, id: String, timeFrom: Long, fkId: String, fieldName: String, logName: String):
+                                                                                                      Future[Mark] = {
+    logger.debug(s"Updating mark $id ($timeFrom) with $logName ID: '$fkId'")
+    if (fkId.endsWith("Repr") && fkId.length > Representation.ID_LENGTH) // TODO: remove this after updating indexes
+      Future.failed(new Exception(s"Attempt to update mark $id ($timeFrom) with $logName ID '$fkId' failed; long ID length could break index"))
 
     else for {
       c <- dbColl()
-      sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
-      wr <- c update(sel, d :~ "$set" -> (d :~ PUBREPR -> reprId))
-      _ <- wr.failIfError;
-      _ = logger.debug(s"Updated mark $id with public representation ID: '$reprId'")
-    } yield ()
+
+      // writes new foreign key ID into the mark and retrieves updated document in the result
+      wr <- c.findAndUpdate(fkSel(id, timeFrom), d :~ "$set" -> (d :~ fieldName -> fkId), fetchNewObject = true)
+
+      _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
+        logger.warn(s"Unable to findAndUpdate $logName of mark $id [$timeFrom] to $fkId; wr.lastError = ${wr.lastError.get}")
+        Future.failed(new NoSuchElementException(s"Unable to find mark $id [$timeFrom] in order to update its $fieldName"))
+      }
+
+      // this will "NoSuchElementException: None.get" when `get` is called if `wr.result[Mark]` is None
+      mk = wr.result[Mark].get
+
+      _ = logger.debug(s"Updated mark $id with $logName ID: '$fkId'")
+    } yield mk
   }
 
-  /**
-    * Updates a mark state with provided private representation id and clears out processed page source. this method is
-    * typically called as a result of findMissingReprs, so if the latter is picking up non-`curnt` marks, then the
-    * former needs to be also, o/w repr-engine's MongoClient.refresh could get stuck hopelessly trying to assign
-    * reprs to the same non-current marks over and over.
-    *
-    * @param user     - user ID of mark's owner; serves as a safeguard against inadvertent private content mixups
-    * @param id       - mark ID
-    * @param timeFrom - mark version timestamp
-    * @param reprId   - representation ID
-    * @param page     - processed page source to clear out from the mark
+  /** Updates a mark state with provided expected rating ID. */
+  def updatePublicERatingId(user: UUID, id: String, timeFrom: Long, erId: String): Future[Unit] =
+    updateForeignKeyId(user, id, timeFrom, erId, PUBESTARS, "public expected rating").map(_ => {})
+
+  /** Updates a mark state with provided private expected rating ID. */
+  def updatePrivateERatingId(user: UUID, id: String, timeFrom: Long, erId: String): Future[Unit] =
+    updateForeignKeyId(user, id, timeFrom, erId, PRIVESTARS, "private expected rating").map(_ => {})
+
+  /** Updates a mark state with provided representation ID. */
+  def updatePublicReprId(user: UUID, id: String, timeFrom: Long, reprId: String): Future[Unit] =
+    updateForeignKeyId(user, id, timeFrom, reprId, PUBREPR, "public representation").map(_ => {})
+
+  /** Updates a mark state with provided private representation ID and clears out processed page source.
+    * @param page - processed page source to clear out from the mark
     */
   def updatePrivateReprId(user: UUID, id: String, timeFrom: Long, reprId: String, page: Option[Page]): Future[Unit] = {
     logger.debug(s"Updating mark $id ($timeFrom) with private representation ID: '$reprId'")
@@ -478,22 +530,11 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
     else for {
       c <- dbColl()
-      sel = d :~ ID -> id :~ TIMEFROM -> timeFrom
-
-      // writes new private representation ID into the mark and retrieves updated document in the result
-      wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ PRVREPR -> reprId), fetchNewObject = true)
-
-      _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
-        logger.warn(s"Unable to findAndUpdate mark $id's (timeFrom = $timeFrom) private representation to $reprId; wr.lastError = ${wr.lastError.get}")
-        Future.failed(new NoSuchElementException("MongoMarksDao.updatePrivateReprId"))
-      }
-
-      // this will "NoSuchElementException: None.get" when `get` is called if `wr.result[Mark]` is None
-      mk = wr.result[Mark].get
+      mk <- updateForeignKeyId(user, id, timeFrom, reprId, PRVREPR, "private representation")
 
       // removes page source from the mark in case it's the same as the one processed
       _ <- if (page.exists(mk.page.contains)) for {
-        wr <- c.update(sel, d :~ "$unset" -> (d :~ PAGE -> 1))
+        wr <- c.update(fkSel(id, timeFrom), d :~ "$unset" -> (d :~ PAGE -> 1))
         _ <- wr.failIfError
       } yield () else Future.successful {}
 
