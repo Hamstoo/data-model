@@ -187,7 +187,6 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     }
     val htmlPage: HtmlPage = retryGetPage[HtmlPage](3)(webClient.getPage(url))
     val html = htmlPage.asText()
-    println(html) //Todo remove this line
     val contentByte = html.toCharArray.map(_.toByte)
     val response = new ResponseBuilder().accumulate(new HttpResponseBodyPart(true){
       override def getBodyPartBytes: Array[Byte] = contentByte
