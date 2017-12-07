@@ -26,5 +26,6 @@ object Dependencies {
     "org.scalatest" %% "scalatest" % "3.0.4",
     "com.github.simplyscala" %% "scalatest-embedmongo" % "0.2.4",
     "com.typesafe.akka" %% "akka-testkit" % "2.5.6",
-    "org.mockito" % "mockito-core" % "2.10.0" % "test")
+    "org.mockito" % "mockito-core" % "2.10.0" % "test",
+    "net.sourceforge.htmlunit" % "htmlunit" % "2.28")
 }
