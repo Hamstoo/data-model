@@ -3,7 +3,6 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.{Highlight, Mark, PageCoord}
-import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -55,7 +54,7 @@ class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[
                     d :~ "$unset" -> (d :~ "url" -> 1 :~ "uPref" -> 1) :~ "$set" -> {d :~ "markId" -> markId},
                     multi = true)
     } yield () }}
-  } yield (), 105 seconds)
+  } yield (), 405 seconds)
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
@@ -63,7 +62,7 @@ class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[
     Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
       s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 45 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 345 seconds)
 
   /** Update timeThru on an existing highlight and insert a new one with modified values. */
   def update(usr: UUID,
@@ -72,7 +71,7 @@ class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[
              prv: Highlight.Preview,
              coord: Option[PageCoord]): Future[Highlight] = for {
     c <- dbColl()
-    now = DateTime.now.getMillis
+    now = TIME_NOW
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
     wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
     hl = wr.result[Highlight].get.copy(pos = pos,

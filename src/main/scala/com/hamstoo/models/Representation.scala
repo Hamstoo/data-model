@@ -2,14 +2,98 @@ package com.hamstoo.models
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Representation.VecEnum
-import com.hamstoo.utils.{ExtendedString, generateDbId}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId}
 import org.apache.commons.text.similarity.LevenshteinDistance
-import org.joda.time.DateTime
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 
+/**
+  * A ReprEngineProduct is something that is computed by the repr-engine.  Though perhaps all of our
+  * object models should extend this trait.
+  *
+  * See also: https://stackoverflow.com/questions/15441589/scala-copy-case-class-with-generic-type
+  */
+trait ReprEngineProduct[T <: ReprEngineProduct[T]] {
+
+  // "self-typing to T to force withTimeFrom to return this type" (see URL above)
+  //self: T => def timeFrom: Long
+
+  val id: String
+  val timeFrom: Long
+  val timeThru: Long
+
+  def withTimeFrom(timeFrom: Long): T
+
+  assert(nameOf[ReprEngineProduct[T]](_.id) == com.hamstoo.models.Mark.ID)
+  assert(nameOf[ReprEngineProduct[T]](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
+  assert(nameOf[ReprEngineProduct[T]](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
+}
+
+/**
+  * Returning an incomplete Representation from MongoRepresentatinoDao.search (i.e. a Representation that has several
+  * of its fields set to None) by excluding fields from the MongoDB query is fragile because users of the returned
+  * objects may easily forget that they are incomplete.  Fortunately this is exactly what type safety is for, so we
+  * have this RSearchable base class that can be returned instead.
+  *
+  * This class cannot be a case class because `case class Representation` extends it, and a case class that extends
+  * another class will not automagically implement a `copy` method if one already exists.
+  */
+class RSearchable(val id: String,
+                  val header: Option[String],
+                  val doctext: String,
+                  val nWords: Option[Long],
+                  val vectors: Map[String, Representation.Vec],
+                  val score: Option[Double]) {
+  /**
+    * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
+    * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
+    */
+  def isDuplicate(oth: RSearchable): Boolean = {
+
+    // quickly test for identical doctexts first and otherwise use header as a filter on top of vec/edit similarities
+    !doctext.isEmpty && doctext == oth.doctext || header == oth.header && (
+
+      // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
+      // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
+      // because it has too many false positives, like, e.g., when a site has very few English words.
+      vecSimilarity(oth) > Representation.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
+      editSimilarity(oth) > Representation.DUPLICATE_EDIT_SIMILARITY_THRESHOLD
+    )
+  }
+
+  /** Define `similarity` in one place so that it can be used in multiple. */
+  def vecSimilarity(oth: RSearchable): Double = (for {
+    thisVec <- vectors.get(VecEnum.IDF3.toString)
+    othVec <- oth.vectors.get(VecEnum.IDF3.toString)
+  } yield Representation.VecFunctions(thisVec).cosine(othVec)).getOrElse(0.0)
+
+  /** Another kind of similarity, the opposite of (relative) edit distance. */
+  def editSimilarity(oth: RSearchable): Double = {
+    if (doctext.isEmpty && oth.doctext.isEmpty) 1.0
+    else {
+      val editDist = LevenshteinDistance.getDefaultInstance.apply(doctext, oth.doctext)
+      val relDist = editDist / math.max(doctext.length, oth.doctext.length).toDouble // toDouble is important here
+      1.0 - relDist
+    }
+  }
+}
+
+/**
+  * Since RSearchable is a case class we need to implement these methods manually.  These methods are required by
+  * BSONDocumentHandler[RSearchable].
+  */
+object RSearchable {
+
+  def apply(id: String, header: Option[String], doctext: String, nWords: Option[Long],
+            vectors: Map[String, Representation.Vec], score: Option[Double]): RSearchable =
+    new RSearchable(id, header, doctext, nWords, vectors, score)
+
+  def unapply(obj: RSearchable):
+           Option[(String, Option[String], String, Option[Long], Map[String, Representation.Vec], Option[Double])] =
+    Some(obj.id, obj.header, obj.doctext, obj.nWords, obj.vectors, obj.score)
+}
 
 /**
   * This Representation class is used to store scraped and parsed textual
@@ -37,58 +121,28 @@ import scala.collection.mutable
   * @param versions   `data-model` project version and others, if provided.
   */
 case class Representation(
-                           id: String = generateDbId(Representation.ID_LENGTH),
+                           override val id: String = generateDbId(Representation.ID_LENGTH),
                            link: Option[String],
                            var lprefx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
                            page: Option[Page],
-                           header: Option[String],
-                           doctext: String,
+                           override val header: Option[String],
+                           override val doctext: String,
                            othtext: Option[String],
                            keywords: Option[String],
-                           nWords: Option[Long] = None,
-                           vectors: Map[String, Representation.Vec],
+                           override val nWords: Option[Long] = None,
+                           override val vectors: Map[String, Representation.Vec],
                            autoGenKws: Option[Seq[String]],
-                           timeFrom: Long = DateTime.now.getMillis,
-                           timeThru: Long = Long.MaxValue,
+                           timeFrom: Long = TIME_NOW,
+                           timeThru: Long = INF_TIME,
                            var versions: Option[Map[String, String]] = None,
-                           score: Option[Double] = None) {
+                           override val score: Option[Double] = None)
+    extends RSearchable(id, header, doctext, nWords, vectors, score) with ReprEngineProduct[Representation] {
 
   lprefx = link.map(_.binaryPrefix)
   versions = Some(versions.getOrElse(Map.empty[String, String]) // conversion of null->string required only for tests
                     .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
 
-  /**
-    * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
-    * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
-    */
-  def isDuplicate(oth: Representation): Boolean = {
-
-    // quickly test for identical doctexts
-    !doctext.isEmpty && doctext == oth.doctext || (
-
-      // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
-      // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
-      // because it has too many false positives, like, e.g., when a site has very few English words.
-      vecSimilarity(oth) > Representation.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
-      editSimilarity(oth) > Representation.DUPLICATE_EDIT_SIMILARITY_THRESHOLD
-    )
-  }
-
-  /** Define `similarity` in one place so that it can be used in multiple. */
-  def vecSimilarity(oth: Representation): Double = (for {
-    thisVec <- vectors.get(VecEnum.IDF3.toString)
-    othVec <- oth.vectors.get(VecEnum.IDF3.toString)
-  } yield Representation.VecFunctions(thisVec).cosine(othVec)).getOrElse(0.0)
-
-  /** Another kind of similarity, the opposite of (relative) edit distance. */
-  def editSimilarity(oth: Representation): Double = {
-    if (doctext.isEmpty && oth.doctext.isEmpty) 1.0
-    else {
-      val editDist = LevenshteinDistance.getDefaultInstance.apply(doctext, oth.doctext)
-      val relDist = editDist / math.max(doctext.length, oth.doctext.length).toDouble // toDouble is important here
-      1.0 - relDist
-    }
-  }
+  override def withTimeFrom(timeFrom: Long): Representation = this.copy(timeFrom = timeFrom)
 
   /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
   override def equals(other: Any): Boolean = other match {
@@ -210,7 +264,6 @@ object Representation extends BSONHandlers {
 
   val ID_LENGTH: Int = 12
 
-  val ID: String = nameOf[Representation](_.id)
   val LNK: String = nameOf[Representation](_.link)
   val LPREFX: String = nameOf[Representation](_.lprefx)
   val PAGE: String = nameOf[Representation](_.page)
@@ -220,9 +273,8 @@ object Representation extends BSONHandlers {
   val KWORDS: String = nameOf[Representation](_.keywords)
   val N_WORDS: String = nameOf[Representation](_.nWords)
   val VECS: String = nameOf[Representation](_.vectors)
-  assert(nameOf[Representation](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
-  assert(nameOf[Representation](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
   assert(nameOf[Representation](_.score) == com.hamstoo.models.Mark.SCORE)
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
+  implicit val rsearchBsonHandler: BSONDocumentHandler[RSearchable] = Macros.handler[RSearchable]
 }

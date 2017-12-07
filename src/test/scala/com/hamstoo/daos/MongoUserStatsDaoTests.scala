@@ -6,6 +6,7 @@ import com.hamstoo.models.{Mark, MarkData, UserStats}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import org.scalatest.OptionValues
+import reactivemongo.bson.{BSONDocument, BSONDocumentReader, Macros}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
@@ -21,6 +22,9 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
     with FutureHandler {
 
   import com.hamstoo.utils.DataInfo._
+
+  // only for test purpose, used in serialization section
+  case class Test(_id: String, imports: Int)
 
   // construct a new userId for these tests alone
   val userId: UUID = constructUserId()
@@ -63,5 +67,25 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
     totalMarks.futureValue.nMarks shouldEqual 2
   }
 
-  // TODO tests for: punch, import
+  it should "increment user's imports count" in {
+
+    implicit val handler: BSONDocumentReader[Test] = Macros.reader[Test]
+
+    val importCollName = "imports"
+
+    def retrieveImportsCount: Future[Option[Test]] = for {
+      c <- coll(importCollName)
+      optRes <- c.find(BSONDocument("_id" -> userId.toString)).one[Test]
+    } yield optRes
+
+    statsDao.imprt(userId, 5).futureValue shouldEqual {}
+
+    retrieveImportsCount.futureValue.value.imports shouldEqual 5
+
+    statsDao.imprt(userId, 2).futureValue shouldEqual {}
+
+    retrieveImportsCount.futureValue.value.imports shouldEqual 7
+  }
+
+
 }

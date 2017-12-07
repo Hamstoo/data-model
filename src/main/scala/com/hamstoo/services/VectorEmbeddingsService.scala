@@ -182,9 +182,29 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
       }
     }*/
 
-    candidates.map { wm => wm.word -> documentSimilarity(wm.scaledVec, docVecs) }
-      .sortBy(-_._2) // sort by `aggregateSimilarityScore` (descending)
-      .take(15).map(_._1) // select 15 highest scoring words
+    // select 15 highest scoring words (with some filtering of words with only a few letters)
+    val nDesired = 15
+
+    // sort by `aggregateSimilarityScore` (descending)
+    val words = candidates.map { wm => wm.word -> documentSimilarity(wm.scaledVec, docVecs) }
+      .sortBy(-_._2).map(_._1)
+
+    // not quite sure how to do what follows in a functional programming style
+    val selections = scala.collection.mutable.ListBuffer.empty[String]
+
+    // don't allow any 1- or 2- letter words, only allow a single 3-letter word, etc.
+    val wordLengthLimits = IndexedSeq(0, 0, 1, 2, 4)
+
+    words.foreach { w => if (selections.size < nDesired) {
+
+      val limit = wordLengthLimits.lift(w.length - 1).getOrElse(nDesired)
+
+      // count the number of words of this limit in the list so far
+      if (selections.count(_.length == w.length) < limit)
+        selections += w
+    }}
+
+    selections
   }
 
   /**

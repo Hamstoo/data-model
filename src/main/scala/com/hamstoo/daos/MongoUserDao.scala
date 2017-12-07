@@ -12,7 +12,6 @@ import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
@@ -34,7 +33,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
       Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
       Index(s"$PROF.$EMAIL" -> Ascending :: Nil) % s"bin-$PROF.$EMAIL-1" ::
       Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 23 seconds)
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 323 seconds)
 
   /** Saves or updates user account data by matching provided `User`'s `.id`. */
   def save(u: User): Future[Unit] = for {
@@ -70,7 +69,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   /** Detaches provided login from user account by id. */
   def unlink(userId: UUID, loginInfo: LoginInfo): Future[User] = for {
     c <- dbColl()
-    upd = d :~ "$pull" -> (d :~ s"$PROF.$LGNF" -> loginInfo)
+    upd = d :~ "$pull" -> (d :~ s"$PROF" -> (d :~ s"$LGNF" -> loginInfo))
     wr <- c findAndUpdate(d :~ ID -> userId.toString, upd, fetchNewObject = true)
   } yield wr.result[User].get
 
