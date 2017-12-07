@@ -156,7 +156,6 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     webClient.setAjaxController(new AjaxController(){
       override def processSynchron(page: HtmlPage, request: WebRequest, async: Boolean) = true
     })
-
     // this low timeout is required because WAFs can include several redirects and
     // heavy JavaScripts to be loaded from Wordpress CMS sites (usually used with Incapsula plugin)
     // dependtly on client/server bandwidth or server capacity (Php sites usually take much resourses)
@@ -206,7 +205,6 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
       if (depth >= MAX_REDIRECTS)
         Future.failed(new IllegalArgumentException(s"Too many redirects for $url"))
       else {
-
         // The below call to WSRequest.get returns a Future, but if the URL is junk (e.g. chrome://extensions/), it throws
         // an exception, which it appears to throw from outside of a Future block.  This wouldn't be a problem except for
         // the fact that RepresentationActor.receive has contentRetriever.retrieve as its *first* Future in its
@@ -333,8 +331,8 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 }
 
 /** This exception is throwed if captcha on webpage detected*/
-case class CaptchaException(msg:String)  extends Exception(msg)
+case class CaptchaException(msg:String) extends Exception(msg)
 /** This exception is throwed if Incapsula blacklisted ip or pc, or blacklisted something else*/
-case class IncapsulaCaptchaIncidentException(msg:String)  extends Exception(msg)
-
-case class HtmlUnitFailingHttpStatusCodeException(msg:String)  extends Exception(msg)
+case class IncapsulaCaptchaIncidentException(msg:String) extends Exception(msg)
+/** This exception is throwed if HtmlUnit got error network status code and attempted 3 retries*/
+case class HtmlUnitFailingHttpStatusCodeException(msg:String) extends Exception(msg)
