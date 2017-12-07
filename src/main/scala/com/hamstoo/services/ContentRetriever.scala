@@ -51,7 +51,7 @@ object ContentRetriever {
   // standalone Sitelock captcha for case if it raises without Incapsula
   // Not sure but it seems Sitelock is using Google's reCAPTCHA
   val sitelockCaptchaRgx: Regex =  REGEX_FIND_WORD.format("Sitelock").r.unanchored
-  val incapsulaWAFRgx: Regex =  REGEX_FIND_WORD.format(raw"incapsula\.com").r.unanchored
+  val incapsulaWAFRgx: Regex =  REGEX_FIND_WORD.format(raw"content\.incapsula\.com").r.unanchored
 
 
   /** Make sure the provided String is an absolute link. */
@@ -148,8 +148,6 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     * the method uses HtmlUnit testing tool which runs JavaScript scripts
     * and waits until all scripts are loaded, as well it runs loaded scripts
     * what provides necessary calculations to bypass WAF
-    *
-    *
     */
   //Todo add check for other WAFs
   def bypassWAF(url: String): Future[(String, WSResponse)] = {
@@ -176,34 +174,22 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     // because Incapsula has also a plugin for Wordpress engine, which is a source of plenties of errors
     // which we test on by this url
     // http://www.arnoldkling.com/blog/does-america-over-incarcerate/
- /*   def retryGetPage[T](n: Int)(fn: => T): T = {
-      try {
-        println("Retry left "+n)
-        val l = fn
-        l
-      } catch {
-        case e if n > 1 =>
-          if (n > 1) retryGetPage(n - 1)(fn)
-          else{
-            fn
-          }
-         // else throw HtmlUnitException(e.getMessage)
-      }
-    }*/
-    val htmlPage: HtmlPage = webClient.getPage(url) //retryGetPage[HtmlPage](3)(webClient.getPage(url))
-
-
+    def retryGetPage[T](n: Int)(fn: => T): T = {
+         try {
+          fn
+         } catch {
+           case e: FailingHttpStatusCodeException  if n > 1 =>
+             if (n > 1) retryGetPage(n - 1)(fn)
+             else{
+               throw HtmlUnitFailingHttpStatusCodeException(e.getMessage)
+             }
+         }
+    }
+    val htmlPage: HtmlPage = retryGetPage[HtmlPage](3)(webClient.getPage(url))
     val html = htmlPage.asText()
-    println(html) // Todo remove this line
-    // Todos
-    // Todo Merge issue-207 pull request, resolve conflicts
-    // Todo Merge issue-126 data-model and repr-engine pull requests
-    // Todo upload code and send test case to Fred
-    // Todo check why incapsula keyword is not detected on page with corect body response
+    println(html) //Todo remove this line
     val contentByte = html.toCharArray.map(_.toByte)
-
     val response = new ResponseBuilder().accumulate(new HttpResponseBodyPart(true){
-
       override def getBodyPartBytes: Array[Byte] = contentByte
       override def length(): Int = contentByte.length
       override def getBodyByteBuffer: ByteBuffer = ByteBuffer.allocate(contentByte.length)
@@ -211,8 +197,6 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
     Future.successful(url, AhcWSResponse(StandaloneAhcWSResponse(response)))
   }
-
-  /** this method will detect capchas of popular WAFs by checking hmlt page for specific keywords*/
 
   /** This code was formerly part of the 'hamstoo' repo's LinkageService. */
   def digest(url: String): Future[(String, WSResponse)] = {
@@ -241,13 +225,11 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
                 case _ =>
                   Future.successful((url, res))
               }
-            case _ => println(res.body) //Todo remove this line
-              checkKnownProblems(url, res).map(_.getOrElse((url, res)))
+            case _ => checkKnownProblems(url, res).map(_.getOrElse((url, res)))
           }
         }
       }
     }
-
     recget(link)
   }
 
@@ -266,18 +248,15 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
             // "Incapsula incident" is raised if incapsula detected suspected behavior and blacklisted ip or pc, or something else
           case  s if s.matches(incapsulaIncidentRgx.toString()) =>
             throw IncapsulaCaptchaIncidentException ("Incapsula incident (Sitelock captcha detected")
-            // if no problems detected except incapsula WAF raised => bypass WAF
 
-          //Problem 1: matches(incapsulaWAFRgx.toString()) - removed because not working
-            // need to optimize with regex
+          // if no problems detected except incapsula WAF raised => bypass WAF
+          // html page with Incapsula scripts are small, usually < 1000 chars
           case s if s.contains("content.incapsula.com") =>
-            bypassWAF (url).map(r => Some(r))
+            bypassWAF(url).map(r => Some(r))
+
             // if no incident detected, no incapsula script detected and no incapsula captcha detected then
             // it's a probably word "Incapsula" in text jut process in regular way
-
-            //Problem 2: !s.matches(incapsulaWAFRgx.toString()) - removed because not working
-          // need to optimize with regex
-          case s if !s.contains("content.incapsula.com") => Future.successful (Some(url, res) )
+          case s if !s.contains("content.incapsula.com") => Future.successful(Some(url, res))
         }
         // Todo add popular WAFs detection and invoke HTMLUnit to bypass detected WAF
         // Todo need to find finger prints of:
@@ -291,17 +270,17 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
           AQTRONIX WebKnight (For IIS and based on ISAPI filters),
           Barracuda WAF
           */
-      /*case waf2Rgx(body) =>
-      case waf3Rgx(body) =>
-      case waf4Rgx(body) =>
-      case waf5Rgx(body) =>
-      case waf6Rgx(body) =>
-      case waf7Rgx(body) =>
-      case waf8Rgx(body) =>
-      case waf9Rgx(body) =>*/
+          /*case waf2Rgx(body) =>
+          case waf3Rgx(body) =>
+          case waf4Rgx(body) =>
+          case waf5Rgx(body) =>
+          case waf6Rgx(body) =>
+          case waf7Rgx(body) =>
+          case waf8Rgx(body) =>
+          case waf9Rgx(body) =>*/
 
         // if no WAFs or captchas detected then just process representation
-      case false => //s if !s.contains("ncapsula")
+      case false =>
         Future.successful (Some(url, res) )
     }
   }
@@ -359,4 +338,4 @@ case class CaptchaException(msg:String)  extends Exception(msg)
 /** This exception is throwed if Incapsula blacklisted ip or pc, or blacklisted something else*/
 case class IncapsulaCaptchaIncidentException(msg:String)  extends Exception(msg)
 
-case class HtmlUnitException(msg:String)  extends Exception(msg)
+case class HtmlUnitFailingHttpStatusCodeException(msg:String)  extends Exception(msg)
