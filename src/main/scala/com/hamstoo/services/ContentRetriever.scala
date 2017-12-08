@@ -1,7 +1,7 @@
 package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
-import java.net.URI
+import java.net.{SocketAddress, URI}
 import java.nio.ByteBuffer
 
 import akka.util.ByteString
@@ -9,6 +9,9 @@ import com.gargoylesoftware.htmlunit.html.HtmlPage
 import com.gargoylesoftware.htmlunit.{AjaxController, BrowserVersion, FailingHttpStatusCodeException, WebClient, WebRequest}
 import com.hamstoo.models.Page
 import com.hamstoo.utils.MediaType
+import play.api.libs.ws.ahc.cache.CacheableHttpResponseStatus
+import play.shaded.ahc.org.asynchttpclient.{AsyncHttpClientConfig, HttpResponseStatus}
+import play.shaded.ahc.org.asynchttpclient.uri.Uri
 //import net.ruippeixotog.scalascraper.browser.HtmlUnitBrowser
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
@@ -175,15 +178,22 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
       }
     }
 
-    val response: Try[Response] = retryGetPage[HtmlPage](() => webClient.getPage(url)).map { htmlPage =>
-      val html = htmlPage.asText()
-      val contentByte = html.toCharArray.map(_.toByte)
-      new ResponseBuilder().accumulate(new HttpResponseBodyPart(true) {
-        override def getBodyPartBytes: Array[Byte] = contentByte
-        override def length(): Int = contentByte.length
-        override def getBodyByteBuffer: ByteBuffer = ByteBuffer.allocate(contentByte.length)
-      }).build()
-    }
+    /* The following expression is required:
+      { val htmlPage: HtmlPage=  webClient.getPage(url)
+      htmlPage }
+      because Java class the Scala is not able to infer type when using HtmlPage
+      so block with strict type parametrization is required */
+    val response: Try[Response] = retryGetPage[HtmlPage](() => {
+      val htmlPage: HtmlPage =  webClient.getPage(url)
+      htmlPage }).map { htmlPage =>
+        val html = htmlPage.asText()
+        val contentByte = html.toCharArray.map(_.toByte)
+        new ResponseBuilder().accumulate(new HttpResponseBodyPart(true) {
+          override def getBodyPartBytes: Array[Byte] = contentByte
+          override def length(): Int = contentByte.length
+          override def getBodyByteBuffer: ByteBuffer = ByteBuffer.allocate(contentByte.length)
+          }).accumulate(new CacheableHttpResponseStatus(Uri.create(url), 200, "200", "https"))build()
+      }
 
     Future.fromTry(response).map(r => AhcWSResponse(StandaloneAhcWSResponse(r)))
   }
