@@ -1,34 +1,28 @@
 package com.hamstoo.services
 
-import java.io.{ByteArrayInputStream, IOException, InputStream}
-import java.net.{MalformedURLException, URI}
+import java.io.{ByteArrayInputStream, InputStream}
+import java.net.URI
 import java.nio.ByteBuffer
-import java.util.regex.Pattern
 
-import scala.collection.JavaConverters._
 import akka.util.ByteString
 import com.gargoylesoftware.htmlunit.html.HtmlPage
-import com.gargoylesoftware.htmlunit._
-import org.scalatest.fixture
-import play.api.libs.ws.ahc.{AhcWSResponse, StandaloneAhcWSResponse}
-import play.shaded.ahc.org.asynchttpclient.HttpResponseBodyPart
-import play.shaded.ahc.org.asynchttpclient.Response.ResponseBuilder
-//import com.gargoylesoftware.htmlunit.BrowserVersion
+import com.gargoylesoftware.htmlunit.{AjaxController, BrowserVersion, FailingHttpStatusCodeException, WebClient, WebRequest}
 import com.hamstoo.models.Page
 import com.hamstoo.utils.MediaType
 //import net.ruippeixotog.scalascraper.browser.HtmlUnitBrowser
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
-import org.jsoup.nodes.{Document, Element}
-import play.api.Logger
+import org.jsoup.nodes.Element
+import play.api.libs.ws.ahc.{AhcWSResponse, StandaloneAhcWSResponse}
 import play.api.libs.ws.{WSClient, WSResponse}
+import play.api.Logger
+import play.shaded.ahc.org.asynchttpclient.{HttpResponseBodyPart, Response}
+import play.shaded.ahc.org.asynchttpclient.Response.ResponseBuilder
 
-import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
+import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 import scala.util.matching.Regex
-import ContentRetriever._
 
 /**
   * ContentRetriever companion class.
@@ -37,22 +31,17 @@ object ContentRetriever {
 
   val logger = Logger(classOf[ContentRetriever])
   val titleRgx: Regex = "(?i)<title.*>([^<]+)</title>".r.unanchored
-  // (?i) - ignorecase
-  // .*? - allow (optinally) any characters before
-  // \b - word boundary
-  //%s - variable to be changed by String.format (quoted to avoid regex errors)
-  // \b - word boundary
-  // .*? - allow (optinally) any characters after
+  
+  // %s - variable to be changed by String.format (quoted to avoid regex errors)
   val REGEX_FIND_WORD = ".*%s.*"
-  val incapsulaRgx: Regex =  REGEX_FIND_WORD.format("ncapsula").r.unanchored
-  // If incapsula incident detected and try to use HTMLUnit, then Sitelock captcha appears and HtmlUnit is just hanged
-  // so detect incident ahead
-  val incapsulaIncidentRgx: Regex =  REGEX_FIND_WORD.format(raw"Incapsula\sincident\sID").r.unanchored
-  // standalone Sitelock captcha for case if it raises without Incapsula
-  // Not sure but it seems Sitelock is using Google's reCAPTCHA
-  val sitelockCaptchaRgx: Regex =  REGEX_FIND_WORD.format("Sitelock").r.unanchored
-  val incapsulaWAFRgx: Regex =  REGEX_FIND_WORD.format(raw"content\.incapsula\.com").r.unanchored
-
+  val incapsulaRgx: Regex = REGEX_FIND_WORD.format("ncapsula").r.unanchored
+  // if Incapsula incident detected and trying to use HtmlUnit, then Sitelock Captcha appears and HtmlUnit just hangs
+  // so detect incident ahead of time
+  val incapsulaIncidentRgx: Regex = REGEX_FIND_WORD.format(raw"Incapsula\sincident\sID").r.unanchored
+  // standalone Sitelock Captcha for case when it raises without Incapsula,
+  // not sure but it seems Sitelock is using Google's reCAPTCHA
+  val sitelockCaptchaRgx: Regex = REGEX_FIND_WORD.format("Sitelock").r.unanchored
+  val incapsulaWAFRgx: Regex = REGEX_FIND_WORD.format(raw"content\.incapsula\.com").r.unanchored
 
   /** Make sure the provided String is an absolute link. */
   def checkLink(s: String): String = if (s.isEmpty) s else Try(new URI(s)) match {
@@ -88,6 +77,17 @@ object ContentRetriever {
       case _ => None
     }
   }
+
+  class CaptchaException extends Exception()
+
+  // this exception is thrown when (re)Captcha is detected on a web page
+  case class SitelockException() extends CaptchaException
+
+  // this exception is throw if Incapsula has blacklisted our IP or PC or for some other reason
+  case class IncapsulaIncidentException() extends CaptchaException
+
+  // this exception is thrown if HtmlUnit got a network status code error (even after a few retries)
+  case class HtmlUnitFailingHttpStatusCodeException(msg: String, cause: Throwable) extends Exception(msg, cause)
 }
 
 /**
@@ -139,62 +139,56 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     Future.sequence(loadedFrames).map(lf => (docJsoup.html(), lf.size))
   }
 
-  val MAX_REDIRECTS = 8
-
-
   /**
-    * This method is called if "incapsula" keyword found in page response
-    * Soon new WAFs will be added to be detected
-    * the method uses HtmlUnit testing tool which runs JavaScript scripts
-    * and waits until all scripts are loaded, as well it runs loaded scripts
-    * what provides necessary calculations to bypass WAF
+    * This method is called if "incapsula" keyword found in page response.  Soon new WAFs should added to be detected.
+    * The method uses HtmlUnit *testing* tool which runs JavaScript scripts and waits until all scripts are loaded--
+    * it runs loaded scripts as well.  What provides necessary calculations to bypass WAF.
     */
-  //Todo add check for other WAFs
-  def bypassWAF(url: String): Future[(String, WSResponse)] = {
+  def bypassWAF(url: String): Future[WSResponse] = {
+
     // these settings are important to run JavaScript in loaded page by emulated browser
     val webClient: WebClient = new WebClient(BrowserVersion.EDGE)
     webClient.setAjaxController(new AjaxController(){
       override def processSynchron(page: HtmlPage, request: WebRequest, async: Boolean) = true
     })
-    // this low timeout is required because WAFs can include several redirects and
-    // heavy JavaScripts to be loaded from Wordpress CMS sites (usually used with Incapsula plugin)
-    // dependtly on client/server bandwidth or server capacity (Php sites usually take much resourses)
+
+    // this low timeout is required because WAFs can include several redirects and heavy JavaScripts to be loaded
+    // from Wordpress CMS sites (usually used with Incapsula plugin), it depends on client/server bandwidth and
+    // server capacity (PHP sites in general usually consume lots of resources)
     webClient.waitForBackgroundJavaScript(20000)
-    webClient.getOptions().setJavaScriptEnabled(true)
-    webClient.getOptions().setThrowExceptionOnFailingStatusCode(false);
-    webClient.getOptions().setThrowExceptionOnScriptError(false);
-    webClient.getOptions().setCssEnabled(false)
-    webClient.getOptions().setRedirectEnabled(true)
-    webClient.getOptions().setUseInsecureSSL(true)
+    webClient.getOptions.setJavaScriptEnabled(true)
+    webClient.getOptions.setThrowExceptionOnFailingStatusCode(false);
+    webClient.getOptions.setThrowExceptionOnScriptError(false);
+    webClient.getOptions.setCssEnabled(false)
+    webClient.getOptions.setRedirectEnabled(true)
+    webClient.getOptions.setUseInsecureSSL(true)
 
-    // HtmlUnit throws too many non-critical exceptions
-    // so it is commented now to the moment when new approach of retry for HtmlUnit loading scripts is considered
-    // too many Exceptions probably thrown by HTMLUnit because of some scripts and html inconsistency
-    // because Incapsula has also a plugin for Wordpress engine, which is a source of plenties of errors
-    // which we test on by this url
-    // http://www.arnoldkling.com/blog/does-america-over-incarcerate/
-    def retryGetPage[T](n: Int)(fn: => T): T = {
-         try {
-          fn
-         } catch {
-           case e: FailingHttpStatusCodeException  if n > 1 =>
-             if (n > 1) retryGetPage(n - 1)(fn)
-             else{
-               throw HtmlUnitFailingHttpStatusCodeException(e.getMessage)
-             }
-         }
+    // HtmlUnit throws too many non-critical exceptions so we perform a few retries.  Many Exceptions are probably
+    // thrown by HtmlUnit because of HTML inconsistencies.  Incapsula has also a plugin for Wordpress engine, which
+    // is a source of plenty of errors.  This code can be tested with the following URL: http://www.arnoldkling.com/blog/does-america-over-incarcerate/
+    def retryGetPage[T](fn: () => T, nRetries: Int = 3): Try[T] = Try(fn()).recoverWith {
+      case e: FailingHttpStatusCodeException => {
+        if (nRetries == 0) Failure(HtmlUnitFailingHttpStatusCodeException(e.getMessage, e)) else {
+          logger.info(s"Unable to get URL ${url.take(60)}; ${e.getClass.getName}: ${e.getMessage}; $nRetries retries remaining")
+          retryGetPage(fn, nRetries = nRetries - 1)
+        }
+      }
     }
-    val htmlPage: HtmlPage = retryGetPage[HtmlPage](3)(webClient.getPage(url))
-    val html = htmlPage.asText()
-    val contentByte = html.toCharArray.map(_.toByte)
-    val response = new ResponseBuilder().accumulate(new HttpResponseBodyPart(true){
-      override def getBodyPartBytes: Array[Byte] = contentByte
-      override def length(): Int = contentByte.length
-      override def getBodyByteBuffer: ByteBuffer = ByteBuffer.allocate(contentByte.length)
-    }).build()
 
-    Future.successful(url, AhcWSResponse(StandaloneAhcWSResponse(response)))
+    val response: Try[Response] = retryGetPage[HtmlPage](() => webClient.getPage(url)).map { htmlPage =>
+      val html = htmlPage.asText()
+      val contentByte = html.toCharArray.map(_.toByte)
+      new ResponseBuilder().accumulate(new HttpResponseBodyPart(true) {
+        override def getBodyPartBytes: Array[Byte] = contentByte
+        override def length(): Int = contentByte.length
+        override def getBodyByteBuffer: ByteBuffer = ByteBuffer.allocate(contentByte.length)
+      }).build()
+    }
+
+    Future.fromTry(response).map(r => AhcWSResponse(StandaloneAhcWSResponse(r)))
   }
+
+  val MAX_REDIRECTS = 8
 
   /** This code was formerly part of the 'hamstoo' repo's LinkageService. */
   def digest(url: String): Future[(String, WSResponse)] = {
@@ -222,7 +216,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
                 case _ =>
                   Future.successful((url, res))
               }
-            case _ => checkKnownProblems(url, res).map(_.getOrElse((url, res)))
+            case _ => checkKnownProblems(url, res).map((url, _))
           }
         }
       }
@@ -230,56 +224,53 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     recget(link)
   }
 
-  /** Detects known WAFs and captchas */
-  //Todo optimized order of different WAFs and different Capthas regexis
-  def checkKnownProblems(url: String, res: WSResponse): Future[Option[(String, WSResponse)]] = {
-    res.body.contains("ncapsula") match  {
-      //case s if s.matches(incapsulaRgx.toString())  => // Diabled because it is not working sometimes and passed to next regex case
-      case true =>
+  /** Detects known WAFs and Captchas. */
+  def checkKnownProblems(url: String, res: WSResponse): Future[WSResponse] = res.body match {
 
-        res.body match {
-            // "Sitelock" captcha raised when incapsula suspects crawler
-          case  s if s.matches(sitelockCaptchaRgx.toString()) =>
-            throw CaptchaException ("SiteLock captcha detected")
+    //case body if body.matches(incapsulaRgx.toString()) => // disabled b/c not working; sometimes passes to next regex case
+    case body if body.contains("ncapsula") => body match {
 
-            // "Incapsula incident" is raised if incapsula detected suspected behavior and blacklisted ip or pc, or something else
-          case  s if s.matches(incapsulaIncidentRgx.toString()) =>
-            throw IncapsulaCaptchaIncidentException ("Incapsula incident (Sitelock captcha detected")
+      // "Sitelock" Captcha raised when Incapsula suspects crawler
+      case s if s.matches(sitelockCaptchaRgx.toString) =>
+        Future.failed(SitelockException())
 
-          // if no problems detected except incapsula WAF raised => bypass WAF
-          // html page with Incapsula scripts are small, usually < 1000 chars
-          case s if s.contains("content.incapsula.com") =>
-            bypassWAF(url).map(r => Some(r))
+      // "Incapsula incident" is raised if Incapsula detected suspected behavior and blacklisted ip or pc, or something else
+      case s if s.matches(incapsulaIncidentRgx.toString) =>
+        Future.failed(IncapsulaIncidentException())
 
-            // if no incident detected, no incapsula script detected and no incapsula captcha detected then
-            // it's a probably word "Incapsula" in text jut process in regular way
-          case s if !s.contains("content.incapsula.com") => Future.successful(Some(url, res))
-        }
-        // Todo add popular WAFs detection and invoke HTMLUnit to bypass detected WAF
-        // Todo need to find finger prints of:
-        /*F5 BIG IP WAF,
-          Citrix Netscaler WAF: "ns_af" in cookie
-          Sucuri,
-          Modsecurity,
-          Imperva Incapsula,
-          PHP-IDS (PHP Intrusion  Detection System),
-          Quick Defense,
-          AQTRONIX WebKnight (For IIS and based on ISAPI filters),
-          Barracuda WAF
-          */
-          /*case waf2Rgx(body) =>
-          case waf3Rgx(body) =>
-          case waf4Rgx(body) =>
-          case waf5Rgx(body) =>
-          case waf6Rgx(body) =>
-          case waf7Rgx(body) =>
-          case waf8Rgx(body) =>
-          case waf9Rgx(body) =>*/
+      // if no problems detected except Incapsula WAF raised => bypass WAF
+      // html page with Incapsula scripts are small, usually < 1000 chars
+      case s if s.contains("content.incapsula.com") =>
+        bypassWAF(url)
 
-        // if no WAFs or captchas detected then just process representation
-      case false =>
-        Future.successful (Some(url, res) )
+      // if no incident detected, no Incapsula script detected and no Incapsula Captcha detected then
+      // it's a probably word "Incapsula" in text jut process in regular way
+      case _ => Future.successful(res)
     }
+
+    // TODO: add detection of popular WAFs and invoke HtmlUnit to bypass them when they are detected
+    // TODO: need to find finger prints of the following:
+    /*F5 BIG IP WAF,
+      Citrix Netscaler WAF: "ns_af" in cookie
+      Sucuri,
+      Modsecurity,
+      Imperva Incapsula,
+      PHP-IDS (PHP Intrusion  Detection System),
+      Quick Defense,
+      AQTRONIX WebKnight (For IIS and based on ISAPI filters),
+      Barracuda WAF
+      */
+    /*case waf2Rgx(body) =>
+      case waf3Rgx(body) =>
+      case waf4Rgx(body) =>
+      case waf5Rgx(body) =>
+      case waf6Rgx(body) =>
+      case waf7Rgx(body) =>
+      case waf8Rgx(body) =>
+      case waf9Rgx(body) =>*/
+
+    // if no WAFs or Captchas detected then just process representation
+    case _ => Future.successful(res)
   }
 
   // TODO: do we even need this retrieveHTML function or can we always use retrieveBinary?
@@ -329,10 +320,3 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     byteArray
   }*/
 }
-
-/** This exception is throwed if captcha on webpage detected*/
-case class CaptchaException(msg:String) extends Exception(msg)
-/** This exception is throwed if Incapsula blacklisted ip or pc, or blacklisted something else*/
-case class IncapsulaCaptchaIncidentException(msg:String) extends Exception(msg)
-/** This exception is throwed if HtmlUnit got error network status code and attempted 3 retries*/
-case class HtmlUnitFailingHttpStatusCodeException(msg:String) extends Exception(msg)
