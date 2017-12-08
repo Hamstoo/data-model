@@ -125,10 +125,10 @@ package object utils {
       * encountered.
       */
     def ifOk[T](f: => Future[T]): Future[T] =
-      if (wr.ok) f else Future.failed(new Exception(wr.writeErrors mkString "; "))
+      if (wr.ok) f else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
 
     def failIfError: Future[Unit] =
-      if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors mkString "; "))
+      if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
   }
 
   // MongoDB `binary` indexes have a max size of 1024 bytes.  So to combine a 12-char ID with a byte array
@@ -139,14 +139,36 @@ package object utils {
   val URL_PREFIX_LENGTH = 992
 
   /** Generate an ID to be used for a document in a database collection. */
-  def generateDbId(length: Int): String = Random.alphanumeric take length mkString
+  def generateDbId(length: Int): String = Random.alphanumeric.take(length).mkString
+
+  // if a mark doesn't have a repr (either reprId is in NON_IDS or reprId can't be found in the database) then
+  // use this as its eratingId
+  val NO_REPR_ERATING_ID = "norepr"
+
+  // if any of these strings are longer than Representation.ID_LENGTH it can cause a `marks` collection index to break,
+  // MongoMarksDao.update[Public,Private]ReprId checks for this, see comment on com.hamstoo.utils.URL_PREFIX_LENGTH,
+  // 2017-12-8 update - the offending index has since been removed
+  val FAILED_REPR_ID = "failed"
+  val TIMEOUT_REPR_ID = "timeout"
+  val NONE_REPR_ID = "none"
+  val CAPTCHA_REPR_ID = "captcha"
+  val HTMLUNIT_REPR_ID = "htmlunit"
+
+  // set of IDs that aren't really IDs so that we can filter them out when searching for things with "true" IDs
+  val NON_IDS = Set("", FAILED_REPR_ID, TIMEOUT_REPR_ID, NONE_REPR_ID, CAPTCHA_REPR_ID, HTMLUNIT_REPR_ID,
+                    NO_REPR_ERATING_ID)
+
+  /** Use the private ID when available, o/w use the public ID. */
+  def reconcilePrivPub(priv: Option[String], pub: Option[String]): Option[String] =
+    priv.filterNot(NON_IDS.contains).orElse(pub.filterNot(NON_IDS.contains)).orElse(priv).orElse(pub)
+    //if (priv.exists(NON_IDS.contains) && pub.exists(!NON_IDS.contains(_))) pub.get else priv.orElse(pub)
 
   implicit class ExtendedString(private val s: String) extends AnyVal {
     /**
       * Retrieves first chars of a string as binary sequence. This method exists as a means of constructing
       * binary prefixes of string fields for binary indexes in MongoDB.
       */
-    def binaryPrefix: mutable.WrappedArray[Byte] = s.getBytes take URL_PREFIX_LENGTH
+    def binaryPrefix: mutable.WrappedArray[Byte] = s.getBytes.take(URL_PREFIX_LENGTH)
   }
 
   /**
