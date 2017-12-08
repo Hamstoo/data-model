@@ -166,15 +166,15 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * all tags to qualify.
     */
   def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieve repred marks for user $user and tags $tags")
+    logger.debug(s"Retrieve represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
-      exst = d :~ "$exists" -> true :~ "$ne" -> ""
+      exst = d :~ "$exists" -> true :~ "$nin" -> NON_IDS
       sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
       seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
     } yield {
-      logger.debug(s"${seq.size} repred marks were successfully retrieved")
+      logger.debug(s"${seq.size} represented marks were successfully retrieved")
       seq
     }
   }

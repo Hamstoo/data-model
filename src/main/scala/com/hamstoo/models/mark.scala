@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
-import com.hamstoo.utils.{ExtendedString, generateDbId, INF_TIME, TIME_NOW}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId, reconcilePrivPub}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -209,11 +209,11 @@ case class Mark(
   import Mark._
 
   /**
-    * Use the private repr when available, o/w use the public one. Returning an Option[String] would be more "correct"
-    * here, but returning the empty string just makes things a lot cleaner on the other end.
+    * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
+    * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
-  def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
-  def expectedRating: Option[String] = privExpRating.orElse(pubExpRating)
+  def primaryRepr   :        String  = reconcilePrivPub(privRepr     , pubRepr     ).getOrElse("")
+  def expectedRating: Option[String] = reconcilePrivPub(privExpRating, pubExpRating)
 
   /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
