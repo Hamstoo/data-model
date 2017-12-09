@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
-import com.hamstoo.utils.{ExtendedString, generateDbId, INF_TIME, TIME_NOW}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -33,12 +33,12 @@ import scala.util.matching.Regex
   * @param commentEncoded - markdown converted to HTML; set by class init
   */
 case class MarkData(
-                     subj: String,
-                     url: Option[String],
-                     rating: Option[Double] = None,
+                     override val subj: String,
+                     override val url: Option[String],
+                     override val rating: Option[Double] = None,
                      tags: Option[Set[String]] = None,
                      comment: Option[String] = None,
-                     var commentEncoded: Option[String] = None) {
+                     var commentEncoded: Option[String] = None) extends MDSearchable(subj, url, rating) {
 
   import MarkData._
 
@@ -190,20 +190,22 @@ object TextNodesVisitor {
   *                 `MongoMarksDao.search` so it is easier to have it included here.
   */
 case class Mark(
-                 userId: UUID,
-                 id: String = generateDbId(Mark.ID_LENGTH),
-                 mark: MarkData,
+                 override val userId: UUID,
+                 override val id: String = generateDbId(Mark.ID_LENGTH),
+                 override val mark: MarkData,
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
                  page: Option[Page] = None,
-                 pubRepr: Option[String] = None,       // it's helpful for these fields to be (foreign key'ish)
-                 privRepr: Option[String] = None,      // strings rather than objects so that they can be set to
-                 pubExpRating: Option[String] = None,  // "failed" or "none" if desired (e.g. see
-                 privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
-                 timeFrom: Long = TIME_NOW,
-                 timeThru: Long = INF_TIME,
+                 override val pubRepr: Option[String] = None, // it's helpful for these fields to be (foreign key'ish)
+                 override val privRepr: Option[String] = None, // strings rather than objects so that they can be set to
+                 override val pubExpRating: Option[String] = None, // "failed" or "none" if desired (e.g. see
+                 override val privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
+                 override val timeFrom: Long = TIME_NOW,
+                 override val timeThru: Long = INF_TIME,
                  mergeId: Option[String] = None,
-                 score: Option[Double] = None) {
+                 override val score: Option[Double] = None)
+  extends MSearchable(userId, id, mark, pubRepr, privRepr, pubExpRating, privExpRating, timeFrom, timeThru, score) {
+
   urlPrfx = mark.url map (_.binaryPrefix)
 
   import Mark._
@@ -281,6 +283,68 @@ case class Mark(
   }
 }
 
+//sealed trait MarkDataProduct {
+//  val subj: String
+//  val url: Option[String]
+//  val rating: Option[Double]
+//}
+//
+//sealed trait MarkProduct {
+//  val userId: UUID
+//  val id: String
+//  val mark: MarkDataProduct
+//  val pubRepr: Option[String]
+//  val privRepr: Option[String]
+//  val pubExpRating: Option[String]
+//  val privExpRating: Option[String]
+//  val timeFrom: Long
+//  val timeThru: Long
+//  val score: Option[Double]
+//}
+
+class MDSearchable(val subj: String,
+                   val url: Option[String],
+                   val rating: Option[Double])
+
+object MDSearchable {
+  def apply(subj: String,
+            url: Option[String],
+            rating: Option[Double]): MDSearchable = new MDSearchable(subj, url, rating)
+
+  def unapply(obj: MDSearchable): Option[(String, Option[String], Option[Double])] = {
+    Some((obj.subj, obj.url, obj.rating))
+  }
+}
+
+class MSearchable(val userId: UUID,
+                  val id: String,
+                  val mark: MDSearchable,
+                  val pubRepr: Option[String] = None,
+                  val privRepr: Option[String]= None,
+                  val pubExpRating: Option[String] = None,
+                  val privExpRating: Option[String] = None,
+                  val timeFrom: Long = TIME_NOW,
+                  val timeThru: Long = INF_TIME,
+                  val score: Option[Double] = None)
+
+object MSearchable {
+  def apply(userId: UUID,
+            id: String,
+            mark: MDSearchable,
+            pubRepr: Option[String] = None,
+            privRepr: Option[String] = None,
+            pubExpRating: Option[String] = None,
+            privExpRating: Option[String] = None,
+            timeFrom: Long = TIME_NOW,
+            timeThru: Long = INF_TIME,
+            score: Option[Double] = None): MSearchable =
+    new MSearchable(userId, id, mark, pubRepr, privRepr, pubExpRating, privExpRating, timeFrom, timeThru, score)
+
+  def unapply(arg: MSearchable):
+  Option[(UUID, String, MDSearchable, Option[String], Option[String], Option[String], Option[String], Long, Long, Option[Double])] =
+    Some((arg.userId, arg.id, arg.mark, arg.pubRepr, arg.privRepr, arg.pubExpRating, arg.privExpRating, arg.timeFrom, arg.timeThru, arg.score))
+}
+
 object Mark extends BSONHandlers {
   val logger: Logger = Logger(classOf[Mark])
 
@@ -348,6 +412,8 @@ object Mark extends BSONHandlers {
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
 
+  implicit val mDSearchable: BSONDocumentHandler[MDSearchable] = Macros.handler[MDSearchable]
+  implicit val mSearchable: BSONDocumentHandler[MSearchable] = Macros.handler[MSearchable]
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
