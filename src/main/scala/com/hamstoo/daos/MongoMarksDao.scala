@@ -4,7 +4,7 @@ import java.nio.file.Files
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
-import com.hamstoo.models.{Mark, MarkData, Page, Representation}
+import com.hamstoo.models._
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
 import reactivemongo.api.DefaultDB
@@ -14,8 +14,8 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -165,14 +165,14 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * Retrieves all current marks with representations for the user, constrained by a list of tags. Mark must have
     * all tags to qualify.
     */
-  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
+  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[MSearchable]] = {
     logger.debug(s"Retrieve repred marks for user $user and tags $tags")
     for {
       c <- dbColl()
       exst = d :~ "$exists" -> true :~ "$ne" -> ""
       sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
-      seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
+      seq <- c.find(sel1).coll[MSearchable, Seq]()
     } yield {
       logger.debug(s"${seq.size} repred marks were successfully retrieved")
       seq
@@ -204,7 +204,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * Executes a search using text index with sorting in user's marks, constrained by tags. Mark state must be
     * current and have all tags to qualify.
     */
-  def search(user: UUID, query: String, tags: Set[String]): Future[Seq[Mark]] = {
+  def search(user: UUID, query: String, tags: Set[String]): Future[Seq[MSearchable]] = {
     logger.debug(s"Searching for marks for user $user by text query '$query' and tags $tags")
     for {
       c <- dbColl()
@@ -215,9 +215,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
       searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
-      seq <- c.find(sel1 :~ searchScoreSelection,
-                    searchExcludedFields :~ searchScoreProjection)/*.sort(searchScoreProjection)*/
-        .coll[Mark, Seq]()
+      seq <- c.find(sel1 :~ searchScoreSelection, searchScoreProjection)/*.sort(searchScoreProjection)*/
+        .coll[MSearchable, Seq]()
 
     } yield {
       logger.debug(s"${seq.size} marks were successfully retrieved")

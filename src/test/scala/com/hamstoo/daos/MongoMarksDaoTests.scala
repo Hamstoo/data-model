@@ -1,6 +1,8 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.{Mark, MarkData}
+import java.util.UUID
+
+import com.hamstoo.models.{MDSearchable, MSearchable, Mark, MarkData}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.INF_TIME
@@ -17,8 +19,8 @@ class MongoMarksDaoTests
 
   import com.hamstoo.utils.DataInfo._
 
-  val uuid1 = constructUserId()
-  val uuid2 = constructUserId()
+  val uuid1: UUID = constructUserId()
+  val uuid2: UUID = constructUserId()
 
   val tagSet = Some(Set("tag1, tag2"))
   val cmt = Some("Query")
@@ -62,7 +64,17 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) retrieve represented marks by uuid and tag set" in {
-    marksDao.retrieveRepred(uuid2, tagSet.get).futureValue.map(_.id) shouldEqual Seq(m2.id)
+    val ms2Stub = MSearchable(
+      m2.userId,
+      m2.id,
+      mark = MDSearchable(m2.mark.subj, m2.mark.url, None),
+      pubRepr = m2.pubRepr,
+      timeFrom = m2.timeFrom)
+
+    val mSearchable = marksDao.retrieveRepred(uuid2, tagSet.get).futureValue
+    mSearchable.map(_.userId) shouldEqual Seq(ms2Stub.userId)
+
+    mSearchable.head shouldBe a [MSearchable]
   }
 
   it should "(UNIT) retrieve mark tags by uuid" in {
@@ -70,9 +82,26 @@ class MongoMarksDaoTests
   }
 
   // depend on index text query (FWC - wtf does this comment mean, and why is it relevant?)
-  it should "(UNIT) search marks by uuid, query and tags" in {
-    val m1Stub = m1.copy(mark = MarkData(m1.mark.subj, m1.mark.url), aux = None)
-    marksDao.search(uuid1, cmt.get, tagSet.get).futureValue shouldEqual Seq(m1Stub)
+//  it should "(UNIT) search fully populated marks by uuid, query and tags" in {
+//    val m1Stub = m1.copy(mark = MarkData(m1.mark.subj, m1.mark.url), aux = None)
+//    marksDao.search(uuid1, cmt.get, tagSet.get).futureValue shouldEqual Seq(m1Stub)
+//  }
+
+  it should "(UNIT) search partially populated marks by uuid, query and tags" in {
+    val ms1Stub = MSearchable(
+      m1.userId,
+      m1.id,
+      mark = MDSearchable(m1.mark.subj, m1.mark.url, None),
+      timeFrom = m1.timeFrom,
+      score = Some(1.0))
+
+    val searchRes = marksDao.search(uuid1, cmt.get, tagSet.get).futureValue.head
+
+    searchRes.userId shouldEqual ms1Stub.userId
+    searchRes.id shouldEqual ms1Stub.id
+    searchRes.mark.subj shouldEqual ms1Stub.mark.subj
+    searchRes.mark.url shouldEqual ms1Stub.mark.url
+    searchRes.score shouldEqual ms1Stub.score
   }
 
   it should "(UNIT) update marks by uuid, id, markData" in {
