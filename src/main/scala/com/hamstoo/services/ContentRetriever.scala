@@ -177,12 +177,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
         }
       }
     }
-
-    /* The following expression is required:
-      { val htmlPage: HtmlPage=  webClient.getPage(url)
-      htmlPage }
-      because Java class the Scala is not able to infer type when using HtmlPage
-      so block with strict type parametrization is required */
+    
     val response: Try[Response] = retryGetPage[HtmlPage](() => webClient.getPage(url).asInstanceOf[HtmlPage]).map { htmlPage =>
         val html = htmlPage.asText()
         val contentByte = html.toCharArray.map(_.toByte)
