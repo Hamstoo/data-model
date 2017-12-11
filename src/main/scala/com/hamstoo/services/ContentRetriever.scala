@@ -227,7 +227,18 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     recget(link)
   }
 
-  /** Detects known WAFs and Captchas. */
+  /**
+    * Detects known WAFs and Captchas.
+    *
+    * 2017-12-8 via Slack
+    * Alex - our Incapsula source is useless without captcha cracker because prod ip is already under captcha
+    * Fred - We can switch prod ip. Do you think that would do it? The Incapsula source should work from my local
+    *   machine right?
+    * Alex - If you tried before this website unsuccessfully than I think it won’t run
+    *   I am afraid that there are many cases after which incapsula raises captcha
+    *   For example, if user requests same website twice during 1 or two minutes
+    *   So Incapsula will block the website during testing or watching how our source works
+    */
   def checkKnownProblems(url: String, res: WSResponse): Future[WSResponse] = res.body match {
 
     //case body if body.matches(incapsulaRgx.toString()) => // disabled b/c not working; sometimes passes to next regex case
