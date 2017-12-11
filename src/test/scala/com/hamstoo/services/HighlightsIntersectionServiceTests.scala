@@ -1,19 +1,24 @@
 package com.hamstoo.services
 
+import java.util.UUID
+
 import com.hamstoo.daos.MongoHighlightDao
-import com.hamstoo.models.Highlight
-import com.hamstoo.test.FlatSpecWithMatchers
-import com.hamstoo.utils.DataInfo
+import com.hamstoo.models.{Highlight, PageCoord}
+import com.hamstoo.models.Highlight.{PositionElement => PosElem}
+import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
+import com.hamstoo.utils.DataInfo._
+import org.mockito.ArgumentMatchers.{any, anyString}
+import org.mockito.Mockito.when
+import org.mockito.invocation.InvocationOnMock
 import org.scalatest.mockito.MockitoSugar
 
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 /**
   * Tests of highlights intersection code.
   */
-class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with MockitoSugar {
-
-  import com.hamstoo.utils.DataInfo._
+class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with MockitoSugar with FutureHandler {
 
   val hlightsDao: MongoHighlightDao = mock[MongoHighlightDao]
   val hlIntersectionSvc: HighlightsIntersectionService = new HighlightsIntersectionService(hlightsDao)
@@ -42,13 +47,13 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mocki
 
   def makeHighlight(fromEl: Int, toEl: Int, initIndx: Int, endLen: Int): Highlight = {
     assert(fromEl <= toEl)
-    val slice: Seq[Highlight.PositionElement] =
-      htmlMock slice(fromEl, toEl + 1) map { case (p, t) => Highlight.PositionElement(p, t) }
-    val els: Seq[Highlight.PositionElement] = {
+    val slice: Seq[PosElem] =
+      htmlMock slice(fromEl, toEl + 1) map { case (p, t) => PosElem(p, t) }
+    val els: Seq[PosElem] = {
       val h = slice.head
-      val wh = Highlight.PositionElement(h.path, h.text substring initIndx) +: slice.tail
+      val wh = PosElem(h.path, h.text substring initIndx) +: slice.tail
       val l = wh.last
-      wh.init :+ Highlight.PositionElement(l.path, l.text substring(0, endLen))
+      wh.init :+ PosElem(l.path, l.text substring(0, endLen))
     }
     Highlight(
       constructUserId(),
@@ -59,19 +64,19 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mocki
 
   "HighlightIntersectionService" should "(UNIT) merge same-element pieces of text in a highlight" in {
 
-    val elementsWithRepetitions: Seq[Highlight.PositionElement] =
-      Highlight.PositionElement(paths.head, texts.head) ::
-        Highlight.PositionElement(paths(1), texts(1).substring(0, 40)) ::
-        Highlight.PositionElement(paths(1), texts(1).substring(40)) ::
-        Highlight.PositionElement(paths(2), texts(2).substring(0, 30)) ::
-        Highlight.PositionElement(paths(2), texts(2).substring(30)) ::
-        Highlight.PositionElement(paths(3), texts(3)) :: Nil
+    val elementsWithRepetitions: Seq[PosElem] =
+      PosElem(paths.head, texts.head) ::
+      PosElem(paths(1), texts(1).substring(0, 40)) ::
+      PosElem(paths(1), texts(1).substring(40)) ::
+      PosElem(paths(2), texts(2).substring(0, 30)) ::
+      PosElem(paths(2), texts(2).substring(30)) ::
+      PosElem(paths(3), texts(3)) :: Nil
 
-    val mergedElems: Seq[Highlight.PositionElement] =
-      Highlight.PositionElement(paths.head, texts.head) ::
-        Highlight.PositionElement(paths(1), texts(1)) ::
-        Highlight.PositionElement(paths(2), texts(2)) ::
-        Highlight.PositionElement(paths(3), texts(3)) :: Nil
+    val mergedElems: Seq[PosElem] =
+      PosElem(paths.head, texts.head) ::
+      PosElem(paths(1), texts(1)) ::
+      PosElem(paths(2), texts(2)) ::
+      PosElem(paths(3), texts(3)) :: Nil
 
     hlIntersectionSvc mergeSameElems elementsWithRepetitions shouldEqual mergedElems
   }
@@ -217,5 +222,41 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mocki
         es.head.copy(text = es.head.text.substring(40)) +: es.tail))
 
     hlIntersectionSvc.mergeSameElems(sliced.pos.elements) shouldEqual highlight.pos.elements
+  }
+
+  it should "(UNIT) case 11: issue #215 (and #178)" in {
+
+    val elems0 = Seq(
+      PosElem("/html/body/div[6]/div/div/div/article/div/p[23]", "So be wary if you hear people within the "),
+      PosElem("/html/body/div[6]/div/div/div/article/div/p[23]/a", "media bubble"),
+      PosElem("/html/body/div[6]/div/div/div/article/div/p[23]/a[2]/sup", "13"),
+      PosElem("/html/body/div[6]/div/div/div/article/div/p[23]", " assert that “everyone” presumed Clinton was"))
+
+    val elems1 = Seq(
+      PosElem("/html/body/div[6]/div/div/div/article/div/p[23]", "linton wa"),
+      PosElem("/html/body/div[6]/div/div/div/article/div/p[23]", "s sure to win. Instead, that presumption reflected elite groupthink — and it came "),
+      PosElem("/html/body/div[6]/div/div/div/article/div/p[23]/i", "despite"),
+      PosElem("/html/body/div[6]/div/div/div/article/div/p[23]", " the polls as much as "),
+      PosElem("/html/body/div[6]/div/div/div/article/div/p[23]/i[2]", "because of"),
+      PosElem("/html/body/div[6]/div/div/div/article/div/p[23]", " the polls"))
+    
+    val pos0 = Highlight.Position(elems0, 1)
+    val pos1 = Highlight.Position(elems1, 91)
+    
+    val hl0 = Highlight(constructUserId(), markId = "case11markId", pos = pos0, preview = Highlight.Preview("", "", ""))
+    val hl1 = Highlight(      hl0.usrId  , markId =    hl0.markId , pos = pos1, preview = Highlight.Preview("", "", ""))
+
+    // these are the only 2 methods of hlightsDao that should be invoked, a NPE will occur if others are invoked also
+    when(hlightsDao.retrieveByMarkId(any[UUID], anyString())).thenReturn(Future.successful(Seq(hl0)))
+    when(hlightsDao.update(any[UUID], anyString, any[Highlight.Position],
+                           any[Highlight.Preview], any[Option[PageCoord]]))
+      .thenAnswer { invocation: InvocationOnMock =>
+        Future.successful(hl0.copy(pos = invocation.getArgument[Highlight.Position](2)))
+      }
+
+    val merged = hlIntersectionSvc.add(hl1).futureValue
+
+    true shouldBe false
+
   }
 }
