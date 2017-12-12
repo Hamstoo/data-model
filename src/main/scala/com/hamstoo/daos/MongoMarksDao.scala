@@ -33,7 +33,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
     Await.result(for {
       c <- dbColl()
-      _ = logger.info(s"Performing data migration for `marks` collection")
+      _ = logger.info(s"Performing data migration for `entries` collection")
       sel = d :~ "$where" -> s"Object.bsonsize({$URLPRFX:this.$URLPRFX})>$URL_PREFIX_LENGTH+19"
       longPfxed <- c.find(sel).coll[Mark, Seq]()
       _ = logger.info(s"Updating ${longPfxed.size} `Mark.urlPrfx`s to length $URL_PREFIX_LENGTH bytes")
@@ -41,7 +41,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
           c.update(d :~ ID -> m.id :~ TIMEFROM -> m.timeFrom, d :~ "$set" -> (d :~ URLPRFX -> m.urlPrfx))
       }}
     } yield (), 373 seconds)
-  } else logger.info(s"Skipping data migration for `marks` collection")
+  } else logger.info(s"Skipping data migration for `entries` collection")
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
