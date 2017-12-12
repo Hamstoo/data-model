@@ -63,84 +63,91 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
     }
   } yield h // return produced, updated, or existing highlight
 
-  /** Recursively joins same-element text pieces of a highlight. */
+  /** Recursively joins same-XPath-elements to ensure there are no consecutive elements with the same XPath. */
   def mergeSameElems(
       es: Seq[Highlight.PositionElement],
       acc: Seq[Highlight.PositionElement] = Nil): Seq[Highlight.PositionElement] = {
-    if (es.size < 2) return es ++ acc reverse
-    val t = es.tail
-    if (es.head.path == t.head.path) mergeSameElems(es.head.copy(text = es.head.text + t.head.text) +: t.tail, acc)
-    else mergeSameElems(t, es.head +: acc)
+    if (es.size < 2) (es ++ acc).reverse else {
+      val t = es.tail
+      if (es.head.path == t.head.path) mergeSameElems(es.head.copy(text = es.head.text + t.head.text) +: t.tail, acc)
+      else mergeSameElems(t, es.head +: acc)
+    }
   }
 
-  /** Merges two positioning sequences and previews of two intersecting highlights. */
-  def union(hlA: Highlight, hlB: Highlight): (Highlight.Position, Highlight.Preview, Option[PageCoord]) = {
-    val posA: Highlight.Position = hlA.pos
-    val posB: Highlight.Position = hlB.pos
-    val elsA = posA.elements
-    val elsB = posB.elements
-    val pthsA: Seq[String] = elsA.map(_.path)
-    val pthsB: Seq[String] = elsB.map(_.path)
+  implicit class ExtendedPosition0(private val second: Highlight.Position) /*extends AnyVal*/ {
 
-    // look for longest paths sequence that is a tail of position A and a start of position B
-    val intersection: Seq[String] = pthsA.tails find (pthsB startsWith _) get
-
-    val elsUnion: Seq[Highlight.PositionElement] = {
-      // if intersection is longer than single element, then drop last of heading highlight and first n - 1
-      // intersecting elements of trailing highlight
-      if (intersection.size > 1) elsA.init ++ elsB.drop(intersection.size - 1)
-      // otherwise merge by concatenating parts of the same element text
-      else {
-        val text = elsA.last.text.take(posB.initIndex - (if (elsA.length > 1) 0 else posA.initIndex)) + elsB.head.text
-        val element = elsB.head.copy(text = text)
-        elsA.init ++ (element +: elsB.tail)
-      }
+    /** Returns a new Highlight.Position consisting of elements of `first` that overlap w/ start of `second`. */
+    def startsWith(first: Highlight.Position) = Highlight.Position {
+      first.elements.tails.find { _.zip(second.elements).forall { case (f, s) => // first/second elements
+        f.path == s.path &&
+        f.index <= s.index && // first must start before second
+        f.index + f.text.length >= s.index && // first must stop after or at where second starts (a.k.a. overlap)
+        f.index + f.text.length <= s.index + s.text.length // first must stop before second (o/w second would be subseq)
+      }}.get // rely on the empty tail always forall'ing to true if a non-empty tail does not
     }
+  }
+
+  /**
+    * Merges two positioning sequences and previews of two intersecting highlights.  At this point we know that
+    * hlA appears before, and overlaps with, hlB.  This is different from how A and B are used in the other methods
+    * of this class.
+    */
+  def union(hlA: Highlight, hlB: Highlight): (Highlight.Position, Highlight.Preview, Option[PageCoord]) = {
+
+    // look for longest paths sequence that is a tail of highlight A and a start of highlight B
+    val intersection = hlB.pos.startsWith(hlA.pos).elements
+
+    val tailB = hlB.pos.elements.drop(intersection.size - 1)
+
+    // eA and eB are the same XPath node, so join them
+    val eA = hlA.pos.elements.last
+    val eB = tailB.head
+    val joinedText = eA.text + eB.text.substring(eA.index + eA.text.length - eB.index, eB.text.length)
+    val joinedElem: Highlight.PositionElement = eA.copy(text = joinedText) // use eA's `index`
+
+    // drop last element of highlight A (which could include only part of that element's text while highlight B is
+    // guaranteed to include more) and first n - 1 intersecting elements of highlight B
+    val elsUnion = hlA.pos.elements.init ++ Seq(joinedElem) ++ tailB.tail
 
     val prvUnion = Highlight.Preview(hlA.preview.lead, ("" /: elsUnion) (_ + _.text), hlB.preview.tail)
-    (Highlight.Position(elsUnion, posA.initIndex), prvUnion, hlA.pageCoord.orElse(hlB.pageCoord))
+    (Highlight.Position(elsUnion), prvUnion, hlA.pageCoord.orElse(hlB.pageCoord))
   }
 
   /** Checks whether one position is a subset of another. */
   def isSubset(posA: Highlight.Position, posB: Highlight.Position): Int = {
-    val esA: Seq[Highlight.PositionElement] = posA.elements
-    val esB: Seq[Highlight.PositionElement] = posB.elements
-    val psA: Seq[String] = esA.map(_.path)
-    val psB: Seq[String] = esB.map(_.path)
-    val setA: Set[String] = psA.toSet
-    val setB: Set[String] = psB.toSet
-    val headDif: Boolean = psA.head != psB.head
-    val lastDif: Boolean = psA.last != psB.last
-    lazy val frstIndxComp: Int = posA.initIndex compareTo posB.initIndex
-    /* compare indexes of last characters in two highlights: */
-    lazy val lastIndxComp: Int = esA.last.text.length + (if (esA.size > 1) 0 else posA.initIndex) compareTo
-      esB.last.text.length + (if (esB.size > 1) 0 else posB.initIndex)
-    /* test if sets of paths are subsets and whether edge elements completely overlap: */
-    val subsetAofB: Boolean =
-      (setA subsetOf setB) && (headDif || frstIndxComp >= 0) && (lastDif || lastIndxComp <= 0)
-    lazy val subsetBofA: Boolean =
-      (setB subsetOf setA) && (headDif || frstIndxComp <= 0) && (lastDif || lastIndxComp >= 0)
+
+    implicit class ExtendedPosition1(private val inner: Highlight.Position) /*extends AnyVal*/ {
+
+      /** Very similar to ExtendedPosition0.startsWith, but some important minor differences. */
+      def isSubseq(outer: Highlight.Position): Boolean = {
+        outer.elements.tails.exists { tail => tail.size >= inner.elements.size &&
+          tail.zip(inner.elements).forall { case (o, i) => // outer/inner elements
+            o.path == i.path &&
+            o.index <= i.index && // outer must start before inner
+            o.index + o.text.length >= i.index + i.text.length // outer must stop after inner
+        }}
+      }
+    }
+
+    // test if sets of paths are subsets and whether edge elements completely overlap
+    val subsetAofB: Boolean = posA.isSubseq(posB)
+    val subsetBofA: Boolean = posB.isSubseq(posA)
     if (subsetAofB) -1 else if (subsetBofA) 1 else 0
   }
 
-  /** Checks if two highlights overlap by checking xpath lists intersection for text overlaps. */
+  /**
+    * Checks if two highlights overlap by checking XPath lists intersection.
+    *
+    * @return  0 if no overlap
+    *          1 if    overlap with A before B
+    *         -1 if    overlap with B before A
+    */
   def isEdgeIntsc(posA: Highlight.Position, posB: Highlight.Position): Int = {
-    val elemsA: Seq[Highlight.PositionElement] = posA.elements
-    val elemsB: Seq[Highlight.PositionElement] = posB.elements
-    val pathsA: Seq[String] = elemsA.map(_.path)
-    val pathsB: Seq[String] = elemsB.map(_.path)
-    /* look for sequences of paths that are tails of one position and start of another: */
-    lazy val fwd: Seq[String] = pathsA.tails find (pathsB startsWith _) get
-    lazy val bck: Seq[String] = pathsB.tails find (pathsA startsWith _) get
-    lazy val fwdIndxOverlap: Boolean =
-      elemsA.last.text.length + (if (elemsA.length > 1) 0 else posA.initIndex) >= posB.initIndex
-    lazy val bckIndxOverlap: Boolean =
-      elemsB.last.text.length + (if (elemsB.length > 1) 0 else posB.initIndex) >= posA.initIndex
-    /* test if matching sequences aren't empty and if edge char indexes overlap in case of one element intersection: */
-    lazy val cont: Boolean =
-      fwd.size > 1 || fwd.size == 1 && fwdIndxOverlap && (if (elemsA.length == 1) bckIndxOverlap else true)
-    lazy val prep: Boolean =
-      bck.size > 1 || bck.size == 1 && bckIndxOverlap && (if (elemsB.length == 1) fwdIndxOverlap else true)
+
+    // look for sequences of paths that are tails of one Position and start of another
+    val cont: Boolean = posB.startsWith(posA).nonEmpty
+    val prep: Boolean = posA.startsWith(posB).nonEmpty
+
     if (cont) 1 else if (prep) -1 else 0
   }
 }

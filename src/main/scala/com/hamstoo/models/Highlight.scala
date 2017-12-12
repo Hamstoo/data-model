@@ -44,11 +44,21 @@ object Highlight extends BSONHandlers with AnnotationInfo {
 
   implicit val fmt: OFormat[Preview] = Json.format[Preview]
 
-  /** XML XPath and text located at that path. */
-  case class PositionElement(path: String, text: String)
+  /**
+    * XML XPath and text located at that path.  `index` is the character index where the highlighted text
+    * begins relative to the text of XPath *and all of its descendant nodes*.  So if we have the following HTML
+    * `<p>Start<span>middle</span>finish</p>` and the user highlights "efin" then we'll have the following two
+    * elements: [
+    *   {"path": "body/p/span", "text": "e"  , "index": 5},
+    *   {"path": "body/p"     , "text": "fin", "index": 11
+    * ]
+    */
+  case class PositionElement(path: String, text: String, index: Int)
 
-  /** A highlight can stretch over a series of XPaths.  `initIndex` is the `startOffset` character in the first one. */
-  case class Position(elements: Seq[PositionElement], initIndex: Int) extends Positions
+  /** A highlight can stretch over a series of XPaths. */
+  case class Position(elements: Seq[PositionElement]) extends Positions {
+    def nonEmpty: Boolean = elements.nonEmpty
+  }
 
   /** Text that occurs before and after the highlighted text, along with the highlighted `text` itself. */
   case class Preview(lead: String, text: String, tail: String)
@@ -57,7 +67,6 @@ object Highlight extends BSONHandlers with AnnotationInfo {
 
   val PATH: String = nameOf[PositionElement](_.path)
   val TEXT: String = nameOf[PositionElement](_.text)
-  val INDX: String = nameOf[Position](_.initIndex)
   val PRVW: String = nameOf[Highlight](_.preview)
   val LEAD: String = nameOf[Preview](_.lead)
   val PTXT: String = nameOf[Preview](_.text)
