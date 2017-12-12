@@ -59,7 +59,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     Index(PRIVESTARS -> Ascending :: Nil, partialFilter = Some(d :~ PRVREPR -> (d :~ "$exists" -> true))) %
       s"bin-$PRIVESTARS-1-partial-$PRVREPR" ::
     // text index (there can be only one per collection)
-    Index(SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) % s"txt-$SUBJx-$TAGSx-$COMNTx" ::
+    Index(USR -> Ascending :: TIMETHRU -> Ascending :: SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) %
+      s"bin-$USR-1-$TIMETHRU-1--txt-$SUBJx-$TAGSx-$COMNTx" ::
     Index(TAGSx -> Ascending :: Nil) % s"bin-$TAGSx-1" ::
     Nil toMap;
   Await.result(dbColl() map (_.indexesManager.ensure(indxs)), 389 seconds)
@@ -200,7 +201,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   // exclude these fields from the returned results of search-related methods to conserve memory during search
   // TODO: implement a MSearchable base class so that users know they're dealing with a partially populated Mark
   val searchExcludedFields: BSONDocument = d :~ (PAGE -> 0)  :~ (URLPRFX -> 0) :~ (AUX -> 0) :~
-    (MERGEID -> 0) :~ (TAGSx -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
+    (MERGEID -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
 
   /**
     * Executes a search using text index with sorting in user's marks, constrained by tags. Mark state must be
@@ -211,19 +212,19 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     for {
       c <- dbColl()
       sel0 = d :~ USR -> user :~ curnt
-      sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
 
       // this projection doesn't have any effect without this selection
       searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
       searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
-      seq <- c.find(sel1 :~ searchScoreSelection,
+      seq <- c.find(sel0 :~ searchScoreSelection,
                     searchExcludedFields :~ searchScoreProjection)/*.sort(searchScoreProjection)*/
         .coll[Mark, Seq]()
 
     } yield {
-      logger.debug(s"${seq.size} marks were successfully retrieved")
-      seq
+      val filtered = seq.filter { m => tags.forall(t => m.mark.tags.exists(_.contains(t))) }
+      logger.info(s"${filtered.size} marks were successfully retrieved (${seq.size - filtered.size} were filtered out per their labels)")
+      filtered
     }
   }
 
