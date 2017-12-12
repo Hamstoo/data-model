@@ -47,9 +47,9 @@ object AnnotationTests {
 
     val noteSeq: Seq[InlineNote] = Seq(c1, c2, c3)
 
-    val h1 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("", "", ""))
-    val h2 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.7, 0.6)), preview = Highlight.Preview("", "", ""))
-    val h3 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.9, 0.5)), preview = Highlight.Preview("", "", ""))
+    val h1 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("", "", ""))
+    val h2 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), pageCoord = Some(PageCoord(0.7, 0.6)), preview = Highlight.Preview("", "", ""))
+    val h3 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), pageCoord = Some(PageCoord(0.9, 0.5)), preview = Highlight.Preview("", "", ""))
 
     val highlightSeq: Seq[Highlight] = Seq(h1, h2, h3)
   }
@@ -62,9 +62,9 @@ object AnnotationTests {
 
     val noteSeq: Seq[InlineNote] = Seq(c1, c2, c3)
 
-    val h1 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), preview = Highlight.Preview("", "", ""))
-    val h2 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), preview = Highlight.Preview("", "", ""))
-    val h3 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), pageCoord = Some(PageCoord(0.9, 0.5)), preview = Highlight.Preview("", "", ""))
+    val h1 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), preview = Highlight.Preview("", "", ""))
+    val h2 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), preview = Highlight.Preview("", "", ""))
+    val h3 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), pageCoord = Some(PageCoord(0.9, 0.5)), preview = Highlight.Preview("", "", ""))
 
     val highlightSeq: Seq[Highlight] = Seq(h1, h2, h3)
   }
@@ -77,9 +77,9 @@ object AnnotationTests {
 
     val noteSeq: Seq[InlineNote] = Seq(c1, c2, c3)
 
-    val h1 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), preview = Highlight.Preview("", "", ""))
-    val h2 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), preview = Highlight.Preview("", "", ""))
-    val h3 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil, 0), preview = Highlight.Preview("", "", ""))
+    val h1 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), preview = Highlight.Preview("", "", ""))
+    val h2 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), preview = Highlight.Preview("", "", ""))
+    val h3 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), preview = Highlight.Preview("", "", ""))
 
     val highlightSeq: Seq[Highlight] = Seq(h1, h2, h3)
 
