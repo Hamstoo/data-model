@@ -50,14 +50,14 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
     // findMissingReprs indexes
-    Index(PUBREPR -> Ascending :: Nil) % s"bin-$PUBREPR-1" ::
-    Index(PRVREPR -> Ascending :: Nil, partialFilter = Some(d :~ PAGE -> (d :~ "$exists" -> true))) %
-      s"bin-$PRVREPR-1-partial-$PAGE" ::
+    Index(PUBREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt)) % s"bin-$PUBREPR-1-partial-$TIMETHRU" ::
+    Index(PRVREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PAGE -> (d :~ "$exists" -> true))) %
+      s"bin-$PRVREPR-1-partial-$TIMETHRU-$PAGE" ::
     // findMissingExpectedRatings (partial) indexes
-    Index(PUBESTARS -> Ascending :: Nil, partialFilter = Some(d :~ PUBREPR -> (d :~ "$exists" -> true))) %
-      s"bin-$PUBESTARS-1-partial-$PUBREPR" ::
-    Index(PRIVESTARS -> Ascending :: Nil, partialFilter = Some(d :~ PRVREPR -> (d :~ "$exists" -> true))) %
-      s"bin-$PRIVESTARS-1-partial-$PRVREPR" ::
+    Index(PUBESTARS -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PUBREPR -> (d :~ "$exists" -> true))) %
+      s"bin-$PUBESTARS-1-partial-$TIMETHRU-$PUBREPR" ::
+    Index(PRIVESTARS -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> true))) %
+      s"bin-$PRIVESTARS-1-partial-$TIMETHRU-$PRVREPR" ::
     // text index (there can be only one per collection)
     Index(USR -> Ascending :: TIMETHRU -> Ascending :: SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) %
       s"bin-$USR-1-$TIMETHRU-1--txt-$SUBJx-$TAGSx-$COMNTx" ::
@@ -436,13 +436,14 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       c <- dbColl()
 
       // selPub and selPriv must be consistent with Mark.representablePublic/Private
-      selPub = d :~ PUBREPR -> (d :~ "$exists" -> false)
+      selPub = d :~ curnt :~ PUBREPR -> (d :~ "$exists" -> false)
 
       // we might leave a Page attached to a mark, if for example the processing of that page fails
       // (see repr-engine's MongoClient.receive in the FailedProcessing case)
-      selPriv = d :~ PRVREPR -> (d :~ "$exists" -> false) :~
-                     PAGE -> (d :~ "$exists" -> true)
+      selPriv = d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> false) :~
+                              PAGE -> (d :~ "$exists" -> true)
 
+      // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
       sel = d :~ "$or" -> Seq(selPub, selPriv) // Seq gets automatically converted to BSONArray
       //_ = logger.info(BSONDocument.pretty(sel))
       seq <- c.find(sel).coll[Mark, Seq](n)
@@ -463,8 +464,10 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     logger.debug("Finding marks with missing expected ratings")
     for {
       c <- dbColl()
-      sel = d :~ "$or" -> Seq(d :~ PUBESTARS -> (d :~ "$exists" -> false) :~ PUBREPR -> (d :~ "$exists" -> true),
-                              d :~ PRIVESTARS -> (d :~ "$exists" -> false) :~ PRVREPR -> (d :~ "$exists" -> true))
+      sel = d :~ "$or" ->
+        Seq(d :~ curnt :~  PUBESTARS -> (d :~ "$exists" -> false) :~ PUBREPR -> (d :~ "$exists" -> true),
+            d :~ curnt :~ PRIVESTARS -> (d :~ "$exists" -> false) :~ PRVREPR -> (d :~ "$exists" -> true))
+      //_ = logger.info(BSONDocument.pretty(sel))
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
       logger.debug(s"${seq.size} marks with missing E[rating]s were retrieved")

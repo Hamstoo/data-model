@@ -87,13 +87,16 @@ class MongoMarksDaoTests
     marksDao.isDeleted(uuid1, m1.mark.url.get).futureValue shouldEqual true
   }
 
-  it should "(UNIT) find marks with missing reprs, both current and not" in {
-    marksDao.findMissingReprs(-1).futureValue.filter(_.userId == uuid1).map(_.id) shouldEqual Seq(m1.id, m1.id)
+  it should "(UNIT) find marks with missing reprs, both current and not (update: no longer finding non-current)" in {
+    marksDao.findMissingReprs(-1).futureValue.map(_.id) shouldEqual Seq(m3.id)
   }
 
   it should "(UNIT) find marks with missing reprs, and be able to limit the quantity returned" in {
-    marksDao.findMissingReprs(1).futureValue.length shouldEqual 1 // there should be a total of 4 ...
-    marksDao.findMissingReprs(3).futureValue.length shouldEqual 3 //               ... 2 m1s, m3, and m4
+    val m5 = m3.copy(id = "m5id")
+    marksDao.insert(m5).futureValue
+    val expected = Set(m3.id, m5.id)
+    expected.contains(marksDao.findMissingReprs(1).futureValue.head.id) shouldBe true
+    marksDao.findMissingReprs(2).futureValue.map(_.id).toSet shouldEqual expected
   }
 
   /*it should "(UNIT) find marks with missing reprs only once per mark (issue #198)" in {
