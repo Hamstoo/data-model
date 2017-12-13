@@ -200,8 +200,9 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
   // exclude these fields from the returned results of search-related methods to conserve memory during search
   // TODO: implement a MSearchable base class so that users know they're dealing with a partially populated Mark
+  // (should have looked more closely at hamstoo.SearchService when choosing these fields; see issue #222)
   val searchExcludedFields: BSONDocument = d :~ (PAGE -> 0)  :~ (URLPRFX -> 0) :~ (AUX -> 0) :~
-    (MERGEID -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
+    (MERGEID -> 0) :~ (COMNTENCx -> 0)
 
   /**
     * Executes a search using text index with sorting in user's marks, constrained by tags. Mark state must be
