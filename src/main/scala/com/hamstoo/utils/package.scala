@@ -6,6 +6,7 @@ import org.joda.time.DateTime
 import play.api.Logger
 import play.api.mvc.{Call, Request}
 import reactivemongo.api.BSONSerializationPack.Reader
+import reactivemongo.api.MongoConnection.ParsedURI
 import reactivemongo.api.collections.GenericQueryBuilder
 import reactivemongo.api.commands.WriteResult
 import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
@@ -153,11 +154,10 @@ package object utils {
   val NONE_REPR_ID = "none"
   val CAPTCHA_REPR_ID = "captcha"
   val HTMLUNIT_REPR_ID = "htmlunit"
-  val CONCEPTNET_REPR_ID = "conceptnet" // ConnectException: Connection refused: conceptnet-vectors/172.17.0.2:5000
 
   // set of IDs that aren't really IDs so that we can filter them out when searching for things with "true" IDs
   val NON_IDS = Set("", FAILED_REPR_ID, TIMEOUT_REPR_ID, NONE_REPR_ID, CAPTCHA_REPR_ID, HTMLUNIT_REPR_ID,
-                    CONCEPTNET_REPR_ID, NO_REPR_ERATING_ID)
+                    NO_REPR_ERATING_ID)
 
   /** Use the private ID when available, o/w use the public ID. */
   def reconcilePrivPub(priv: Option[String], pub: Option[String]): Option[String] =
