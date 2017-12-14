@@ -6,7 +6,6 @@ import org.joda.time.DateTime
 import play.api.Logger
 import play.api.mvc.{Call, Request}
 import reactivemongo.api.BSONSerializationPack.Reader
-import reactivemongo.api.MongoConnection.ParsedURI
 import reactivemongo.api.collections.GenericQueryBuilder
 import reactivemongo.api.commands.WriteResult
 import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
@@ -71,7 +70,10 @@ package object utils {
     MongoConnection.parseURI(uri).map { parsedUri =>
       if (dbDriver.isEmpty)
         initDbDriver()
-      dbDriver.get.connection(parsedUri)
+      // we were formerly using the 1-parameter `connection(ParsedURI)` method here, but it doesn't set the db name
+      val conn = dbDriver.get.connection(parsedUri, parsedUri.db, strictUri = false).get
+      Logger.info(s"Database name: ${conn.name}")
+      conn
     } match {
       case Success(conn) =>
         Logger.info(s"Established connection to MongoDB via URI: $uri")
