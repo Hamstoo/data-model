@@ -48,15 +48,13 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   // this should only happen once (per mongodb instance) but since we start a new instance every time
   // MongoEnvironment is extended (by nature of MongoEnvironment being a trait and not an object) it gets
   // called multiple times during testing
-  var dbConn: Option[MongoConnection] = None // made this a var to prevent usage of it before `beforeAll` is called
+  var dbConn: Option[(MongoConnection, String)] = None // made this a var to prevent usage of it before `beforeAll` is called
 
   // this (lightweight) function is called every time a DAO method is invoked
   lazy val db: () => Future[DefaultDB] = () => {
     if (dbConn.isEmpty)
       throw new Exception("dbConn cannot be used before beforeAll is called")
-    if (dbConn.get.name.isEmpty)
-      throw new Exception("dbConn.name is undefined; database name must be part of the URI connection string")
-    dbConn.get.database(dbConn.get.name)
+    dbConn.get._1.database(dbConn.get._2)
   }
 
   // for defining custom query, only for tests purpose
