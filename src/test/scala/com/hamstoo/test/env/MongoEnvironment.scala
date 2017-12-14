@@ -54,7 +54,9 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   lazy val db: () => Future[DefaultDB] = () => {
     if (dbConn.isEmpty)
       throw new Exception("dbConn cannot be used before beforeAll is called")
-    dbConn.get.database(dbName)
+    if (dbConn.get.name.isEmpty)
+      throw new Exception("dbConn.name is undefined; database name must be part of the URI connection string")
+    dbConn.get.database(dbConn.get.name)
   }
 
   // for defining custom query, only for tests purpose
@@ -83,6 +85,5 @@ object MongoEnvironment {
   val mongoPort: Int = 12345
 
   // mongodb uri and database name
-  lazy val dbUri = s"mongodb://localhost:$mongoPort"
-  lazy val dbName = "hamstoo"
+  lazy val dbUri = s"mongodb://localhost:$mongoPort/hamstoo"
 }
