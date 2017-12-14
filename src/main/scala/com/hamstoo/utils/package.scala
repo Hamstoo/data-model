@@ -66,14 +66,14 @@ package object utils {
     * @param nAttempts  The default database name.
     */
   @tailrec
-  final def getDbConnection(uri: String, nAttempts: Int = 5): MongoConnection = {
+  final def getDbConnection(uri: String, nAttempts: Int = 5): (MongoConnection, String) = {
     MongoConnection.parseURI(uri).map { parsedUri =>
       if (dbDriver.isEmpty)
         initDbDriver()
-      // we were formerly using the 1-parameter `connection(ParsedURI)` method here, but it doesn't set the db name
-      val conn = dbDriver.get.connection(parsedUri, parsedUri.db, strictUri = false).get
-      Logger.info(s"Database name: ${conn.name}")
-      conn
+      // the below doesn't work bc/ the second parameter is used as the Akka actor name, which must be unique when testing
+      //dbDriver.get.connection(parsedUri, parsedUri.db, strictUri = false).get
+      Logger.info(s"Database name: ${parsedUri.db.get}")
+      (dbDriver.get.connection(parsedUri), parsedUri.db.get)
     } match {
       case Success(conn) =>
         Logger.info(s"Established connection to MongoDB via URI: $uri")
