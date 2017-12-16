@@ -14,8 +14,8 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -556,5 +556,28 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       sel = d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> (d :~ "$lt" -> INF_TIME)
       seq <- c.find(sel).coll[Mark, Seq]()
     } yield seq.exists(_.mark.url.contains(url))
+  }
+
+  /**
+    * Search for a [MarkData] by userId, subject and empty url field for future merge
+    * @param userId - user UUID
+    * @param subject string subject
+    * @return - optional [MarkData]
+    */
+  def findDuplicate(userId: UUID, subject: String): Future[Option[Mark]] = {
+    logger.debug(s"Searching for duplicate for user: $userId and subject: $subject")
+
+    for {
+      c <- dbColl()
+      sel = d :~ USR -> userId :~ SUBJx -> subject :~ URLx -> (d :~ "$exists" -> false)
+
+      // in this place it required custom BSON reader,
+      // that extract only MarkData object from marks collection
+      // so this params passed to `.one` method explicitly.
+      optMd <- c.find(sel).one[Mark]
+    } yield {
+      logger.debug(s"Searching for duplicate finished with result: $optMd")
+      optMd
+    }
   }
 }
