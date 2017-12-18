@@ -1,13 +1,14 @@
 package com.hamstoo.services
 
 import akka.stream.ActorMaterializer
-import com.hamstoo.daos.MongoVectorsDao
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingService.WordMass
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
 import play.api.libs.ws.ahc.AhcWSClient
+
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
   * VectorEmbeddingsService tests.
@@ -19,9 +20,12 @@ class VectorEmbeddingsServiceTests
   extends AkkaMongoEnvironment("VectorEmbeddingsServiceSpec-ActorSystem")
     with FutureHandler {
 
+  // todo: un-ignore this tests
   import com.hamstoo.utils.DataInfo._
 
   implicit val materializer: ActorMaterializer = ActorMaterializer()
+  implicit val ex: ExecutionContext = system.dispatcher
+
   lazy val vectorizer = new Vectorizer(AhcWSClient(), vectorsDao, vectorsLink)
   lazy val idfModel = new IDFModel(idfsResource)
   lazy val vecSvc = new VectorEmbeddingsService(vectorizer, idfModel)
@@ -32,8 +36,10 @@ class VectorEmbeddingsServiceTests
     val header0 = "Futures and Promises - Scala Documentation Futures and Promises"
     //val header0 = "Getting Started Building a Google Chrome Extension"
     val header1 = "Futures% !&and 'Promises' - Scala Documentation, \"Futures,$ and? Promises."
-    val vec0 = vecSvc.vectorEmbeddings(header0, "", "", "")._1(Representation.VecEnum.IDF)
-    val vec1 = vecSvc.vectorEmbeddings(header1, "", "", "")._1(Representation.VecEnum.IDF)
+
+    val vec0 = vecSvc.vectorEmbeddingsAsync(header0, "", "", "").futureValue._1(Representation.VecEnum.IDF)
+    val vec1 = vecSvc.vectorEmbeddingsAsync(header1, "", "", "").futureValue._1(Representation.VecEnum.IDF)
+
     vec0.head shouldEqual 8.61e-5 +- 1e-7
     vec0.head shouldEqual vec1.head +- 1e-15
 
@@ -57,7 +63,10 @@ class VectorEmbeddingsServiceTests
       i <- 0 until 5
       terms = if (i == 0) terms_ else scala.util.Random.shuffle(terms_)
     } yield {
-      val vecs: Seq[Vec] = terms.map(vecSvc.vectorEmbeddings(_, "", "", "")._1(Representation.VecEnum.IDF))
+      val vecs: Seq[Vec] =
+        Future.sequence(terms.map(vecSvc.vectorEmbeddingsAsync(_, "", "", "")))
+        .map(_.map(_._1(Representation.VecEnum.IDF))).futureValue
+
       val diffs: Seq[Vec] = vecs.sliding(2, 2).map { case a :: b :: Nil => a - b }.toSeq
 
       // these values range between 0.0 and 0.95 for the unshuffled terms, still I thought they'd be higher
@@ -94,7 +103,10 @@ class VectorEmbeddingsServiceTests
       "sachin", "cricket", // 0.522 - http://api.conceptnet.io/related/c/en/sachin?filter=/c/en/cricket
       "actor", "cumberbatch") // 0.516 - http://api.conceptnet.io/related/c/en/actor?filter=/c/en/cumberbatch
 
-    val vecs: Seq[Vec] = terms.map(vecSvc.vectorEmbeddings(_, "", "", "")._1(Representation.VecEnum.IDF))
+    val vecs: Seq[Vec] = Future.sequence(terms.map(vecSvc.vectorEmbeddingsAsync(_, "", "", "")))
+      .map(_.map(_._1(Representation.VecEnum.IDF)))
+      .futureValue
+
     vecs.foreach {
       _.l2Norm shouldEqual 1.0 +- 1e-8
     }
