@@ -9,5 +9,5 @@ import org.scalatest.time.{Second, Seconds, Span}
 trait FutureHandler extends ScalaFutures {
 
   // required to handle future
-  implicit val pc: PatienceConfig = PatienceConfig(Span(200, Seconds), Span(1, Second))
+  implicit val pc: PatienceConfig = PatienceConfig(Span(214, Seconds), Span(1, Second))
 }

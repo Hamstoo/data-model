@@ -47,9 +47,9 @@ object InlineNote extends BSONHandlers with AnnotationInfo {
     * @param offsetY  Vertical offset inside path element. (?)
     */
   case class Position(path: String,
-                                text: String,
-                                offsetX: Double,
-                                offsetY: Double) extends Positions
+                      text: String,
+                      offsetX: Double,
+                      offsetY: Double) extends Positions
 
   val ID_LENGTH: Int = 16
 
