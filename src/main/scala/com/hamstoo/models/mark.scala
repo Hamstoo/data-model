@@ -30,6 +30,7 @@ import scala.util.matching.Regex
   * @param rating         - the value assigned to the mark by the user, from 0.0 to 5.0
   * @param tags           - a set of tags assigned to the mark by the user
   * @param comment        - an optional text comment assigned to the mark by the user
+  * @param pagePending    - don't let repr-engine process marks that are still waiting for their private pages
   * @param commentEncoded - markdown converted to HTML; set by class init
   */
 case class MarkData(
@@ -38,7 +39,8 @@ case class MarkData(
                      rating: Option[Double] = None,
                      tags: Option[Set[String]] = None,
                      comment: Option[String] = None,
-                     var commentEncoded: Option[String] = None) {
+                     var commentEncoded: Option[String] = None,
+                     pagePending: Option[Boolean] = None) {
 
   import MarkData._
 
@@ -362,6 +364,7 @@ object Mark extends BSONHandlers {
   val TAGSx: String = MARK + "." + nameOf[MarkData](_.tags)
   val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
   val COMNTENCx: String = MARK + "." + nameOf[MarkData](_.commentEncoded)
+  val PGPENDx: String = MARK + "." + nameOf[MarkData](_.pagePending)
 
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)

@@ -346,12 +346,12 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     addPageSource(userId, markId, page)
   }
 
-  /** Appends provided string to mark's array of page sources. */
+  /** Adds web page source to a mark--for "private" reprs of marks saved from the Chrome Extension. */
   def addPageSource(user: UUID, id: String, page: Page, ensureNoPrivRepr: Boolean = true): Future[Unit] = for {
     c <- dbColl()
     sel0 = d :~ USR -> user :~ ID -> id :~ curnt
     sel1 = if (ensureNoPrivRepr) sel0 :~ PRVREPR -> (d :~ "$exists" -> false) else sel0
-    wr <- c.findAndUpdate(sel1, d :~ "$set" -> (d :~ PAGE -> page))
+    wr <- c.findAndUpdate(sel1, d :~ "$set" -> (d :~ PAGE -> page) :~ "$unset" -> (d :~ PGPENDx -> 1))
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
       logger.error(s"Unable to findAndUpdate mark $id's page source; ensureNoPrivRepr = $ensureNoPrivRepr, wr.lastError = ${wr.lastError.get}")
@@ -474,7 +474,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * Retrieves a list of n marks that require representations. Intentionally not filtering for `curnt` marks.
     *
     * The following MongoDB shell command should show that this query is using two indexes via an "OR" inputStage.
-    *   `db.entries.find({$or:[{pubRepr:{$exists:0}}, {privRepr:{$exists:0}, page:{$exists:1}}]}).explain()`
+    *   db.entries.find({$or:[{timeThru:NumberLong("9223372036854775807"), pubRepr:{$exists:0}},
+    *                         {timeThru:NumberLong("9223372036854775807"), privRepr:{$exists:0}, page:{$exists:1}}]}).explain()
     */
   def findMissingReprs(n: Int): Future[Seq[Mark]] = {
     logger.debug("Finding marks with missing representations")
@@ -482,7 +483,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       c <- dbColl()
 
       // selPub and selPriv must be consistent with Mark.representablePublic/Private
-      selPub = d :~ curnt :~ PUBREPR -> (d :~ "$exists" -> false)
+      selPub = d :~ curnt :~ PUBREPR -> (d :~ "$exists" -> false) :~
+                             PGPENDx -> (d :~ "$ne" -> true) // https://stackoverflow.com/questions/22290538/select-mongodb-documents-where-a-field-either-does-not-exist-is-null-or-is-fal
 
       // we might leave a Page attached to a mark, if for example the processing of that page fails
       // (see repr-engine's MongoClient.receive in the FailedProcessing case)
@@ -503,8 +505,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * Retrieves a list of n marks that require expected ratings. Intentionally not filtering for `curnt` marks.
     *
     * The following MongoDB shell command should show that this query is using two indexes via an "OR" inputStage.
-    * db.entries.find({$or:[{pubExpRating:{$exists:0}, pubRepr:{$exists:1}},
-    *                       {privExpRating:{$exists:0}, privRepr:{$exists:1}}]}).explain()
+    *   db.entries.find({$or:[{timeThru:NumberLong("9223372036854775807"), pubExpRating:{$exists:0}, pubRepr:{$exists:1}},
+    *                         {timeThru:NumberLong("9223372036854775807"), privExpRating:{$exists:0}, privRepr:{$exists:1}}]}).explain()
     */
   def findMissingExpectedRatings(n: Int): Future[Seq[Mark]] = {
     logger.debug("Finding marks with missing expected ratings")
