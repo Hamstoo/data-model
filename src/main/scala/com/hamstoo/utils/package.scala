@@ -66,11 +66,14 @@ package object utils {
     * @param nAttempts  The default database name.
     */
   @tailrec
-  final def getDbConnection(uri: String, nAttempts: Int = 5): MongoConnection = {
+  final def getDbConnection(uri: String, nAttempts: Int = 5): (MongoConnection, String) = {
     MongoConnection.parseURI(uri).map { parsedUri =>
       if (dbDriver.isEmpty)
         initDbDriver()
-      dbDriver.get.connection(parsedUri)
+      // the below doesn't work bc/ the second parameter is used as the Akka actor name, which must be unique when testing
+      //dbDriver.get.connection(parsedUri, parsedUri.db, strictUri = false).get
+      Logger.info(s"Database name: ${parsedUri.db.get}")
+      (dbDriver.get.connection(parsedUri), parsedUri.db.get)
     } match {
       case Success(conn) =>
         Logger.info(s"Established connection to MongoDB via URI: $uri")
@@ -131,12 +134,13 @@ package object utils {
       if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
   }
 
-  // MongoDB `binary` indexes have a max size of 1024 bytes.  So to combine a 12-char ID with a byte array
-  // as in the below `marks` collection index, the byte array must be, at most, 992 bytes.  This is presumably
+  // MongoDB Binary Indexes have a max size of 1024 bytes.  So to combine a 12-char string with a byte array
+  // as in the `urldups` collection index, the byte array must be, at most, 992 bytes.  This is presumably
   // due to some overhead in the MongoDB data types (BinData and String) and/or overhead due to the combination
   // of multiple fields in a single index.
-  // From MongoMarksDao: `Index(UPRFX -> Ascending :: PUBREPR -> Ascending :: Nil) % s"bin-$UPRFX-1-$PUBREPR-1"`
+  // From MongoMarksDao: `Index(USRPRFX -> Ascending :: URLPRFX -> Ascending :: Nil) % s"bin-$USRPRFX-1-$URLPRFX-1"`
   val URL_PREFIX_LENGTH = 992
+  val URL_PREFIX_COMPLEMENT_LENGTH = 12
 
   /** Generate an ID to be used for a document in a database collection. */
   def generateDbId(length: Int): String = Random.alphanumeric.take(length).mkString
@@ -153,11 +157,10 @@ package object utils {
   val NONE_REPR_ID = "none"
   val CAPTCHA_REPR_ID = "captcha"
   val HTMLUNIT_REPR_ID = "htmlunit"
-  val CONCEPTNET_REPR_ID = "conceptnet" // ConnectException: Connection refused: conceptnet-vectors/172.17.0.2:5000
 
   // set of IDs that aren't really IDs so that we can filter them out when searching for things with "true" IDs
   val NON_IDS = Set("", FAILED_REPR_ID, TIMEOUT_REPR_ID, NONE_REPR_ID, CAPTCHA_REPR_ID, HTMLUNIT_REPR_ID,
-                    CONCEPTNET_REPR_ID, NO_REPR_ERATING_ID)
+                    NO_REPR_ERATING_ID)
 
   /** Use the private ID when available, o/w use the public ID. */
   def reconcilePrivPub(priv: Option[String], pub: Option[String]): Option[String] =
@@ -170,6 +173,8 @@ package object utils {
       * binary prefixes of string fields for binary indexes in MongoDB.
       */
     def binaryPrefix: mutable.WrappedArray[Byte] = s.getBytes.take(URL_PREFIX_LENGTH)
+
+    def binPrfxComplement: String = s.substring(0, URL_PREFIX_COMPLEMENT_LENGTH)
   }
 
   /**

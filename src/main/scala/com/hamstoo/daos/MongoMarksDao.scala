@@ -25,23 +25,18 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MongoMarksDao])
 
-  private def dbColl(): Future[BSONCollection] = db().map(_ collection "entries")
+  val collName: String = "entries"
+  private def dbColl(): Future[BSONCollection] = db().map(_ collection collName)
+  private def dupsColl(): Future[BSONCollection] = db().map(_ collection "urldups")
 
-  // reduce size of existing `urlPrfx`s down to URL_PREFIX_LENGTH to prevent indexes below from being too large
-  // and causing exceptions when trying to update marks with reprIds (version 0.9.16)
-  // (note that the offending `urlPrfx` indexes have now been removed)
+  // leave this here as an example of how to perform data migration
   if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
     Await.result(for {
       c <- dbColl()
-      _ = logger.info(s"Performing data migration for `entries` collection")
-      sel = d :~ "$where" -> s"Object.bsonsize({$URLPRFX:this.$URLPRFX})>$URL_PREFIX_LENGTH+19"
-      longPfxed <- c.find(sel).coll[Mark, Seq]()
-      _ = logger.info(s"Updating ${longPfxed.size} `Mark.urlPrfx`s to length $URL_PREFIX_LENGTH bytes")
-      _ <- Future.sequence { longPfxed.map { m => // urlPrfx will have been overwritten upon `Mark` construction
-          c.update(d :~ ID -> m.id :~ TIMEFROM -> m.timeFrom, d :~ "$set" -> (d :~ URLPRFX -> m.urlPrfx))
-      }}
+      _ = logger.info(s"Performing data migration for `$collName` collection")
+      // put actual data migration code here
     } yield (), 373 seconds)
-  } else logger.info(s"Skipping data migration for `entries` collection")
+  } else logger.info(s"Skipping data migration for `$collName` collection")
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
@@ -63,7 +58,13 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       s"bin-$USR-1-$TIMETHRU-1--txt-$SUBJx-$TAGSx-$COMNTx" ::
     Index(TAGSx -> Ascending :: Nil) % s"bin-$TAGSx-1" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager.ensure(indxs)), 389 seconds)
+  Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 389 seconds)
+
+  private val dupsIndxs: Map[String, Index] =
+    Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
+    Index(USRPRFX -> Ascending :: URLPRFX -> Ascending :: Nil) % s"bin-$USRPRFX-1-$URLPRFX-1" ::
+    Nil toMap;
+  Await.result(dupsColl().map(_.indexesManager.ensure(dupsIndxs)), 289 seconds)
 
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
   def insert(mark: Mark): Future[Mark] = {
@@ -142,13 +143,56 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = {
     logger.debug(s"Retrieving marks by URL $url and user $user")
     for {
+      // find set of URLs that contain duplicate content to the one requested
+      cDups <- dupsColl()
+      setDups <- cDups.find(d :~ USRPRFX -> user.toString.binPrfxComplement :~ URLPRFX -> url.binaryPrefix).coll[UrlDuplicate, Set]()
+      urls = Set(url).union(setDups.filter(ud => ud.userId == user && ud.url == url).flatMap(_.dups))
+
+      // find all marks with those URL prefixes
       c <- dbColl()
-      seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ curnt).coll[Mark, Seq]()
+      prfxIn = d :~ "$in" -> urls.map(_.binaryPrefix)
+      seq <- c.find(d :~ USR -> user :~ URLPRFX -> prfxIn :~ curnt).coll[Mark, Seq]()
+
     } yield {
-      val optMark = seq find (_.mark.url.contains(url))
+
+      // filter/find down to a single (optional) mark
+      val optMark = seq.find(_.mark.url.exists(urls.contains))
       logger.debug(s"$optMark mark was successfully retrieved")
       optMark
     }
+  }
+
+  /**
+    * Map each URL to the other in the `urldups` collection.  The only reason this method (currently) returns a
+    * Future[String] rather than a Future[Unit] is because of where it's used in repr-engine.
+    */
+  def insertUrlDup(user: UUID, url0: String, url1: String): Future[String] = {
+    logger.info(s"Inserting URL duplicates for $url0 and $url1")
+    for {
+      c <- dupsColl()
+
+      // database lookup to find candidate dups via indexed prefixes
+      candidates = (url: String) =>
+        c.find(d :~ USRPRFX -> user.toString.binPrfxComplement :~ URLPRFX -> url.binaryPrefix).coll[UrlDuplicate, Set]()
+      candidates0 <- candidates(url0)
+      candidates1 <- candidates(url1)
+
+      // narrow down candidates sets to non-indexed (non-prefix) values
+      optDups = (url: String, candidates: Set[UrlDuplicate]) =>
+        candidates.find(ud => ud.userId == user && ud.url == url)
+      optDups0 = optDups(url0, candidates0)
+      optDups1 = optDups(url1, candidates1)
+
+      // construct a new UrlDuplicate or an update to the existing one
+      newUD = (urlKey: String, urlVal: String, optDups: Option[UrlDuplicate]) =>
+        optDups.fold(UrlDuplicate(user, urlKey, Set(urlVal)))(ud => ud.copy(dups = ud.dups + urlVal))
+      newUD0 = newUD(url0, url1, optDups0)
+      newUD1 = newUD(url1, url0, optDups1)
+
+      // update or insert if not already there
+      _ <- c.update(d :~ ID -> newUD0.id, newUD0, upsert = true)
+      _ <- c.update(d :~ ID -> newUD1.id, newUD1, upsert = true)
+    } yield ""
   }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */

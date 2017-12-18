@@ -27,39 +27,6 @@ class MongoInlineNoteDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao
   override val logger = Logger(classOf[MongoInlineNoteDao])
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "comments")
 
-  // convert url/uPrefs to markIds
-  case class WeeNote(usrId: UUID, id: String, timeFrom: Long, url: String)
-
-  // data migration
-  if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
-    Await.result(for {
-      c <- dbColl()
-      mc <- marksColl()
-      _ = logger.info(s"Performing data migration for `comments` collection")
-
-      oldIdx = s"bin-$USR-1-uPref-1"
-      _ = logger.info(s"Dropping index $oldIdx")
-      nDropped <- c.indexesManager.drop(oldIdx).recover { case _: DefaultBSONCommandError => 0 }
-      _ = logger.info(s"Dropped $nDropped index(es)")
-
-      exst = d :~ "$exists" -> true
-      sel = d :~ "$or" -> BSONArray(d :~ "url" -> exst, d :~ "uPref" -> exst)
-      // pjn = d :~ USR -> 1 :~ ID -> 1 :~ TIMEFROM -> 1 :~ "url" -> 1 // unnecessary b/c WeeNote is a subset
-      urled <- {
-        implicit val r: BSONDocumentHandler[WeeNote] = Macros.handler[WeeNote]
-        c.find(sel).coll[WeeNote, Seq]()
-      }
-      _ = logger.info(s"Updating ${urled.size} InlineNotes with markIds (and removing their URLs)")
-      _ <- Future.sequence { urled.map { x => for { // lookup mark w/ same url
-        marks <- mc.find(d :~ Mark.USR -> x.usrId :~ Mark.URLPRFX -> x.url.binaryPrefix).coll[Mark, Seq]()
-        markId = marks.headOption.map(_.id).getOrElse("")
-        _ <- c.update(d :~ ID -> x.id :~ TIMEFROM -> x.timeFrom,
-                      d :~ "$unset" -> (d :~ "url" -> 1 :~ "uPref" -> 1) :~ "$set" -> {d :~ "markId" -> markId},
-                      multi = true)
-      } yield () }}
-    } yield (), 387 seconds)
-  } else logger.info(s"Skipping data migration for `comments` collection")
-
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: MARKID -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1" ::
