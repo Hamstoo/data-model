@@ -69,6 +69,9 @@ case class MarkData(
     Jsoup.clean(html2, htmlTagsWhitelist)
   }
 
+  /** Check for `Automarked` label. */
+  def isAutomarked: Boolean = tags.exists(_.exists(_.equalsIgnoreCase(MarkData.AUTOSAVE_TAG)))
+
   /**
     * Merge two `MarkData`s with as little data loss as possible.  Not using `copy` here to ensure that if
     * additional fields are added to the constructor they aren't forgotten here.
