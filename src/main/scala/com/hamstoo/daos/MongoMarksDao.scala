@@ -280,6 +280,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     */
   def update(user: UUID, id: String, mdata: MarkData): Future[Mark] = for {
     c <- dbColl()
+    _ = logger.info(s"Updating mark $id")
     sel = d :~ USR -> user :~ ID -> id :~ curnt
     now: Long = TIME_NOW
     wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
@@ -289,7 +290,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     // based on private user content that was only available from the browser extension at the time the user first
     // created it)
     pubRp = if (mdata.url.isDefined && mdata.url == oldMk.mark.url ||
-                mdata.url.isEmpty && mdata.subj == oldMk.mark.subj) oldMk.pubRepr else None
+      mdata.url.isEmpty && mdata.subj == oldMk.mark.subj) oldMk.pubRepr else None
     newMk = oldMk.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = INF_TIME)
     wr <- c.insert(newMk)
     _ <- wr.failIfError
@@ -370,7 +371,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ TAGSx -> tag
-      wr <- c update(sel, d :~ "$set" -> (d :~ s"$TAGSx.$$" -> rename), multi = true)
+      wr <- c.update(sel, d :~ "$set" -> (d :~ s"$TAGSx.$$" -> rename), multi = true)
       _ <- wr.failIfError
     } yield {
       val count = wr.nModified
