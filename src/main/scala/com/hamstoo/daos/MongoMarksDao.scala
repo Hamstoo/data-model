@@ -25,21 +25,18 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MongoMarksDao])
 
-  private def dbColl(): Future[BSONCollection] = db().map(_ collection "entries")
+  val collName: String = "entries"
+  private def dbColl(): Future[BSONCollection] = db().map(_ collection collName)
+  private def dupsColl(): Future[BSONCollection] = db().map(_ collection "urldups")
 
-  // reduce size of existing `urlPrfx`s down to URL_PREFIX_LENGTH to prevent indexes below from being too large
-  // and causing exceptions when trying to update marks with reprIds (version 0.9.16)
-  // (note that the offending `urlPrfx` indexes have now been removed)
-  Await.result(for {
-    c <- dbColl()
-    _ = logger.info(s"Performing data migration for `marks` collection")
-    sel = d :~ "$where" -> s"Object.bsonsize({$URLPRFX:this.$URLPRFX})>$URL_PREFIX_LENGTH+19"
-    longPfxed <- c.find(sel).coll[Mark, Seq]()
-    _ = logger.info(s"Updating ${longPfxed.size} `Mark.urlPrfx`s to length $URL_PREFIX_LENGTH bytes")
-    _ <- Future.sequence { longPfxed.map { m => // urlPrfx will have been overwritten upon `Mark` construction
-        c.update(d :~ ID -> m.id :~ TIMEFROM -> m.timeFrom, d :~ "$set" -> (d :~ URLPRFX -> m.urlPrfx))
-    }}
-  } yield (), 373 seconds)
+  // leave this here as an example of how to perform data migration
+  if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
+    Await.result(for {
+      c <- dbColl()
+      _ = logger.info(s"Performing data migration for `$collName` collection")
+      // put actual data migration code here
+    } yield (), 373 seconds)
+  } else logger.info(s"Skipping data migration for `$collName` collection")
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
@@ -48,19 +45,26 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
     // findMissingReprs indexes
-    Index(PUBREPR -> Ascending :: Nil) % s"bin-$PUBREPR-1" ::
-    Index(PRVREPR -> Ascending :: Nil, partialFilter = Some(d :~ PAGE -> (d :~ "$exists" -> true))) %
-      s"bin-$PRVREPR-1-partial-$PAGE" ::
+    Index(PUBREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt)) % s"bin-$PUBREPR-1-partial-$TIMETHRU" ::
+    Index(PRVREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PAGE -> (d :~ "$exists" -> true))) %
+      s"bin-$PRVREPR-1-partial-$TIMETHRU-$PAGE" ::
     // findMissingExpectedRatings (partial) indexes
-    Index(PUBESTARS -> Ascending :: Nil, partialFilter = Some(d :~ PUBREPR -> (d :~ "$exists" -> true))) %
-      s"bin-$PUBESTARS-1-partial-$PUBREPR" ::
-    Index(PRIVESTARS -> Ascending :: Nil, partialFilter = Some(d :~ PRVREPR -> (d :~ "$exists" -> true))) %
-      s"bin-$PRIVESTARS-1-partial-$PRVREPR" ::
+    Index(PUBESTARS -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PUBREPR -> (d :~ "$exists" -> true))) %
+      s"bin-$PUBESTARS-1-partial-$TIMETHRU-$PUBREPR" ::
+    Index(PRIVESTARS -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> true))) %
+      s"bin-$PRIVESTARS-1-partial-$TIMETHRU-$PRVREPR" ::
     // text index (there can be only one per collection)
-    Index(SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) % s"txt-$SUBJx-$TAGSx-$COMNTx" ::
+    Index(USR -> Ascending :: TIMETHRU -> Ascending :: SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) %
+      s"bin-$USR-1-$TIMETHRU-1--txt-$SUBJx-$TAGSx-$COMNTx" ::
     Index(TAGSx -> Ascending :: Nil) % s"bin-$TAGSx-1" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager.ensure(indxs)), 389 seconds)
+  Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 389 seconds)
+
+  private val dupsIndxs: Map[String, Index] =
+    Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
+    Index(USRPRFX -> Ascending :: URLPRFX -> Ascending :: Nil) % s"bin-$USRPRFX-1-$URLPRFX-1" ::
+    Nil toMap;
+  Await.result(dupsColl().map(_.indexesManager.ensure(dupsIndxs)), 289 seconds)
 
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
   def insert(mark: Mark): Future[Mark] = {
@@ -139,13 +143,56 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = {
     logger.debug(s"Retrieving marks by URL $url and user $user")
     for {
+      // find set of URLs that contain duplicate content to the one requested
+      cDups <- dupsColl()
+      setDups <- cDups.find(d :~ USRPRFX -> user.toString.binPrfxComplement :~ URLPRFX -> url.binaryPrefix).coll[UrlDuplicate, Set]()
+      urls = Set(url).union(setDups.filter(ud => ud.userId == user && ud.url == url).flatMap(_.dups))
+
+      // find all marks with those URL prefixes
       c <- dbColl()
-      seq <- (c find d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ curnt).coll[Mark, Seq]()
+      prfxIn = d :~ "$in" -> urls.map(_.binaryPrefix)
+      seq <- c.find(d :~ USR -> user :~ URLPRFX -> prfxIn :~ curnt).coll[Mark, Seq]()
+
     } yield {
-      val optMark = seq find (_.mark.url.contains(url))
+
+      // filter/find down to a single (optional) mark
+      val optMark = seq.find(_.mark.url.exists(urls.contains))
       logger.debug(s"$optMark mark was successfully retrieved")
       optMark
     }
+  }
+
+  /**
+    * Map each URL to the other in the `urldups` collection.  The only reason this method (currently) returns a
+    * Future[String] rather than a Future[Unit] is because of where it's used in repr-engine.
+    */
+  def insertUrlDup(user: UUID, url0: String, url1: String): Future[String] = {
+    logger.info(s"Inserting URL duplicates for $url0 and $url1")
+    for {
+      c <- dupsColl()
+
+      // database lookup to find candidate dups via indexed prefixes
+      candidates = (url: String) =>
+        c.find(d :~ USRPRFX -> user.toString.binPrfxComplement :~ URLPRFX -> url.binaryPrefix).coll[UrlDuplicate, Set]()
+      candidates0 <- candidates(url0)
+      candidates1 <- candidates(url1)
+
+      // narrow down candidates sets to non-indexed (non-prefix) values
+      optDups = (url: String, candidates: Set[UrlDuplicate]) =>
+        candidates.find(ud => ud.userId == user && ud.url == url)
+      optDups0 = optDups(url0, candidates0)
+      optDups1 = optDups(url1, candidates1)
+
+      // construct a new UrlDuplicate or an update to the existing one
+      newUD = (urlKey: String, urlVal: String, optDups: Option[UrlDuplicate]) =>
+        optDups.fold(UrlDuplicate(user, urlKey, Set(urlVal)))(ud => ud.copy(dups = ud.dups + urlVal))
+      newUD0 = newUD(url0, url1, optDups0)
+      newUD1 = newUD(url1, url0, optDups1)
+
+      // update or insert if not already there
+      _ <- c.update(d :~ ID -> newUD0.id, newUD0, upsert = true)
+      _ <- c.update(d :~ ID -> newUD1.id, newUD1, upsert = true)
+    } yield ""
   }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
@@ -169,12 +216,12 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     logger.debug(s"Retrieve repred marks for user $user and tags $tags")
     for {
       c <- dbColl()
-      exst = d :~ "$exists" -> true :~ "$ne" -> ""
+      exst = d :~ "$exists" -> true :~ "$nin" -> NON_IDS
       sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
       seq <- c.find(sel1).coll[MSearchable, Seq]()
     } yield {
-      logger.debug(s"${seq.size} repred marks were successfully retrieved")
+      logger.debug(s"${seq.size} represented marks were successfully retrieved")
       seq
     }
   }
@@ -197,8 +244,9 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
   // exclude these fields from the returned results of search-related methods to conserve memory during search
   // TODO: implement a MSearchable base class so that users know they're dealing with a partially populated Mark
+  // (should have looked more closely at hamstoo.SearchService when choosing these fields; see issue #222)
   val searchExcludedFields: BSONDocument = d :~ (PAGE -> 0)  :~ (URLPRFX -> 0) :~ (AUX -> 0) :~
-    (MERGEID -> 0) :~ (TAGSx -> 0) :~ (COMNTx -> 0) :~ (COMNTENCx -> 0)
+    (MERGEID -> 0) :~ (COMNTENCx -> 0)
 
   /**
     * Executes a search using text index with sorting in user's marks, constrained by tags. Mark state must be
@@ -209,18 +257,18 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     for {
       c <- dbColl()
       sel0 = d :~ USR -> user :~ curnt
-      sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
 
       // this projection doesn't have any effect without this selection
       searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
       searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
-      seq <- c.find(sel1 :~ searchScoreSelection, searchScoreProjection)/*.sort(searchScoreProjection)*/
+      seq <- c.find(sel0 :~ searchScoreSelection, searchScoreProjection)/*.sort(searchScoreProjection)*/
         .coll[MSearchable, Seq]()
 
     } yield {
-      logger.debug(s"${seq.size} marks were successfully retrieved")
-      seq
+      val filtered = seq.filter { m => tags.forall(t => m.mark.tags.exists(_.contains(t))) }
+      logger.info(s"${filtered.size} marks were successfully retrieved (${seq.size - filtered.size} were filtered out per their labels)")
+      filtered
     }
   }
 
@@ -432,13 +480,14 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       c <- dbColl()
 
       // selPub and selPriv must be consistent with Mark.representablePublic/Private
-      selPub = d :~ PUBREPR -> (d :~ "$exists" -> false)
+      selPub = d :~ curnt :~ PUBREPR -> (d :~ "$exists" -> false)
 
       // we might leave a Page attached to a mark, if for example the processing of that page fails
       // (see repr-engine's MongoClient.receive in the FailedProcessing case)
-      selPriv = d :~ PRVREPR -> (d :~ "$exists" -> false) :~
-                     PAGE -> (d :~ "$exists" -> true)
+      selPriv = d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> false) :~
+                              PAGE -> (d :~ "$exists" -> true)
 
+      // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
       sel = d :~ "$or" -> Seq(selPub, selPriv) // Seq gets automatically converted to BSONArray
       //_ = logger.info(BSONDocument.pretty(sel))
       seq <- c.find(sel).coll[Mark, Seq](n)
@@ -459,8 +508,10 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     logger.debug("Finding marks with missing expected ratings")
     for {
       c <- dbColl()
-      sel = d :~ "$or" -> Seq(d :~ PUBESTARS -> (d :~ "$exists" -> false) :~ PUBREPR -> (d :~ "$exists" -> true),
-                              d :~ PRIVESTARS -> (d :~ "$exists" -> false) :~ PRVREPR -> (d :~ "$exists" -> true))
+      sel = d :~ "$or" ->
+        Seq(d :~ curnt :~  PUBESTARS -> (d :~ "$exists" -> false) :~ PUBREPR -> (d :~ "$exists" -> true),
+            d :~ curnt :~ PRIVESTARS -> (d :~ "$exists" -> false) :~ PRVREPR -> (d :~ "$exists" -> true))
+      //_ = logger.info(BSONDocument.pretty(sel))
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
       logger.debug(s"${seq.size} marks with missing E[rating]s were retrieved")

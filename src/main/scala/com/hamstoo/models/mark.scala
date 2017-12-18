@@ -6,6 +6,7 @@ import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
 import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId, reconcilePrivPub}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -211,11 +212,11 @@ case class Mark(
   import Mark._
 
   /**
-    * Use the private repr when available, o/w use the public one. Returning an Option[String] would be more "correct"
-    * here, but returning the empty string just makes things a lot cleaner on the other end.
+    * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
+    * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
-  def primaryRepr: String = privRepr.orElse(pubRepr).getOrElse("")
-  def expectedRating: Option[String] = privExpRating.orElse(pubExpRating)
+  def primaryRepr   :        String  = reconcilePrivPub(privRepr     , pubRepr     ).getOrElse("")
+  def expectedRating: Option[String] = reconcilePrivPub(privExpRating, pubExpRating)
 
   /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
@@ -382,6 +383,24 @@ object Mark extends BSONHandlers {
     override def withTimeFrom(timeFrom: Long): ExpectedRating = this.copy(timeFrom = timeFrom)
   }
 
+  /**
+    * Keep track of which URLs have identical content to other URLs, per user.  For example, the following 2 URLs:
+    *  https://www.nature.com/articles/d41586-017-07522-z?utm_campaign=Data%2BElixir&utm_medium=email&utm_source=Data_Elixir_160
+    *  https://www.nature.com/articles/d41586-017-07522-z
+    *
+    * The two `var`s are used for database lookup and index.  Their respective non-`var`s are the true values.  `dups`
+    * is the thing being looked up--a list of other URLs that are duplicated content of `url`.
+    */
+  case class UrlDuplicate(userId: UUID,
+                          url: String,
+                          dups: Set[String],
+                          var userIdPrfx: String = "", // why can't a simple string be used for urlPrfx also?
+                          var urlPrfx: Option[mutable.WrappedArray[Byte]] = None,
+                          id: String = generateDbId(Mark.ID_LENGTH)) {
+    userIdPrfx = userId.toString.binPrfxComplement
+    urlPrfx = Some(url.binaryPrefix)
+  }
+
   val ID_LENGTH: Int = 16
 
   val USR: String = nameOf[Mark](_.userId)
@@ -414,11 +433,16 @@ object Mark extends BSONHandlers {
 
   implicit val mDSearchable: BSONDocumentHandler[MDSearchable] = Macros.handler[MDSearchable]
   implicit val mSearchable: BSONDocumentHandler[MSearchable] = Macros.handler[MSearchable]
+  val USRPRFX: String = nameOf[UrlDuplicate](_.userIdPrfx)
+  assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
+  assert(nameOf[UrlDuplicate](_.id) == com.hamstoo.models.Mark.ID)
+
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
   implicit val eratingBsonHandler: BSONDocumentHandler[ExpectedRating] = Macros.handler[ExpectedRating]
   implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
+  implicit val urldupBsonHandler: BSONDocumentHandler[UrlDuplicate] = Macros.handler[UrlDuplicate]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
 }

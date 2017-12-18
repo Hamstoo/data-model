@@ -20,7 +20,7 @@ class MongoHighlightDaoTests
 
   val userId: UUID = constructUserId()
   val markId: String = constructMarkId()
-  val h = Highlight(usrId = userId, markId = markId, pos = Highlight.Position(Nil, 0),
+  val h = Highlight(usrId = userId, markId = markId, pos = Highlight.Position(Nil),
                     pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("first", "", ""))
 
   "MongoHighlightDao" should "(UNIT) insert highlights" in {
@@ -37,8 +37,7 @@ class MongoHighlightDaoTests
   }
 
   it should "(UNIT) update highlights" in {
-    val newPos = Highlight.Position(Nil, 2)
-
+    val newPos = Highlight.Position(Seq(Highlight.PositionElement("", "", 0)))
     hlightsDao.update(h.usrId, h.id, pos = newPos, prv = h.preview, coord = h.pageCoord).futureValue.pos shouldEqual newPos
   }
 
@@ -46,6 +45,4 @@ class MongoHighlightDaoTests
     hlightsDao.delete(h.usrId, h.id).futureValue shouldEqual {}
     hlightsDao.retrieveByMarkId(h.usrId, h.markId).futureValue shouldEqual Nil
   }
-
-  // TODO: test merge
 }
