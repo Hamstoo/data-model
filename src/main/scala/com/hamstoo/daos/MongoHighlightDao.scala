@@ -26,38 +26,6 @@ class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[
   override val logger = Logger(classOf[MongoHighlightDao])
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "highlights")
 
-  // convert url/uPrefs to markIds
-  case class WeeHighlight(usrId: UUID, id: String, timeFrom: Long, url: String)
-
-  // data migration
-  if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
-    Await.result(for {
-      c <- dbColl()
-      mc <- marksColl()
-      _ = logger.info(s"Performing data migration for `highlights` collection")
-
-      oldIdx = s"bin-$USR-1-uPref-1"
-      _ = logger.info(s"Dropping index $oldIdx")
-      nDropped <- c.indexesManager.drop(oldIdx).recover { case _: DefaultBSONCommandError => 0 }
-      _ = logger.info(s"Dropped $nDropped index(es)")
-
-      exst = d :~ "$exists" -> true
-      sel = d :~ "$or" -> BSONArray(d :~ "url" -> exst, d :~ "uPref" -> exst)
-      urled <- {
-        implicit val r: BSONDocumentHandler[WeeHighlight] = Macros.handler[WeeHighlight]
-        c.find(sel).coll[WeeHighlight, Seq]()
-      }
-      _ = logger.info(s"Updating ${urled.size} Highlights with markIds (and removing their URLs)")
-      _ <- Future.sequence { urled.map { x => for { // lookup mark w/ same url
-        marks <- mc.find(d :~ Mark.USR -> x.usrId :~ Mark.URLPRFX -> x.url.binaryPrefix).coll[Mark, Seq]()
-        markId = marks.headOption.map(_.id).getOrElse("")
-        _ <- c.update(d :~ ID -> x.id :~ TIMEFROM -> x.timeFrom,
-                      d :~ "$unset" -> (d :~ "url" -> 1 :~ "uPref" -> 1) :~ "$set" -> {d :~ "markId" -> markId},
-                      multi = true)
-      } yield () }}
-    } yield (), 405 seconds)
-  } else logger.info(s"Skipping data migration for `highlights` collection")
-
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: MARKID -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1" ::

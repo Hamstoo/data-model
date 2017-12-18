@@ -38,39 +38,6 @@ class MongoRepresentationDao(db: () => Future[DefaultDB])
 
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "representations")
 
-  // data migration
-  case class WeeRepr(id: String, timeFrom: Long, page: String)
-  if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
-    Await.result(for {
-      c <- dbColl()
-      _ = logger.info(s"Performing data migration for `representations` collection")
-
-      // ensure every repr has a page String before changing them all to Pages
-      _ <- c.update(d :~ PAGE -> (d :~ "$exists" -> 0), d :~ "$set" -> (d :~ PAGE -> ""), multi = true)
-
-      // change any remaining String `Representation.page`s to Pages (version 0.9.17)
-      sel0 = d :~ PAGE -> (d :~ "$type" -> 2)
-      pjn0 = d :~ ID -> 1 :~ TIMEFROM -> 1 :~ PAGE -> 1
-      stringPaged <- {
-        implicit val r: BSONDocumentHandler[WeeRepr] = Macros.handler[WeeRepr]
-        c.find(sel0, pjn0).coll[WeeRepr, Seq]()
-      }
-      _ = logger.info(s"Updating ${stringPaged.size} `Representations.page`s from Strings to Pages")
-      _ <- Future.sequence { stringPaged.map { r =>
-        val pg = Page(MediaType.TEXT_HTML.toString, r.page.getBytes)
-        c.update(d :~ ID -> r.id :~ TIMEFROM -> r.timeFrom, d :~ "$set" -> (d :~ PAGE -> pg), multi = true)
-      }}
-
-      // reduce size of existing `lprefx`s down to URL_PREFIX_LENGTH to be consistent with MongoMarksDao (version 0.9.16)
-      sel1 = d :~ "$where" -> s"Object.bsonsize({$LPREFX:this.$LPREFX})>$URL_PREFIX_LENGTH+19"
-      longPfxed <- c.find(sel1).coll[Representation, Seq]()
-      _ = logger.info(s"Updating ${longPfxed.size} `Representation.lprefx`s to length $URL_PREFIX_LENGTH bytes")
-      _ <- Future.sequence { longPfxed.map { repr => // lprefx will have been overwritten upon construction
-        c.update(d :~ ID -> repr.id :~ TIMEFROM -> repr.timeFrom, d :~ "$set" -> (d :~ LPREFX -> repr.lprefx), multi = true)
-      }}
-    } yield (), 606 seconds)
-  } else logger.info(s"Skipping data migration for `representations` collection")
-
   // Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
   // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
   private val indxs: Map[String, Index] =
