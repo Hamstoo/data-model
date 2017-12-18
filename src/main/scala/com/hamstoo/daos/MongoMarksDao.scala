@@ -262,13 +262,14 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
       searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
-      seq <- c.find(sel0 :~ searchScoreSelection, searchScoreProjection)/*.sort(searchScoreProjection)*/
+      sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
+
+      seq <- c.find(sel1 :~ searchScoreSelection, searchScoreProjection)/*.sort(searchScoreProjection)*/
         .coll[MSearchable, Seq]()
 
     } yield {
-      val filtered = seq.filter { m => tags.forall(t => m.mark.tags.exists(_.contains(t))) }
-      logger.info(s"${filtered.size} marks were successfully retrieved (${seq.size - filtered.size} were filtered out per their labels)")
-      filtered
+      logger.debug(s"${seq.size} repred marks were successfully retrieved")
+      seq
     }
   }
 
