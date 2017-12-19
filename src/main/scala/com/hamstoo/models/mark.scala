@@ -273,6 +273,10 @@ case class Mark(
     case _ => false
   }
 
+  /** Same as `equals` except ignoring timeFrom/timeThru. */
+  def equalsIgnoreTimeStamps(other: Mark): Boolean =
+    equals(other.copy(timeFrom = timeFrom, timeThru = timeThru, score = score))
+
   /**
     * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
     * `super.hashCode` comes from `Any` and so the implementation of `hashCode` that is automatically generated for
