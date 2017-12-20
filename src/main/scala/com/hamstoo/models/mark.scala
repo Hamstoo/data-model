@@ -171,9 +171,8 @@ object TextNodesVisitor {
   * User history (list) entry data model. An `Entry` is a `Mark` that belongs to a
   * particular user along with an ID and timestamp.
   *
-  * The fields are:
-  *
-  * @param userId   - owning user's UUID
+  * @param userId   - owner's user ID
+  * @param sharedWith - defines which other users are allowed to read or write this Mark[Data]
   * @param id       - the mark's alphanumerical string, used as an identifier common with all the marks versions
   * @param mark     - user-provided content
   * @param aux      - additional fields holding satellite data
@@ -205,7 +204,8 @@ case class Mark(
                  timeFrom: Long = TIME_NOW,
                  timeThru: Long = INF_TIME,
                  mergeId: Option[String] = None,
-                 score: Option[Double] = None) {
+                 sharedWith: Option[Set[UserGroup]] = None,
+                 score: Option[Double] = None) extends Shareable {
   urlPrfx = mark.url map (_.binaryPrefix)
 
   import Mark._

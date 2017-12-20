@@ -12,6 +12,7 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * between the two concepts, the latter being complementary user content.
   *
   * @param usrId    user UUID
+  * @param sharedWith  defines which other users are allowed to read or write this InlineNote
   * @param id       inline note id, common for all versions through time
   * @param markId   markId of the web page where highlighting was done; URL can be obtained from there
   * @param pos      frontend comment data, including positioning and comment text
@@ -21,6 +22,7 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   */
 case class InlineNote(
                        usrId: UUID,
+                       sharedWith: Option[Set[UserGroup]] = None,
                        id: String = generateDbId(InlineNote.ID_LENGTH),
                        markId: String,
                        pos: InlineNote.Position,

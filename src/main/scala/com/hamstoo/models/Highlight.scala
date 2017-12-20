@@ -13,6 +13,7 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * See `getHighlighted` function at src/content-scripts/annotation/highlight/highlight.js in chrome-extension repo.
   *
   * @param usrId    owner UUID
+  * @param sharedWith  defines which other users are allowed to read or write this Highlight
   * @param id       highlight id, common for all versions
   * @param markId   markId of the web page where highlighting was done; URL can be obtained from there
   * @param pos      array of positioning data and initial element text index
@@ -23,6 +24,7 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   */
 case class Highlight(
                       usrId: UUID,
+                      sharedWith: Option[Set[UserGroup]] = None,
                       id: String = generateDbId(Highlight.ID_LENGTH),
                       markId: String,
                       pos: Highlight.Position,

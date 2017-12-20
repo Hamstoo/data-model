@@ -12,7 +12,7 @@ import com.github.dwickern.macros.NameOf.nameOf
   * Currently this trait defines base information with sort-by-page-coordinates functionality, which is used by the full-page
   * view in order to sort the annotations in the same order in which they appear on the page.
   */
-trait Annotation {
+trait Annotation extends Shareable {
   val usrId: UUID
   val id: String
   val markId: String
@@ -21,6 +21,9 @@ trait Annotation {
   val memeId: Option[String]
   val timeFrom: Long
   val timeThru: Long
+
+  /** We unfortunately used different variable names for this one in different model classes. */
+  def userId: UUID = usrId
 }
 
 object Annotation {

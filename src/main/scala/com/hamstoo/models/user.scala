@@ -8,6 +8,15 @@ import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
+/**
+  * A User has a single UserData, but can have multiple social Profiles.
+  * @param loginInfo    A social `providerID` (e.g. "google") and a `providerKey` (e.g. "159549211128895714598").
+  * @param confirmed    Whether the user has confirmed their email address or not (only req'd for non-social login?).
+  * @param email        User's email address.
+  * @param passwordInfo A `hasher` (e.g. "bcrypt") and a hashed/encrypted `password`.
+  * @param oAuth2Info   `accessToken`, `tokenType` (e.g. "Bearer"), and `expiresIn` (e.g. 3600).
+  * @param avatarUrl    Link to an avatar image.
+  */
 case class Profile(
                     loginInfo: LoginInfo,
                     confirmed: Boolean,
@@ -28,17 +37,37 @@ object Profile {
   implicit val profileHandler: BSONDocumentHandler[Profile] = Macros.handler[Profile]
 }
 
+/**
+  * Options for the Chrome Extension.
+  * @param autoSync         Automatically sync browser bookmarks to Hamstoo marks.
+  * @param menuIntegration  Adds a "Mark page with Hamstoo" option to browser context (R-click) menu.
+  * @param minutesActive    Automatically mark browser tabs after this many minutes being active.
+  */
 case class ExtensionOptions(autoSync: Option[Boolean] = None,
                             menuIntegration: Option[Boolean] = None,
                             minutesActive: Option[Int] = None)
 
+/**
+  * Base user data object.  Each User has one of these, but can have multiple linked social Profiles.
+  * @param userName   User handle or username (issue #139)
+  * @param extOpts    Extension options.
+  * @param tutorial   If true, the user will see the tutorial on next login.
+  */
 case class UserData(
                      firstName: Option[String] = None,
                      lastName: Option[String] = None,
+                     userName: Option[String] = None,
                      avatar: Option[String] = None,
                      extOpts: Option[ExtensionOptions] = None,
                      tutorial: Option[Boolean] = Some(true))
 
+/**
+  * Finally, the full User object that is stored in the database for each user.  Notice that this class
+  * extends Silhouette's Identity trait.
+  * @param id        Unique ID.
+  * @param userData  A single base UserData object.
+  * @param profiles  A list of linked social Profiles.
+  */
 case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends Identity {
 
   def defaults(): User = {
