@@ -99,15 +99,15 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     }
   }
 
-  /** Retrieves a mark by user and ID, None if not found.  Retrieves current mark unless timeThru is specified. */
-  def retrieve(user: UUID, id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
-    logger.debug(s"Retrieving mark for user $user and ID $id")
+  /** Retrieves a mark by ID, None if not found.  Retrieves current mark unless timeThru is specified. */
+  def retrieve(id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
+    logger.debug(s"Retrieving mark $id")
     for {
       c <- dbColl()
-      optEnt <- c.find(d :~ USR -> user :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
+      opt <- c.find(d :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
     } yield {
-      logger.debug(s"$optEnt was successfully retrieved")
-      optEnt
+      logger.debug(s"Mark ${opt.map(_.id)} was successfully retrieved")
+      opt
     }
   }
 
@@ -277,6 +277,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * Updates current state of a mark with user-provided MarkData, looking the mark up by user and ID.
     * Returns new current mark state.  Do not attempt to use this function to update non-user-provided data
     * fields (i.e. non-MarkData).
+    *
+    * TODO: only update timestamps and insert a new mark when sufficiently different from old mark
     */
   def update(user: UUID, id: String, mdata: MarkData): Future[Mark] = for {
     c <- dbColl()

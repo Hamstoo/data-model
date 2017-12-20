@@ -40,7 +40,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) retrieve by uuid and id" in {
-    marksDao.retrieve(uuid1, m1.id).futureValue.value shouldEqual m1
+    marksDao.retrieve(m1.id).futureValue.value shouldEqual m1
   }
 
   it should "(UNIT) retrieve by uuid" in {
