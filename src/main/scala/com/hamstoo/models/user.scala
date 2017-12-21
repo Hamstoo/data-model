@@ -70,7 +70,8 @@ case class UserData(
   */
 case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends Identity {
 
-  def defaults(): User = {
+  // TODO: where is this method used, if anywhere?  it's not overriding anything
+  /*override*/ def defaults(): User = {
     val ps = profiles filter (_.confirmed)
     this copy (userData = UserData(
       this.userData.firstName orElse (ps collectFirst { case Profile(_, _, _, Some(s), _, _, _, _, _, _) => s }),
@@ -78,7 +79,14 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
       this.userData.avatar orElse (ps collectFirst { case Profile(_, _, _, _, _, Some(s), _, _, _, _) => s })))
   }
 
-  def profileFor(loginInfo: LoginInfo): Option[Profile] = profiles find (_.loginInfo == loginInfo)
+  /** Returns the Profile corresponding to the given LoginInfo. */
+  def profileFor(loginInfo: LoginInfo): Option[Profile] = profiles.find(_.loginInfo == loginInfo)
+
+  /** Returns true if the email-address/Profile for the given LoginInfo has been confirmed. */
+  def confirmed(loginInfo: LoginInfo): Boolean = profileFor(loginInfo).exists(_.confirmed)
+
+  /** Returns a list of all of the User's *confirmed* email addresses on file. */
+  def emails: Set[String] = profiles.filter(_.confirmed).flatMap(_.email).toSet
 }
 
 object User extends BSONHandlers {
