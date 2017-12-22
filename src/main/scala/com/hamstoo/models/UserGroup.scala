@@ -110,29 +110,15 @@ case class UserGroup(id: String = generateDbId(Mark.ID_LENGTH),
   protected def isAuthorizedPublic: Boolean = id == UserGroup.PUBLIC_ID
   protected def isAuthorizedLoggedIn: Boolean = id == UserGroup.LOGGED_IN_ID
 
-  // used for `emails > other.emails` below
-  protected implicit class ExtendedOptionSet[T](private val self: Option[Set[T]]) /*extends AnyVal*/ {
-    def >(other: Option[Set[T]]): Boolean = other.fold(self.isDefined) { oset => self.exists { sset =>
-      sset.size > oset.size && oset.subsetOf(sset)
-    }}
-  }
-
-  // inline testing (I wonder if there's a doctest-like module for Scala)
-  assert {
-    val a = Some(Set(1, 2, 3))
-    val b = Some(Set(1, 2))
-    val c = Some(Set.empty[Int])
-    val d = None
-    (a > b && b > c && c > d) && !(d > c || c > b || b > a || a > a || b > b || c > c || d > d)
-  }
-
   /**
     * Greater than (>) indicates that a UserGroup dominates (i.e. is shared with strictly more people than)
     * another UserGroup.
     */
-  def >(other: UserGroup): Boolean =
+  def >(other: UserGroup): Boolean = {
+    import UserGroup.ExtendedOptionSet
     !other.isAuthorizedPublic && (isAuthorizedPublic ||
-      !other.isAuthorizedLoggedIn && (isAuthorizedLoggedIn || emails > other.emails))
+      !other.isAuthorizedLoggedIn && (isAuthorizedLoggedIn || (userIds > other.userIds && emails > other.emails)))
+  }
 }
 
 object UserGroup extends BSONHandlers {
@@ -162,6 +148,53 @@ object UserGroup extends BSONHandlers {
 
   implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
   implicit val userGroupHandler: BSONDocumentHandler[UserGroup] = Macros.handler[UserGroup]
+
+  /** Used for `emails > other.emails` above and `union` and `intersection` below. */
+  implicit class ExtendedOptionSet[T](private val self: Option[Set[T]]) extends AnyVal {
+
+    def >(other: Option[Set[T]]): Boolean = other == other.intersect(self)
+
+    def union(other: Option[Set[T]]): Option[Set[T]] =
+      self.fold(other)(s => other.fold(self)(o => Some(s.union(o))))
+
+    def intersect(other: Option[Set[T]]): Option[Set[T]] =
+      self.fold(Option.empty[Set[T]])(s => other.fold(Option.empty[Set[T]])(o => Some(s.intersect(o))))
+  }
+
+  // inline testing (I wonder if there's a doctest-like module for Scala)
+  assert {
+    val a = Some(Set(1, 2, 3))
+    val b = Some(Set(1, 2))
+    val c = Some(Set.empty[Int])
+    val d = None
+    (a > b && b > c && c > d) && !(d > c || c > b || b > a || a > a || b > b || c > c || d > d)
+  }
+
+  /** There should be a generic for something like this--maybe there is. */
+  implicit class ExtendedOptionUserGroup(private val self: Option[UserGroup]) extends AnyVal {
+
+    def union(other: Option[UserGroup]): Option[UserGroup] = self.fold(other) { sg =>
+      other.fold(self) { og =>
+        if (sg > og) self
+        else if (og > sg) other
+        else Some(UserGroup(userIds = sg.userIds.union(og.userIds), emails = sg.emails.union(og.emails)))
+      }
+    }
+
+    def intersect(other: Option[UserGroup]): Option[UserGroup] = self.fold(Option.empty[UserGroup]) { sg =>
+      other.fold(Option.empty[UserGroup]) { og =>
+        if (sg > og) other
+        else if (og > sg) self
+        else Some(UserGroup(userIds = sg.userIds.intersect(og.userIds), emails = sg.emails.intersect(og.emails)))
+      }
+    }
+
+    def -(other: Option[UserGroup]): Option[UserGroup] = self.fold(Option.empty[UserGroup]) { sg =>
+      other.fold(self) { og =>
+
+      }
+    }
+  }
 }
 
 
