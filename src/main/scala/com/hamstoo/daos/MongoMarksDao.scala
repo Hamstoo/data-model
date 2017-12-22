@@ -4,7 +4,7 @@ import java.nio.file.Files
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
-import com.hamstoo.models.{Mark, MarkData, Page, Representation}
+import com.hamstoo.models._
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
 import reactivemongo.api.DefaultDB
@@ -26,7 +26,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   val logger: Logger = Logger(classOf[MongoMarksDao])
 
   val collName: String = "entries"
-  private def dbColl(): Future[BSONCollection] = db().map(_ collection collName)
+  private val dbColl: () => Future[BSONCollection] = () => db().map(_ collection collName)
   private def dupsColl(): Future[BSONCollection] = db().map(_ collection "urldups")
 
   // leave this here as an example of how to perform data migration
@@ -90,8 +90,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     for {
       c <- dbColl()
       now = TIME_NOW
-      ms = marks map(_.copy(timeFrom = now)) map Mark.entryBsonHandler.write // map each mark into a `BSONDocument`
-      wr <- c bulkInsert(ms, ordered = false)
+      ms = marks.map(_.copy(timeFrom = now)).map(Mark.entryBsonHandler.write) // map each mark into a `BSONDocument`
+      wr <- c.bulkInsert(ms, ordered = false)
     } yield {
       val count = wr.totalN
       logger.debug(s"$count marks were successfully inserted")
@@ -99,15 +99,31 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     }
   }
 
-  /** Retrieves a mark by ID, None if not found.  Retrieves current mark unless timeThru is specified. */
-  def retrieve(id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
+  /**
+    * Retrieves a mark by ID, ignoring whether or not the user is authorized to view the mark, which means the
+    * calling code must perform this check itself.
+    * @param id        Requested mark ID.
+    * @param timeThru  TimeThru of requested mark.  Defaults to INF_TIME--i.e. current revision of mark.
+    * @return          None if no such mark is found.
+    */
+  def retrieveInsecure(id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
     logger.debug(s"Retrieving mark $id")
     for {
       c <- dbColl()
       opt <- c.find(d :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
     } yield {
-      logger.debug(s"Mark ${opt.map(_.id)} was successfully retrieved")
+      logger.debug(s"Mark $id was successfully retrieved")
       opt
+    }
+  }
+
+  /** Retrieves a mark by user and ID, None if not found or not authorized. */
+  def retrieve(user: Option[User], id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
+    logger.debug(s"Retrieving mark $id for user $user")
+    retrieveInsecure(id, timeThru = timeThru) map {
+      case Some(m) if m.isAuthorizedRead(user) => logger.debug(s"Mark $id was successfully retrieved"); Some(m)
+      case Some(m) => logger.info(s"User $user unauthorized to view mark $id"); None
+      case None => None
     }
   }
 
@@ -123,14 +139,15 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     }
   }
 
-  /** Retrieves all marks by ID, including previous versions, sorted by `timeFrom` descending. */
-  def retrieveAllById(id: String): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving all marks by ID $id")
+  /** Retrieves all marks by ID, including previous versions, sorted by timeFrom, descending.  See retrieveInsecure. */
+  def retrieveInsecureHist(id: String): Future[Seq[Mark]] = {
+    logger.debug(s"Retrieving history of mark $id")
     for {
       c <- dbColl()
       seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
-      logger.debug(s"${seq.size} marks were successfully retrieved by ID")
+      //val filtered = seq.filter(_.isAuthorizedRead(user))
+      logger.debug(s"${seq.size} marks were successfully retrieved")
       seq
     }
   }
@@ -280,23 +297,43 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     *
     * TODO: only update timestamps and insert a new mark when sufficiently different from old mark
     */
-  def update(user: UUID, id: String, mdata: MarkData): Future[Mark] = for {
+  def update(user: Option[User], id: String, mdata: MarkData): Future[Mark] = for {
     c <- dbColl()
     _ = logger.info(s"Updating mark $id")
-    sel = d :~ USR -> user :~ ID -> id :~ curnt
+
+    // test write permissions
+    oldMk <- retrieve(user, id) map {
+      case Some(m) if m.isAuthorizedWrite(user) => m
+      case Some(m) => throw new Exception(s"User $user unauthorized to modify mark $id")
+      case None => throw new Exception(s"Unable to find mark $id for updating")
+    }
+
+    // be sure to not use `user`, which could be different from `oldMk0.userId` if the the mark has been shared
+    sel = d :~ USR -> oldMk.userId :~ ID -> id :~ curnt
     now: Long = TIME_NOW
-    wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
-    oldMk <- wr.result[Mark].map(Future.successful).getOrElse(
-      Future.failed(new Exception(s"MongoMarksDao.update: unable to find mark $id")))
+    wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
+    _ <- wr.failIfError
+
     // if the URL has changed then discard the old public repr (only the public one though as the private one is
     // based on private user content that was only available from the browser extension at the time the user first
     // created it)
     pubRp = if (mdata.url.isDefined && mdata.url == oldMk.mark.url ||
       mdata.url.isEmpty && mdata.subj == oldMk.mark.subj) oldMk.pubRepr else None
-    newMk = oldMk.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = INF_TIME)
+    newMk = oldMk.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
     wr <- c.insert(newMk)
     _ <- wr.failIfError
   } yield newMk
+
+  /**
+    * R sharing level must be at or above RW sharing level.
+    * Updating RW permissions with higher than existing R permissions will raise R permissions as well.
+    * Updating R permissions with lower than existing RW permissions will reduce RW permissions as well.
+    */
+  def updateSharedWith(m: Mark, sharedWith: SharedWith): Future[Unit] = {
+    logger.debug(s"Sharing mark ${m.id} with $sharedWith")
+    m.updateSharedWith(sharedWith, dbColl) map {_ =>
+      logger.debug(s"Mark ${m.id} was successfully shared") }
+  }
 
   /**
     * Updates a mark's subject and URL only.  No need to maintain history in this case because all info is preserved.

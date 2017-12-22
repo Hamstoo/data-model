@@ -1,6 +1,8 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.{Mark, MarkData}
+import java.util.UUID
+
+import com.hamstoo.models.{Mark, MarkData, User, UserData}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.INF_TIME
@@ -17,8 +19,10 @@ class MongoMarksDaoTests
 
   import com.hamstoo.utils.DataInfo._
 
-  val uuid1 = constructUserId()
-  val uuid2 = constructUserId()
+  val uuid1: UUID = constructUserId()
+  val uuid2: UUID = constructUserId()
+  val user1 = User(uuid1)
+  val user2 = User(uuid2)
 
   val tagSet = Some(Set("tag1, tag2"))
   val cmt = Some("Query")
@@ -39,17 +43,17 @@ class MongoMarksDaoTests
     marksDao.insertStream(markStream).futureValue shouldEqual 2
   }
 
-  it should "(UNIT) retrieve by uuid and id" in {
-    marksDao.retrieve(m1.id).futureValue.value shouldEqual m1
+  it should "(UNIT) retrieve" in {
+    marksDao.retrieve(Some(user1), m1.id).futureValue.value shouldEqual m1
   }
 
   it should "(UNIT) retrieve by uuid" in {
     marksDao.retrieve(uuid2).futureValue.map(_.id) shouldEqual Seq(m2.id, m3.id)
   }
 
-  it should "(UNIT) retrieve all by uuid and id" in {
+  it should "(UNIT) retrieve mark history" in {
     marksDao.insert(m4).futureValue shouldEqual m4
-    marksDao.retrieveAllById(m3.id).futureValue.map(_.mark) shouldEqual Seq(m3.mark, m4.mark)
+    marksDao.retrieveInsecureHist(m3.id).futureValue.map(_.mark) shouldEqual Seq(m3.mark, m4.mark)
   }
 
   it should "(UNIT) retrieve by uuid and url" in {
@@ -77,7 +81,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) update marks by uuid, id, markData" in {
-    marksDao.update(uuid1, m1.id, newMarkData).futureValue.mark shouldEqual newMarkData
+    marksDao.update(Some(user1), m1.id, newMarkData).futureValue.mark shouldEqual newMarkData
   }
 
   it should "(UNIT) delete mark by uuid, id" in {

@@ -24,7 +24,9 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   */
 case class Highlight(
                       usrId: UUID,
-                      sharedWith: Option[Set[UserGroup]] = None,
+                      sharedWith: Option[SharedWith] = None,
+                      nSharedFrom: Int = 0,
+                      nSharedTo: Int = 0,
                       id: String = generateDbId(Highlight.ID_LENGTH),
                       markId: String,
                       pos: Highlight.Position,
@@ -76,6 +78,7 @@ object Highlight extends BSONHandlers with AnnotationInfo {
 
   assert(nameOf[Highlight](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
   assert(nameOf[Highlight](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
+  import UserGroup.sharedWithHandler
   implicit val hlposElemBsonHandler: BSONDocumentHandler[PositionElement] = Macros.handler[PositionElement]
   implicit val hlposBsonHandler: BSONDocumentHandler[Position] = Macros.handler[Position]
   implicit val hlprevBsonHandler: BSONDocumentHandler[Preview] = Macros.handler[Preview]

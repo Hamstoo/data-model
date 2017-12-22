@@ -1,6 +1,5 @@
 package com.hamstoo.models
 
-import com.hamstoo.models.UserGroup._
 import com.hamstoo.test.FlatSpecWithMatchers
 
 /**
@@ -14,15 +13,15 @@ class ShareableTests extends FlatSpecWithMatchers {
   val sharee: User = userB
   val somree = Some(sharee)
 
-  val userRead = UserGroup(constructMarkId(), userIds = Some(Set(sharee.id)))
-  val emailRW = UserGroup(constructMarkId(), readOnly = false, emails = sharee.profiles.head.email.map(Set(_)))
+  val userRead = Some(UserGroup(constructMarkId(), userIds = Some(Set(sharee.id))))
+  val emailRW = Some(UserGroup(constructMarkId(), emails = sharee.profiles.head.email.map(Set(_))))
 
   val md = MarkData("subj", None)
   val mNotShared = Mark(sharer.id, mark = md)
-  val mUserRead = Mark(sharer.id, mark = md, sharedWith = Some(Set(userRead)))
-  val mEmailRW = Mark(sharer.id, mark = md, sharedWith = Some(Set(emailRW)))
-  val mPublicRead = Mark(sharer.id, mark = md, sharedWith = Some(Set(PUBLIC_READ)))
-  val mLoggedInRW = Mark(sharer.id, mark = md, sharedWith = Some(Set(LOGGED_IN_RW)))
+  val mUserRead = Mark(sharer.id, mark = md, sharedWith = Some(SharedWith(userRead, None)))
+  val mEmailRW = Mark(sharer.id, mark = md, sharedWith = Some(SharedWith(None, emailRW)))
+  val mPublicRead = Mark(sharer.id, mark = md, sharedWith = Some(SharedWith(Some(UserGroup.PUBLIC), None)))
+  val mLoggedInRW = Mark(sharer.id, mark = md, sharedWith = Some(SharedWith(None, Some(UserGroup.LOGGED_IN))))
 
   "Shareable" should "(UNIT) authorize reading" in {
     mEmailRW.isAuthorizedRead(Some(sharer)) shouldBe true // users should be able to read their own marks
@@ -38,6 +37,12 @@ class ShareableTests extends FlatSpecWithMatchers {
     mLoggedInRW.isAuthorizedWrite(somree) shouldBe true
   }
 
+  it should "(UNIT) authorize sharing" in {
+    mNotShared.isAuthorizedShare(sharer) shouldBe true // owner can choose to share with anyone
+    mUserRead.isAuthorizedShare(sharer) shouldBe true
+    mPublicRead.isAuthorizedShare(sharee) shouldBe true
+  }
+
   it should "(UNIT) prevent reading" in {
     mNotShared.isAuthorizedRead(somree) shouldBe false
     mLoggedInRW.isAuthorizedRead(None) shouldBe false // login required
@@ -49,5 +54,10 @@ class ShareableTests extends FlatSpecWithMatchers {
     mPublicRead.isAuthorizedWrite(somree) shouldBe false // readOnly = true
     mPublicRead.isAuthorizedWrite(None) shouldBe false
     mLoggedInRW.isAuthorizedWrite(None) shouldBe false // login required
+  }
+
+  it should "(UNIT) prevent sharing" in {
+    mNotShared.isAuthorizedShare(sharee) shouldBe false
+    mEmailRW.isAuthorizedShare(sharee) shouldBe false // only public can be shared by sharee
   }
 }

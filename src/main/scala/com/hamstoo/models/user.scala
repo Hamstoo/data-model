@@ -90,6 +90,10 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
 }
 
 object User extends BSONHandlers {
+
+  /** Creates a dummy User without anything but an ID, which is useful to have in some cases. */
+  def apply(id: UUID): User = User(id, UserData(), Nil)
+
   val ID: String = nameOf[User](_.id)
   val LGNF: String = nameOf[Profile](_.loginInfo)
   val PROF: String = nameOf[User](_.profiles)

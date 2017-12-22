@@ -2,14 +2,10 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{InlineNote, Mark, PageCoord}
+import com.hamstoo.models.{InlineNote, PageCoord}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
-import reactivemongo.api.commands.bson.DefaultBSONCommandError
-import reactivemongo.api.indexes.Index
-import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.{BSONArray, BSONDocumentHandler, Macros}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Await, Future}
@@ -27,12 +23,6 @@ class MongoInlineNoteDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao
   override val logger = Logger(classOf[MongoInlineNoteDao])
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "comments")
 
-  // indexes with names for this mongo collection
-  private val indxs: Map[String, Index] =
-    Index(USR -> Ascending :: MARKID -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1" ::
-    Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
-      s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
-    Nil toMap;
   Await.result(dbColl() map (_.indexesManager ensure indxs), 366 seconds)
 
   /** Update timeThru on an existing inline note and insert a new one with modified values. */

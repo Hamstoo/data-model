@@ -7,6 +7,8 @@ import com.hamstoo.utils._
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
+import reactivemongo.api.indexes.Index
+import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.BSONDocumentHandler
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -24,6 +26,14 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
   val logger: Logger
   def dbColl(): Future[BSONCollection]
   protected def marksColl(): Future[BSONCollection] = db().map(_ collection "entries")
+
+  // indexes with names for this mongo collection (whichever one it turns out to be)
+  protected val indxs: Map[String, Index] =
+    Index(USR -> Ascending :: MARKID -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1" ::
+    Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
+    Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
+      s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
+    Nil toMap;
 
   /**
     * Insert annotation instance into mongodb collection

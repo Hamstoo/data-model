@@ -203,8 +203,11 @@ case class Mark(
                  privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
                  timeFrom: Long = TIME_NOW,
                  timeThru: Long = INF_TIME,
+                 modifiedBy: Option[UUID] = None,
                  mergeId: Option[String] = None,
-                 sharedWith: Option[Set[UserGroup]] = None,
+                 sharedWith: Option[SharedWith] = None,
+                 nSharedFrom: Int = 0,
+                 nSharedTo: Int = 0,
                  score: Option[Double] = None) extends Shareable {
   urlPrfx = mark.url map (_.binaryPrefix)
 
@@ -341,7 +344,7 @@ object Mark extends BSONHandlers {
   val ID_LENGTH: Int = 16
 
   val USR: String = nameOf[Mark](_.userId)
-  val ID: String = nameOf[Mark](_.id)
+  val ID: String = Shareable.ID
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)
   val URLPRFX: String = nameOf[Mark](_.urlPrfx)
@@ -373,6 +376,7 @@ object Mark extends BSONHandlers {
   assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
   assert(nameOf[UrlDuplicate](_.id) == com.hamstoo.models.Mark.ID)
 
+  import UserGroup.sharedWithHandler
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
