@@ -22,7 +22,9 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   */
 case class InlineNote(
                        usrId: UUID,
-                       sharedWith: Option[Set[UserGroup]] = None,
+                       sharedWith: Option[SharedWith] = None,
+                       nSharedFrom: Int = 0,
+                       nSharedTo: Int = 0,
                        id: String = generateDbId(InlineNote.ID_LENGTH),
                        markId: String,
                        pos: InlineNote.Position,
@@ -59,6 +61,7 @@ object InlineNote extends BSONHandlers with AnnotationInfo {
   val TEXT: String = nameOf[Position](_.text)
   val OFFSETX: String = nameOf[Position](_.offsetX)
   val OFFSETY: String = nameOf[Position](_.offsetY)
+  import UserGroup.sharedWithHandler
   implicit val commentposBsonHandler: BSONDocumentHandler[Position] = Macros.handler[Position]
   implicit val commentHandler: BSONDocumentHandler[InlineNote] = Macros.handler[InlineNote]
 }

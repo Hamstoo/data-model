@@ -21,7 +21,7 @@ import scala.concurrent.{Await, Future}
 class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}
-  import com.hamstoo.models.UserGroup.{SPECIAL_USER_GROUPS, userGroupHandler}
+  import com.hamstoo.models.UserGroup.{PUBLIC_USER_GROUPS, userGroupHandler}
   import com.hamstoo.utils._
 
   // get the "users" collection (in the future); the `map` is `Future.map`
@@ -108,13 +108,13 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     _ <- wr.failIfError
   } yield ()
 
-  /** Retrieves user group given ID either from SPECIAL_USER_GROUPS or, if not there, from the database. */
-  def retrieveGroup(groupId: String): Future[Option[UserGroup]] = SPECIAL_USER_GROUPS.get(groupId).fold {
+  /** Retrieves user group either from PUBLIC_USER_GROUPS or, if not there, from the database. */
+  def retrieveGroup(groupId: String): Future[Option[UserGroup]] = PUBLIC_USER_GROUPS.get(groupId).fold {
     for {
       c <- groupColl()
       opt <- c.find(d :~ ID -> groupId).one[UserGroup]
     } yield opt
-  }(specialUserGroup => Future.successful(Some(specialUserGroup)))
+  }(publicUserGroup => Future.successful(Some(publicUserGroup)))
 
   /** Removes user group given ID. */
   def deleteGroup(groupId: String): Future[Unit] = for {

@@ -2,14 +2,10 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Highlight, Mark, PageCoord}
+import com.hamstoo.models.{Highlight, PageCoord}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
-import reactivemongo.api.commands.bson.DefaultBSONCommandError
-import reactivemongo.api.indexes.Index
-import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.{BSONArray, BSONDocumentHandler, Macros}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Await, Future}
@@ -26,12 +22,6 @@ class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[
   override val logger = Logger(classOf[MongoHighlightDao])
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "highlights")
 
-  // indexes with names for this mongo collection
-  private val indxs: Map[String, Index] =
-    Index(USR -> Ascending :: MARKID -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1" ::
-    Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
-      s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
-    Nil toMap;
   Await.result(dbColl() map (_.indexesManager ensure indxs), 345 seconds)
 
   /** Update timeThru on an existing highlight and insert a new one with modified values. */

@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Mark, MarkData, UserStats}
+import com.hamstoo.models._
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import org.scalatest.OptionValues
@@ -28,6 +28,7 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
 
   // construct a new userId for these tests alone
   val userId: UUID = constructUserId()
+  val souser = Some(User(userId))
 
   val tagSet = Some(Set("tag1asdasda, tag2adasd"))
   val cmt = Some("Queryasdasd")
@@ -39,7 +40,6 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
 
   /** This test is designed to create two marks for user. */
   "MongoUserStatsDao" should "(UNIT) calculate marks inserted by userId" in {
-
     val totalMarks: Future[UserStats] =
       for {
         mi1 <- marksDao.insert(m1)
@@ -52,13 +52,12 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
 
   /** This test is designed to modify marks, but to keep only two actual marks for user. */
   it should "(UNIT) calculate marks updated by userId" in {
-
     val totalMarks: Future[UserStats] =
       for {
-        mi1 <- marksDao.update(userId, m1.id, m2.mark)
-        mi2 <- marksDao.update(userId, m2.id, m1.mark)
-        mi3 <- marksDao.update(userId, m1.id, m1.mark)
-        mi4 <- marksDao.update(userId, m2.id, m2.mark)
+        mi1 <- marksDao.update(souser, m1.id, m2.mark)
+        mi2 <- marksDao.update(souser, m2.id, m1.mark)
+        mi3 <- marksDao.update(souser, m1.id, m1.mark)
+        mi4 <- marksDao.update(souser, m2.id, m2.mark)
         mi5 <- marksDao.insert(m3)
         intResult <- marksDao.delete(userId, m2.id :: Nil)
         totalMarks <- statsDao.stats(userId, 0)
@@ -68,24 +67,16 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
   }
 
   it should "increment user's imports count" in {
-
     implicit val handler: BSONDocumentReader[Test] = Macros.reader[Test]
 
-    val importCollName = "imports"
-
     def retrieveImportsCount: Future[Option[Test]] = for {
-      c <- coll(importCollName)
+      c <- coll("imports")
       optRes <- c.find(BSONDocument("_id" -> userId.toString)).one[Test]
     } yield optRes
 
     statsDao.imprt(userId, 5).futureValue shouldEqual {}
-
     retrieveImportsCount.futureValue.value.imports shouldEqual 5
-
     statsDao.imprt(userId, 2).futureValue shouldEqual {}
-
     retrieveImportsCount.futureValue.value.imports shouldEqual 7
   }
-
-
 }
