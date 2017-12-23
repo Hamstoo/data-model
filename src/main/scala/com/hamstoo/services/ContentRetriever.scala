@@ -177,7 +177,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
         }
       }
     }
-    
+
     val response: Try[Response] = retryGetPage[HtmlPage](() => webClient.getPage(url).asInstanceOf[HtmlPage]).map { htmlPage =>
         val html = htmlPage.asText()
         val contentByte = html.toCharArray.map(_.toByte)
