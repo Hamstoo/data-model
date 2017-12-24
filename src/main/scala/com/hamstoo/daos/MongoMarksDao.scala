@@ -537,8 +537,13 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * @param fieldName - the field name in the Mark model to update
     * @param logName   - the field name for logging purposes
     */
-  def updateForeignKeyId(user: UUID, id: String, timeFrom: Long, fkId: String, fieldName: String, logName: String):
-                                                                                                      Future[Mark] = {
+  def updateForeignKeyId(user: UUID,
+                         id: String,
+                         timeFrom: Long,
+                         fkId: String,
+                         fieldName: String,
+                         logName: String): Future[Mark] = {
+
     logger.debug(s"Updating mark $id ($timeFrom) with $logName ID: '$fkId'")
     if (fkId.endsWith("Repr") && fkId.length > Representation.ID_LENGTH) // TODO: remove this after updating indexes
       Future.failed(new Exception(s"Attempt to update mark $id ($timeFrom) with $logName ID '$fkId' failed; long ID length could break index"))
