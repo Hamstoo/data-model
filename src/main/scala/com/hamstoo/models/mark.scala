@@ -34,7 +34,7 @@ import scala.util.matching.Regex
   * @param commentEncoded - markdown converted to HTML; set by class init
   */
 case class MarkData(
-                     subj: String = "",
+                     subj: String,
                      url: Option[String],
                      rating: Option[Double] = None,
                      tags: Option[Set[String]] = None,
