@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
-import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId, reconcilePrivPub}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -121,14 +121,16 @@ object MarkData {
   * downloaded via the chrome extension, the repr-engine downloads public content given a URL, or the file upload
   * process uploads content directly from the user's computer.
   */
-case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
+case class Page(mimeType: String,
+                content: mutable.WrappedArray[Byte],
+                created: Long = TIME_NOW)
 
 object Page {
 
-  /** A separate `apply` method that detects the MIME type automagically with Tika. */
-  def apply(content: mutable.WrappedArray[Byte]): Page = {
+  /** A separate `apply` method that detects the MIME type automatically with Tika. */
+  def apply(content: mutable.WrappedArray[Byte], created: Long): Page = {
     val mimeType = TikaInstance.detect(content.toArray[Byte])
-    Page(mimeType, content)
+    Page(mimeType, content, created)
   }
 }
 
@@ -181,12 +183,12 @@ object TextNodesVisitor {
   * @param mark     - user-provided content
   * @param aux      - additional fields holding satellite data
   * @param urlPrfx  - binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init
-  *                 Binary prefix is used as filtering and 1st stage of urls equality estimation
-  *                 https://en.wikipedia.org/wiki/Binary_prefix
+  *                   Binary prefix is used as filtering and 1st stage of urls equality estimation
+  *                   https://en.wikipedia.org/wiki/Binary_prefix
   * @param page     - temporary holder for page sources, until a representation is constructed or assigned
-  * @param pubRepr  - optional public page representation id for this mark
-  * @param privRepr - optional personal user content representation id for this mark
-  * @param pubExpRating - expected rating of the mark given pubRepr and the user's rating history
+//  * @param pubRepr  - optional public page representation id for this mark
+//  * @param privRepr - optional personal user content representation id for this mark
+//  * @param pubExpRating - expected rating of the mark given pubRepr and the user's rating history
   * @param timeFrom - timestamp of last edit
   * @param timeThru - the moment of time until which this version is latest
   * @param mergeId  - if this mark was merged into another, this will be the ID of that other
@@ -200,11 +202,16 @@ case class Mark(
                  mark: MarkData,
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
-                 page: Option[Page] = None,
-                 pubRepr: Option[String] = None,       // it's helpful for these fields to be (foreign key'ish)
-                 privRepr: Option[String] = None,      // strings rather than objects so that they can be set to
-                 pubExpRating: Option[String] = None,  // "failed" or "none" if desired (e.g. see
-                 privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
+                 page: Seq[Page] = Nil,
+//                 pubRepr: Option[String] = None,       // it's helpful for these fields to be (foreign key'ish)
+//                 privRepr: Option[String] = None,      // strings rather than objects so that they can be set to
+//                 pubExpRating: Option[String] = None,  // "failed" or "none" if desired (e.g. see
+//                 privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
+
+                 // Map that contain Representation -> optional Expect Rating
+                 // in case of issue #224, we need to provide thread safe version. Like ConcurrentHashMap.
+                 pubReprExpRating: Map[String, Option[String]] = Map.empty[String, Option[String]],
+                 privReprExpRating: Map[String, Option[String]] = Map.empty[String, Option[String]],
                  timeFrom: Long = TIME_NOW,
                  timeThru: Long = INF_TIME,
                  mergeId: Option[String] = None,
@@ -217,18 +224,23 @@ case class Mark(
     * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
-  def primaryRepr   :        String  = reconcilePrivPub(privRepr     , pubRepr     ).getOrElse("")
-  def expectedRating: Option[String] = reconcilePrivPub(privExpRating, pubExpRating)
+    // todo: need to discuss, do we need this methods, if yes, how we will choose primary repr, maybe by time?(last one)
+//  def primaryRepr   :        String  = reconcilePrivPub(privRepr     , pubRepr     ).getOrElse("")
+//  def expectedRating: Option[String] = reconcilePrivPub(privExpRating, pubExpRating)
 
   /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
     * representations, even if the mark doesn't have a URL, we'll still try to derive a representation from the subject
     * in case LinkageService.digest timed out when originally trying to generate a title for the mark (issue #195).
     */
-  def representablePublic: Boolean = pubRepr.isEmpty
-  def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined
-  def eratablePublic: Boolean = pubExpRating.isEmpty && pubRepr.isDefined
-  def eratablePrivate: Boolean = privExpRating.isEmpty && privRepr.isDefined
+  def representablePublic: Boolean = pubReprExpRating.isEmpty
+  def representablePrivate: Boolean = privReprExpRating.isEmpty && page.nonEmpty
+
+  def eratablePublic: Boolean =
+    pubReprExpRating.values.forall(v => v.isEmpty) && pubReprExpRating.keys.nonEmpty
+
+  def eratablePrivate: Boolean =
+    privReprExpRating.values.forall(v => v.isEmpty) && privReprExpRating.keys.nonEmpty
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
@@ -242,28 +254,38 @@ case class Mark(
     assert(this.userId == oth.userId)
 
     // warning messages
-    if (pubRepr.isDefined && oth.pubRepr.isDefined && pubRepr.get != oth.pubRepr.get)
-      logger.warn(s"Merging two marks, $id and ${oth.id}, with different public representations ${pubRepr.get} and ${oth.pubRepr.get}; ignoring latter")
-    if (privRepr.isDefined && oth.privRepr.isDefined && privRepr.get != oth.privRepr.get)
-      logger.warn(s"Merging two marks, $id and ${oth.id}, with different private representations ${privRepr.get} and ${oth.privRepr.get}; ignoring latter")
+    if (pubReprExpRating.keys.nonEmpty &&
+        oth.pubReprExpRating.keys.nonEmpty &&
+
+        // maybe we need provide some more flexible criteria of equality
+        pubReprExpRating.keys != oth.pubReprExpRating.keys) {
+      logger.warn(s"Merging two marks, $id and ${oth.id}, with different public representations; ignoring latter")
+    }
+
+    if (privReprExpRating.keys.nonEmpty &&
+        oth.privReprExpRating.keys.nonEmpty &&
+        pubReprExpRating.keys != oth.pubReprExpRating.keys)
+      logger.warn(s"Merging two marks, $id and ${oth.id}, with different private representations; ignoring latter")
 
     // TODO: how do we ensure that additional fields added to the constructor are accounted for here?
     // TODO: how do we ensure that other data (like highlights) that reference markIds are accounted for?
-    copy(mark = mark.merge(oth.mark),
+    copy(
+      mark = mark.merge(oth.mark),
 
-         aux = if (oth.aux.isDefined) aux.map(_.merge(oth.aux.get)).orElse(oth.aux) else aux,
+      aux = if (oth.aux.isDefined) aux.map(_.merge(oth.aux.get)).orElse(oth.aux) else aux,
 
          // `page`s should all have been processed already if any private repr is defined, so only merge them if
          // that is not the case; in which case it's very unlikely that both will be defined, but use newer one if so
          // just in case the user wasn't logged in originally or something (but then `Representation.isDuplicate`
          // would have returned false, so we wouldn't even be here in this awkward position)
-         page = if (Seq(privRepr, oth.privRepr).exists(_.isDefined)) None else oth.page.orElse(page),
+      page = if ((privReprExpRating.keys ++ oth.privReprExpRating.keys).nonEmpty) Nil else if (oth.page.isEmpty) page else oth.page,
 
          // it's remotely possible that these are different, which we warn about above
-         pubRepr  = pubRepr .orElse(oth.pubRepr ),
-         privRepr = privRepr.orElse(oth.privRepr)
-
-         // intentionally skip expectedRating, let the repr-engine generate a value for the new merged mark later on
+//         pubRepr  = pubRepr .orElse(oth.pubRepr ),
+//         privRepr = privRepr.orElse(oth.privRepr),
+      pubReprExpRating = if (pubReprExpRating.isEmpty) oth.pubReprExpRating else pubReprExpRating,
+      privReprExpRating = if (privReprExpRating.isEmpty) oth.privReprExpRating else privReprExpRating
+      // intentionally skip expectedRating, let the repr-engine generate a value for the new merged mark later on
     )
   }
 
@@ -291,6 +313,10 @@ case class Mark(
 }
 
 object Mark extends BSONHandlers {
+
+  type Repr = String
+  type Rating = String
+
   val logger: Logger = Logger(classOf[Mark])
 
   // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once
@@ -353,10 +379,10 @@ object Mark extends BSONHandlers {
   val AUX: String = nameOf[Mark](_.aux)
   val URLPRFX: String = nameOf[Mark](_.urlPrfx)
   val PAGE: String = nameOf[Mark](_.page)
-  val PUBREPR: String = nameOf[Mark](_.pubRepr)
-  val PRVREPR: String = nameOf[Mark](_.privRepr)
-  val PUBESTARS: String = nameOf[Mark](_.pubExpRating)
-  val PRIVESTARS: String = nameOf[Mark](_.privExpRating)
+//  val PUBREPR: String = nameOf[Mark](_.pubRepr)
+//  val PRVREPR: String = nameOf[Mark](_.privRepr)
+//  val PUBESTARS: String = nameOf[Mark](_.pubExpRating)
+//  val PRIVESTARS: String = nameOf[Mark](_.privExpRating)
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
   val MERGEID: String = nameOf[Mark](_.mergeId)
