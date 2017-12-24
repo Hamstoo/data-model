@@ -81,6 +81,13 @@ object ContentRetriever {
     }
   }
 
+  /** Used by PDFRepresentationService and by MarksController */
+  def getNameFromFileName(link: String): String = {
+    val i1 = link.lastIndexOf('/') + 1
+    val i2 = link.lastIndexOf('.')
+    if (i2 > i1) link.substring(i1, i2) else link.substring(i1)
+  }
+
   class CaptchaException extends Exception()
 
   // this exception is thrown when (re)Captcha is detected on a web page
@@ -177,7 +184,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
         }
       }
     }
-    
+
     val response: Try[Response] = retryGetPage[HtmlPage](() => webClient.getPage(url).asInstanceOf[HtmlPage]).map { htmlPage =>
         val html = htmlPage.asText()
         val contentByte = html.toCharArray.map(_.toByte)
