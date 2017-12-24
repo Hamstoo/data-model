@@ -30,6 +30,7 @@ import scala.util.matching.Regex
   * @param rating         - the value assigned to the mark by the user, from 0.0 to 5.0
   * @param tags           - a set of tags assigned to the mark by the user
   * @param comment        - an optional text comment assigned to the mark by the user
+  * @param pagePending    - don't let repr-engine process marks that are still waiting for their private pages
   * @param commentEncoded - markdown converted to HTML; set by class init
   */
 case class MarkData(
@@ -38,7 +39,8 @@ case class MarkData(
                      rating: Option[Double] = None,
                      tags: Option[Set[String]] = None,
                      comment: Option[String] = None,
-                     var commentEncoded: Option[String] = None) {
+                     var commentEncoded: Option[String] = None,
+                     pagePending: Option[Boolean] = None) {
 
   import MarkData._
 
@@ -66,6 +68,9 @@ case class MarkData(
     // example: <p><img></p>
     Jsoup.clean(html2, htmlTagsWhitelist)
   }
+
+  /** Check for `Automarked` label. */
+  def isAutomarked: Boolean = tags.exists(_.exists(_.equalsIgnoreCase(MarkData.AUTOSAVE_TAG)))
 
   /**
     * Merge two `MarkData`s with as little data loss as possible.  Not using `copy` here to ensure that if
@@ -117,6 +122,9 @@ object MarkData {
   * process uploads content directly from the user's computer.
   */
 case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
+
+/** This class is used to parse json when bookmars are imported from browser extension*/
+case class Bookmark(subj: Option[String], url: Option[String], tags: Option[Set[String]])
 
 object Page {
 
@@ -268,6 +276,10 @@ case class Mark(
     case _ => false
   }
 
+  /** Same as `equals` except ignoring timeFrom/timeThru. */
+  def equalsIgnoreTimeStamps(other: Mark): Boolean =
+    equals(other.copy(timeFrom = timeFrom, timeThru = timeThru, score = score))
+
   /**
     * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
     * `super.hashCode` comes from `Any` and so the implementation of `hashCode` that is automatically generated for
@@ -318,6 +330,24 @@ object Mark extends BSONHandlers {
     override def withTimeFrom(timeFrom: Long): ExpectedRating = this.copy(timeFrom = timeFrom)
   }
 
+  /**
+    * Keep track of which URLs have identical content to other URLs, per user.  For example, the following 2 URLs:
+    *  https://www.nature.com/articles/d41586-017-07522-z?utm_campaign=Data%2BElixir&utm_medium=email&utm_source=Data_Elixir_160
+    *  https://www.nature.com/articles/d41586-017-07522-z
+    *
+    * The two `var`s are used for database lookup and index.  Their respective non-`var`s are the true values.  `dups`
+    * is the thing being looked up--a list of other URLs that are duplicated content of `url`.
+    */
+  case class UrlDuplicate(userId: UUID,
+                          url: String,
+                          dups: Set[String],
+                          var userIdPrfx: String = "", // why can't a simple string be used for urlPrfx also?
+                          var urlPrfx: Option[mutable.WrappedArray[Byte]] = None,
+                          id: String = generateDbId(Mark.ID_LENGTH)) {
+    userIdPrfx = userId.toString.binPrfxComplement
+    urlPrfx = Some(url.binaryPrefix)
+  }
+
   val ID_LENGTH: Int = 16
 
   val USR: String = nameOf[Mark](_.userId)
@@ -344,9 +374,14 @@ object Mark extends BSONHandlers {
   val TAGSx: String = MARK + "." + nameOf[MarkData](_.tags)
   val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
   val COMNTENCx: String = MARK + "." + nameOf[MarkData](_.commentEncoded)
+  val PGPENDx: String = MARK + "." + nameOf[MarkData](_.pagePending)
 
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
+
+  val USRPRFX: String = nameOf[UrlDuplicate](_.userIdPrfx)
+  assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
+  assert(nameOf[UrlDuplicate](_.id) == com.hamstoo.models.Mark.ID)
 
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
@@ -354,5 +389,6 @@ object Mark extends BSONHandlers {
   implicit val eratingBsonHandler: BSONDocumentHandler[ExpectedRating] = Macros.handler[ExpectedRating]
   implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
+  implicit val urldupBsonHandler: BSONDocumentHandler[UrlDuplicate] = Macros.handler[UrlDuplicate]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
 }

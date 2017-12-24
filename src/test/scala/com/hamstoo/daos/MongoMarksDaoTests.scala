@@ -1,5 +1,7 @@
 package com.hamstoo.daos
 
+import java.util.UUID
+
 import com.hamstoo.models.{Mark, MarkData}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
@@ -71,7 +73,8 @@ class MongoMarksDaoTests
 
   // depend on index text query (FWC - wtf does this comment mean, and why is it relevant?)
   it should "(UNIT) search marks by uuid, query and tags" in {
-    val m1Stub = m1.copy(mark = MarkData(m1.mark.subj, m1.mark.url), aux = None)
+    val md1Stub = MarkData(m1.mark.subj, m1.mark.url, tags = m1.mark.tags, comment = m1.mark.comment)
+    val m1Stub = m1.copy(mark = md1Stub, aux = None)
     marksDao.search(uuid1, cmt.get, tagSet.get).futureValue shouldEqual Seq(m1Stub)
   }
 
@@ -87,13 +90,23 @@ class MongoMarksDaoTests
     marksDao.isDeleted(uuid1, m1.mark.url.get).futureValue shouldEqual true
   }
 
-  it should "(UNIT) find marks with missing reprs, both current and not" in {
-    marksDao.findMissingReprs(-1).futureValue.filter(_.userId == uuid1).map(_.id) shouldEqual Seq(m1.id, m1.id)
+  it should "(UNIT) find marks with missing reprs, both current and not (update: no longer finding non-current)" in {
+    marksDao.findMissingReprs(-1).futureValue.map(_.id) shouldEqual Seq(m3.id)
   }
 
   it should "(UNIT) find marks with missing reprs, and be able to limit the quantity returned" in {
-    marksDao.findMissingReprs(1).futureValue.length shouldEqual 1 // there should be a total of 4 ...
-    marksDao.findMissingReprs(3).futureValue.length shouldEqual 3 //               ... 2 m1s, m3, and m4
+    val m5 = m3.copy(id = "m5id")
+    marksDao.insert(m5).futureValue
+    val expected = Set(m3.id, m5.id)
+    expected.contains(marksDao.findMissingReprs(1).futureValue.head.id) shouldBe true
+    marksDao.findMissingReprs(2).futureValue.map(_.id).toSet shouldEqual expected
+  }
+
+  it should "(UNIT) find duplicate of mark data, for user, by subject" in {
+    val md = MarkData("testSubj", None)
+    val m = Mark(userId = UUID.randomUUID(), "testId", mark = md)
+    marksDao.insert(m).futureValue shouldEqual m
+    marksDao.findDuplicateSubject(m.userId, md.subj).futureValue should not equal None
   }
 
   /*it should "(UNIT) find marks with missing reprs only once per mark (issue #198)" in {

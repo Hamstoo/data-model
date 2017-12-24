@@ -19,7 +19,7 @@ abstract class MongoReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocument
                                         (name: String, db: () => Future[DefaultDB])
                                         (implicit ec: ExecutionContext) {
 
-  import com.hamstoo.models.Mark.{ID, TIMETHRU}
+  import com.hamstoo.models.Mark.{ID, TIMEFROM, TIMETHRU}
 
   val logger: Logger
 
@@ -60,6 +60,21 @@ abstract class MongoReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocument
       updatedRepr
     }
   }
+
+  /**
+    * Delete representation
+    * @param id        Representation ID to delete
+    * @param timeFrom  `timeFrom` of representation to delete
+    */
+  /*def delete(id: String, timeFrom: Long): Future[Unit] = {
+    logger.info(s"Deleting $name with ID '$id' [$timeFrom/${timeFrom.dt}]")
+    for {
+      c <- dbColl()
+      _ <- c.remove(d :~ ID -> id :~ TIMEFROM -> timeFrom)
+    } yield {
+      logger.debug(s"Successfully deleted $name with ID '$id' [$timeFrom/${timeFrom.dt}]")
+    }
+  }*/
 
   /**
     * Stores provided representation, optionally updating current state if repr ID already exists in database.
