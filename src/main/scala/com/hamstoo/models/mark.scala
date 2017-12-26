@@ -123,9 +123,6 @@ object MarkData {
   */
 case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
 
-/** This class is used to parse json when bookmars are imported from browser extension*/
-case class Bookmark(subj: Option[String], url: Option[String], tags: Option[Set[String]])
-
 object Page {
 
   /** A separate `apply` method that detects the MIME type automagically with Tika. */
