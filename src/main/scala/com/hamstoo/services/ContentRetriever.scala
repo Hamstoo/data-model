@@ -81,7 +81,7 @@ object ContentRetriever {
     }
   }
 
-  /** Used by PDFRepresentationService and by MarksController */
+  /** Used by PDFRepresentationService (repr-engine) and by MarksController (hamstoo). */
   def getNameFromFileName(link: String): String = {
     val i1 = link.lastIndexOf('/') + 1
     val i2 = link.lastIndexOf('.')
