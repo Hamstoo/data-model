@@ -104,6 +104,13 @@ class MongoMarksDaoTests
     marksDao.findMissingReprs(2).futureValue.map(_.id).toSet shouldEqual expected
   }
 
+  it should "(UNIT) find duplicate of mark data, for user, by subject" in {
+    val md = MarkData("testSubj", None)
+    val m = Mark(userId = UUID.randomUUID(), "testId", mark = md)
+    marksDao.insert(m).futureValue shouldEqual m
+    marksDao.findDuplicateSubject(m.userId, md.subj).futureValue should not equal None
+  }
+
   /*it should "(UNIT) find marks with missing reprs only once per mark (issue #198)" in {
     var marks: Set[Mark] = marksDao.findMissingReprs(-1).futureValue.toSet
     marks.size shouldEqual 4
