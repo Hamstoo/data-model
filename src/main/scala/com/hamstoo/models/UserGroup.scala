@@ -56,8 +56,6 @@ trait Shareable {
   def isPublic: Boolean = sharedWith.exists { sw =>
     Seq(sw.readOnly, sw.readWrite).flatten.exists(ug => UserGroup.PUBLIC_USER_GROUPS.keys.exists(_ == ug.id)) }
 
-  import UserGroup.sharedWithHandler
-
   /**
     * R sharing level must be at or above RW sharing level.
     * Updating RW permissions with higher than existing R permissions will raise R permissions as well.
@@ -68,7 +66,10 @@ trait Shareable {
     c <- dbColl()
     // be sure not to select userId field here as different DB models use different strings (e.g. Annotation.usrId)
     sel = d :~ Shareable.ID -> id :~ curnt
-    wr <- c.update(sel, d :~ "$set" -> (d :~ Shareable.SHARED_WITH -> sharedWith))
+    wr <- {
+      import UserGroup.sharedWithHandler
+      c.update(sel, d :~ "$set" -> (d :~ Shareable.SHARED_WITH -> sharedWith))
+    }
     _ <- wr.failIfError
   } yield ()
 }
@@ -119,6 +120,8 @@ case class UserGroup(id: String = generateDbId(Mark.ID_LENGTH),
     !other.isAuthorizedPublic && (isAuthorizedPublic ||
       !other.isAuthorizedLoggedIn && (isAuthorizedLoggedIn || (userIds > other.userIds && emails > other.emails)))
   }
+
+  def >=(other: UserGroup): Boolean = this == other || this > other
 }
 
 object UserGroup extends BSONHandlers {
@@ -144,7 +147,7 @@ object UserGroup extends BSONHandlers {
   }
 
   /** Enumerated, special, public user groups used by MongoUserDao. */
-  val PUBLIC_USER_GROUPS = Map(PUBLIC.id -> PUBLIC, LOGGED_IN.id -> LOGGED_IN)
+  val PUBLIC_USER_GROUPS: Map[String, UserGroup] = Map(PUBLIC.id -> PUBLIC, LOGGED_IN.id -> LOGGED_IN)
 
   implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
   implicit val userGroupHandler: BSONDocumentHandler[UserGroup] = Macros.handler[UserGroup]
@@ -152,13 +155,18 @@ object UserGroup extends BSONHandlers {
   /** Used for `emails > other.emails` above and `union` and `intersection` below. */
   implicit class ExtendedOptionSet[T](private val self: Option[Set[T]]) extends AnyVal {
 
-    def >(other: Option[Set[T]]): Boolean = other == other.intersect(self)
+    protected def none = Option.empty[Set[T]]
+
+    def >(other: Option[Set[T]]): Boolean = other != self && other == other.intersect(self)
 
     def union(other: Option[Set[T]]): Option[Set[T]] =
       self.fold(other)(s => other.fold(self)(o => Some(s.union(o))))
 
     def intersect(other: Option[Set[T]]): Option[Set[T]] =
-      self.fold(Option.empty[Set[T]])(s => other.fold(Option.empty[Set[T]])(o => Some(s.intersect(o))))
+      self.fold(none)(s => other.fold(none)(o => Some(s.intersect(o))))
+
+    def -(other: Option[Set[T]]): Option[Set[T]] =
+      self.fold(none)(s => if (s.isEmpty) none else Some(other.fold(s)(s.diff)))
   }
 
   // inline testing (I wonder if there's a doctest-like module for Scala)
@@ -189,9 +197,12 @@ object UserGroup extends BSONHandlers {
       }
     }
 
-    def -(other: Option[UserGroup]): Option[UserGroup] = self.fold(Option.empty[UserGroup]) { sg =>
-      other.fold(self) { og =>
-
+    def -(other: Option[UserGroup]): Option[UserGroup] = self flatMap { sg =>
+      other match {
+        case None => Some(sg)
+        case Some(og) if og >= sg => None
+        case Some(_) if sg.isAuthorizedPublic || sg.isAuthorizedLoggedIn => Some(sg)
+        case Some(og) => Some(UserGroup(userIds = sg.userIds - og.userIds, emails = sg.emails - og.emails))
       }
     }
   }

@@ -78,7 +78,7 @@ object Highlight extends BSONHandlers with AnnotationInfo {
 
   assert(nameOf[Highlight](_.timeFrom) == com.hamstoo.models.Mark.TIMEFROM)
   assert(nameOf[Highlight](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
-  import UserGroup.sharedWithHandler
+  implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
   implicit val hlposElemBsonHandler: BSONDocumentHandler[PositionElement] = Macros.handler[PositionElement]
   implicit val hlposBsonHandler: BSONDocumentHandler[Position] = Macros.handler[Position]
   implicit val hlprevBsonHandler: BSONDocumentHandler[Preview] = Macros.handler[Preview]

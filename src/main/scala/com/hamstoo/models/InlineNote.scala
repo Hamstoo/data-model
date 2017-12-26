@@ -61,7 +61,7 @@ object InlineNote extends BSONHandlers with AnnotationInfo {
   val TEXT: String = nameOf[Position](_.text)
   val OFFSETX: String = nameOf[Position](_.offsetX)
   val OFFSETY: String = nameOf[Position](_.offsetY)
-  import UserGroup.sharedWithHandler
+  implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
   implicit val commentposBsonHandler: BSONDocumentHandler[Position] = Macros.handler[Position]
   implicit val commentHandler: BSONDocumentHandler[InlineNote] = Macros.handler[InlineNote]
 }
