@@ -1,11 +1,20 @@
 package com.hamstoo.models
 
-import com.hamstoo.test.FlatSpecWithMatchers
+import java.util.UUID
+
+import com.hamstoo.daos.MongoUserDao
+import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
+import org.mockito.ArgumentMatchers.any
+import org.mockito.Mockito.when
+import org.scalatest.mockito.MockitoSugar
+
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 /**
   * Shareable trait and UserGroup model unit tests
   */
-class ShareableTests extends FlatSpecWithMatchers {
+class ShareableTests extends FlatSpecWithMatchers with MockitoSugar with FutureHandler {
 
   import com.hamstoo.utils.DataInfo._
 
@@ -37,11 +46,11 @@ class ShareableTests extends FlatSpecWithMatchers {
     mLoggedInRW.isAuthorizedWrite(somree) shouldBe true
   }
 
-  it should "(UNIT) authorize sharing" in {
+  /*it should "(UNIT) authorize sharing" in {
     mNotShared.isAuthorizedShare(sharer) shouldBe true // owner can choose to share with anyone
     mUserRead.isAuthorizedShare(sharer) shouldBe true
     mPublicRead.isAuthorizedShare(sharee) shouldBe true
-  }
+  }*/
 
   it should "(UNIT) prevent reading" in {
     mNotShared.isAuthorizedRead(somree) shouldBe false
@@ -56,9 +65,17 @@ class ShareableTests extends FlatSpecWithMatchers {
     mLoggedInRW.isAuthorizedWrite(None) shouldBe false // login required
   }
 
-  it should "(UNIT) prevent sharing" in {
+  /*it should "(UNIT) prevent sharing" in {
     mNotShared.isAuthorizedShare(sharee) shouldBe false
     mEmailRW.isAuthorizedShare(sharee) shouldBe false // only public can be shared by sharee
+  }*/
+
+  "SharedWith" should "(UNIT) be convertable to a list of email addresses" in {
+    val sharerUserGroup = Some(UserGroup(constructMarkId(), userIds = Some(Set(sharer.id))))
+    val userDao: MongoUserDao = mock[MongoUserDao]
+    when(userDao.retrieve(any[UUID])).thenReturn(Future.successful(Some(sharer)))
+    val emails = Set(sharer, sharee).map(_.profiles.head.email.get)
+    SharedWith(sharerUserGroup, withEmails).emails(userDao).futureValue shouldBe emails
   }
 
   "ExtendedOptionUserGroup" should "(UNIT) act like a set" in {

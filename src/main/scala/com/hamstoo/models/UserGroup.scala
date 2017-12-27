@@ -3,7 +3,8 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.{ExtendedWriteResult, d, curnt, generateDbId}
+import com.hamstoo.daos.MongoUserDao
+import com.hamstoo.utils.{ExtendedWriteResult, TIME_NOW, curnt, d, generateDbId}
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -52,9 +53,9 @@ trait Shareable {
     * The owner of a mark may share it with anyone, of course, but non-owners may only re-share (via email--without
     * updating `sharedWith` in the database) if it's owner has previously made it public.
     */
-  def isAuthorizedShare(user: User): Boolean = ownedBy(user) || isPublic
-  def isPublic: Boolean = sharedWith.exists { sw =>
-    Seq(sw.readOnly, sw.readWrite).flatten.exists(ug => UserGroup.PUBLIC_USER_GROUPS.keys.exists(_ == ug.id)) }
+  //def isAuthorizedShare(user: User): Boolean = ownedBy(user) || isPublic
+  //def isPublic: Boolean = sharedWith.exists { sw =>
+  //  Seq(sw.readOnly, sw.readWrite).flatten.exists(ug => UserGroup.PUBLIC_USER_GROUPS.keys.exists(_ == ug.id)) }
 
   /**
     * R sharing level must be at or above RW sharing level.
@@ -68,7 +69,7 @@ trait Shareable {
     sel = d :~ Shareable.ID -> id :~ curnt
     wr <- {
       import UserGroup.sharedWithHandler
-      c.update(sel, d :~ "$set" -> (d :~ Shareable.SHARED_WITH -> sharedWith))
+      c.update(sel, d :~ "$set" -> (d :~ Shareable.SHARED_WITH -> sharedWith.copy(timeStamp = TIME_NOW)))
     }
     _ <- wr.failIfError
   } yield ()
@@ -82,7 +83,28 @@ object Shareable {
 /**
   * A pair of UserGroups, one for read-only and one for read-write.
   */
-case class SharedWith(readOnly: Option[UserGroup] = None, readWrite: Option[UserGroup] = None)
+case class SharedWith(readOnly: Option[UserGroup] = None,
+                      readWrite: Option[UserGroup] = None,
+                      timeStamp: Long = TIME_NOW) {
+
+  /**
+    * Returns the union of all of the email addresses from either UserGroup, both those that are found in
+    * the profiles of the groups' userIds and those in the groups' emails.
+    */
+  def emails(userDao: MongoUserDao)(implicit ec: ExecutionContext): Future[Set[String]] = {
+    import UserGroup.ExtendedOptionSet
+
+    val userIds = (readOnly.flatMap(_.userIds) union readWrite.flatMap(_.userIds)).getOrElse(Set.empty[ UUID ])
+    val emails  = (readOnly.flatMap(_. emails) union readWrite.flatMap(_. emails)).getOrElse(Set.empty[String])
+
+    // convert userIds into a set of email addresses (which could be empty)
+    val futUserEmails: Future[Set[String]] = for {
+      optUsers <- Future.sequence(userIds.map(userDao.retrieve))
+    } yield optUsers.flatten.flatMap(_.profiles.flatMap(_.email))
+
+    futUserEmails.map(_.union(emails))
+  }
+}
 
 /**
   * Base trait for groups of users to allow sharing of marks between users.
