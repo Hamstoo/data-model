@@ -46,13 +46,13 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
     // findMissingReprs indexes
     Index(PUBREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt)) % s"bin-$PUBREPR-1-partial-$TIMETHRU" ::
-    Index(PRVREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PAGE -> (d :~ "$exists" -> true))) %
-      s"bin-$PRVREPR-1-partial-$TIMETHRU-$PAGE" ::
+//    Index(PRVREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PAGE -> (d :~ "$exists" -> true))) %
+//      s"bin-$PRVREPR-1-partial-$TIMETHRU-$PAGE" ::
     // findMissingExpectedRatings (partial) indexes
     Index(PUBESTARS -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PUBREPR -> (d :~ "$exists" -> true))) %
       s"bin-$PUBESTARS-1-partial-$TIMETHRU-$PUBREPR" ::
-    Index(PRIVESTARS -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> true))) %
-      s"bin-$PRIVESTARS-1-partial-$TIMETHRU-$PRVREPR" ::
+//    Index(PRIVESTARS -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> true))) %
+//      s"bin-$PRIVESTARS-1-partial-$TIMETHRU-$PRVREPR" ::
     // text index (there can be only one per collection)
     Index(USR -> Ascending :: TIMETHRU -> Ascending :: SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) %
       s"bin-$USR-1-$TIMETHRU-1--txt-$SUBJx-$TAGSx-$COMNTx" ::
@@ -216,9 +216,15 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     logger.debug(s"Retrieve represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
-      exst = d :~ "$exists" -> true :~ "$nin" -> NON_IDS
-      sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
+      exst = d :~ "$exists" -> true
+
+      pubRepr = d :~ PUBREPR -> exst :~ "$nin" -> NON_IDS
+      privRepr = d :~ PRVEXPRAT -> d :~ "$not" -> (d :~ "$size" -> 0)
+
+      sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(pubRepr, privRepr)
+
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
+
       seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
@@ -351,16 +357,17 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   def addPageSource(user: UUID, id: String, page: Page, ensureNoPrivRepr: Boolean = true): Future[Unit] = for {
     c <- dbColl()
     sel0 = d :~ USR -> user :~ ID -> id :~ curnt
-    sel1 = if (ensureNoPrivRepr) sel0 :~ PRVREPR -> (d :~ "$exists" -> false) else sel0
-    wr <- c.findAndUpdate(sel1, d :~ "$set" -> (d :~ PAGE -> page) :~ "$unset" -> (d :~ PGPENDx -> 1))
+
+    sel1 = if (ensureNoPrivRepr) sel0 :~ PRVEXPRAT -> (d :~ "$size" -> 0) else sel0
+    wr <- c.findAndUpdate(sel1, d :~ "$push" -> (d :~ PAGE -> page) :~ "$unset" -> (d :~ PGPENDx -> 1))
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
-      logger.error(s"Unable to findAndUpdate mark $id's page source; ensureNoPrivRepr = $ensureNoPrivRepr, wr.lastError = ${wr.lastError.get}")
+      logger.error(s"Unable to findAndUpdate mark $id's page source; wr.lastError = ${wr.lastError.get}")
       Future.failed(new NoSuchElementException("MongoMarksDao.addPageSource"))
     }
 
-    m = wr.result[Mark].get
-    _ = if (m.privRepr.isDefined) logger.warn(s"Adding page source for mark ${m.id} (${m.timeFrom}) that already has a private representation ${m.privRepr.get}, which will eventually be overwritten")
+//    m = wr.result[Mark].get
+//    _ = if (m.privRepr.isDefined) logger.warn(s"Adding page source for mark ${m.id} (${m.timeFrom}) that already has a private representation ${m.privRepr.get}, which will eventually be overwritten")
   } yield ()
 
   /**
@@ -487,8 +494,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
       // we might leave a Page attached to a mark, if for example the processing of that page fails
       // (see repr-engine's MongoClient.receive in the FailedProcessing case)
-      selPriv = d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> false) :~
-                              PAGE -> (d :~ "$exists" -> true)
+      selPriv = d :~ curnt :~ PRVEXPRAT -> (d :~ "$size" -> 0) :~
+                              PAGE -> d :~ "$not" -> (d :~ "$size" -> 0)
 
       // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
       sel = d :~ "$or" -> Seq(selPub, selPriv) // Seq gets automatically converted to BSONArray
@@ -511,9 +518,11 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     logger.debug("Finding marks with missing expected ratings")
     for {
       c <- dbColl()
-      sel = d :~ "$or" ->
-        Seq(d :~ curnt :~  PUBESTARS -> (d :~ "$exists" -> false) :~ PUBREPR -> (d :~ "$exists" -> true),
-            d :~ curnt :~ PRIVESTARS -> (d :~ "$exists" -> false) :~ PRVREPR -> (d :~ "$exists" -> true))
+
+      pubStar = d :~ curnt :~  PUBESTARS -> (d :~ "$exists" -> false) :~ PUBREPR -> (d :~ "$exists" -> true)
+      privStar = d :~ curnt :~ PRIVESTARS -> (d :~ "$exists" -> false) :~ PRVREPR -> (d :~ "$exists" -> true)
+
+      sel = d :~ "$or" -> Seq(pubStar, privStar)
       //_ = logger.info(BSONDocument.pretty(sel))
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
