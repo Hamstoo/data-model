@@ -4,8 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.daos.MongoUserDao
-import com.hamstoo.utils.{ExtendedWriteResult, ObjectId, TIME_NOW, TimeStamp, curnt, d, generateDbId}
-import reactivemongo.api.collections.bson.BSONCollection
+import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -15,8 +14,6 @@ import scala.util.hashing
   * Trait to enable a data structure to be shareable with other users besides the owner user.
   */
 trait Shareable {
-
-  import Shareable._
 
   /** Shareables must have an ID. */
   def id: String
@@ -28,10 +25,10 @@ trait Shareable {
   def sharedWith: Option[SharedWith]
 
   /** Sorta like "re-tweeets."  However, the number of *current* people with access can be gotten from `sharedWith`. */
-  def nSharedFrom: Int
+  def nSharedFrom: Option[Int]
 
   /** One person can share to multiple, this counts how many individuals have been shared *to*. */
-  def nSharedTo: Int
+  def nSharedTo: Option[Int]
 
   /** Returns true if the user owns the mark. */
   def ownedBy(user: User): Boolean = user.id == userId
@@ -67,26 +64,6 @@ trait Shareable {
   def isAuthorizedShare(user: User): Boolean = ownedBy(user) || isPublic
   def isPublic: Boolean = sharedWith.exists { sw =>
     Seq(sw.readOnly, sw.readWrite).flatten.exists(id => UserGroup.PUBLIC_USER_GROUPS.keys.exists(_ == id)) }
-
-  /**
-    * R sharing level must be at or above RW sharing level.
-    * Updating RW permissions with higher than existing R permissions will raise R permissions as well.
-    * Updating R permissions with lower than existing RW permissions will reduce RW permissions as well.
-    */
-  def updateSharedWith(sharedWith: SharedWith, nSharedTo: Int, dbColl: () => Future[BSONCollection])
-                      (implicit ec: ExecutionContext): Future[Unit] = for {
-    c <- dbColl()
-    // be sure not to select userId field here as different DB models use name that field differently: userId/usrId
-    sel = d :~ Shareable.ID -> id :~ curnt
-
-    wr <- {
-      import UserGroup.sharedWithHandler
-      val set = d :~ "$set" -> (d :~ SHARED_WITH -> sharedWith.copy(ts = TIME_NOW))
-      val inc = d :~ "$inc" -> (d :~ N_SHARED_FROM -> 1 :~ N_SHARED_TO -> nSharedTo)
-      c.update(sel, set :~ inc)
-    }
-    _ <- wr.failIfError
-  } yield ()
 }
 
 object Shareable {

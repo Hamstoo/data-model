@@ -23,8 +23,8 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
 case class InlineNote(
                        usrId: UUID,
                        sharedWith: Option[SharedWith] = None,
-                       nSharedFrom: Int = 0,
-                       nSharedTo: Int = 0,
+                       nSharedFrom: Option[Int] = Some(0),
+                       nSharedTo: Option[Int] = Some(0),
                        id: String = generateDbId(InlineNote.ID_LENGTH),
                        markId: String,
                        pos: InlineNote.Position,
