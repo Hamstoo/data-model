@@ -14,8 +14,8 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{Await, Future}
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -324,20 +324,21 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   def merge(oldMark: Mark, newMark: Mark, now: Long = TIME_NOW): Future[Mark] = for {
     c <- dbColl()
 
-    // delete the newer mark and merge it into the older/pre-existing one
+    // delete the newer mark and merge it into the older/pre-existing one (will return 0 if newMark not in db yet)
     _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id))
     mergedMk = oldMark.merge(newMark).copy(timeFrom = now, timeThru = INF_TIME)
 
-    // this was formerly (2017-10-18) a bug as it doesn't affect any of the non-MarkData fields
-    //updatedMk <- this.update(mergedMk.userId, mergedMk.id, mergedMk.mark, now = now)
+    // don't do anything if there wasn't a meaningful change to the old mark
+    _ <- if (oldMark equalsIgnoreTimeStamps mergedMk) Future.successful(oldMark) else for {
 
-    sel = d :~ USR -> mergedMk.userId :~ ID -> mergedMk.id :~ curnt
-    wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
-    _ <- wr.failIfError
+      wr <- c.update(d :~ USR -> mergedMk.userId :~ ID -> mergedMk.id :~ curnt,
+                     d :~ "$set" -> (d :~ TIMETHRU -> now))
+      _ <- wr.failIfError
 
-    wr <- c.insert(mergedMk)
-    _ <- wr.failIfError
+      wr <- c.insert(mergedMk)
+      _ <- wr.failIfError
 
+    } yield ()
   } yield mergedMk
 
   /** Process the file into a Page instance and add it to the Mark in the database. */
@@ -410,18 +411,16 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
              ids: Seq[String],
              now: Long = TIME_NOW,
              mergeId: Option[String] = None): Future[Int] = {
-
     logger.debug(s"Deleting marks for user $user: $ids")
-
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
       mrg = mergeId.map(d :~ MERGEID -> _).getOrElse(d)
-      wr <- c update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now :~ mrg), multi = true)
-      _ <- wr failIfError
+      wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now :~ mrg), multi = true)
+      _ <- wr.failIfError
     } yield {
       val count = wr.nModified
-      logger.debug(s"$count were successfully deleted")
+      logger.debug(s"$count marks were successfully deleted")
       count
     }
   }
@@ -603,5 +602,23 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       sel = d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> (d :~ "$lt" -> INF_TIME)
       seq <- c.find(sel).coll[Mark, Seq]()
     } yield seq.exists(_.mark.url.contains(url))
+  }
+
+  /**
+    * Search for a [MarkData] by userId, subject and empty url field for future merge
+    * @param userId - user UUID
+    * @param subject string subject
+    * @return - optional [MarkData]
+    */
+  def findDuplicateSubject(userId: UUID, subject: String): Future[Option[Mark]] = {
+    logger.debug(s"Searching for duplicate subject marks for user $userId and subject '$subject'")
+    for {
+      c <- dbColl() // TODO: does this query require an index?  or is the "bin-$USR-1-$TIMETHRU-1" index sufficient?
+      sel = d :~ USR -> userId :~ SUBJx -> subject :~ URLx -> (d :~ "$exists" -> false) :~ curnt
+      opt <- c.find(sel).one[Mark]
+    } yield {
+      logger.debug(s"Searching for duplicate subject marks finished with result mark ${opt.map(_.id)}")
+      opt
+    }
   }
 }
