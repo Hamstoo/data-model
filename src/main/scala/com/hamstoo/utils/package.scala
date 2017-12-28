@@ -143,7 +143,8 @@ package object utils {
   val URL_PREFIX_COMPLEMENT_LENGTH = 12
 
   /** Generate an ID to be used for a document in a database collection. */
-  def generateDbId(length: Int): String = Random.alphanumeric.take(length).mkString
+  type ObjectId = String
+  def generateDbId(length: Int): ObjectId = Random.alphanumeric.take(length).mkString
 
   // if a mark doesn't have a repr (either reprId is in NON_IDS or reprId can't be found in the database) then
   // use this as its eratingId
@@ -181,12 +182,13 @@ package object utils {
     * MongoDB documents with TimeThrus equal to this value are current.  Those with lesser TimeThrus were either
     * deleted or have been updated, in which case there should be a new document with a matching TimeFrom.
     *
-    * For reference, Long.MaxValue is equal to 9223372036854775807.
+    * For reference, Long.MaxValue is equal to 9223372036854775807 or MongoDB's `NumberLong("9223372036854775807")`.
     */
-  val INF_TIME: Long = Long.MaxValue
-  def TIME_NOW: Long = DateTime.now.getMillis
+  type TimeStamp = Long
+  val INF_TIME: TimeStamp = Long.MaxValue
+  def TIME_NOW: TimeStamp = DateTime.now.getMillis
 
-  implicit class ExtendedLong(private val ms: Long) extends AnyVal {
+  implicit class ExtendedTimeStamp(private val ms: TimeStamp) extends AnyVal {
     /** Converts from time in milliseconds to a Joda DateTime. */
     def dt: DateTime = new DateTime(ms)
   }

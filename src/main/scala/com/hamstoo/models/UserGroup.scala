@@ -4,11 +4,12 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.daos.MongoUserDao
-import com.hamstoo.utils.{ExtendedWriteResult, TIME_NOW, curnt, d, generateDbId}
+import com.hamstoo.utils.{ExtendedWriteResult, ObjectId, TIME_NOW, TimeStamp, curnt, d, generateDbId}
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.hashing
 
 /**
   * Trait to enable a data structure to be shareable with other users besides the owner user.
@@ -39,23 +40,34 @@ trait Shareable {
     *   2. One of the User's email addresses is included in this Shareable's `sharedWith`
     *   3. User's ID is included in this Shareable's `sharedWith`
     */
-  def isAuthorizedRead(optUser: Option[User]): Boolean = isAuthorizedWrite(optUser) ||
-    optUser.exists(u => // no ownership check necessary here; isAuthorizedWrite already checked
-      u.emails.exists(e => sharedWith.exists(_.readOnly.exists(_.isAuthorized(e))))) ||
-                           sharedWith.exists(_.readOnly.exists(_.isAuthorized(optUser.map(_.id))))
+  def isAuthorizedRead(optUser: Option[User])
+                      (implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] = for {
+    aw <- isAuthorizedWrite(optUser) // no ownership check necessary here; isAuthorizedWrite will check
+    ar <- if (aw) Future.successful(true) else { sharedWith match {
+      case Some(SharedWith(Some(roId), _, _)) => userDao.retrieveGroup(roId).map(_.exists(_.isAuthorized(optUser)))
+      case _ => Future.successful(false)
+    }}
+  } yield ar
 
-  def isAuthorizedWrite(optUser: Option[User]): Boolean =
-    optUser.exists(u => ownedBy(u) ||
-      u.emails.exists(e => sharedWith.exists(_.readWrite.exists(_.isAuthorized(e))))) ||
-                           sharedWith.exists(_.readWrite.exists(_.isAuthorized(optUser.map(_.id))))
+  def isAuthorizedWrite(optUser: Option[User])
+                       (implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] = for {
+    ob <- Future.successful(optUser.exists(ownedBy))
+    aw <- if (ob) Future.successful(true) else { sharedWith match {
+      case Some(SharedWith(_, Some(rwId), _)) => userDao.retrieveGroup(rwId).map(_.exists(_.isAuthorized(optUser)))
+      case _ => Future.successful(false)
+    }}
+  } yield aw
 
   /**
     * The owner of a mark may share it with anyone, of course, but non-owners may only re-share (via email--without
     * updating `sharedWith` in the database) if it's owner has previously made it public.
     */
-  //def isAuthorizedShare(user: User): Boolean = ownedBy(user) || isPublic
-  //def isPublic: Boolean = sharedWith.exists { sw =>
-  //  Seq(sw.readOnly, sw.readWrite).flatten.exists(ug => UserGroup.PUBLIC_USER_GROUPS.keys.exists(_ == ug.id)) }
+
+  todo, add this functionality back
+
+  def isAuthorizedShare(user: User): Boolean = ownedBy(user) || isPublic
+  def isPublic: Boolean = sharedWith.exists { sw =>
+    Seq(sw.readOnly, sw.readWrite).flatten.exists(ug => UserGroup.PUBLIC_USER_GROUPS.keys.exists(_ == ug.id)) }
 
   /**
     * R sharing level must be at or above RW sharing level.
@@ -67,9 +79,12 @@ trait Shareable {
     c <- dbColl()
     // be sure not to select userId field here as different DB models use different strings (e.g. Annotation.usrId)
     sel = d :~ Shareable.ID -> id :~ curnt
+
+  todo, update nSharedTo/From
+
     wr <- {
       import UserGroup.sharedWithHandler
-      c.update(sel, d :~ "$set" -> (d :~ Shareable.SHARED_WITH -> sharedWith.copy(timeStamp = TIME_NOW)))
+      c.update(sel, d :~ "$set" -> (d :~ Shareable.SHARED_WITH -> sharedWith.copy(ts = TIME_NOW)))
     }
     _ <- wr.failIfError
   } yield ()
@@ -83,26 +98,39 @@ object Shareable {
 /**
   * A pair of UserGroups, one for read-only and one for read-write.
   */
-case class SharedWith(readOnly: Option[UserGroup] = None,
-                      readWrite: Option[UserGroup] = None,
-                      timeStamp: Long = TIME_NOW) {
+case class SharedWith(readOnly: Option[ObjectId] = None,
+                      readWrite: Option[ObjectId] = None,
+                      ts: TimeStamp = TIME_NOW) {
+
+  def emails(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Set[String]] = for {
+    ro <- if (readOnly.isEmpty) Future.successful(None) else userDao.retrieveGroup(readOnly.get)
+    rw <- if (readWrite.isEmpty) Future.successful(None) else userDao.retrieveGroup(readWrite.get)
+    emails <- ApiSharedWith(ro, rw).emails
+  } yield emails
+}
+
+/**
+  * The SharedWith class only contains IDs (for storing in the database) so we need a separate class to use
+  * for API communication.
+  */
+case class ApiSharedWith(readOnly: Option[UserGroup], readWrite: Option[UserGroup]) {
 
   /**
     * Returns the union of all of the email addresses from either UserGroup, both those that are found in
     * the profiles of the groups' userIds and those in the groups' emails.
     */
-  def emails(userDao: MongoUserDao)(implicit ec: ExecutionContext): Future[Set[String]] = {
+  def emails(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Set[String]] = {
     import UserGroup.ExtendedOptionSet
 
-    val userIds = (readOnly.flatMap(_.userIds) union readWrite.flatMap(_.userIds)).getOrElse(Set.empty[ UUID ])
-    val emails  = (readOnly.flatMap(_. emails) union readWrite.flatMap(_. emails)).getOrElse(Set.empty[String])
+    val userIds = (readOnly.flatMap(_.userIds) union readWrite.flatMap(_.userIds)).getOrElse(Set.empty[UUID])
+    val rawEmails = (readOnly.flatMap(_.emails) union readWrite.flatMap(_.emails)).getOrElse(Set.empty[String])
 
     // convert userIds into a set of email addresses (which could be empty)
     val futUserEmails: Future[Set[String]] = for {
       optUsers <- Future.sequence(userIds.map(userDao.retrieve))
     } yield optUsers.flatten.flatMap(_.profiles.flatMap(_.email))
 
-    futUserEmails.map(_.union(emails))
+    futUserEmails.map(_.union(rawEmails))
   }
 }
 
@@ -115,23 +143,37 @@ case class SharedWith(readOnly: Option[UserGroup] = None,
   * these email addresses they should be presented with an error message informing them that the mark is
   * available to such a list of users--and that they merely must login as such a user to gain access.
   *
+  * All of the fields in this class must be Options because they are all optional when performing JSON
+  * validation as in `MarksController.share`.
+  *
   * @param id          Group ID.
   * @param userIds     Authorized user IDs.  This implementation is incomplete.  It is currently only used for
   *                    public and "logged in" authorization.  Implementation to be completed along with issue #139.
   * @param emails      Authorized email addresses.  Owners of such email addresses will be required to create accounts.
+  * @param sharedObjs  Object IDs (e.g. mark or highlight IDs) that have been shared with this UserGroup in the past.
+  * @param hash        A hash of this UserGroup to use as a MongoDB index key.
   */
-case class UserGroup(id: String = generateDbId(Mark.ID_LENGTH),
+case class UserGroup(id: Option[ObjectId] = Some(generateDbId(Mark.ID_LENGTH)),
                      userIds: Option[Set[UUID]] = None,
-                     emails: Option[Set[String]] = None) {
+                     emails: Option[Set[String]] = None,
+                     sharedObjs: Option[Seq[UserGroup.SharedObj]] = Some(Seq.empty[UserGroup.SharedObj]),
+                     var hash: Option[Int] = None) {
 
-  /** Returns true if the given user is authorized. */
-  def isAuthorized(userId: Option[UUID]): Boolean = userId.exists(id => userIds.exists(_.contains(id)))
+  // if `id` is None then let `hash` be None also
+  hash = id.map(_ => UserGroup.hash(this))
+
+  /** Returns true if the given (optional) user ID is authorized. */
+  protected def isAuthorizedUserId(userId: Option[UUID]): Boolean = userId.exists(u => userIds.exists(_.contains(u)))
 
   /** Returns true if an owner of an email address is authorized--given she has a user account w/ said email. */
-  def isAuthorized(email: String): Boolean = emails.exists(_.contains(email))
+  protected def isAuthorizedEmail(email: String): Boolean = emails.exists(_.contains(email))
 
-  protected def isAuthorizedPublic: Boolean = id == UserGroup.PUBLIC_ID
-  protected def isAuthorizedLoggedIn: Boolean = id == UserGroup.LOGGED_IN_ID
+  /** Returns true if the given user is authorized, either via (optional) user ID or email. */
+  def isAuthorized(user: Option[User]): Boolean =
+    isAuthorizedUserId(user.map(_.id)) || user.exists(_.emails.exists(isAuthorizedEmail))
+
+  protected def isAuthorizedPublic: Boolean = id.contains(UserGroup.PUBLIC_ID)
+  protected def isAuthorizedLoggedIn: Boolean = id.contains(UserGroup.LOGGED_IN_ID)
 
   /**
     * Greater than (>) indicates that a UserGroup dominates (i.e. is shared with strictly more people than)
@@ -156,23 +198,38 @@ object UserGroup extends BSONHandlers {
     *
     * This instance exemplifies why isAuthorized takes an Option; even userId=None will be granted authorization.
     */
-  val PUBLIC = new UserGroup(id = PUBLIC_ID) {
-    override def isAuthorized(userId: Option[UUID]): Boolean = true
+  val PUBLIC = new UserGroup(id = Some(PUBLIC_ID)) {
+    override def isAuthorized(user: Option[User]): Boolean = true
   }
 
   /**
     * A Shareable is "logged in" authorized (by any *user* who has the link) if it has this UserGroup in its
     * `sharedWith`.
     */
-  val LOGGED_IN = new UserGroup(id = LOGGED_IN_ID) {
-    override def isAuthorized(userId: Option[UUID]): Boolean = userId.isDefined
+  val LOGGED_IN = new UserGroup(id = Some(LOGGED_IN_ID)) {
+    override def isAuthorized(user: Option[User]): Boolean = user.isDefined
   }
 
   /** Enumerated, special, public user groups used by MongoUserDao. */
-  val PUBLIC_USER_GROUPS: Map[String, UserGroup] = Map(PUBLIC.id -> PUBLIC, LOGGED_IN.id -> LOGGED_IN)
+  val PUBLIC_USER_GROUPS: Map[ObjectId, UserGroup] = Map(PUBLIC_ID -> PUBLIC, LOGGED_IN_ID -> LOGGED_IN)
+
+  /** Special hashing function for UserGroups to use as their MongoDB index key. */
+  private final class Hashing extends hashing.Hashing[UserGroup] {
+    override def hash(x: UserGroup): Int = x.copy(id = None, sharedObjs = None).##
+  }
+
+  /** Wrapper function (unsure why there's any need for the Hashing class above). */
+  def hash(x: UserGroup): Int = new Hashing().hash(x)
+
+  /** Object ID (e.g. mark or highlight ID) paired with a time stamp indicating when that ID was shared. */
+  case class SharedObj(id: ObjectId, ts: TimeStamp)
 
   implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
   implicit val userGroupHandler: BSONDocumentHandler[UserGroup] = Macros.handler[UserGroup]
+  implicit val sharedObjHandler: BSONDocumentHandler[SharedObj] = Macros.handler[SharedObj]
+
+  val HASH: String = nameOf[UserGroup](_.hash)
+  val SHROBJS: String = nameOf[UserGroup](_.sharedObjs)
 
   /** Used for `emails > other.emails` above and `union` and `intersection` below. */
   implicit class ExtendedOptionSet[T](private val self: Option[Set[T]]) extends AnyVal {
