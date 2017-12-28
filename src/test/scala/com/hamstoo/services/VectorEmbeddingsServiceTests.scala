@@ -20,7 +20,6 @@ class VectorEmbeddingsServiceTests
   extends AkkaMongoEnvironment("VectorEmbeddingsServiceSpec-ActorSystem")
     with FutureHandler {
 
-  // todo: un-ignore this tests
   import com.hamstoo.utils.DataInfo._
 
   implicit val materializer: ActorMaterializer = ActorMaterializer()
