@@ -47,7 +47,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     * each contains approximately the same number of words.  Then weight them again according to their MongoDB
     * "text index" search weights.
     *
-    * @return  A document's weighted word counts and respectively weighted word vectors.
+    * @return  A future document's weighted word counts and respectively weighted word vectors.
     */
   def weightedTopWords(hd: String, dt: String, ot: String, kw: String): Future[(Seq[WordMass], Long)] = {
 
@@ -63,39 +63,47 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     // word count is used to normalize $search scores obtained from queries against MongoDB Text Index
     var nWords: Long = 0
 
-    val seq: Future[Seq[WordMass]] = if (maxLen == 0) Future.successful(Seq.empty[WordMass]) else {
-      Future.sequence(strreprs.map { case (str, wgt) =>
-        // normalize w.r.t. cubrt(char count ratio) b/c `doctext` can be many, many times longer than the others
-        if (str.isEmpty) Future.successful(Seq.empty[WordMass]) else {
+    lazy val defaultSeqWM: Future[Seq[WordMass]] = Future.successful(Seq.empty[WordMass])
 
-          val r: Double = wgt * math.pow(maxLen.toDouble / str.length, 0.333333)
+    val seq: Future[Seq[WordMass]] = {
 
-          // it helps for this to be synchronized because countWords via text2TopWords can issue a massive number of
-          // database calls all at the same time (e.g. 50 marks being processed for representations each with 500 words
-          // each needing vector lookups) leading to an unrecoverable cascade of TimeoutExceptions/DriverExceptions
+      if (maxLen == 0) defaultSeqWM
 
-          // TODO: remove this Await! 60 seconds is not long enough when loading word vectors (issue #190)
-          for {
-            (topWords, docLength) <- text2TopWords(str)
+      else {
+        Future.sequence(strreprs.map { case (str, wgt) =>
+          // normalize w.r.t. cubrt(char count ratio) b/c `doctext` can be many, many times longer than the others
+          if (str.isEmpty) defaultSeqWM
 
-          } yield {
-            nWords += docLength * wgt // this weighting gets "undone" below
-            topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))
+          else {
+
+            val r: Double = wgt * math.pow(maxLen.toDouble / str.length, 0.333333)
+
+            // it helps for this to be synchronized because countWords via text2TopWords can issue a massive number of
+            // database calls all at the same time (e.g. 50 marks being processed for representations each with 500 words
+            // each needing vector lookups) leading to an unrecoverable cascade of TimeoutExceptions/DriverExceptions
+
+            for {
+              (topWords, docLength) <- text2TopWords(str)
+
+            } yield {
+              nWords += docLength * wgt // this weighting gets "undone" below
+              topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))
+            }
           }
-        }
-      }).map(_.flatten)
-        .map(_.groupBy(_.word))
-        .map(_.map { case (w: String, wms: Seq[WordMass]) =>
-          wms reduce[WordMass] {
-            case (a, b) => WordMass(w, a.count + b.count, a.tf + b.tf, a.mass + b.mass, a.scaledVec + b.scaledVec)
-          }
-        })
-        .map(_.toSeq)
+        }).map(_.flatten)
+          .map(_.groupBy(_.word))
+          .map(_.map { case (w: String, wms: Seq[WordMass]) =>
+            wms reduce[WordMass] {
+              case (a, b) => WordMass(w, a.count + b.count, a.tf + b.tf, a.mass + b.mass, a.scaledVec + b.scaledVec)
+            }
+          })
+          .map(_.toSeq)
+      }
     }
 
     // undo the nWords weighting as if all of the words were straight doctext
 
-    seq.map(seq => seq -> nWords / CONTENT_WGT)
+    seq.map(s => s -> nWords / CONTENT_WGT)
   }
 
   /**
@@ -107,7 +115,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
   def vectorEmbeddings(hd: String, dt: String, ot: String, kw: String): Future[(Map[Representation.VecEnum.Value, Vec], Seq[String], Long)] = {
 
     for {
-      (topWords, nWords) <- weightedTopWords(hd, dt, ot, kw)
+      (topWords, nWords) <- weightedTopWords(hd, dt, ot, kw) // calculate future result
     } yield {
 
       //val crpVecs: (Option[Vec], Option[Vec]) = text2CrpVecs(topWords)
