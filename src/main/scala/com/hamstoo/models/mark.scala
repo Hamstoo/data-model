@@ -69,6 +69,9 @@ case class MarkData(
     Jsoup.clean(html2, htmlTagsWhitelist)
   }
 
+  /** Check for `Automarked` label. */
+  def isAutomarked: Boolean = tags.exists(_.exists(_.equalsIgnoreCase(MarkData.AUTOSAVE_TAG)))
+
   /**
     * Merge two `MarkData`s with as little data loss as possible.  Not using `copy` here to ensure that if
     * additional fields are added to the constructor they aren't forgotten here.
@@ -269,6 +272,10 @@ case class Mark(
     case other: Mark => other.canEqual(this) && this.hashCode == other.hashCode
     case _ => false
   }
+
+  /** Same as `equals` except ignoring timeFrom/timeThru. */
+  def equalsIgnoreTimeStamps(other: Mark): Boolean =
+    equals(other.copy(timeFrom = timeFrom, timeThru = timeThru, score = score))
 
   /**
     * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
