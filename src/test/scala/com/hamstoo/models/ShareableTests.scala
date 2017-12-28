@@ -19,8 +19,8 @@ class ShareableTests extends FlatSpecWithMatchers
   val sharee: User = userB
   val somree = Some(sharee)
 
-  val ugUserIds = UserGroup(Some("ugUserIds"), userIds = Some(Set(sharee.id)))
-  val ugEmails = UserGroup(Some("ugEmails"), emails = sharee.profiles.head.email.map(Set(_)))
+  val ugUserIds = UserGroup("ugUserIds", userIds = Some(Set(sharee.id)))
+  val ugEmails = UserGroup("ugEmails", emails = sharee.profiles.head.email.map(Set(_)))
 
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -30,8 +30,8 @@ class ShareableTests extends FlatSpecWithMatchers
 
   val md = MarkData("subj", None)
   val mNotShared = Mark(sharer.id, mark = md)
-  val mUserRead = Mark(sharer.id, mark = md, sharedWith = Some(SharedWith(ugUserIds.id, None)))
-  val mEmailRW = Mark(sharer.id, mark = md, sharedWith = Some(SharedWith(None, ugEmails.id)))
+  val mUserRead = Mark(sharer.id, mark = md, sharedWith = Some(SharedWith(Some(ugUserIds.id), None)))
+  val mEmailRW = Mark(sharer.id, mark = md, sharedWith = Some(SharedWith(None, Some(ugEmails.id))))
   val mPublicRead = Mark(sharer.id, mark = md, sharedWith = Some(SharedWith(Some(UserGroup.PUBLIC_ID), None)))
   val mLoggedInRW = Mark(sharer.id, mark = md, sharedWith = Some(SharedWith(None, Some(UserGroup.LOGGED_IN_ID))))
 
@@ -74,11 +74,11 @@ class ShareableTests extends FlatSpecWithMatchers
   }*/
 
   "SharedWith" should "(UNIT) be convertable to a list of email addresses" in {
-    val ugSharer = UserGroup(Some("ugSharer"), userIds = Some(Set(sharer.id)))
+    val ugSharer = UserGroup("ugSharer", userIds = Some(Set(sharer.id)))
     userDao.save(sharer).futureValue
     userDao.saveGroup(ugSharer, Some(UserGroup.SharedObj("someMarkId", TIME_NOW))).futureValue
     val emails = Set(sharer, sharee).map(_.profiles.head.email.get)
-    SharedWith(ugSharer.id, ugEmails.id).emails.futureValue shouldBe emails
+    SharedWith(Some(ugSharer.id), Some(ugEmails.id)).emails.futureValue shouldBe emails
   }
 
   "ExtendedOptionUserGroup" should "(UNIT) act like a set" in {
@@ -87,13 +87,13 @@ class ShareableTests extends FlatSpecWithMatchers
     val userGroups: Map[String, Option[UserGroup]] = Map(
       "ugUserIds" -> Some(ugUserIds),
       "ugEmails" -> Some(ugEmails),
-      "twoUserIds" -> Some(UserGroup(Some("twoUserIds"), userIds = ugUserIds.userIds.map(_ + constructUserId()))),
-      "twoEmails" -> Some(UserGroup(Some("twoEmails"), emails = ugUserIds.emails.map(_ + "c@mail"))),
+      "twoUserIds" -> Some(UserGroup("twoUserIds", userIds = ugUserIds.userIds.map(_ + constructUserId()))),
+      "twoEmails" -> Some(UserGroup("twoEmails", emails = ugUserIds.emails.map(_ + "c@mail"))),
       "none" -> None) ++
       UserGroup.PUBLIC_USER_GROUPS.mapValues(Some(_))
 
     for((k0, v0) <- userGroups; (k1, v1) <- userGroups) {
-      (v1 - v0).union(v0 - v1).union(v0 intersect v1).map(_.copy(id = None)) shouldBe v1.union(v0).map(_.copy(id = None))
+      (v1 - v0).union(v0 - v1).union(v0 intersect v1).map(_.copy(id = "")) shouldBe v1.union(v0).map(_.copy(id = ""))
     }
   }
 }

@@ -16,6 +16,8 @@ import scala.util.hashing
   */
 trait Shareable {
 
+  import Shareable._
+
   /** Shareables must have an ID. */
   def id: String
 
@@ -60,31 +62,28 @@ trait Shareable {
 
   /**
     * The owner of a mark may share it with anyone, of course, but non-owners may only re-share (via email--without
-    * updating `sharedWith` in the database) if it's owner has previously made it public.
+    * updating `sharedWith` in the database, of course) if it's owner has previously made it public.
     */
-
-  todo, add this functionality back
-
   def isAuthorizedShare(user: User): Boolean = ownedBy(user) || isPublic
   def isPublic: Boolean = sharedWith.exists { sw =>
-    Seq(sw.readOnly, sw.readWrite).flatten.exists(ug => UserGroup.PUBLIC_USER_GROUPS.keys.exists(_ == ug.id)) }
+    Seq(sw.readOnly, sw.readWrite).flatten.exists(id => UserGroup.PUBLIC_USER_GROUPS.keys.exists(_ == id)) }
 
   /**
     * R sharing level must be at or above RW sharing level.
     * Updating RW permissions with higher than existing R permissions will raise R permissions as well.
     * Updating R permissions with lower than existing RW permissions will reduce RW permissions as well.
     */
-  def updateSharedWith(sharedWith: SharedWith, dbColl: () => Future[BSONCollection])
+  def updateSharedWith(sharedWith: SharedWith, nSharedTo: Int, dbColl: () => Future[BSONCollection])
                       (implicit ec: ExecutionContext): Future[Unit] = for {
     c <- dbColl()
-    // be sure not to select userId field here as different DB models use different strings (e.g. Annotation.usrId)
+    // be sure not to select userId field here as different DB models use name that field differently: userId/usrId
     sel = d :~ Shareable.ID -> id :~ curnt
-
-  todo, update nSharedTo/From
 
     wr <- {
       import UserGroup.sharedWithHandler
-      c.update(sel, d :~ "$set" -> (d :~ Shareable.SHARED_WITH -> sharedWith.copy(ts = TIME_NOW)))
+      val set = d :~ "$set" -> (d :~ SHARED_WITH -> sharedWith.copy(ts = TIME_NOW))
+      val inc = d :~ "$inc" -> (d :~ N_SHARED_FROM -> 1 :~ N_SHARED_TO -> nSharedTo)
+      c.update(sel, set :~ inc)
     }
     _ <- wr.failIfError
   } yield ()
@@ -93,6 +92,8 @@ trait Shareable {
 object Shareable {
   val ID: String = nameOf[Shareable](_.id)
   val SHARED_WITH: String = nameOf[Shareable](_.sharedWith)
+  val N_SHARED_FROM: String = nameOf[Shareable](_.nSharedFrom)
+  val N_SHARED_TO: String = nameOf[Shareable](_.nSharedTo)
 }
 
 /**
@@ -102,24 +103,25 @@ case class SharedWith(readOnly: Option[ObjectId] = None,
                       readWrite: Option[ObjectId] = None,
                       ts: TimeStamp = TIME_NOW) {
 
+  /**
+    * Returns the union of all of the email addresses from either UserGroup, both those that are found in
+    * the profiles of the groups' userIds and those in the groups' emails.
+    */
   def emails(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Set[String]] = for {
     ro <- if (readOnly.isEmpty) Future.successful(None) else userDao.retrieveGroup(readOnly.get)
     rw <- if (readWrite.isEmpty) Future.successful(None) else userDao.retrieveGroup(readWrite.get)
-    emails <- ApiSharedWith(ro, rw).emails
+    emails <- SharedWith.emails(ro, rw)
   } yield emails
 }
 
-/**
-  * The SharedWith class only contains IDs (for storing in the database) so we need a separate class to use
-  * for API communication.
-  */
-case class ApiSharedWith(readOnly: Option[UserGroup], readWrite: Option[UserGroup]) {
+object SharedWith {
 
   /**
     * Returns the union of all of the email addresses from either UserGroup, both those that are found in
     * the profiles of the groups' userIds and those in the groups' emails.
     */
-  def emails(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Set[String]] = {
+  def emails(readOnly: Option[UserGroup], readWrite: Option[UserGroup])
+            (implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Set[String]] = {
     import UserGroup.ExtendedOptionSet
 
     val userIds = (readOnly.flatMap(_.userIds) union readWrite.flatMap(_.userIds)).getOrElse(Set.empty[UUID])
@@ -153,14 +155,14 @@ case class ApiSharedWith(readOnly: Option[UserGroup], readWrite: Option[UserGrou
   * @param sharedObjs  Object IDs (e.g. mark or highlight IDs) that have been shared with this UserGroup in the past.
   * @param hash        A hash of this UserGroup to use as a MongoDB index key.
   */
-case class UserGroup(id: Option[ObjectId] = Some(generateDbId(Mark.ID_LENGTH)),
+case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
                      userIds: Option[Set[UUID]] = None,
                      emails: Option[Set[String]] = None,
-                     sharedObjs: Option[Seq[UserGroup.SharedObj]] = Some(Seq.empty[UserGroup.SharedObj]),
-                     var hash: Option[Int] = None) {
+                     sharedObjs: Seq[UserGroup.SharedObj] = Seq.empty[UserGroup.SharedObj],
+                     var hash: Int = 0) {
 
   // if `id` is None then let `hash` be None also
-  hash = id.map(_ => UserGroup.hash(this))
+  hash = if (id.isEmpty) 0 else UserGroup.hash(this)
 
   /** Returns true if the given (optional) user ID is authorized. */
   protected def isAuthorizedUserId(userId: Option[UUID]): Boolean = userId.exists(u => userIds.exists(_.contains(u)))
@@ -198,7 +200,7 @@ object UserGroup extends BSONHandlers {
     *
     * This instance exemplifies why isAuthorized takes an Option; even userId=None will be granted authorization.
     */
-  val PUBLIC = new UserGroup(id = Some(PUBLIC_ID)) {
+  val PUBLIC = new UserGroup(id = PUBLIC_ID) {
     override def isAuthorized(user: Option[User]): Boolean = true
   }
 
@@ -206,7 +208,7 @@ object UserGroup extends BSONHandlers {
     * A Shareable is "logged in" authorized (by any *user* who has the link) if it has this UserGroup in its
     * `sharedWith`.
     */
-  val LOGGED_IN = new UserGroup(id = Some(LOGGED_IN_ID)) {
+  val LOGGED_IN = new UserGroup(id = LOGGED_IN_ID) {
     override def isAuthorized(user: Option[User]): Boolean = user.isDefined
   }
 
@@ -215,7 +217,7 @@ object UserGroup extends BSONHandlers {
 
   /** Special hashing function for UserGroups to use as their MongoDB index key. */
   private final class Hashing extends hashing.Hashing[UserGroup] {
-    override def hash(x: UserGroup): Int = x.copy(id = None, sharedObjs = None).##
+    override def hash(x: UserGroup): Int = x.copy(id = "", sharedObjs = Seq.empty[UserGroup.SharedObj]).##
   }
 
   /** Wrapper function (unsure why there's any need for the Hashing class above). */
