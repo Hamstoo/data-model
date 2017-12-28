@@ -183,7 +183,7 @@ object TextNodesVisitor {
   */
 case class ReprRating(reprId: String, expRating: Option[String] = None) {
 
-  // check if object has not rated
+  // check if object has not yet rated
   def eratable: Boolean = expRating.isEmpty
 }
 
@@ -406,6 +406,9 @@ object Mark extends BSONHandlers {
 
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
+
+  val REPRIDx: String = PRVEXPRAT + "." + nameOf[ReprRating](_.reprId)
+  val EXPRATx: String = PRVEXPRAT + "." + nameOf[ReprRating](_.expRating)
 
   val USRPRFX: String = nameOf[UrlDuplicate](_.userIdPrfx)
   assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
