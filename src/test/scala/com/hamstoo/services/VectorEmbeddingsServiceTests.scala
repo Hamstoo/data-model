@@ -37,8 +37,8 @@ class VectorEmbeddingsServiceTests
     //val header0 = "Getting Started Building a Google Chrome Extension"
     val header1 = "Futures% !&and 'Promises' - Scala Documentation, \"Futures,$ and? Promises."
 
-    val vec0 = vecSvc.vectorEmbeddingsAsync(header0, "", "", "").futureValue._1(Representation.VecEnum.IDF)
-    val vec1 = vecSvc.vectorEmbeddingsAsync(header1, "", "", "").futureValue._1(Representation.VecEnum.IDF)
+    val vec0 = vecSvc.vectorEmbeddings(header0, "", "", "").futureValue._1(Representation.VecEnum.IDF)
+    val vec1 = vecSvc.vectorEmbeddings(header1, "", "", "").futureValue._1(Representation.VecEnum.IDF)
 
     vec0.head shouldEqual 8.61e-5 +- 1e-7
     vec0.head shouldEqual vec1.head +- 1e-15
@@ -64,7 +64,7 @@ class VectorEmbeddingsServiceTests
       terms = if (i == 0) terms_ else scala.util.Random.shuffle(terms_)
     } yield {
       val vecs: Seq[Vec] =
-        Future.sequence(terms.map(vecSvc.vectorEmbeddingsAsync(_, "", "", "")))
+        Future.sequence(terms.map(vecSvc.vectorEmbeddings(_, "", "", "")))
         .map(_.map(_._1(Representation.VecEnum.IDF))).futureValue
 
       val diffs: Seq[Vec] = vecs.sliding(2, 2).map { case a :: b :: Nil => a - b }.toSeq
@@ -103,7 +103,7 @@ class VectorEmbeddingsServiceTests
       "sachin", "cricket", // 0.522 - http://api.conceptnet.io/related/c/en/sachin?filter=/c/en/cricket
       "actor", "cumberbatch") // 0.516 - http://api.conceptnet.io/related/c/en/actor?filter=/c/en/cumberbatch
 
-    val vecs: Seq[Vec] = Future.sequence(terms.map(vecSvc.vectorEmbeddingsAsync(_, "", "", "")))
+    val vecs: Seq[Vec] = Future.sequence(terms.map(vecSvc.vectorEmbeddings(_, "", "", "")))
       .map(_.map(_._1(Representation.VecEnum.IDF)))
       .futureValue
 
