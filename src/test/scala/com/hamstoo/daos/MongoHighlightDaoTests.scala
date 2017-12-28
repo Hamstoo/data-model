@@ -27,10 +27,9 @@ class MongoHighlightDaoTests
     hlightsDao.insert(h).futureValue shouldEqual h
   }
 
-  // because of dropping "bin-usrId-1-uPref-1" index
-  it should "(UNIT) retrieve highlights by id" ignore {
+  /*it should "(UNIT) retrieve highlights by id" in {
     hlightsDao.retrieve(h.usrId, h.id).futureValue.value shouldEqual h
-  }
+  }*/
 
   it should "(UNIT) retrieve highlights by markId" in {
     hlightsDao.retrieveByMarkId(h.usrId, h.markId).futureValue shouldEqual Seq(h)
