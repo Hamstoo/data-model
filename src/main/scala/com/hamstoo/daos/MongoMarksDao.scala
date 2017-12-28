@@ -354,6 +354,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   }
 
   /** Adds web page source to a mark--for "private" reprs of marks saved from the Chrome Extension. */
+  // todo: provide tests
   def addPageSource(user: UUID, id: String, page: Page, ensureNoPrivRepr: Boolean = true): Future[Unit] = for {
     c <- dbColl()
     sel0 = d :~ USR -> user :~ ID -> id :~ curnt
@@ -483,6 +484,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     *   db.entries.find({$or:[{timeThru:NumberLong("9223372036854775807"), pubRepr:{$exists:0}},
     *                         {timeThru:NumberLong("9223372036854775807"), privRepr:{$exists:0}, page:{$exists:1}}]}).explain()
     */
+  // todo: provide tests
   def findMissingReprs(n: Int): Future[Seq[Mark]] = {
     logger.debug("Finding marks with missing representations")
     for {
@@ -514,13 +516,14 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     *   db.entries.find({$or:[{timeThru:NumberLong("9223372036854775807"), pubExpRating:{$exists:0}, pubRepr:{$exists:1}},
     *                         {timeThru:NumberLong("9223372036854775807"), privExpRating:{$exists:0}, privRepr:{$exists:1}}]}).explain()
     */
+  // todo: provide tests
   def findMissingExpectedRatings(n: Int): Future[Seq[Mark]] = {
     logger.debug("Finding marks with missing expected ratings")
     for {
       c <- dbColl()
 
       pubStar = d :~ curnt :~  PUBESTARS -> (d :~ "$exists" -> false) :~ PUBREPR -> (d :~ "$exists" -> true)
-      privStar = d :~ curnt :~ PRIVESTARS -> (d :~ "$exists" -> false) :~ PRVREPR -> (d :~ "$exists" -> true)
+      privStar = d :~ curnt :~ EXPRATx -> (d :~ "$exists" -> false)
 
       sel = d :~ "$or" -> Seq(pubStar, privStar)
       //_ = logger.info(BSONDocument.pretty(sel))
@@ -579,13 +582,13 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   def updatePublicERatingId(user: UUID, id: String, timeFrom: Long, erId: String): Future[Unit] =
     updateForeignKeyId(user, id, timeFrom, erId, PUBESTARS, "public expected rating").map(_ => {})
 
-  /** Updates a mark state with provided private expected rating ID. */
-  def updatePrivateERatingId(user: UUID, id: String, timeFrom: Long, erId: String): Future[Unit] =
-    updateForeignKeyId(user, id, timeFrom, erId, PRIVESTARS, "private expected rating").map(_ => {})
-
   /** Updates a mark state with provided representation ID. */
   def updatePublicReprId(user: UUID, id: String, timeFrom: Long, reprId: String): Future[Unit] =
     updateForeignKeyId(user, id, timeFrom, reprId, PUBREPR, "public representation").map(_ => {})
+
+  /** Updates a mark state with provided private expected rating ID. */
+  def updatePrivateERatingId(user: UUID, id: String, timeFrom: Long, erId: String): Future[Unit] =
+    updateForeignKeyId(user, id, timeFrom, erId, PRIVESTARS, "private expected rating").map(_ => {})
 
   /** Updates a mark state with provided private representation ID and clears out processed page source.
     * @param page - processed page source to clear out from the mark
