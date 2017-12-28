@@ -9,8 +9,7 @@ import play.api.Logger
 
 import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 import scala.util.Random
 
 
@@ -42,14 +41,15 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
   var wCount: Int = 0
   //var slCount: Int = 0 // Vectorizer.sAndL has been deprecated
 
+
   /**
     * Join the various string representations into a single string and weight (or repeat) each of them so that
     * each contains approximately the same number of words.  Then weight them again according to their MongoDB
     * "text index" search weights.
     *
-    * @return  A document's weighted word counts and respectively weighted word vectors.
+    * @return  A future document's weighted word counts and respectively weighted word vectors.
     */
-  def weightedTopWords(hd: String, dt: String, ot: String, kw: String): (Seq[WordMass], Long) = {
+  def weightedTopWords(hd: String, dt: String, ot: String, kw: String): Future[(Seq[WordMass], Long)] = {
 
     // these weights have different effective behaviors here than during Mongo searches because here the
     // vectors all have the same L2 norm while searching through the document text in Mongo effectively
@@ -63,37 +63,36 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     // word count is used to normalize $search scores obtained from queries against MongoDB Text Index
     var nWords: Long = 0
 
-    val seq = if (maxLen == 0) Seq.empty[WordMass] else {
-      strreprs.flatMap { case (str, wgt) =>
+    lazy val defaultSeqWM: Future[Seq[WordMass]] = Future.successful(Seq.empty[WordMass])
+
+    val seq: Future[Seq[WordMass]] = if (maxLen == 0) defaultSeqWM else {
+      Future.sequence(strreprs.map { case (str, wgt) =>
         // normalize w.r.t. cubrt(char count ratio) b/c `doctext` can be many, many times longer than the others
-        if (str.isEmpty) Seq.empty[WordMass] else {
+        if (str.isEmpty) defaultSeqWM else {
+
           val r = wgt * math.pow(maxLen.toDouble / str.length, 0.333333)
 
           // it helps for this to be synchronized because countWords via text2TopWords can issue a massive number of
           // database calls all at the same time (e.g. 50 marks being processed for representations each with 500 words
           // each needing vector lookups) leading to an unrecoverable cascade of TimeoutExceptions/DriverExceptions
-          val t0 = System.currentTimeMillis()
-          //this.synchronized {
-            val t1 = System.currentTimeMillis()
-            // TODO: remove this Await! 60 seconds is not long enough when loading word vectors (issue #190)
-            val (topWords, docLength) = Await.result(text2TopWords(str), 151 seconds)
-            val t2 = System.currentTimeMillis()
-            logger.debug(s"Await(text2TopWords) elapsed time " + (t2-t1)/1e3 + "s, waited " + (t1-t0)/1e3 + "s")
 
+          text2TopWords(str).map { case (topWords, docLength) =>
             nWords += docLength * wgt // this weighting gets "undone" below
             topWords.map(wm => WordMass(wm.word, wm.count * r, wm.tf * r, wm.mass * r, wm.scaledVec * r))
-          //}
+          }
         }
-      }.groupBy(_.word)
-        .map { case (w: String, wms: Seq[WordMass]) =>
+      }).map(_.flatten)
+        .map(_.groupBy(_.word))
+        .map(_.map { case (w: String, wms: Seq[WordMass]) =>
           wms reduce[WordMass] {
             case (a, b) => WordMass(w, a.count + b.count, a.tf + b.tf, a.mass + b.mass, a.scaledVec + b.scaledVec)
           }
-        }.toSeq
+        })
+        .map(_.toSeq)
     }
 
-    // undo the nWords weighting as if all of the words were straight doctext
-    (seq, nWords / CONTENT_WGT)
+    // undo the nWords weighting as if all of the words were straight up doctext
+    seq.map(s => s -> nWords / CONTENT_WGT)
   }
 
   /**
@@ -103,45 +102,46 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     * @return  Pair of vectors (for each `VecEnum` type) and keywords (computed from all of them).
     */
   def vectorEmbeddings(hd: String, dt: String, ot: String, kw: String):
-                                     (Map[Representation.VecEnum.Value, Vec], Seq[String], Long) = {
+                                      Future[(Map[Representation.VecEnum.Value, Vec], Seq[String], Long)] = {
 
-    val (topWords, nWords) = weightedTopWords(hd, dt, ot, kw)
+    weightedTopWords(hd, dt, ot, kw).map { case (topWords, nWords) => // calculate future result
 
-    //val crpVecs: (Option[Vec], Option[Vec]) = text2CrpVecs(topWords)
-    val idfVecs: Option[(Vec, Vec)] = text2IdfVecs(topWords)
-    val pcVecs: Seq[Vec] = text2PcaVecs(topWords, 4)
+      //val crpVecs: (Option[Vec], Option[Vec]) = text2CrpVecs(topWords)
+      val idfVecs: Option[(Vec, Vec)] = text2IdfVecs(topWords)
+      val pcVecs: Seq[Vec] = text2PcaVecs(topWords, 4)
 
-    val (kmVecs0, loss0) = text2KMeansVecs(topWords, 5) // compute 5 clusters but only use best 3 of them
-    val (kmVecs1, loss1) = text2KMeansVecs(topWords, 5) // and compute the 5 clusters 3 times also ...
-    val (kmVecs2, loss2) = text2KMeansVecs(topWords, 5) // ... to choose the one with the lowest loss
-    val kmVecs = if (loss0 < loss1 && loss0 < loss2) kmVecs0
-            else if (loss1 < loss0 && loss1 < loss2) kmVecs1 else kmVecs2
+      val (kmVecs0, loss0) = text2KMeansVecs(topWords, 5) // compute 5 clusters but only use best 3 of them
+      val (kmVecs1, loss1) = text2KMeansVecs(topWords, 5) // and compute the 5 clusters 3 times also ...
+      val (kmVecs2, loss2) = text2KMeansVecs(topWords, 5) // ... to choose the one with the lowest loss
+      val kmVecs = if (loss0 < loss1 && loss0 < loss2) kmVecs0
+      else if (loss1 < loss0 && loss1 < loss2) kmVecs1 else kmVecs2
 
-    // TODO: should pcVecs be calculated from vectors that are residualized wrt the previously calculated vectors?
+      // TODO: should pcVecs be calculated from vectors that are residualized wrt the previously calculated vectors?
 
-    // Error:
-    //   diverging implicit expansion for type scala.collection.generic.CanBuildFrom[
-    //     com.hamstoo.models.Representation.VecEnum.ValueSet,
-    //     (com.hamstoo.models.Representation.VecEnum.Value, com.hamstoo.models.Representation.Vec),
-    //     That]
-    //   [error] starting with method orderingToOrdered in object Ordered
-    //   [error]       val x: Set[(VecEnum.Value, Vec)] = VecEnum.values.flatMap {
-    // Solution:
-    //   Add `toList` per this:
-    //     "Something about that being a Set did not agree with how you were attempting to convert it to a Map"
-    //     [https://stackoverflow.com/questions/16444158/scala-diverging-implicit-expansion-when-using-tomap]
-    val vecreprs = VecEnum.values.toList.flatMap {
-      case vt if vt == VecEnum.CRPv2_max => None // crpVecs._1.map(vt -> _)
-      case vt if vt == VecEnum.CRPv2_2nd => None // crpVecs._2.map(vt -> _)
-      case vt if vt == VecEnum.IDF => idfVecs.map(vt -> _._1)
-      case vt if vt == VecEnum.IDF3 => idfVecs.map(vt -> _._2)
-      case vt if vt.toString.startsWith("PC") || vt.toString.startsWith("KM") =>
-        val rgx = raw"([PK][CM])(\d+)".r
-        val rgx(pk, i) = vt.toString // extractor
-        (if (pk == "PC") pcVecs else kmVecs).lift(i.toInt - 1).map(vt -> _)
-    }.toMap.mapValues(_.l2Normalize)
+      // Error:
+      //   diverging implicit expansion for type scala.collection.generic.CanBuildFrom[
+      //     com.hamstoo.models.Representation.VecEnum.ValueSet,
+      //     (com.hamstoo.models.Representation.VecEnum.Value, com.hamstoo.models.Representation.Vec),
+      //     That]
+      //   [error] starting with method orderingToOrdered in object Ordered
+      //   [error]       val x: Set[(VecEnum.Value, Vec)] = VecEnum.values.flatMap {
+      // Solution:
+      //   Add `toList` per this:
+      //     "Something about that being a Set did not agree with how you were attempting to convert it to a Map"
+      //     [https://stackoverflow.com/questions/16444158/scala-diverging-implicit-expansion-when-using-tomap]
+      val vecreprs = VecEnum.values.toList.flatMap {
+        case vt if vt == VecEnum.CRPv2_max => None // crpVecs._1.map(vt -> _)
+        case vt if vt == VecEnum.CRPv2_2nd => None // crpVecs._2.map(vt -> _)
+        case vt if vt == VecEnum.IDF => idfVecs.map(vt -> _._1)
+        case vt if vt == VecEnum.IDF3 => idfVecs.map(vt -> _._2)
+        case vt if vt.toString.startsWith("PC") || vt.toString.startsWith("KM") =>
+          val rgx = raw"([PK][CM])(\d+)".r
+          val rgx(pk, i) = vt.toString // extractor
+          (if (pk == "PC") pcVecs else kmVecs).lift(i.toInt - 1).map(vt -> _)
+      }.toMap.mapValues(_.l2Normalize)
 
-    (vecreprs, keywords(vecreprs, topWords), nWords)
+      (vecreprs, keywords(vecreprs, topWords), nWords)
+    }
   }
 
   /**
@@ -195,7 +195,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     // don't allow any 1- or 2- letter words, only allow a single 3-letter word, etc.
     val wordLengthLimits = IndexedSeq(0, 0, 1, 2, 4)
 
-    words.foreach { w => if (selections.size < nDesired) {
+    words.foreach { w => if (selections.lengthCompare(nDesired) < 0) {
 
       val limit = wordLengthLimits.lift(w.length - 1).getOrElse(nDesired)
 
