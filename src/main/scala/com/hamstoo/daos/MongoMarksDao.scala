@@ -20,7 +20,7 @@ import scala.concurrent.{Await, Future}
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
   */
-class MongoMarksDao(db: () => Future[DefaultDB]) {
+class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao) {
 
   import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MongoMarksDao])
@@ -69,7 +69,6 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   /** Saves a mark to the storage or updates if the user already has a mark with such URL. */
   def insert(mark: Mark): Future[Mark] = {
     logger.debug(s"Inserting mark ${mark.id}")
-
     for {
       c <- dbColl()
       wr <- c insert mark
@@ -86,7 +85,6 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     */
   def insertStream(marks: Stream[Mark]): Future[Int] = {
     logger.debug(s"Inserting stream of marks")
-
     for {
       c <- dbColl()
       now = TIME_NOW
@@ -120,9 +118,12 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   /** Retrieves a mark by user and ID, None if not found or not authorized. */
   def retrieve(user: Option[User], id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
     logger.debug(s"Retrieving mark $id for user $user")
-    retrieveInsecure(id, timeThru = timeThru) map {
-      case Some(m) if m.isAuthorizedRead(user) => logger.debug(s"Mark $id was successfully retrieved"); Some(m)
-      case Some(m) => logger.info(s"User $user unauthorized to view mark $id"); None
+    for {
+      mInsecure <- retrieveInsecure(id, timeThru = timeThru)
+      authorizedRead <- mInsecure.fold(Future.successful(false))(_.isAuthorizedRead(user))
+    } yield mInsecure match {
+      case Some(m) if authorizedRead => logger.debug(s"Mark $id was successfully retrieved"); Some(m)
+      case Some(_) => logger.info(s"User $user unauthorized to view mark $id"); None
       case None => None
     }
   }
@@ -302,14 +303,17 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     _ = logger.info(s"Updating mark $id")
 
     // test write permissions
-    oldMk <- retrieve(user, id) map {
-      case Some(m) if m.isAuthorizedWrite(user) => m
-      case Some(m) => throw new Exception(s"User $user unauthorized to modify mark $id")
+    mOld <- for {
+      mSecure <- retrieve(user, id)
+      authorizedWrite <- mSecure.fold(Future.successful(false))(_.isAuthorizedWrite(user))
+    } yield mSecure match {
+      case Some(m) if authorizedWrite => m
+      case Some(_) => throw new Exception(s"User $user unauthorized to modify mark $id")
       case None => throw new Exception(s"Unable to find mark $id for updating")
     }
 
-    // be sure to not use `user`, which could be different from `oldMk0.userId` if the the mark has been shared
-    sel = d :~ USR -> oldMk.userId :~ ID -> id :~ curnt
+    // be sure to not use `user`, which could be different from `mOld.userId` if the the mark has been shared
+    sel = d :~ USR -> mOld.userId :~ ID -> id :~ curnt
     now: Long = TIME_NOW
     wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
     _ <- wr.failIfError
@@ -317,9 +321,9 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     // if the URL has changed then discard the old public repr (only the public one though as the private one is
     // based on private user content that was only available from the browser extension at the time the user first
     // created it)
-    pubRp = if (mdata.url.isDefined && mdata.url == oldMk.mark.url ||
-      mdata.url.isEmpty && mdata.subj == oldMk.mark.subj) oldMk.pubRepr else None
-    newMk = oldMk.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
+    pubRp = if (mdata.url.isDefined && mdata.url == mOld.mark.url ||
+      mdata.url.isEmpty && mdata.subj == mOld.mark.subj) mOld.pubRepr else None
+    newMk = mOld.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
     wr <- c.insert(newMk)
     _ <- wr.failIfError
   } yield newMk
@@ -329,10 +333,21 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * Updating RW permissions with higher than existing R permissions will raise R permissions as well.
     * Updating R permissions with lower than existing RW permissions will reduce RW permissions as well.
     */
-  def updateSharedWith(m: Mark, sharedWith: SharedWith): Future[Unit] = {
-    logger.debug(s"Sharing mark ${m.id} with $sharedWith")
-    m.updateSharedWith(sharedWith, dbColl) map {_ =>
-      logger.debug(s"Mark ${m.id} was successfully shared") }
+  def updateSharedWith(m: Mark, readOnly: Option[UserGroup], readWrite: Option[UserGroup]): Future[SharedWith] = {
+    logger.debug(s"Sharing mark ${m.id} with $readOnly and $readWrite")
+    val ts = TIME_NOW // use the same time stamp everywhere
+    val so = Some(UserGroup.SharedObj(m.id, ts))
+    def saveGroup(opt: Option[UserGroup]): Future[Option[ObjectId]] =
+      opt.fold(Future.successful(Option.empty[ObjectId]))(ug => userDao.saveGroup(ug, so).map(Some(_)))
+    for {
+      roId <- saveGroup(readOnly)
+      rwId <- saveGroup(readWrite)
+      sw = SharedWith(readOnly = roId, readWrite = rwId, ts = ts)
+      _ <- m.updateSharedWith(sw, dbColl)
+    } yield {
+      logger.debug(s"Mark ${m.id} was successfully shared with $sw")
+      sw
+    }
   }
 
   /**
@@ -630,8 +645,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
         _ <- wr.failIfError
       } yield () else Future.successful {}
 
-      _ = logger.debug(s"Updated mark $id with private representation ID: '$reprId'")
-    } yield ()
+    } yield
+      logger.debug(s"Updated mark $id with private representation ID: '$reprId'")
   }
 
   /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */

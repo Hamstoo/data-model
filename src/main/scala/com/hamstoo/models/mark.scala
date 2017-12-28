@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
-import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId, reconcilePrivPub}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, generateDbId, reconcilePrivPub}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -195,7 +195,7 @@ object TextNodesVisitor {
   */
 case class Mark(
                  userId: UUID,
-                 id: String = generateDbId(Mark.ID_LENGTH),
+                 id: ObjectId = generateDbId(Mark.ID_LENGTH),
                  mark: MarkData,
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
