@@ -27,10 +27,9 @@ class MongoInlineNoteDaoTests
     notesDao.insert(c).futureValue shouldEqual c
   }
 
-  // because of dropping "bin-userId-1-uPref-1" index
-  it should "(UNIT) retrieve inline note by id" ignore {
+  /*it should "(UNIT) retrieve inline note by id" in {
     notesDao.retrieve(c.usrId, c.id).futureValue.value shouldEqual c
-  }
+  }*/
 
   it should "UNIT) retrieve inline note by markId" in {
     notesDao.retrieveByMarkId(c.usrId, c.markId).futureValue shouldEqual Seq(c)
