@@ -112,8 +112,8 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     * Saves or updates user group with the given ID.  Optionally provide an ObjectId-TimeStamp pair to add
     * to the saved document's `sharedObjs` list.
     */
-  def saveGroup(ug: UserGroup, sharedObj: Option[UserGroup.SharedObj] = None): Future[ObjectId] =
-    PUBLIC_USER_GROUPS.get(ug.id.get).fold { // prevent accidental public save
+  def saveGroup(ug: UserGroup, sharedObj: Option[UserGroup.SharedObj] = None): Future[UserGroup] =
+    PUBLIC_USER_GROUPS.get(ug.id).fold { // prevent accidental public save
       for {
         c <- groupColl()
         existing <- retrieveGroup(ug)
@@ -123,11 +123,12 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
           c.update(d :~ ID -> existing.get.id, d :~ "$push" -> (d :~ SHROBJS -> (d :~ "$each" -> ug.sharedObjs)))
         _ <- wr.failIfError
 
+        // optionally update the UserGroup's list of objects it was used to share
         _ <- if (sharedObj.isEmpty) Future.successful {} else
-          c.update(d :~ ID -> existing.fold(ug.id.get)(_.id.get), d :~ "$push" -> (d :~ SHROBJS -> sharedObj.get))
+          c.update(d :~ ID -> existing.fold(ug.id)(_.id), d :~ "$push" -> (d :~ SHROBJS -> sharedObj.get))
 
-      } yield existing.fold(ug.id.get)(_.id.get)
-    }(publicUserGroup => Future.successful(publicUserGroup.id.get))
+      } yield existing.getOrElse(ug)
+    }(publicUserGroup => Future.successful(publicUserGroup))
 
   /** Retrieves user group either from PUBLIC_USER_GROUPS or, if not there, from the database. */
   def retrieveGroup(ugId: ObjectId): Future[Option[UserGroup]] = PUBLIC_USER_GROUPS.get(ugId).fold {

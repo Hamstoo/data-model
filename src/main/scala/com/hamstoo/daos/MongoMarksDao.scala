@@ -337,13 +337,14 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     logger.debug(s"Sharing mark ${m.id} with $readOnly and $readWrite")
     val ts = TIME_NOW // use the same time stamp everywhere
     val so = Some(UserGroup.SharedObj(m.id, ts))
-    def saveGroup(opt: Option[UserGroup]): Future[Option[ObjectId]] =
-      opt.fold(Future.successful(Option.empty[ObjectId]))(ug => userDao.saveGroup(ug, so).map(Some(_)))
+    def saveGroup(opt: Option[UserGroup]): Future[Option[UserGroup]] =
+      opt.fold(Future.successful(Option.empty[UserGroup]))(ug => userDao.saveGroup(ug, so).map(Some(_)))
     for {
-      roId <- saveGroup(readOnly)
-      rwId <- saveGroup(readWrite)
-      sw = SharedWith(readOnly = roId, readWrite = rwId, ts = ts)
-      _ <- m.updateSharedWith(sw, dbColl)
+      ro <- saveGroup(readOnly)
+      rw <- saveGroup(readWrite)
+      sw = SharedWith(readOnly = ro.map(_.id), readWrite = rw.map(_.id), ts = ts)
+      nSharedTo <- SharedWith.emails(ro, rw).map(_.size)
+      _ <- m.updateSharedWith(sw, nSharedTo, dbColl)
     } yield {
       logger.debug(s"Mark ${m.id} was successfully shared with $sw")
       sw
