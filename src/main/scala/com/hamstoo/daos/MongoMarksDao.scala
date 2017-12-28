@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
+import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
@@ -332,8 +333,10 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     * R sharing level must be at or above RW sharing level.
     * Updating RW permissions with higher than existing R permissions will raise R permissions as well.
     * Updating R permissions with lower than existing RW permissions will reduce RW permissions as well.
+    *
+    * TODO: This method should be moved into a MongoShareableDao class, similar to MongoAnnotationDao.
     */
-  def updateSharedWith(m: Mark, readOnly: Option[UserGroup], readWrite: Option[UserGroup]): Future[SharedWith] = {
+  def updateSharedWith(m: Mark, readOnly: Option[UserGroup], readWrite: Option[UserGroup]): Future[Mark] = {
     logger.debug(s"Sharing mark ${m.id} with $readOnly and $readWrite")
     val ts = TIME_NOW // use the same time stamp everywhere
     val so = Some(UserGroup.SharedObj(m.id, ts))
@@ -344,10 +347,26 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       rw <- saveGroup(readWrite)
       sw = SharedWith(readOnly = ro.map(_.id), readWrite = rw.map(_.id), ts = ts)
       nSharedTo <- SharedWith.emails(ro, rw).map(_.size)
-      _ <- m.updateSharedWith(sw, nSharedTo, dbColl)
+      //shareable <- m.updateSharedWith(sw, nSharedTo, dbColl)
+
+      c <- dbColl()
+
+      // be sure not to select userId field here as different DB models use name that field differently: userId/usrId
+      sel = d :~ ID -> m.id :~ curnt
+      wr <- {
+        import UserGroup.sharedWithHandler
+        val set = d :~ "$set" -> (d :~ SHARED_WITH -> sw.copy(ts = TIME_NOW))
+        val inc = d :~ "$inc" -> (d :~ N_SHARED_FROM -> 1 :~ N_SHARED_TO -> nSharedTo)
+        c.findAndUpdate(sel, set :~ inc, fetchNewObject = true)
+      }
+      _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
+        val msg = s"Unable to findAndUpdate Shareable ${m.id}'s shared with; wr.lastError = ${wr.lastError.get}"
+        Logger.error(msg)
+        Future.failed(new NoSuchElementException(msg))
+      }
     } yield {
       logger.debug(s"Mark ${m.id} was successfully shared with $sw")
-      sw
+      wr.result[Mark].get
     }
   }
 
@@ -410,8 +429,9 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     wr <- c.findAndUpdate(sel1, d :~ "$set" -> (d :~ PAGE -> page) :~ "$unset" -> (d :~ PGPENDx -> 1))
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.successful {} else {
-      logger.error(s"Unable to findAndUpdate mark $id's page source; ensureNoPrivRepr = $ensureNoPrivRepr, wr.lastError = ${wr.lastError.get}")
-      Future.failed(new NoSuchElementException("MongoMarksDao.addPageSource"))
+      val msg = s"Unable to findAndUpdate mark $id's page source; ensureNoPrivRepr = $ensureNoPrivRepr, wr.lastError = ${wr.lastError.get}"
+      logger.error(msg)
+      Future.failed(new NoSuchElementException(msg))
     }
 
     m = wr.result[Mark].get
@@ -473,6 +493,11 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       mrg = mergeId.map(d :~ MERGEID -> _).getOrElse(d)
       wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now :~ mrg), multi = true)
       _ <- wr.failIfError
+      _ <- if (wr.nModified == ids.size) Future.successful {} else {
+        val msg = s"Unable to delete marks; ${wr.nModified} out of ${ids.size} were successfully deleted; first attempted (at most) 5: ${ids.take(5)}"
+        logger.error(msg)
+        Future.failed(new NoSuchElementException(msg))
+      }
     } yield {
       val count = wr.nModified
       logger.debug(s"$count marks were successfully deleted")

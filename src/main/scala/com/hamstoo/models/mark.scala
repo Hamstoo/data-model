@@ -209,8 +209,8 @@ case class Mark(
                  modifiedBy: Option[UUID] = None,
                  mergeId: Option[String] = None,
                  sharedWith: Option[SharedWith] = None,
-                 nSharedFrom: Int = 0,
-                 nSharedTo: Int = 0,
+                 nSharedFrom: Option[Int] = Some(0),
+                 nSharedTo: Option[Int] = Some(0),
                  score: Option[Double] = None) extends Shareable {
   urlPrfx = mark.url map (_.binaryPrefix)
 
