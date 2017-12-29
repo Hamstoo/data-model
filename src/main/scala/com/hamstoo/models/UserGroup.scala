@@ -39,20 +39,20 @@ trait Shareable {
     *   2. One of the User's email addresses is included in this Shareable's `sharedWith`
     *   3. User's ID is included in this Shareable's `sharedWith`
     */
-  def isAuthorizedRead(optUser: Option[User])
+  def isAuthorizedRead(user: Option[User])
                       (implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] = for {
-    aw <- isAuthorizedWrite(optUser) // no ownership check necessary here; isAuthorizedWrite will check
+    aw <- isAuthorizedWrite(user) // no ownership check necessary here; isAuthorizedWrite will check
     ar <- if (aw) Future.successful(true) else { sharedWith match {
-      case Some(SharedWith(Some(roId), _, _)) => userDao.retrieveGroup(roId).map(_.exists(_.isAuthorized(optUser)))
+      case Some(SharedWith(Some(sgRO), _, _)) => sgRO.isAuthorized(user)
       case _ => Future.successful(false)
     }}
   } yield ar
 
-  def isAuthorizedWrite(optUser: Option[User])
+  def isAuthorizedWrite(user: Option[User])
                        (implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] = for {
-    ob <- Future.successful(optUser.exists(ownedBy))
+    ob <- Future.successful(user.exists(ownedBy))
     aw <- if (ob) Future.successful(true) else { sharedWith match {
-      case Some(SharedWith(_, Some(rwId), _)) => userDao.retrieveGroup(rwId).map(_.exists(_.isAuthorized(optUser)))
+      case Some(SharedWith(_, Some(sgRW), _)) => sgRW.isAuthorized(user)
       case _ => Future.successful(false)
     }}
   } yield aw
@@ -63,7 +63,8 @@ trait Shareable {
     */
   def isAuthorizedShare(user: User): Boolean = ownedBy(user) || isPublic
   def isPublic: Boolean = sharedWith.exists { sw =>
-    Seq(sw.readOnly, sw.readWrite).flatten.exists(id => UserGroup.PUBLIC_USER_GROUPS.keys.exists(_ == id)) }
+    Seq(sw.readOnly, sw.readWrite).flatten.exists(sg => SharedWith.PUBLIC_LEVELS.contains(sg.level))
+  }
 }
 
 object Shareable {
@@ -76,22 +77,53 @@ object Shareable {
 /**
   * A pair of UserGroups, one for read-only and one for read-write.
   */
-case class SharedWith(readOnly: Option[ObjectId] = None,
-                      readWrite: Option[ObjectId] = None,
+case class SharedWith(readOnly: Option[ShareGroup] = None,
+                      readWrite: Option[ShareGroup] = None,
                       ts: TimeStamp = TIME_NOW) {
 
   /**
     * Returns the union of all of the email addresses from either UserGroup, both those that are found in
     * the profiles of the groups' userIds and those in the groups' emails.
     */
-  def emails(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Set[String]] = for {
-    ro <- if (readOnly.isEmpty) Future.successful(None) else userDao.retrieveGroup(readOnly.get)
-    rw <- if (readWrite.isEmpty) Future.successful(None) else userDao.retrieveGroup(readWrite.get)
-    emails <- SharedWith.emails(ro, rw)
-  } yield emails
+  def emails(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Set[String]] = {
+    val futs = Seq(readOnly, readWrite).map { sg => UserGroup.retrieve(sg.flatMap(_.group)) }
+    for (ro <- futs.head; rw <- futs(1); emails <- SharedWith.emails(ro, rw)) yield emails
+  }
 }
 
 object SharedWith {
+
+  type LevelInt = Int
+  type LevelString = String
+
+  /** Enumeration-like type per here: https://underscore.io/blog/posts/2014/09/03/enumerations.html */
+  sealed abstract class LevelType(val level: LevelInt, val name: LevelString) extends Ordered[LevelType] {
+    def compare(that: LevelType): Int = this.level - that.level
+    override def toString: String = name
+  }
+
+  /** Only listed users have access.  Requires login first, of course, to authenticate user. */
+  case object LISTED extends LevelType(0, "LISTED")
+
+  /**
+    * A Shareable is "logged in" authorized (by any *user* who has the link) if it has this UserGroup in its
+    * `sharedWith`.
+    */
+  case object LOGGED_IN extends LevelType(1, "LOGGED_IN") {
+    def isAuthorized(user: Option[User]): Boolean = user.isDefined
+  }
+
+  /**
+    * A Shareable is public (by anyone who has the link) if it has this UserGroup in its `sharedWith`.
+    * This instance exemplifies why isAuthorized takes an Option; even userId=None will be granted authorization.
+    */
+  case object PUBLIC extends LevelType(2, "PUBLIC") {
+    def isAuthorized(user: Option[User]): Boolean = true
+  }
+
+  /** "Public" (as in: not based on a specific "listed" set of users) authorization levels. */
+  val PUBLIC_LEVELS: Map[LevelInt, Option[User] => Boolean] = Map(PUBLIC.level -> PUBLIC.isAuthorized,
+                                                                  LOGGED_IN.level -> LOGGED_IN.isAuthorized)
 
   /**
     * Returns the union of all of the email addresses from either UserGroup, both those that are found in
@@ -150,47 +182,46 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
   /** Returns true if the given user is authorized, either via (optional) user ID or email. */
   def isAuthorized(user: Option[User]): Boolean =
     isAuthorizedUserId(user.map(_.id)) || user.exists(_.emails.exists(isAuthorizedEmail))
+}
 
-  protected def isAuthorizedPublic: Boolean = id.contains(UserGroup.PUBLIC_ID)
-  protected def isAuthorizedLoggedIn: Boolean = id.contains(UserGroup.LOGGED_IN_ID)
+/**
+  * A LevelType-UserGroup pair.  The former is used for authentication purposes.  The latter is used for
+  * both authentication and email notification.
+  * @param level  If the LISTED then the set of users/emails in the UserGroup is used for authentication but
+  *               otherwise it is only used for notification.
+  * @param group  This can be None if `level` is not LISTED.
+  */
+case class ShareGroup(level: SharedWith.LevelInt, group: Option[ObjectId]) {
+
+  /** Returns true if the given user is authorized, either via (optional) user ID or email. */
+  def isAuthorized(user: Option[User])(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] =
+    SharedWith.PUBLIC_LEVELS.get(level).fold {
+      UserGroup.retrieve(group).map(_.exists(_.isAuthorized(user))) // defer to the "listed" users in the group
+    }(isAuthorized => Future.successful(isAuthorized(user)))
+
+//  protected def isAuthorizedPublic: Boolean = level == SharedWith.PUBLIC
+//  protected def isAuthorizedLoggedIn: Boolean = level == SharedWith.LOGGED_IN
 
   /**
-    * Greater than (>) indicates that a UserGroup dominates (i.e. is shared with strictly more people than)
-    * another UserGroup.
+    * Greater than (>) indicates that a ShareGroup dominates (i.e. is shared with strictly more people than)
+    * another ShareGroup.
     */
-  def >(other: UserGroup): Boolean = {
-    import UserGroup.ExtendedOptionSet
-    !other.isAuthorizedPublic && (isAuthorizedPublic ||
-      !other.isAuthorizedLoggedIn && (isAuthorizedLoggedIn || (userIds > other.userIds && emails > other.emails)))
-  }
+  def >(other: ShareGroup)(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] =
+    if (level > other.level) Future.successful(true)
+    else if (level == SharedWith.LISTED.level && other.level == SharedWith.LISTED.level) {
+      val futs = Seq(group, other.group).map(UserGroup.retrieve) // calling these `retrieve`s inside a for-
+      for (ugT <- futs.head; ugO <- futs(1)) yield {             // expression would cause them to run sequentially
+        import UserGroup.ExtendedOptionSet
+        ugT.flatMap(_.userIds) > ugO.flatMap(_.userIds) && ugT.flatMap(_.emails) > ugO.flatMap(_.emails)
+      }
+    } else Future.successful(false)
 
-  def >=(other: UserGroup): Boolean = this == other || this > other
+
+  def >=(other: ShareGroup)(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] =
+    if (this == other) Future.successful(true) else this > other
 }
 
 object UserGroup extends BSONHandlers {
-
-  val PUBLIC_ID = "PUBLIC"
-  val LOGGED_IN_ID = "LOGGED_IN"
-
-  /**
-    * A Shareable is public (by anyone who has the link) if it has this UserGroup in its `sharedWith`.
-    *
-    * This instance exemplifies why isAuthorized takes an Option; even userId=None will be granted authorization.
-    */
-  val PUBLIC = new UserGroup(id = PUBLIC_ID) {
-    override def isAuthorized(user: Option[User]): Boolean = true
-  }
-
-  /**
-    * A Shareable is "logged in" authorized (by any *user* who has the link) if it has this UserGroup in its
-    * `sharedWith`.
-    */
-  val LOGGED_IN = new UserGroup(id = LOGGED_IN_ID) {
-    override def isAuthorized(user: Option[User]): Boolean = user.isDefined
-  }
-
-  /** Enumerated, special, public user groups used by MongoUserDao. */
-  val PUBLIC_USER_GROUPS: Map[ObjectId, UserGroup] = Map(PUBLIC_ID -> PUBLIC, LOGGED_IN_ID -> LOGGED_IN)
 
   /** Special hashing function for UserGroups to use as their MongoDB index key. */
   private final class Hashing extends hashing.Hashing[UserGroup] {
@@ -203,8 +234,13 @@ object UserGroup extends BSONHandlers {
   /** Object ID (e.g. mark or highlight ID) paired with a time stamp indicating when that ID was shared. */
   case class SharedObj(id: ObjectId, ts: TimeStamp)
 
+  /** Query the database for a UserGroup given its ID. */
+  def retrieve(opt: Option[ObjectId])(implicit userDao: MongoUserDao, ec: ExecutionContext):
+    Future[Option[UserGroup]] = opt.fold(Future.successful(Option.empty[UserGroup]))(userDao.retrieveGroup)
+
   implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
   implicit val userGroupHandler: BSONDocumentHandler[UserGroup] = Macros.handler[UserGroup]
+  implicit val shareGroupHandler: BSONDocumentHandler[ShareGroup] = Macros.handler[ShareGroup]
   implicit val sharedObjHandler: BSONDocumentHandler[SharedObj] = Macros.handler[SharedObj]
 
   val HASH: String = nameOf[UserGroup](_.hash)
@@ -237,7 +273,7 @@ object UserGroup extends BSONHandlers {
   }
 
   /** There should be a generic for something like this--maybe there is. */
-  implicit class ExtendedOptionUserGroup(private val self: Option[UserGroup]) extends AnyVal {
+  /*implicit class ExtendedOptionUserGroup(private val self: Option[UserGroup]) extends AnyVal {
 
     def union(other: Option[UserGroup]): Option[UserGroup] = self.fold(other) { sg =>
       other.fold(self) { og =>
@@ -263,7 +299,7 @@ object UserGroup extends BSONHandlers {
         case Some(og) => Some(UserGroup(userIds = sg.userIds - og.userIds, emails = sg.emails - og.emails))
       }
     }
-  }
+  }*/
 }
 
 
