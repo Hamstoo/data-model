@@ -337,8 +337,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     * TODO: This method should be moved into a MongoShareableDao class, similar to MongoAnnotationDao.
     */
   def updateSharedWith(m: Mark, nSharedTo: Int,
-                       readOnly : Option[(SharedWith.LevelInt, Option[UserGroup])],
-                       readWrite: Option[(SharedWith.LevelInt, Option[UserGroup])]): Future[Mark] = {
+                       readOnly : Option[(SharedWith.Level.Value, Option[UserGroup])],
+                       readWrite: Option[(SharedWith.Level.Value, Option[UserGroup])]): Future[Mark] = {
     logger.debug(s"Sharing mark ${m.id} with $readOnly and $readWrite")
     val ts = TIME_NOW // use the same time stamp everywhere
     val so = Some(UserGroup.SharedObj(m.id, ts))
@@ -350,8 +350,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       // same only one instance will be written to the database)
       ro <- saveGroup(readOnly .flatMap(_._2))
       rw <- saveGroup(readWrite.flatMap(_._2))
-      sw = SharedWith(readOnly  = readOnly .map(x => ShareGroup(x._1, ro.map(_.id))),
-                      readWrite = readWrite.map(x => ShareGroup(x._1, rw.map(_.id))), ts = ts)
+      sw = SharedWith(readOnly  = readOnly .flatMap(x => ShareGroup(x._1, ro)),
+                      readWrite = readWrite.flatMap(x => ShareGroup(x._1, rw)), ts = ts)
 
       // this isn't exactly right as it's double counting any previously shared-with emails
       //nSharedTo <- sw.emails.map(_.size)

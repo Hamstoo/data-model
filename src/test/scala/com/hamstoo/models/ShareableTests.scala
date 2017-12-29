@@ -28,10 +28,10 @@ class ShareableTests extends FlatSpecWithMatchers
     userDao.saveGroup(ugEmails).futureValue
   }
 
-  val sgUserIds = ShareGroup(SharedWith.LISTED.level, Some(ugUserIds.id))
-  val sgEmails = ShareGroup(SharedWith.LISTED.level, Some(ugEmails.id))
-  val sgPublic = ShareGroup(SharedWith.PUBLIC.level, None)
-  val sgLoggedIn = ShareGroup(SharedWith.LOGGED_IN.level, None)
+  val sgUserIds = ShareGroup(SharedWith.Level.LISTED.id, Some(ugUserIds.id))
+  val sgEmails = ShareGroup(SharedWith.Level.LISTED.id, Some(ugEmails.id))
+  val sgPublic = ShareGroup(SharedWith.Level.PUBLIC.id, None)
+  val sgLoggedIn = ShareGroup(SharedWith.Level.LOGGED_IN.id, None)
 
   val md = MarkData("subj", None)
   val mNotShared = Mark(sharer.id, mark = md)
@@ -80,7 +80,7 @@ class ShareableTests extends FlatSpecWithMatchers
 
   "SharedWith" should "(UNIT) be convertable to a list of email addresses" in {
     val ugSharer = UserGroup("ugSharer", userIds = Some(Set(sharer.id)))
-    val sgSharer = ShareGroup(SharedWith.LISTED.level, Some(ugSharer.id))
+    val sgSharer = ShareGroup(SharedWith.Level.LISTED.id, Some(ugSharer.id))
     userDao.save(sharer).futureValue
     userDao.saveGroup(ugSharer, Some(UserGroup.SharedObj("someMarkId", TIME_NOW))).futureValue
     val emails = Set(sharer, sharee).map(_.profiles.head.email.get)
