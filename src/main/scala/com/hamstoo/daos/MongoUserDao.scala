@@ -23,7 +23,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
   val logger: Logger = Logger(classOf[MongoUserDao])
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}
-  import com.hamstoo.models.UserGroup.{HASH, PUBLIC_USER_GROUPS, SHROBJS, userGroupHandler, sharedObjHandler}
+  import com.hamstoo.models.UserGroup.{HASH, SHROBJS, userGroupHandler, sharedObjHandler}
   import com.hamstoo.utils._
 
   // get the "users" collection (in the future); the `map` is `Future.map`
@@ -112,35 +112,30 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     * Saves or updates user group with the given ID.  Optionally provide an ObjectId-TimeStamp pair to add
     * to the saved document's `sharedObjs` list.
     */
-  def saveGroup(ug: UserGroup, sharedObj: Option[UserGroup.SharedObj] = None): Future[UserGroup] =
-    PUBLIC_USER_GROUPS.get(ug.id).fold { // prevent accidental public save
-      for {
-        c <- groupColl()
-        existing <- retrieveGroup(ug)
+  def saveGroup(ug: UserGroup, sharedObj: Option[UserGroup.SharedObj] = None): Future[UserGroup] = for {
+    c <- groupColl()
+    existing <- retrieveGroup(ug)
 
-        // be sure to insert, not upsert, here b/c we want to avoid overwriting any existing sharedObjs history
-        wr <- if (existing.isEmpty) c.insert(ug) else
-          c.update(d :~ ID -> existing.get.id, d :~ "$push" -> (d :~ SHROBJS -> (d :~ "$each" -> ug.sharedObjs)))
-        _ <- wr.failIfError
+    // be sure to insert, not upsert, here b/c we want to avoid overwriting any existing sharedObjs history
+    wr <- if (existing.isEmpty) c.insert(ug) else
+      c.update(d :~ ID -> existing.get.id, d :~ "$push" -> (d :~ SHROBJS -> (d :~ "$each" -> ug.sharedObjs)))
+    _ <- wr.failIfError
 
-        // optionally update the UserGroup's list of objects it was used to share
-        _ <- if (sharedObj.isEmpty) Future.successful {} else
-          c.update(d :~ ID -> existing.fold(ug.id)(_.id), d :~ "$push" -> (d :~ SHROBJS -> sharedObj.get))
+    // optionally update the UserGroup's list of objects it was used to share
+    _ <- if (sharedObj.isEmpty) Future.successful {} else
+      c.update(d :~ ID -> existing.fold(ug.id)(_.id), d :~ "$push" -> (d :~ SHROBJS -> sharedObj.get))
 
-      } yield existing.getOrElse(ug)
-    }(publicUserGroup => Future.successful(publicUserGroup))
+  } yield existing.getOrElse(ug)
 
   /** Retrieves user group either from PUBLIC_USER_GROUPS or, if not there, from the database. */
-  def retrieveGroup(ugId: ObjectId): Future[Option[UserGroup]] = PUBLIC_USER_GROUPS.get(ugId).fold {
-    logger.debug(s"Retrieving user group $ugId")
-    for {
-      c <- groupColl()
-      opt <- c.find(d :~ ID -> ugId).one[UserGroup]
-    } yield {
-      if (opt.isDefined) logger.debug(s"Found user group $ugId")
-      opt
-    }
-  }(publicUserGroup => Future.successful(Some(publicUserGroup)))
+  def retrieveGroup(ugId: ObjectId): Future[Option[UserGroup]] = for {
+    c <- groupColl()
+    _ = logger.debug(s"Retrieving user group $ugId")
+    opt <- c.find(d :~ ID -> ugId).one[UserGroup]
+  } yield {
+    if (opt.isDefined) logger.debug(s"Found user group $ugId")
+    opt
+  }
 
   /** Retrieves a user group from the database first based on its hash, then on its hashed fields. */
   protected def retrieveGroup(ug: UserGroup): Future[Option[UserGroup]] = for {

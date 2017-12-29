@@ -336,18 +336,25 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     *
     * TODO: This method should be moved into a MongoShareableDao class, similar to MongoAnnotationDao.
     */
-  def updateSharedWith(m: Mark, readOnly: Option[UserGroup], readWrite: Option[UserGroup]): Future[Mark] = {
+  def updateSharedWith(m: Mark, nSharedTo: Int,
+                       readOnly : Option[(SharedWith.LevelInt, Option[UserGroup])],
+                       readWrite: Option[(SharedWith.LevelInt, Option[UserGroup])]): Future[Mark] = {
     logger.debug(s"Sharing mark ${m.id} with $readOnly and $readWrite")
     val ts = TIME_NOW // use the same time stamp everywhere
     val so = Some(UserGroup.SharedObj(m.id, ts))
     def saveGroup(opt: Option[UserGroup]): Future[Option[UserGroup]] =
       opt.fold(Future.successful(Option.empty[UserGroup]))(ug => userDao.saveGroup(ug, so).map(Some(_)))
+
     for {
-      ro <- saveGroup(readOnly)
-      rw <- saveGroup(readWrite)
-      sw = SharedWith(readOnly = ro.map(_.id), readWrite = rw.map(_.id), ts = ts)
-      nSharedTo <- SharedWith.emails(ro, rw).map(_.size)
-      //shareable <- m.updateSharedWith(sw, nSharedTo, dbColl)
+      // these can return different id'ed groups than were passed in (run these sequentially so that if they're the
+      // same only one instance will be written to the database)
+      ro <- saveGroup(readOnly .flatMap(_._2))
+      rw <- saveGroup(readWrite.flatMap(_._2))
+      sw = SharedWith(readOnly  = readOnly .map(x => ShareGroup(x._1, ro.map(_.id))),
+                      readWrite = readWrite.map(x => ShareGroup(x._1, rw.map(_.id))), ts = ts)
+
+      // this isn't exactly right as it's double counting any previously shared-with emails
+      //nSharedTo <- sw.emails.map(_.size)
 
       c <- dbColl()
 
@@ -355,7 +362,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       sel = d :~ ID -> m.id :~ curnt
       wr <- {
         import UserGroup.sharedWithHandler
-        val set = d :~ "$set" -> (d :~ SHARED_WITH -> sw.copy(ts = TIME_NOW))
+        val set = d :~ "$set" -> (d :~ SHARED_WITH -> sw)
         val inc = d :~ "$inc" -> (d :~ N_SHARED_FROM -> 1 :~ N_SHARED_TO -> nSharedTo)
         c.findAndUpdate(sel, set :~ inc, fetchNewObject = true)
       }
