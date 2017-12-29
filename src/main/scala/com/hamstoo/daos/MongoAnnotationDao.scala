@@ -59,17 +59,17 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     * @param id - unique annotation identifier
     * @return - option value with annotation object
     */
-  def retrieve(usr: UUID, id: String): Future[Option[A]] = {
+  /*def retrieve(usr: UUID, id: String): Future[Option[A]] = {
     logger.debug(s"Retrieving $name $id for user $usr")
 
     for {
-      c <- dbColl()
+      c <- dbColl()          // this `find` fails because the projection removes the usrId field
       mbHl <- c.find(d :~ USR -> usr :~ ID -> id :~ curnt).projection(d :~ POS -> 1).one[A]
     } yield {
       logger.debug(s"$name: $mbHl was successfully retrieved")
       mbHl
     }
-  }
+  }*/
 
   /**
     * Retrieve annotations from mongodb collection by several parameters
