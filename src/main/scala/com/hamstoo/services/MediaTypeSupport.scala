@@ -9,6 +9,8 @@ object MediaTypeSupport {
 
   import MediaType._
 
+  val USERDATAMimeTypes: Seq[MediaType] = USER_DATA :: Nil
+
   val HTMLMimeTypes: Seq[MediaType] = TEXT_HTML ::
                                      APPLICATION_OCTET_STREAM ::
                                      TEXT_X_PHP ::
@@ -55,6 +57,7 @@ object MediaTypeSupport {
     Nil
 
   private def isMimeType(mimeTypes: Seq[MediaType])(mt: MediaType): Boolean = mimeTypes.exists(_ `match` mt)
+  def isUSERDATA(mt: MediaType): Boolean = isMimeType(USERDATAMimeTypes)(mt)
   def isHTML(mt: MediaType): Boolean = isMimeType(HTMLMimeTypes)(mt)
   def isPDF(mt: MediaType): Boolean = isMimeType(PDFMimeTypes)(mt)
 

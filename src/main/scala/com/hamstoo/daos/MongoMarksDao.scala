@@ -490,8 +490,11 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       selPriv = d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> false) :~
                               PAGE -> (d :~ "$exists" -> true)
 
+      selUserData = d :~ curnt :~ USRREPR -> (d :~ "$exists" -> false) :~
+        PAGE -> (d :~ "$exists" -> true)
+
       // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
-      sel = d :~ "$or" -> Seq(selPub, selPriv) // Seq gets automatically converted to BSONArray
+      sel = d :~ "$or" -> Seq(selPub, selPriv,  selUserData) // Seq gets automatically converted to BSONArray
       //_ = logger.info(BSONDocument.pretty(sel))
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
@@ -572,6 +575,10 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   /** Updates a mark state with provided representation ID. */
   def updatePublicReprId(user: UUID, id: String, timeFrom: Long, reprId: String): Future[Unit] =
     updateForeignKeyId(user, id, timeFrom, reprId, PUBREPR, "public representation").map(_ => {})
+
+  /** Updates a mark state with provided representation ID. */
+  def updateUserContentReprId(user: UUID, id: String, timeFrom: Long, reprId: String): Future[Unit] =
+    updateForeignKeyId(user, id, timeFrom, reprId, USRREPR, "user content representation").map(_ => {})
 
   /** Updates a mark state with provided private representation ID and clears out processed page source.
     * @param page - processed page source to clear out from the mark
