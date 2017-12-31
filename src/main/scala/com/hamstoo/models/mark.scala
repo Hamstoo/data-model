@@ -203,6 +203,7 @@ case class Mark(
                  page: Option[Page] = None,
                  pubRepr: Option[String] = None,       // it's helpful for these fields to be (foreign key'ish)
                  privRepr: Option[String] = None,      // strings rather than objects so that they can be set to
+                 userRepr: Option[String] = None,      // all user generated data concatenated into a single string and processed as representation
                  pubExpRating: Option[String] = None,  // "failed" or "none" if desired (e.g. see
                  privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
                  timeFrom: Long = TIME_NOW,
@@ -355,6 +356,7 @@ object Mark extends BSONHandlers {
   val PAGE: String = nameOf[Mark](_.page)
   val PUBREPR: String = nameOf[Mark](_.pubRepr)
   val PRVREPR: String = nameOf[Mark](_.privRepr)
+  val USRREPR: String = nameOf[Mark](_.userRepr)
   val PUBESTARS: String = nameOf[Mark](_.pubExpRating)
   val PRIVESTARS: String = nameOf[Mark](_.privExpRating)
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)

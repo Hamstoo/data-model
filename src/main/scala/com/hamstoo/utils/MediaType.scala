@@ -31,6 +31,8 @@ object MediaType /*extends Enumeration*/ {
   /** Convenience method to construct a MediaType from a string. */
   def apply(strMimeType: String): MediaType = new MediaType(strMimeType)
 
+  lazy val USER_DATA = MediaType("user/data")
+
   // HTML
   lazy val TEXT_HTML = MediaType("text/html")
   lazy val APPLICATION_OCTET_STREAM = MediaType("application/octet-stream")
