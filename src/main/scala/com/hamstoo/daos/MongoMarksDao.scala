@@ -217,7 +217,25 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     for {
       c <- dbColl()
       exst = d :~ "$exists" -> true :~ "$nin" -> NON_IDS
-      sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
+      sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst, d :~ USRREPR -> exst)
+      sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
+      seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
+    } yield {
+      logger.debug(s"${seq.size} represented marks were successfully retrieved")
+      seq
+    }
+  }
+
+  /**
+    * Retrieves all current marks with representations for user generated content, constrained by a list of tags. Mark must have
+    * all tags to qualify.
+    */
+  def retrieveRepredByUserContent(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
+    logger.debug(s"Retrieve represented marks for user $user and tags $tags")
+    for {
+      c <- dbColl()
+      exst = d :~ "$exists" -> true :~ "$nin" -> NON_IDS
+      sel0 = d :~ USR -> user :~ curnt :~ BSONArray(d :~ USRREPR -> exst)
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
       seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
     } yield {
