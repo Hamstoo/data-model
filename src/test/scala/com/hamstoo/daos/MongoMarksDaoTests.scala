@@ -2,10 +2,10 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Mark, MarkData}
+import com.hamstoo.models.{Mark, MarkData, MarkState}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.INF_TIME
+import com.hamstoo.utils._
 import org.scalatest.OptionValues
 
 /**
@@ -19,16 +19,18 @@ class MongoMarksDaoTests
 
   import com.hamstoo.utils.DataInfo._
 
-  val uuid1 = constructUserId()
-  val uuid2 = constructUserId()
+  val uuid1: UUID = constructUserId()
+  val uuid2: UUID = constructUserId()
 
   val tagSet = Some(Set("tag1, tag2"))
   val cmt = Some("Query")
   val pubRepr = Some("repr")
   val newMarkData = MarkData("a NEW subject1", Some("https://github.com"))
+  val stateId = "stateId"
+  val states = Seq(MarkState(stateId, "reprId", created = TIME_NOW))
 
   val m1 = Mark(uuid1, "m1id", MarkData("a subject", Some("http://hamstoo.com"), tags = tagSet, comment = cmt))
-  val m2 = Mark(uuid2, "m2id", MarkData("a subject1", Some("http://hamstoo.com"), tags = tagSet), pubRepr = pubRepr)
+  val m2 = Mark(uuid2, "m2id", MarkData("a subject1", Some("http://hamstoo.com"), tags = tagSet), pubRepr = pubRepr, privReprExpRating = states)
   val m3 = Mark(uuid2, "m3id", MarkData("a subject2", Some("http://hamstoo.com")))
   val m4 = Mark(uuid2, m3.id, MarkData("a subject2", Some("http://hamstoo.com")), timeThru = INF_TIME - 1)
 
@@ -63,8 +65,13 @@ class MongoMarksDaoTests
     marksDao.retrieveTagged(uuid1, tagSet.get).futureValue shouldEqual Seq(m1)
   }
 
-  it should "(UNIT) retrieve represented marks by uuid and tag set" in {
-    marksDao.retrieveRepred(uuid2, tagSet.get).futureValue.map(_.id) shouldEqual Seq(m2.id)
+  it should "(UNIT) retrieve private represented marks by uuid and tag set" in {
+    val md = MarkData("subj", url = None, tags = tagSet)
+    val m = Mark(constructUserId(), constructMarkId(), mark = md, privReprExpRating = Seq(MarkState("state", "reprID", None, TIME_NOW)))
+
+    marksDao.insert(m).futureValue shouldEqual m
+
+    marksDao.retrieveRepred(m.userId, tagSet.get).futureValue.map(_.id) shouldEqual Seq(m.id)
   }
 
   it should "(UNIT) retrieve mark tags by uuid" in {
@@ -74,7 +81,7 @@ class MongoMarksDaoTests
   // depend on index text query (FWC - wtf does this comment mean, and why is it relevant?)
   it should "(UNIT) search marks by uuid, query and tags" in {
     val md1Stub = MarkData(m1.mark.subj, m1.mark.url, tags = m1.mark.tags, comment = m1.mark.comment)
-    val m1Stub = m1.copy(mark = md1Stub, aux = None)
+    val m1Stub = m1.copy(mark = md1Stub)
     marksDao.search(uuid1, cmt.get, tagSet.get).futureValue shouldEqual Seq(m1Stub)
   }
 
@@ -91,33 +98,40 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) find marks with missing reprs, both current and not (update: no longer finding non-current)" in {
-    marksDao.findMissingReprs(-1).futureValue.map(_.id) shouldEqual Seq(m3.id)
+    marksDao.findMissingReprs(-1).futureValue.size shouldEqual 2
   }
 
   it should "(UNIT) find marks with missing reprs, and be able to limit the quantity returned" in {
     val m5 = m3.copy(id = "m5id")
+
     marksDao.insert(m5).futureValue
-    val expected = Set(m3.id, m5.id)
-    expected.contains(marksDao.findMissingReprs(1).futureValue.head.id) shouldBe true
-    marksDao.findMissingReprs(2).futureValue.map(_.id).toSet shouldEqual expected
+
+    marksDao.findMissingReprs(2).futureValue.toSet.size shouldEqual 2
   }
 
   it should "(UNIT) find duplicate of mark data, for user, by subject" in {
     val md = MarkData("testSubj", None)
     val m = Mark(userId = UUID.randomUUID(), "testId", mark = md)
+
     marksDao.insert(m).futureValue shouldEqual m
+
     marksDao.findDuplicateSubject(m.userId, md.subj).futureValue should not equal None
   }
 
-  /*it should "(UNIT) find marks with missing reprs only once per mark (issue #198)" in {
-    var marks: Set[Mark] = marksDao.findMissingReprs(-1).futureValue.toSet
-    marks.size shouldEqual 4
+  it should "(UNIT) update private repr id" in {
+    val reprId = "someReprID"
 
-    for(_ <- 0 until 10) {
-      marks ++= marksDao.findMissingReprs(-1).futureValue
-      marks.size shouldEqual 4
-    }
-  }*/
+    val m = Mark(constructUserId(), constructMarkId(), MarkData("a subject2", Some("http://hamstoo.com")), privReprExpRating = states)
+
+    marksDao.insert(m).futureValue shouldEqual m
+
+    // check old one reprId
+    marksDao.updatePrivateReprId(m.id, stateId, reprId, m.timeFrom, None).futureValue shouldEqual {}
+
+    // check new one reprId
+    marksDao.retrieve(m.userId, m.id).futureValue.value.privReprExpRating.head.reprId shouldEqual reprId
+
+  }
 
 //  it should "obey its `bin-urlPrfx-1-pubRepr-1` index" in {
 //    val m = Mark(UUID.randomUUID(), mark = MarkData("crazy url subject", Some(crazyUrl)))

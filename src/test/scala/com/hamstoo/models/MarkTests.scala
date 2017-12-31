@@ -138,17 +138,15 @@ class MarkTests extends FlatSpecWithMatchers {
       merged.mark.tags.get shouldEqual (mdA.tags.get ++ mdB.tags.get)
       merged.mark.comment.get shouldEqual (mdA.comment.get + "\n\n---\n\n" + mdB.comment.get)
       merged.pubRepr shouldEqual mA.pubRepr
-      merged.privRepr shouldEqual mA.privRepr
+      merged.privReprExpRating shouldEqual mA.privReprExpRating
     }
 
-//  it should "throw an exception when merging marks with different userIds" in {
-//    // different userIds should throw an AssertionError
-//
-//    val thrown = intercept[AssertionError] {
-//      val c = Mark(constructUserId(), mark = mdB)
-//      mA.merge(c)
-//    }
-//
-//    thrown shouldBe a [AssertionError]
-//  }
+  it should "throw an exception when merging marks with different userIds" in {
+    // different userIds should throw an AssertionError
+
+    intercept[AssertionError] {
+      val c = Mark(constructUserId(), mark = mdB)
+      mA.merge(c)
+    }
+  }
 }
