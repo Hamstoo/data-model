@@ -490,8 +490,10 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       selPriv = d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> false) :~
                               PAGE -> (d :~ "$exists" -> true)
 
+      // looks if there is a record for representation made of user generated content such as
+      // comment, highlights, notes, labels (mark tags)
       selUserData = d :~ curnt :~ USRREPR -> (d :~ "$exists" -> false) :~
-        PAGE -> (d :~ "$exists" -> true)
+                                  PAGE -> (d :~ "$exists" -> true)
 
       // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
       sel = d :~ "$or" -> Seq(selPub, selPriv,  selUserData) // Seq gets automatically converted to BSONArray
@@ -576,7 +578,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   def updatePublicReprId(user: UUID, id: String, timeFrom: Long, reprId: String): Future[Unit] =
     updateForeignKeyId(user, id, timeFrom, reprId, PUBREPR, "public representation").map(_ => {})
 
-  /** Updates a mark state with provided representation ID. */
+  /** Updates a mark state with provided representation ID for user generated content such as
+    * comment, highlights, notes, labels (mark tags). */
   def updateUserContentReprId(user: UUID, id: String, timeFrom: Long, reprId: String): Future[Unit] =
     updateForeignKeyId(user, id, timeFrom, reprId, USRREPR, "user content representation").map(_ => {})
 
