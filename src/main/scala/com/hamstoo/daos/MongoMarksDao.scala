@@ -214,16 +214,13 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * all tags to qualify.
     * @param user  Only marks for this user will be returned/searched.
     * @param tags  Returned marks must have all of these tags, default to empty set.
-    * @param userReprOnly  Only search for marks that have existing user-content reprs; ignore pubRepr and privRepr.
     */
-  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String], userReprOnly: Boolean = false):
-                                                                                        Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving ${if (userReprOnly) "user-" else ""}represented marks for user $user and tags $tags")
+  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
+    logger.debug(s"Retrieving represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
       exst = d :~ "$exists" -> true :~ "$nin" -> NON_IDS
-      reprs = if (userReprOnly) d :~ USRREPR -> exst else
-        d :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst, d :~ USRREPR -> exst)
+      reprs = d :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst, d :~ USRREPR -> exst)
       sel0 = d :~ USR -> user :~ curnt :~ reprs // TODO: should `curnt` be moved into `reprs` to utilize indexes?
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
       seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
@@ -275,7 +272,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
     } yield {
       val filtered = seq.filter { m => tags.forall(t => m.mark.tags.exists(_.contains(t))) }
-      logger.info(s"${filtered.size} marks were successfully retrieved (${seq.size - filtered.size} were filtered out per their labels)")
+      logger.debug(s"${filtered.size} marks were successfully retrieved (${seq.size - filtered.size} were filtered out per their labels)")
       filtered
     }
   }
