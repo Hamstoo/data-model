@@ -209,33 +209,21 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
   }
 
   /**
-    * Retrieves all current marks with representations for the user, constrained by a list of tags. Mark must have
+    * Retrieves all current marks with representations for the user, constrained by a list of tags.  Mark must have
     * all tags to qualify.
+    * @param user  Only marks for this user will be returned/searched.
+    * @param tags  Returned marks must have all of these tags, default to empty set.
+    * @param userReprOnly  Only search for marks that have existing user-content reprs; ignore pubRepr and privRepr.
     */
-  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieve represented marks for user $user and tags $tags")
+  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String], userReprOnly: Boolean = false):
+                                                                                        Future[Seq[Mark]] = {
+    logger.debug(s"Retrieving ${if (userReprOnly) "user-" else ""}represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
       exst = d :~ "$exists" -> true :~ "$nin" -> NON_IDS
-      sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst, d :~ USRREPR -> exst)
-      sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
-      seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
-    } yield {
-      logger.debug(s"${seq.size} represented marks were successfully retrieved")
-      seq
-    }
-  }
-
-  /**
-    * Retrieves all current marks with representations for user generated content, constrained by a list of tags. Mark must have
-    * all tags to qualify.
-    */
-  def retrieveRepredByUserContent(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieve represented marks for user $user and tags $tags")
-    for {
-      c <- dbColl()
-      exst = d :~ "$exists" -> true :~ "$nin" -> NON_IDS
-      sel0 = d :~ USR -> user :~ curnt :~ BSONArray(d :~ USRREPR -> exst)
+      reprs = if (userReprOnly) d :~ USRREPR -> exst else
+        d :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst, d :~ USRREPR -> exst)
+      sel0 = d :~ USR -> user :~ curnt :~ reprs
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
       seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
     } yield {
@@ -511,7 +499,8 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       // looks if there is a record for representation made of user generated content such as
       // comment, highlights, notes, labels (mark tags)
       selUserData = d :~ curnt :~ USRREPR -> (d :~ "$exists" -> false) :~
-                                  PAGE -> (d :~ "$exists" -> true)
+                                  PAGE -> (d :~ "$exists" -> true) // TODO: why does PAGE have anything to do w/ user repr?
+        // TODO: does this 3rd select require another MongoDB index?  See comment in ScalaDoc above.
 
       // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
       sel = d :~ "$or" -> Seq(selPub, selPriv,  selUserData) // Seq gets automatically converted to BSONArray
