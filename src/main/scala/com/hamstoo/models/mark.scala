@@ -90,6 +90,14 @@ case class MarkData(
              comment.map(_ + oth.comment.map(commentMergeSeparator + _).getOrElse("")).orElse(oth.comment)
     )
   }
+
+  /** If the two MarkDatas are equal, as far as generating a public representation would be concerned. */
+  def equalsPerPubRepr(other: MarkData): Boolean =
+    url.isDefined && url == other.url || url.isEmpty && subj == other.subj
+
+  /** If the two MarkDatas are equal, as far as generating a user representation would be concerned. */
+  def equalsPerUserRepr(other: MarkData): Boolean = copy(url = None, rating = None, pagePending = None) ==
+                                              other.copy(url = None, rating = None, pagePending = None)
 }
 
 object MarkData {
@@ -228,6 +236,7 @@ case class Mark(
     */
   def representablePublic: Boolean = pubRepr.isEmpty
   def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined
+  def representableUserContent: Boolean = userRepr.isEmpty
   def eratablePublic: Boolean = pubExpRating.isEmpty && pubRepr.isDefined
   def eratablePrivate: Boolean = privExpRating.isEmpty && privRepr.isDefined
 
@@ -264,7 +273,8 @@ case class Mark(
          pubRepr  = pubRepr .orElse(oth.pubRepr ),
          privRepr = privRepr.orElse(oth.privRepr)
 
-         // intentionally skip expectedRating, let the repr-engine generate a value for the new merged mark later on
+         // intentionally skip expectedRating and userRepr; let the repr-engine generate new values for both later on
+         // given the newly merged mark
     )
   }
 

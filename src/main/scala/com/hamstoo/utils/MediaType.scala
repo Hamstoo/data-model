@@ -31,6 +31,8 @@ object MediaType /*extends Enumeration*/ {
   /** Convenience method to construct a MediaType from a string. */
   def apply(strMimeType: String): MediaType = new MediaType(strMimeType)
 
+  // slightly overriding the idea of a MediaType here to accommodate repr-engine's RepresentationActor serviceProcess
+  // method which switches its behavior based on a MediaType in order to choose an appropriate RepresentationService
   lazy val USER_DATA = MediaType("user/data")
 
   // HTML
