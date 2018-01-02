@@ -2,14 +2,12 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{InlineNote, Mark, PageCoord}
+import com.hamstoo.models.{InlineNote, PageCoord}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
-import reactivemongo.api.commands.bson.DefaultBSONCommandError
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.{BSONArray, BSONDocumentHandler, Macros}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Await, Future}
@@ -19,7 +17,8 @@ import scala.concurrent.duration._
   * Data access object for inline notes (of which there can be many per mark) as opposed to comments (of which there
   * is only one per mark).
   */
-class MongoInlineNoteDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[InlineNote]("inline note", db) {
+class MongoInlineNoteDao(db: () => Future[DefaultDB])(implicit marksDao: MongoMarksDao)
+                                        extends MongoAnnotationDao[InlineNote]("inline note", db) {
 
   import com.hamstoo.models.InlineNote._
   import com.hamstoo.utils._
