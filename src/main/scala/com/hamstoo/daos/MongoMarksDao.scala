@@ -406,7 +406,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     c <- dbColl()
 
     // delete the newer mark and merge it into the older/pre-existing one (will return 0 if newMark not in db yet)
-    _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id))
+    _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id), ensureDeletion = false)
     mergedMk = oldMark.merge(newMark).copy(timeFrom = now, timeThru = INF_TIME)
 
     // don't do anything if there wasn't a meaningful change to the old mark
@@ -492,7 +492,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
   def delete(user: UUID,
              ids: Seq[String],
              now: Long = TIME_NOW,
-             mergeId: Option[String] = None): Future[Int] = {
+             mergeId: Option[String] = None,
+             ensureDeletion: Boolean = true): Future[Int] = {
     logger.debug(s"Deleting marks for user $user: $ids")
     for {
       c <- dbColl()
@@ -500,7 +501,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       mrg = mergeId.map(d :~ MERGEID -> _).getOrElse(d)
       wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now :~ mrg), multi = true)
       _ <- wr.failIfError
-      _ <- if (wr.nModified == ids.size) Future.successful {} else {
+      _ <- if (wr.nModified == ids.size || !ensureDeletion) Future.successful {} else {
         val msg = s"Unable to delete marks; ${wr.nModified} out of ${ids.size} were successfully deleted; first attempted (at most) 5: ${ids.take(5)}"
         logger.error(msg)
         Future.failed(new NoSuchElementException(msg))
