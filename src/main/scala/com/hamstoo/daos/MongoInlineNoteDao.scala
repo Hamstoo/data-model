@@ -15,7 +15,8 @@ import scala.concurrent.duration._
   * Data access object for inline notes (of which there can be many per mark) as opposed to comments (of which there
   * is only one per mark).
   */
-class MongoInlineNoteDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[InlineNote]("inline note", db) {
+class MongoInlineNoteDao(db: () => Future[DefaultDB])(implicit marksDao: MongoMarksDao)
+                                        extends MongoAnnotationDao[InlineNote]("inline note", db) {
 
   import com.hamstoo.models.InlineNote._
   import com.hamstoo.utils._

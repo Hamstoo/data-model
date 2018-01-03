@@ -90,6 +90,14 @@ case class MarkData(
              comment.map(_ + oth.comment.map(commentMergeSeparator + _).getOrElse("")).orElse(oth.comment)
     )
   }
+
+  /** If the two MarkDatas are equal, as far as generating a public representation would be concerned. */
+  def equalsPerPubRepr(other: MarkData): Boolean =
+    url.isDefined && url == other.url || url.isEmpty && subj == other.subj
+
+  /** If the two MarkDatas are equal, as far as generating a user representation would be concerned. */
+  def equalsPerUserRepr(other: MarkData): Boolean = copy(url = None, rating = None, pagePending = None) ==
+                                              other.copy(url = None, rating = None, pagePending = None)
 }
 
 object MarkData {
@@ -202,6 +210,7 @@ case class Mark(
                  page: Option[Page] = None,
                  pubRepr: Option[String] = None,       // it's helpful for these fields to be (foreign key'ish)
                  privRepr: Option[String] = None,      // strings rather than objects so that they can be set to
+                 userRepr: Option[String] = None,      // all user generated data concatenated into a single string and processed as representation
                  pubExpRating: Option[String] = None,  // "failed" or "none" if desired (e.g. see
                  privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
                  timeFrom: Long = TIME_NOW,
@@ -230,6 +239,7 @@ case class Mark(
     */
   def representablePublic: Boolean = pubRepr.isEmpty
   def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined
+  def representableUserContent: Boolean = userRepr.isEmpty
   def eratablePublic: Boolean = pubExpRating.isEmpty && pubRepr.isDefined
   def eratablePrivate: Boolean = privExpRating.isEmpty && privRepr.isDefined
 
@@ -266,7 +276,8 @@ case class Mark(
          pubRepr  = pubRepr .orElse(oth.pubRepr ),
          privRepr = privRepr.orElse(oth.privRepr)
 
-         // intentionally skip expectedRating, let the repr-engine generate a value for the new merged mark later on
+         // intentionally skip expectedRating and userRepr; let the repr-engine generate new values for both later on
+         // given the newly merged mark
     )
   }
 
@@ -358,6 +369,7 @@ object Mark extends BSONHandlers {
   val PAGE: String = nameOf[Mark](_.page)
   val PUBREPR: String = nameOf[Mark](_.pubRepr)
   val PRVREPR: String = nameOf[Mark](_.privRepr)
+  val USRREPR: String = nameOf[Mark](_.userRepr)
   val PUBESTARS: String = nameOf[Mark](_.pubExpRating)
   val PRIVESTARS: String = nameOf[Mark](_.privExpRating)
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)

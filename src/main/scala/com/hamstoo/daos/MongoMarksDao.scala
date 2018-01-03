@@ -49,6 +49,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     Index(PUBREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt)) % s"bin-$PUBREPR-1-partial-$TIMETHRU" ::
     Index(PRVREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PAGE -> (d :~ "$exists" -> true))) %
       s"bin-$PRVREPR-1-partial-$TIMETHRU-$PAGE" ::
+    Index(USRREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt)) % s"bin-$USRREPR-1-partial-$TIMETHRU" ::
     // findMissingExpectedRatings (partial) indexes
     Index(PUBESTARS -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PUBREPR -> (d :~ "$exists" -> true))) %
       s"bin-$PUBESTARS-1-partial-$TIMETHRU-$PUBREPR" ::
@@ -228,15 +229,18 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
   }
 
   /**
-    * Retrieves all current marks with representations for the user, constrained by a list of tags. Mark must have
+    * Retrieves all current marks with representations for the user, constrained by a list of tags.  Mark must have
     * all tags to qualify.
+    * @param user  Only marks for this user will be returned/searched.
+    * @param tags  Returned marks must have all of these tags, default to empty set.
     */
   def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieve represented marks for user $user and tags $tags")
+    logger.debug(s"Retrieving represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
       exst = d :~ "$exists" -> true :~ "$nin" -> NON_IDS
-      sel0 = d :~ USR -> user :~ curnt :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst)
+      reprs = d :~ "$or" -> BSONArray(d :~ PUBREPR -> exst, d :~ PRVREPR -> exst, d :~ USRREPR -> exst)
+      sel0 = d :~ USR -> user :~ curnt :~ reprs // TODO: should `curnt` be moved into `reprs` to utilize indexes?
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
       seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
     } yield {
@@ -287,7 +291,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
 
     } yield {
       val filtered = seq.filter { m => tags.forall(t => m.mark.tags.exists(_.contains(t))) }
-      logger.info(s"${filtered.size} marks were successfully retrieved (${seq.size - filtered.size} were filtered out per their labels)")
+      logger.debug(s"${filtered.size} marks were successfully retrieved (${seq.size - filtered.size} were filtered out per their labels)")
       filtered
     }
   }
@@ -322,9 +326,12 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     // if the URL has changed then discard the old public repr (only the public one though as the private one is
     // based on private user content that was only available from the browser extension at the time the user first
     // created it)
-    pubRp = if (mdata.url.isDefined && mdata.url == mOld.mark.url ||
-      mdata.url.isEmpty && mdata.subj == mOld.mark.subj) mOld.pubRepr else None
-    newMk = mOld.copy(mark = mdata, pubRepr = pubRp, timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
+    pubRp = if (mdata.equalsPerPubRepr(mOld.mark)) mOld.pubRepr else None
+
+    // if user-generated content has changed then discard the old user repr (also see unsetUserContentReprId below)
+    usrRp = if (mdata.equalsPerUserRepr(mOld.mark)) mOld.userRepr else None
+
+    newMk = mOld.copy(mark = mdata, pubRepr = pubRp, userRepr = usrRp, timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
     wr <- c.insert(newMk)
     _ <- wr.failIfError
   } yield newMk
@@ -578,8 +585,12 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       selPriv = d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> false) :~
                               PAGE -> (d :~ "$exists" -> true)
 
+      // looks if there is a record for representation made of user generated content such as
+      // comment, highlights, notes, labels (mark tags)
+      selUserData = d :~ curnt :~ USRREPR -> (d :~ "$exists" -> false)
+
       // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
-      sel = d :~ "$or" -> Seq(selPub, selPriv) // Seq gets automatically converted to BSONArray
+      sel = d :~ "$or" -> Seq(selPub, selPriv,  selUserData) // Seq gets automatically converted to BSONArray
       //_ = logger.info(BSONDocument.pretty(sel))
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
@@ -661,7 +672,24 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
   def updatePublicReprId(user: UUID, id: String, timeFrom: Long, reprId: String): Future[Unit] =
     updateForeignKeyId(user, id, timeFrom, reprId, PUBREPR, "public representation").map(_ => {})
 
-  /** Updates a mark state with provided private representation ID and clears out processed page source.
+  /**
+    * Updates a mark state with provided representation ID for user generated content such as
+    * comment, highlights, notes, labels (mark tags).
+    */
+  def updateUserContentReprId(user: UUID, id: String, timeFrom: Long, reprId: String): Future[Unit] =
+    updateForeignKeyId(user, id, timeFrom, reprId, USRREPR, "user content representation").map(_ => {})
+
+  /** Remove a userRepr from a Mark.  Used by MongoAnnotationDao when annotations are created and destroyed. */
+  def unsetUserContentReprId(user: UUID, id: String): Future[Unit] = for {
+    c <- dbColl()
+    sel = d :~ USR -> user :~ ID -> id :~ curnt
+    wr <- c.update(sel, d :~ "$unset" -> (d :~ USRREPR -> 1))
+    _ <- wr.failIfError
+    // TODO: should we delete from the representations collection as well?
+  } yield ()
+
+  /**
+    * Updates a mark state with provided private representation ID and clears out processed page source.
     * @param page - processed page source to clear out from the mark
     */
   def updatePrivateReprId(user: UUID, id: String, timeFrom: Long, reprId: String, page: Option[Page]): Future[Unit] = {
