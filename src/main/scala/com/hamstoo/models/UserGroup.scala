@@ -110,6 +110,15 @@ object SharedWith {
     // A Shareable is public (by anyone who has the link) if it has this UserGroup in its `sharedWith`.
     // This instance exemplifies why isAuthorized takes an Option; even userId=None will be granted authorization.
     val PUBLIC: Value = Value(3)
+
+    // https://stackoverflow.com/questions/24851677/reactivemongo-how-to-write-macros-handler-to-enumeration-object
+//    implicit val enumReads: Reads[Level] = EnumUtils.enumReads(Level)
+//    implicit def enumWrites: Writes[Level] = EnumUtils.enumWrites
+//    implicit object BSONEnumHandler extends BSONHandler[BSONString, Level] {
+//      def read(doc: BSONInteger) = Level.Value(doc.value)
+//      //def read(doc: BSONString) = Level.withName(doc.value)
+//      def write(stats: Level) = BSON.write(stats.toString)
+//    }
   }
 
   /** "Public" (as in: not based on a specific "listed" set of users) authorization levels. */
@@ -167,7 +176,6 @@ case class ShareGroup(level: Int, group: Option[ObjectId]) {
       }
     } else Future.successful(false)
 
-
   def >=(other: ShareGroup)(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] =
     if (this == other) Future.successful(true) else this > other
 }
@@ -175,7 +183,7 @@ case class ShareGroup(level: Int, group: Option[ObjectId]) {
 object ShareGroup {
 
   /** Used by MongoMarksDao.updateSharedWith. */
-  def apply(level: SharedWith.Level.Value, ug: Option[UserGroup]): Option[ShareGroup] =
+  def xapply(level: SharedWith.Level.Value, ug: Option[UserGroup]): Option[ShareGroup] =
     if (level == SharedWith.Level.PRIVATE) None else Some(ShareGroup(level.id, ug.map(_.id)))
 }
 

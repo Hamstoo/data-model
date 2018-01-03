@@ -350,8 +350,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       // same only one instance will be written to the database)
       ro <- saveGroup(readOnly .flatMap(_._2))
       rw <- saveGroup(readWrite.flatMap(_._2))
-      sw = SharedWith(readOnly  = readOnly .flatMap(x => ShareGroup(x._1, ro)),
-                      readWrite = readWrite.flatMap(x => ShareGroup(x._1, rw)), ts = ts)
+      sw = SharedWith(readOnly  = readOnly .flatMap(x => ShareGroup.xapply(x._1, ro)),
+                      readWrite = readWrite.flatMap(x => ShareGroup.xapply(x._1, rw)), ts = ts)
 
       // this isn't exactly right as it's double counting any previously shared-with emails
       //nSharedTo <- sw.emails.map(_.size)
