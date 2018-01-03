@@ -130,6 +130,10 @@ package object utils {
     def ifOk[T](f: => Future[T]): Future[T] =
       if (wr.ok) f else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
 
+    /**
+      * Note that this only fails if there was a real error.  If 0 documents were updated that is not considered
+      * an error.
+      */
     def failIfError: Future[Unit] =
       if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
   }

@@ -24,11 +24,11 @@ class MongoMarksDaoTests
 
   val tagSet = Some(Set("tag1, tag2"))
   val cmt = Some("Query")
-  val pubRepr = Some("repr")
+  val repr = Some("repr")
   val newMarkData = MarkData("a NEW subject1", Some("https://github.com"))
 
   val m1 = Mark(uuid1, "m1id", MarkData("a subject", Some("http://hamstoo.com"), tags = tagSet, comment = cmt))
-  val m2 = Mark(uuid2, "m2id", MarkData("a subject1", Some("http://hamstoo.com"), tags = tagSet), pubRepr = pubRepr)
+  val m2 = Mark(uuid2, "m2id", MarkData("a subject1", Some("http://hamstoo.com"), tags = tagSet), pubRepr = repr, userRepr = repr)
   val m3 = Mark(uuid2, "m3id", MarkData("a subject2", Some("http://hamstoo.com")))
   val m4 = Mark(uuid2, m3.id, MarkData("a subject2", Some("http://hamstoo.com")), timeThru = INF_TIME - 1)
 
