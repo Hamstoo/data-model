@@ -91,9 +91,9 @@ package object utils {
     }
   }
 
-  /** Only used by AuthController. */
-  def endpoint2Link(endpoint: Call)(implicit request: Request[Any]): String =
-    s"http${if (request.secure) "s" else ""}://${request.host}$endpoint"
+  /** Used by backend: AuthController and MarksController. */
+  def endpoint2Link(endpoint: Call)(implicit request: Request[Any]): String = httpHost + endpoint
+  def httpHost(implicit request: Request[Any]): String = s"http${if (request.secure) "s" else ""}://${request.host}"
 
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
     /** Short for `.cursor` with `.collect` consecutive calls with default error handler. */
