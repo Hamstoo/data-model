@@ -14,7 +14,8 @@ import scala.concurrent.duration._
 /**
   * Data access object for highlights.
   */
-class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[Highlight]("highlight", db) {
+class MongoHighlightDao(db: () => Future[DefaultDB])(implicit marksDao: MongoMarksDao)
+                                            extends MongoAnnotationDao[Highlight]("highlight", db) {
 
   import com.hamstoo.models.Highlight._
   import com.hamstoo.utils._

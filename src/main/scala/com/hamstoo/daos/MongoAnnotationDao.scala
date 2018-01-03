@@ -19,9 +19,10 @@ import scala.concurrent.{ExecutionContext, Future}
   * @param ec   execution context
   * @tparam A   this type param must be subtype of Annotation and have a defined BSONDocument handler
   */
-abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: String, db: () => Future[DefaultDB])
-                                                                       (implicit ec: ExecutionContext)
-          extends AnnotationInfo {
+abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
+                                 (name: String, db: () => Future[DefaultDB])
+                                 (implicit marksDao: MongoMarksDao, ec: ExecutionContext)
+                extends AnnotationInfo {
 
   val logger: Logger
   def dbColl(): Future[BSONCollection]
@@ -42,11 +43,11 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     */
   def insert(annotation: A): Future[A] = {
     logger.debug(s"Inserting $name ${annotation.id}")
-
     for {
       c <- dbColl()
       wr <- c.insert(annotation)
-      _ <- wr failIfError
+      _ <- wr.failIfError
+      _ <- marksDao.unsetUserContentReprId(annotation.usrId, annotation.markId)
     } yield {
       logger.debug(s"$name: ${annotation.id} was successfully inserted")
       annotation
@@ -77,9 +78,8 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     * @param markId - markId of the web page where annotation was done
     * @return - future with sequence of annotations that match condition
     */
-  def retrieveByMarkId(usr: UUID, markId: String): Future[Seq[A]] = {
+  def retrieve(usr: UUID, markId: String): Future[Seq[A]] = {
     logger.debug(s"Retrieving ${name + "s"} for user $usr and mark $markId")
-
     for {
       c <- dbColl()
       seq <- c.find(d :~ USR -> usr :~ MARKID -> markId :~ curnt).coll[A, Seq]()
@@ -97,11 +97,12 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     */
   def delete(usr: UUID, id: String): Future[Unit] = {
     logger.debug(s"Deleting $name $id for user $usr")
-
     for {
       c <- dbColl()
-      wr <- c.update(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> TIME_NOW))
-      _ <- wr failIfError
+      wr <- c.findAndUpdate(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> TIME_NOW))
+      annotation <- wr.result[A].map(Future.successful).getOrElse(
+        Future.failed(new Exception(s"MongoAnnotationDao.delete: unable to find $name $id")))
+      _ <- marksDao.unsetUserContentReprId(annotation.usrId, annotation.markId)
     } yield logger.debug(s"$name was successfully deleted")
   }
 
@@ -112,7 +113,6 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
   @deprecated("Not really deprecated, but sure seems expensive, so warn if it's being used.", "0.9.34")
   def retrieveAll(): Future[Seq[A]] = {
     logger.debug(s"Retrieving all ${name + "s"} (FOR ALL USERS!)")
-
     for {
       c <- dbColl()
       seq <- c.find(d).coll[A, Seq]()
@@ -132,7 +132,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler](name: St
     c <- dbColl()
 
     // previous impl in RepresentationActor.merge
-    //hls <- hlightsDao.retrieveByMarkId(newMark.userId, newMark.id)
+    //hls <- hlightsDao.retrieve(newMark.userId, newMark.id)
     //_ <- Future.sequence { hls.map(x => hlIntersectionSvc.add(x.copy(markId = oldMark.id))) }
 
     newAnnotations <- c.find(d :~ USR -> newMark.userId :~ MARKID -> newMark.id :~ curnt).coll[A, Seq]()
