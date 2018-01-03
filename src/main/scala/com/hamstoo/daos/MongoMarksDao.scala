@@ -118,7 +118,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
   }
 
   /** Retrieves a mark by user and ID, None if not found or not authorized. */
-  def retrieve(user: Option[User], id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
+  def retrieve(user: Option[User], id: String, timeThru: TimeStamp = INF_TIME): Future[Option[Mark]] = {
     logger.debug(s"Retrieving mark $id for user $user")
     for {
       mInsecure <- retrieveInsecure(id, timeThru = timeThru)
@@ -129,6 +129,12 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       case None => None
     }
   }
+
+  /** Retrieve a mark given a UUID rather than an Option[User]. */
+  def retrieveByUserId(userId: UUID, id: String, timeThru: TimeStamp = INF_TIME): Future[Option[Mark]] = for {
+    user <- userDao.retrieve(userId)
+    m <- retrieve(user, id, timeThru = timeThru)
+  } yield m
 
   /** Retrieves all current marks for the user, sorted by `timeFrom` descending. */
   def retrieve(user: UUID): Future[Seq[Mark]] = {
