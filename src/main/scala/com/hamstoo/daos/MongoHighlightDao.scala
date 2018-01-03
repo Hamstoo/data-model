@@ -2,14 +2,12 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Highlight, Mark, PageCoord}
+import com.hamstoo.models.{Highlight, PageCoord}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
-import reactivemongo.api.commands.bson.DefaultBSONCommandError
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.{BSONArray, BSONDocumentHandler, Macros}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Await, Future}
@@ -18,7 +16,8 @@ import scala.concurrent.duration._
 /**
   * Data access object for highlights.
   */
-class MongoHighlightDao(db: () => Future[DefaultDB]) extends MongoAnnotationDao[Highlight]("highlight", db) {
+class MongoHighlightDao(db: () => Future[DefaultDB])(implicit marksDao: MongoMarksDao)
+                                            extends MongoAnnotationDao[Highlight]("highlight", db) {
 
   import com.hamstoo.models.Highlight._
   import com.hamstoo.utils._

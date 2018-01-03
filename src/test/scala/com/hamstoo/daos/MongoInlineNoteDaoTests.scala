@@ -32,7 +32,7 @@ class MongoInlineNoteDaoTests
   }*/
 
   it should "UNIT) retrieve inline note by markId" in {
-    notesDao.retrieveByMarkId(c.usrId, c.markId).futureValue shouldEqual Seq(c)
+    notesDao.retrieve(c.usrId, c.markId).futureValue shouldEqual Seq(c)
   }
 
   it should "(UNIT) update inline note" in {
