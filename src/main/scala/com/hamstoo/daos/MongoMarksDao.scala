@@ -106,35 +106,29 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     * @param timeThru  TimeThru of requested mark.  Defaults to INF_TIME--i.e. current revision of mark.
     * @return          None if no such mark is found.
     */
-  def retrieveInsecure(id: String, timeThru: Long = INF_TIME): Future[Option[Mark]] = {
-    logger.debug(s"Retrieving mark $id")
+  def retrieveInsecure(id: String, timeThru: TimeStamp = INF_TIME): Future[Option[Mark]] = {
+    logger.debug(s"Retrieving (insecure) mark $id")
     for {
       c <- dbColl()
       opt <- c.find(d :~ ID -> id :~ TIMETHRU -> timeThru).one[Mark]
     } yield {
-      logger.debug(s"Mark $id was successfully retrieved")
+      logger.debug(s"Mark ${opt.map(_.id)} retrieved (insecure)")
       opt
     }
   }
 
   /** Retrieves a mark by user and ID, None if not found or not authorized. */
   def retrieve(user: Option[User], id: String, timeThru: TimeStamp = INF_TIME): Future[Option[Mark]] = {
-    logger.debug(s"Retrieving mark $id for user $user")
+    logger.debug(s"Retrieving mark $id for user ${user.map(_.id)}")
     for {
       mInsecure <- retrieveInsecure(id, timeThru = timeThru)
       authorizedRead <- mInsecure.fold(Future.successful(false))(_.isAuthorizedRead(user))
     } yield mInsecure match {
-      case Some(m) if authorizedRead => logger.debug(s"Mark $id was successfully retrieved"); Some(m)
+      case Some(m) if authorizedRead => logger.debug(s"Mark $id successfully retrieved"); Some(m)
       case Some(_) => logger.info(s"User $user unauthorized to view mark $id"); None
-      case None => None
+      case None => logger.debug(s"Mark $id not found"); None
     }
   }
-
-  /** Retrieve a mark given a UUID rather than an Option[User]. */
-  def retrieveByUserId(userId: UUID, id: String, timeThru: TimeStamp = INF_TIME): Future[Option[Mark]] = for {
-    user <- userDao.retrieve(userId)
-    m <- retrieve(user, id, timeThru = timeThru)
-  } yield m
 
   /** Retrieves all current marks for the user, sorted by `timeFrom` descending. */
   def retrieve(user: UUID): Future[Seq[Mark]] = {
