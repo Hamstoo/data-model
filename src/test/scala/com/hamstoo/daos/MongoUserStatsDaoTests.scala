@@ -28,7 +28,7 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
 
   // construct a new userId for these tests alone
   val userId: UUID = constructUserId()
-  val souser = Some(User(userId))
+  val souser = User(userId)
 
   val tagSet = Some(Set("tag1asdasda, tag2adasd"))
   val cmt = Some("Queryasdasd")

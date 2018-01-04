@@ -21,8 +21,6 @@ class MongoMarksDaoTests
 
   val uuid1: UUID = constructUserId()
   val uuid2: UUID = constructUserId()
-  val user1 = User(uuid1)
-  val user2 = User(uuid2)
 
   val tagSet = Some(Set("tag1, tag2"))
   val cmt = Some("Query")
@@ -44,7 +42,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) retrieve" in {
-    marksDao.retrieve(Some(user1), m1.id).futureValue.value shouldEqual m1
+    marksDao.retrieve(User(uuid1), m1.id).futureValue.value shouldEqual m1
   }
 
   it should "(UNIT) retrieve by uuid" in {
@@ -81,7 +79,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) update marks by uuid, id, markData" in {
-    marksDao.update(Some(user1), m1.id, newMarkData).futureValue.mark shouldEqual newMarkData
+    marksDao.update(User(uuid1), m1.id, newMarkData).futureValue.mark shouldEqual newMarkData
   }
 
   it should "(UNIT) delete mark by uuid, id" in {
