@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
-import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, generateDbId, reconcilePrivPub}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId, reconcilePrivPub}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -310,10 +310,20 @@ object Mark extends BSONHandlers {
   // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once
   logger.info("data-model version " + Option(getClass.getPackage.getImplementationVersion).getOrElse("null"))
 
-  case class RangeMils(begin: Long, end: Long)
+  case class RangeMils(begin: TimeStamp, end: TimeStamp)
+  type DurationMils = Long
 
-  /** Auxiliary stats pertaining to a `Mark`. */
-  case class MarkAux(tabVisible: Option[Seq[RangeMils]], tabBground: Option[Seq[RangeMils]]) {
+  /**
+    * Auxiliary stats pertaining to a `Mark`.
+    * 
+    * The two `total` vars will only be computed if they are None.  These fields are specifically excluded from
+    * the MongoDB projection when searching so that they can be re-computed each time they're loaded.  At that
+    * point, the consumer can choose whether or not to keep the two `tab` vals.
+    */
+  case class MarkAux(tabVisible: Option[Seq[RangeMils]],
+                     tabBground: Option[Seq[RangeMils]],
+                     var totalVisible: Option[DurationMils] = None,
+                     var totalBground: Option[DurationMils] = None) {
 
     /** Not using `copy` in this merge to ensure if new fields are added, they aren't forgotten here. */
     def merge(oth: MarkAux) =
@@ -321,10 +331,13 @@ object Mark extends BSONHandlers {
               Some(tabBground.getOrElse(Nil) ++ oth.tabBground.getOrElse(Nil)))
 
     /** These methods return the total aggregated amount of time in the respective sequences of ranges. */
-    def totalVisible: Long = total(tabVisible)
-    def totalBground: Long = total(tabBground)
+    if (totalVisible.isEmpty) totalVisible = Some(total(tabVisible))
+    if (totalBground.isEmpty) totalBground = Some(total(tabBground))
     private def total(tabSomething: Option[Seq[RangeMils]]): Long =
       tabSomething.map(_.foldLeft(0L)((agg, range) => agg + range.end - range.begin)).getOrElse(0L)
+
+    /** Returns a copy with the two sequences of RangeMils removed--to preserve memory. */
+    def cleanRanges: MarkAux = this.copy(tabVisible = None, tabBground = None)
   }
 
   /**
@@ -390,6 +403,8 @@ object Mark extends BSONHandlers {
 
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
+  val TOTVISx: String = AUX + "." + nameOf[MarkAux](_.totalVisible)
+  val TOTBGx: String = AUX + "." + nameOf[MarkAux](_.totalBground)
 
   val USRPRFX: String = nameOf[UrlDuplicate](_.userIdPrfx)
   assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)

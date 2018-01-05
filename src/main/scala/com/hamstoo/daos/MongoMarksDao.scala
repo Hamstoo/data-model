@@ -245,7 +245,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       seq <- c.find(sel1, searchExcludedFields).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
-      seq
+      seq.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 
@@ -268,7 +268,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
   // exclude these fields from the returned results of search-related methods to conserve memory during search
   // TODO: implement a MSearchable base class so that users know they're dealing with a partially populated Mark
   // (should have looked more closely at hamstoo.SearchService when choosing these fields; see issue #222)
-  val searchExcludedFields: BSONDocument = d :~ (PAGE -> 0)  :~ (URLPRFX -> 0) :~ (AUX -> 0) :~
+  val searchExcludedFields: BSONDocument = d :~ (PAGE -> 0)  :~ (URLPRFX -> 0) :~ (TOTVISx -> 0) :~ (TOTBGx -> 0) :~
     (MERGEID -> 0) :~ (COMNTENCx -> 0)
 
   /**
@@ -290,7 +290,9 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
         .coll[Mark, Seq]()
 
     } yield {
-      val filtered = seq.filter { m => tags.forall(t => m.mark.tags.exists(_.contains(t))) }
+      val filtered = seq.view.filter { m => tags.forall(t => m.mark.tags.exists(_.contains(t))) }
+        .map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
+        .force
       logger.debug(s"${filtered.size} marks were successfully retrieved (${seq.size - filtered.size} were filtered out per their labels)")
       filtered
     }
