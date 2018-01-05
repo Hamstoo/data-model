@@ -315,15 +315,15 @@ object Mark extends BSONHandlers {
 
   /**
     * Auxiliary stats pertaining to a `Mark`.
-    * 
-    * The two `total` vars will only be computed if they are None.  These fields are specifically excluded from
-    * the MongoDB projection when searching so that they can be re-computed each time they're loaded.  At that
-    * point, the consumer can choose whether or not to keep the two `tab` vals.
+    *
+    * The two `cachedTotal` vars will only be computed if they are None.  These fields are specifically excluded
+    * from the MongoDB projection when searching so that they can be re-computed each time they're loaded.  At that
+    * point, the caller can choose whether or not to keep the two `tab` vals.
     */
   case class MarkAux(tabVisible: Option[Seq[RangeMils]],
                      tabBground: Option[Seq[RangeMils]],
-                     var totalVisible: Option[DurationMils] = None,
-                     var totalBground: Option[DurationMils] = None) {
+                     var cachedTotalVisible: Option[DurationMils] = None,
+                     var cachedTotalBground: Option[DurationMils] = None) {
 
     /** Not using `copy` in this merge to ensure if new fields are added, they aren't forgotten here. */
     def merge(oth: MarkAux) =
@@ -331,9 +331,11 @@ object Mark extends BSONHandlers {
               Some(tabBground.getOrElse(Nil) ++ oth.tabBground.getOrElse(Nil)))
 
     /** These methods return the total aggregated amount of time in the respective sequences of ranges. */
-    if (totalVisible.isEmpty) totalVisible = Some(total(tabVisible))
-    if (totalBground.isEmpty) totalBground = Some(total(tabBground))
-    private def total(tabSomething: Option[Seq[RangeMils]]): Long =
+    if (cachedTotalVisible.isEmpty) cachedTotalVisible = Some(total(tabVisible))
+    if (cachedTotalBground.isEmpty) cachedTotalBground = Some(total(tabBground))
+    def totalVisible: DurationMils = tabVisible.fold(cachedTotalVisible.getOrElse(0L))(_ => total(tabVisible))
+    def totalBground: DurationMils = tabBground.fold(cachedTotalBground.getOrElse(0L))(_ => total(tabBground))
+    def total(tabSomething: Option[Seq[RangeMils]]): DurationMils =
       tabSomething.map(_.foldLeft(0L)((agg, range) => agg + range.end - range.begin)).getOrElse(0L)
 
     /** Returns a copy with the two sequences of RangeMils removed--to preserve memory. */

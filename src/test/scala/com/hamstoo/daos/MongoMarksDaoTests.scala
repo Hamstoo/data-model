@@ -74,7 +74,7 @@ class MongoMarksDaoTests
   // depend on index text query (FWC - wtf does this comment mean, and why is it relevant?)
   it should "(UNIT) search marks by uuid, query and tags" in {
     val md1Stub = MarkData(m1.mark.subj, m1.mark.url, tags = m1.mark.tags, comment = m1.mark.comment)
-    val m1Stub = m1.copy(mark = md1Stub, aux = None)
+    val m1Stub = m1.copy(mark = md1Stub, aux = m1.aux.map(_.cleanRanges))
     marksDao.search(uuid1, cmt.get, tagSet.get).futureValue shouldEqual Seq(m1Stub)
   }
 
