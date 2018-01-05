@@ -407,8 +407,15 @@ object Mark extends BSONHandlers {
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
 
   val STATEIDx: String = PRVEXPRAT + "." + nameOf[MarkState](_.stateId)
-  val REPRIDx: String = PRVEXPRAT + ".$." + nameOf[MarkState](_.reprId)
+  val REPRIDx: String = PRVEXPRAT + "." + nameOf[MarkState](_.reprId)
   val EXPRATx: String = PRVEXPRAT + "." + nameOf[MarkState](_.expRating)
+
+  val EXPRAT: String = nameOf[MarkState](_.expRating)
+  val STATEID: String = nameOf[MarkState](_.stateId)
+
+  // this values for position update operators
+  val REPRIDxp: String = PRVEXPRAT + ".$." + nameOf[MarkState](_.reprId)
+  val EXPRATxp: String = PRVEXPRAT + ".$." + nameOf[MarkState](_.expRating)
 
   val USRPRFX: String = nameOf[UrlDuplicate](_.userIdPrfx)
   assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
