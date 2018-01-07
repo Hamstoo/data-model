@@ -3,7 +3,7 @@ package com.hamstoo.daos
 import java.nio.file.Files
 import java.util.UUID
 
-import com.hamstoo.models.Mark.{STATEIDx, _}
+import com.hamstoo.models.Mark._
 import com.hamstoo.models.{Mark, MarkData, Page, Representation}
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
@@ -90,6 +90,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     for {
       c <- dbColl()
       now = TIME_NOW
+      // why we need to update timeFrom?
       ms = marks map(_.copy(timeFrom = now)) map Mark.entryBsonHandler.write // map each mark into a `BSONDocument`
       wr <- c bulkInsert(ms, ordered = false)
     } yield {
@@ -561,7 +562,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     }
   }
 
-  def fkSel(id: String, timeFrom: Long): BSONDocument = d :~ ID -> id :~ TIMEFROM -> timeFrom
+  def fkSel(user: UUID, id: String, timeFrom: Long): BSONDocument = d :~ USR -> user :~ ID -> id :~ TIMEFROM -> timeFrom
 
   /**
     * Updates a mark's state with provided foreign key ID.  This method is typically called as a result of
@@ -591,18 +592,20 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
       c <- dbColl()
 
       // writes new foreign key ID into the mark and retrieves updated document in the result
-      wr <- c.findAndUpdate(fkSel(id, timeFrom), d :~ "$set" -> (d :~ fieldName -> fkId), fetchNewObject = true)
+      wr <- c.findAndUpdate(fkSel(user, id, timeFrom), d :~ "$set" -> (d :~ fieldName -> fkId))
 
       _ <- if (wr.lastError.exists(_.n == 1)) Future.unit else {
         logger.warn(s"Unable to findAndUpdate $logName of mark $id [$timeFrom] to $fkId; wr.lastError = ${wr.lastError.get}")
         Future.failed(new NoSuchElementException(s"Unable to find mark $id [$timeFrom] in order to update its $fieldName"))
       }
 
-      // this will "NoSuchElementException: None.get" when `get` is called if `wr.result[Mark]` is None
+//       this will "NoSuchElementException: None.get" when `get` is called if `wr.result[Mark]` is None
       mk = wr.result[Mark].get
 
       _ = logger.debug(s"Updated mark $id with $logName ID: '$fkId'")
-    } yield mk
+    } yield {
+      mk
+    }
   }
 
   /** Updates a mark state with provided expected rating ID. */
@@ -622,7 +625,11 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     for {
       c <- dbColl()
 
-      sel = d :~ USR -> user :~ ID -> markId :~ STATEIDx -> stateId :~ TIMEFROM -> timeFrom
+      sel = d :~
+        USR -> user :~
+        ID -> markId :~
+        PRVEXPRAT -> (d :~ "$elemMatch" -> (d :~ STATEID -> stateId)) :~
+        TIMEFROM -> timeFrom
       mod = d :~ "$set" -> (d :~ EXPRATxp -> erId)
 
       ur <- c.update(sel, mod)
@@ -658,37 +665,40 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
 
       mod = d :~ "$set" -> (d :~ REPRIDxp -> reprId)
 
-//      wr <- c.findAndUpdate(sel, mod, fetchNewObject = true)
+      wr <- c.findAndUpdate(sel, mod, fetchNewObject = true)
 
-      ur <- c.update(sel, mod)
-      _ <- ur failIfError
-
-      optMark <- c.find(sel).one[Mark]
+      mk = wr.result[Mark].get
 
       // removes page source from the mark in case it's the same as the one processed
-      _ <- if (page.exists(optMark.get.pages.contains)) removePageSource(user, markId, timeFrom, page.get) else Future.unit
+      _ <- if (page.exists(mk.pages.contains)) removePageSource(user, markId, timeFrom, page.get) else Future.unit
     } yield {
-//      logger.debug(s"Mark: `$markId` representations id was updated to '${m.privReprExpRating.head.reprId}`")
+      val updated = mk.privReprExpRating.find(_.stateId == stateId).map(_.reprId)
+      logger.debug(s"Mark: `$markId` representations id was updated to '$updated`")
     }
   }
 
-  def testRetrieve(user: UUID, markId: String, stateId: String): Future[Option[Mark]] = {
+  def testRetrieve(user: UUID, markId: String, timeFrom: Long): Future[Option[Mark]] = {
     for {
       c <- dbColl()
       optRes <- c.find(d :~
         USR -> user :~
         ID -> markId :~
-        PRVEXPRAT -> (d :~ "$elemMatch" -> (d :~ STATEID -> stateId))).one[Mark]
+        TIMEFROM -> timeFrom).one[Mark]
     } yield optRes
   }
 
   /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */
   def isDeleted(user: UUID, url: String): Future[Boolean] = {
+    logger.debug(s"Checking if mark was deleted, for user $user and URL: $url")
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> (d :~ "$lt" -> INF_TIME)
       seq <- c.find(sel).coll[Mark, Seq]()
-    } yield seq.exists(_.mark.url.contains(url))
+    } yield {
+      val deleted = seq.exists(_.mark.url.contains(url))
+      logger.debug(s"Mark for user: $user and URL: $url, isDeleted = $deleted")
+      seq.exists(_.mark.url.contains(url))
+    }
   }
 
   /**
@@ -698,7 +708,7 @@ class MongoMarksDao(db: () => Future[DefaultDB]) {
     * @return - optional [MarkData]
     */
   def findDuplicateSubject(userId: UUID, subject: String): Future[Option[Mark]] = {
-    logger.debug(s"Searching for duplicate subject marks for user $userId and subject '$subject'")
+    logger.debug(s"Searching for duplicate subject marks for user $userId and subject '$subject'...")
     for {
       c <- dbColl() // TODO: does this query require an index?  or is the "bin-$USR-1-$TIMETHRU-1" index sufficient?
       sel = d :~ USR -> userId :~ SUBJx -> subject :~ URLx -> (d :~ "$exists" -> false) :~ curnt
