@@ -32,7 +32,7 @@ class MongoHighlightDaoTests
   }*/
 
   it should "(UNIT) retrieve highlights by markId" in {
-    hlightsDao.retrieveByMarkId(h.usrId, h.markId).futureValue shouldEqual Seq(h)
+    hlightsDao.retrieve(h.usrId, h.markId).futureValue shouldEqual Seq(h)
   }
 
   it should "(UNIT) update highlights" in {
@@ -42,6 +42,6 @@ class MongoHighlightDaoTests
 
   it should "(UNIT) delete highlight" in {
     hlightsDao.delete(h.usrId, h.id).futureValue shouldEqual {}
-    hlightsDao.retrieveByMarkId(h.usrId, h.markId).futureValue shouldEqual Nil
+    hlightsDao.retrieve(h.usrId, h.markId).futureValue shouldEqual Nil
   }
 }

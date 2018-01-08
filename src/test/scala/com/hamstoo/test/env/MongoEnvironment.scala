@@ -62,13 +62,13 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
 
 
   lazy val statsDao = new MongoUserStatsDao(db)
-  lazy val marksDao = new MongoMarksDao(db)
+  lazy implicit val userDao = new MongoUserDao(db)
+  lazy implicit val marksDao = new MongoMarksDao(db)
   lazy val notesDao = new MongoInlineNoteDao(db)
   lazy val hlightsDao = new MongoHighlightDao(db)
   lazy val reprsDao = new MongoRepresentationDao(db)
   lazy val eratingsDao = new MongoExpectedRatingDao(db)
   lazy val vectorsDao = new MongoVectorsDao(db)
-  lazy val userDao = new MongoUserDao(db)
   lazy val auth1Dao = new MongoOAuth1InfoDao(db)
   lazy val auth2Dao = new MongoOAuth2InfoDao(db)
   lazy val passDao = new MongoPasswordInfoDao(db)
