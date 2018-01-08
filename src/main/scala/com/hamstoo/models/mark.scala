@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
-import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId, reconcilePrivPub}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -90,6 +90,14 @@ case class MarkData(
              comment.map(_ + oth.comment.map(commentMergeSeparator + _).getOrElse("")).orElse(oth.comment)
     )
   }
+
+  /** If the two MarkDatas are equal, as far as generating a public representation would be concerned. */
+  def equalsPerPubRepr(other: MarkData): Boolean =
+    url.isDefined && url == other.url || url.isEmpty && subj == other.subj
+
+  /** If the two MarkDatas are equal, as far as generating a user representation would be concerned. */
+  def equalsPerUserRepr(other: MarkData): Boolean = copy(url = None, rating = None, pagePending = None) ==
+                                              other.copy(url = None, rating = None, pagePending = None)
 }
 
 object MarkData {
@@ -190,9 +198,8 @@ case class MarkState(stateId: String,
   * User history (list) entry data model. An `Entry` is a `Mark` that belongs to a
   * particular user along with an ID and timestamp.
   *
-  * The fields are:
-  *
-  * @param userId   - owning user's UUID
+  * @param userId   - owner's user ID
+  * @param sharedWith - defines which other users are allowed to read or write this Mark[Data]
   * @param id       - the mark's alphanumerical string, used as an identifier common with all the marks versions
   * @param mark     - user-provided content
   * @param aux      - additional fields holding satellite data
@@ -212,7 +219,7 @@ case class MarkState(stateId: String,
   */
 case class Mark(
                  userId: UUID,
-                 id: String = generateDbId(Mark.ID_LENGTH),
+                 id: ObjectId = generateDbId(Mark.ID_LENGTH),
                  mark: MarkData,
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
@@ -223,10 +230,15 @@ case class Mark(
                  //                 privRepr: Option[String] = None,      // strings rather than objects so that they can be set to
 
                  privReprExpRating: Seq[MarkState] = Nil,
+                 userRepr: Option[String] = None,      // all user generated data concatenated into a single string and processed as representation
                  timeFrom: Long = TIME_NOW,
                  timeThru: Long = INF_TIME,
+                 modifiedBy: Option[UUID] = None,
                  mergeId: Option[String] = None,
-                 score: Option[Double] = None) {
+                 sharedWith: Option[SharedWith] = None,
+                 nSharedFrom: Option[Int] = Some(0),
+                 nSharedTo: Option[Int] = Some(0),
+                 score: Option[Double] = None) extends Shareable {
   urlPrfx = mark.url map (_.binaryPrefix)
 
   import Mark._
@@ -245,6 +257,7 @@ case class Mark(
     * in case LinkageService.digest timed out when originally trying to generate a title for the mark (issue #195).
     */
   def representablePublic: Boolean = pubRepr.isEmpty
+  def representableUserContent: Boolean = userRepr.isEmpty
   def eratablePublic: Boolean = pubExpRating.isEmpty && pubRepr.isDefined
 
 
@@ -288,8 +301,9 @@ case class Mark(
 //         privRepr = privRepr.orElse(oth.privRepr),
       pubRepr  = pubRepr .orElse(oth.pubRepr ),
       privReprExpRating = if (privReprExpRating.isEmpty) oth.privReprExpRating else privReprExpRating
-      // intentionally skip expectedRating, let the repr-engine generate a value for the new merged mark later on
-    )
+
+    // intentionally skip expectedRating and userRepr; let the repr-engine generate new values for both later on
+    // given the newly merged mark    )
   }
 
   /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
@@ -325,10 +339,20 @@ object Mark extends BSONHandlers {
   // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once
   logger.info("data-model version " + Option(getClass.getPackage.getImplementationVersion).getOrElse("null"))
 
-  case class RangeMils(begin: Long, end: Long)
+  case class RangeMils(begin: TimeStamp, end: TimeStamp)
+  type DurationMils = Long
 
-  /** Auxiliary stats pertaining to a `Mark`. */
-  case class MarkAux(tabVisible: Option[Seq[RangeMils]], tabBground: Option[Seq[RangeMils]]) {
+  /**
+    * Auxiliary stats pertaining to a `Mark`.
+    *
+    * The two `cachedTotal` vars will only be computed if they are None.  These fields are specifically excluded
+    * from the MongoDB projection when searching so that they can be re-computed each time they're loaded.  At that
+    * point, the caller can choose whether or not to keep the two `tab` vals.
+    */
+  case class MarkAux(tabVisible: Option[Seq[RangeMils]],
+                     tabBground: Option[Seq[RangeMils]],
+                     var cachedTotalVisible: Option[DurationMils] = None,
+                     var cachedTotalBground: Option[DurationMils] = None) {
 
     /** Not using `copy` in this merge to ensure if new fields are added, they aren't forgotten here. */
     def merge(oth: MarkAux) =
@@ -336,10 +360,15 @@ object Mark extends BSONHandlers {
               Some(tabBground.getOrElse(Nil) ++ oth.tabBground.getOrElse(Nil)))
 
     /** These methods return the total aggregated amount of time in the respective sequences of ranges. */
-    def totalVisible: Long = total(tabVisible)
-    def totalBground: Long = total(tabBground)
-    private def total(tabSomething: Option[Seq[RangeMils]]): Long =
+    if (cachedTotalVisible.isEmpty) cachedTotalVisible = Some(total(tabVisible))
+    if (cachedTotalBground.isEmpty) cachedTotalBground = Some(total(tabBground))
+    def totalVisible: DurationMils = tabVisible.fold(cachedTotalVisible.getOrElse(0L))(_ => total(tabVisible))
+    def totalBground: DurationMils = tabBground.fold(cachedTotalBground.getOrElse(0L))(_ => total(tabBground))
+    def total(tabSomething: Option[Seq[RangeMils]]): DurationMils =
       tabSomething.map(_.foldLeft(0L)((agg, range) => agg + range.end - range.begin)).getOrElse(0L)
+
+    /** Returns a copy with the two sequences of RangeMils removed--to preserve memory. */
+    def cleanRanges: MarkAux = this.copy(tabVisible = None, tabBground = None)
   }
 
   /**
@@ -377,13 +406,14 @@ object Mark extends BSONHandlers {
   val ID_LENGTH: Int = 16
 
   val USR: String = nameOf[Mark](_.userId)
-  val ID: String = nameOf[Mark](_.id)
+  val ID: String = Shareable.ID
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)
   val URLPRFX: String = nameOf[Mark](_.urlPrfx)
   val PAGES: String = nameOf[Mark](_.pages)
   val PUBREPR: String = nameOf[Mark](_.pubRepr)
 //  val PRVREPR: String = nameOf[Mark](_.privRepr)
+  val USRREPR: String = nameOf[Mark](_.userRepr)
   val PUBESTARS: String = nameOf[Mark](_.pubExpRating)
 //  val PRIVESTARS: String = nameOf[Mark](_.privExpRating)
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)
@@ -405,6 +435,8 @@ object Mark extends BSONHandlers {
 
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
+  val TOTVISx: String = AUX + "." + nameOf[MarkAux](_.totalVisible)
+  val TOTBGx: String = AUX + "." + nameOf[MarkAux](_.totalBground)
 
   val STATEIDx: String = PRVEXPRAT + "." + nameOf[MarkState](_.stateId)
   val REPRIDx: String = PRVEXPRAT + "." + nameOf[MarkState](_.reprId)
@@ -421,6 +453,8 @@ object Mark extends BSONHandlers {
   assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
   assert(nameOf[UrlDuplicate](_.id) == com.hamstoo.models.Mark.ID)
 
+  implicit val shareGroupHandler: BSONDocumentHandler[ShareGroup] = Macros.handler[ShareGroup]
+  implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]

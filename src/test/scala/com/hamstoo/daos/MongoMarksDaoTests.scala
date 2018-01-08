@@ -2,6 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.hamstoo.models.{Mark, MarkData, User, UserData}
 import com.hamstoo.models.{Mark, MarkData, MarkState, Page}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
@@ -122,18 +123,17 @@ class MongoMarksDaoTests
 
   it should "(UNIT) retrieve by uuid and id" in {
     marksDao.retrieve(uuid1, m1.id).futureValue.value shouldEqual updateM1
+  it should "(UNIT) retrieve" in {
+    marksDao.retrieve(User(uuid1), m1.id).futureValue.value shouldEqual m1
   }
 
   it should "(UNIT) retrieve by uuid" in {
     marksDao.retrieve(uuid2).futureValue.map(_.id) shouldEqual Seq(m3.id, m4.id)
   }
 
-  it should "(UNIT) retrieve all by id" in {
-    val retrieved = marksDao.retrieveAllById(m3.id).futureValue.map(_.id)
-
-    retrieved.size shouldEqual 1
-
-    retrieved.contains(m3.id) shouldEqual true
+  it should "(UNIT) retrieve mark history" in {
+    marksDao.insert(m4).futureValue shouldEqual m4
+    marksDao.retrieveInsecureHist(m3.id).futureValue.map(_.mark) shouldEqual Seq(m3.mark, m4.mark)
   }
 
   it should "(UNIT) retrieve by uuid and url" in {
@@ -159,7 +159,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) update marks by uuid, id, markData" in {
-    marksDao.update(uuid1, m1.id, newMarkData).futureValue.mark shouldEqual newMarkData
+    marksDao.update(User(uuid1), m1.id, newMarkData).futureValue.mark shouldEqual newMarkData
   }
 
   it should "(UNIT) find duplicate of mark data, for user, by subject" in {

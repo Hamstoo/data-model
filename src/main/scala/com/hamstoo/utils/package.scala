@@ -91,9 +91,9 @@ package object utils {
     }
   }
 
-  /** Only used by AuthController. */
-  def createLink(endpoint: Call)(implicit request: Request[Any]): String =
-    s"${if (request.secure) "https" else "http"}://${request.host}$endpoint"
+  /** Used by backend: AuthController and MarksController. */
+  def endpoint2Link(endpoint: Call)(implicit request: Request[Any]): String = httpHost + endpoint
+  def httpHost(implicit request: Request[Any]): String = s"http${if (request.secure) "s" else ""}://${request.host}"
 
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
     /** Short for `.cursor` with `.collect` consecutive calls with default error handler. */
@@ -130,6 +130,10 @@ package object utils {
     def ifOk[T](f: => Future[T]): Future[T] =
       if (wr.ok) f else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
 
+    /**
+      * Note that this only fails if there was a real error.  If 0 documents were updated that is not considered
+      * an error.
+      */
     def failIfError: Future[Unit] =
       if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
   }
@@ -143,7 +147,8 @@ package object utils {
   val URL_PREFIX_COMPLEMENT_LENGTH = 12
 
   /** Generate an ID to be used for a document in a database collection. */
-  def generateDbId(length: Int): String = Random.alphanumeric.take(length).mkString
+  type ObjectId = String
+  def generateDbId(length: Int): ObjectId = Random.alphanumeric.take(length).mkString
 
   // if a mark doesn't have a repr (either reprId is in NON_IDS or reprId can't be found in the database) then
   // use this as its eratingId
@@ -181,12 +186,13 @@ package object utils {
     * MongoDB documents with TimeThrus equal to this value are current.  Those with lesser TimeThrus were either
     * deleted or have been updated, in which case there should be a new document with a matching TimeFrom.
     *
-    * For reference, Long.MaxValue is equal to 9223372036854775807.
+    * For reference, Long.MaxValue is equal to 9223372036854775807 or MongoDB's `NumberLong("9223372036854775807")`.
     */
-  val INF_TIME: Long = Long.MaxValue
-  def TIME_NOW: Long = DateTime.now.getMillis
+  type TimeStamp = Long
+  val INF_TIME: TimeStamp = Long.MaxValue
+  def TIME_NOW: TimeStamp = DateTime.now.getMillis
 
-  implicit class ExtendedLong(private val ms: Long) extends AnyVal {
+  implicit class ExtendedTimeStamp(private val ms: TimeStamp) extends AnyVal {
     /** Converts from time in milliseconds to a Joda DateTime. */
     def dt: DateTime = new DateTime(ms)
   }
