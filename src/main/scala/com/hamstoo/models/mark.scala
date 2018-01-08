@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
-import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId, reconcilePrivPub}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -300,7 +300,7 @@ case class Mark(
 //         pubRepr  = pubRepr .orElse(oth.pubRepr ),
 //         privRepr = privRepr.orElse(oth.privRepr),
       pubRepr  = pubRepr .orElse(oth.pubRepr ),
-      privReprExpRating = if (privReprExpRating.isEmpty) oth.privReprExpRating else privReprExpRating
+      privReprExpRating = if (privReprExpRating.isEmpty) oth.privReprExpRating else privReprExpRating)
 
     // intentionally skip expectedRating and userRepr; let the repr-engine generate new values for both later on
     // given the newly merged mark    )
