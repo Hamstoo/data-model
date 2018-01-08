@@ -6,7 +6,6 @@ import java.util.UUID
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
-import com.hamstoo.utils.d
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
 import reactivemongo.api.DefaultDB
@@ -755,29 +754,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     }
   }
 
-  def updatePrivateERatingId(user: UUID,
-                             markId: String,
-                             stateId: String,
-                             erId: String,
-                             timeFrom: Long): Future[Unit] = {
-    logger.debug(s"Updating private expect rating for state: $stateId of mark: $markId")
-    for {
-      c <- dbColl()
-
-      sel = d :~
-        USR -> user :~
-        ID -> markId :~
-        PRVEXPRAT -> (d :~ "$elemMatch" -> (d :~ STATEID -> stateId)) :~
-        TIMEFROM -> timeFrom
-      mod = d :~ "$set" -> (d :~ EXPRATxp -> erId)
-
-      ur <- c.update(sel, mod)
-      _ <- ur failIfError
-    } yield {
-      logger.debug(s"Expect rating was successfully updated to $erId, for state: $stateId of mark: $markId")
-    }
-  }
-
   /** Updates a mark state with provided private representation ID and clears out processed page source.
     * @param page - processed page source to clear out from the mark
     */
@@ -832,8 +808,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
 
   /**
     * Search for a [MarkData] by userId, subject and empty url field for future merge
-    * @param userId - user UUID
-    * @param subject string subject
     * @return - optional [MarkData]
     */
   def findDuplicateSubject(userId: UUID, subject: String): Future[Option[Mark]] = {

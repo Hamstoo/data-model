@@ -2,8 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Mark, MarkData, User, UserData}
-import com.hamstoo.models.{Mark, MarkData, MarkState, Page}
+import com.hamstoo.models._
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils._
@@ -55,36 +54,36 @@ class MongoMarksDaoTests
     uuid1,
     "m2id",
     MarkData("a subject2", Some("http://hamstoo.com"), tags = tagSet),
-    pubRepr = pubRepr)
+    pubRepr = pubRepr,
+    userRepr = Some("UserRepr"))
 
-  val m3 = Mark(uuid2, "m3id", MarkData("a subject3", Some("http://hamstoo.com")))
-  val m4 = Mark(uuid2, "m3i4", MarkData("a subject4", None))
+  val m3 = Mark(uuid2, "m3id", MarkData("a subject3", None))
+  val m4 = Mark(uuid2, m3.id, MarkData("a subject4", Some("http://hamstoo.com")), timeThru = INF_TIME - 1)
 
   "MongoMarksDao" should "(UNIT) insert mark" in {
     marksDao.insert(m1).futureValue shouldEqual m1
   }
 
   it should "(UNIT) insert stream of mark" in {
-    val markStream = m2 #:: m3 #:: m4 #:: Stream.empty[Mark]
-    marksDao.insertStream(markStream).futureValue shouldEqual 3
+    val markStream = m2 #:: m3 #:: Stream.empty[Mark]
+    marksDao.insertStream(markStream).futureValue shouldEqual 2
   }
 
   it should "(UNIT) add page source" in {
     marksDao.addPageSource(m1.userId, m1.id, page, ensureNoPrivRepr = false).futureValue shouldEqual {}
 
-    marksDao.retrieve(m1.userId, m1.id).futureValue.value.pages shouldEqual Seq(page)
+    marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.pages shouldEqual Seq(page)
   }
 
   it should "(UNIT) find marks with missing reprs, both current and not (update: no longer finding non-current)" in {
     val missReprs = marksDao.findMissingReprs(-1).futureValue.map(_.id)
 
-    missReprs.size shouldEqual 3
+    missReprs.size shouldEqual 2
 
     missReprs.contains(m1.id) shouldEqual true
 
     missReprs.contains(m3.id) shouldEqual true
 
-    missReprs.contains(m4.id) shouldEqual true
   }
 
   it should "(UNIT) find marks with missing reprs, and be able to limit the quantity returned" in {
@@ -94,7 +93,7 @@ class MongoMarksDaoTests
   it should "(UNIT) update private representation id" in {
     marksDao.updatePrivateReprId(m1.userId, m1.id, stateId, newPrivReprId, m1.timeFrom, Some(page)).futureValue shouldEqual {}
 
-    val retrievedMark = marksDao.retrieve(m1.userId, m1.id).futureValue.value
+    val retrievedMark = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value
 
     retrievedMark.privReprExpRating.exists(_.reprId == newPrivReprId) shouldEqual true
 
@@ -115,20 +114,18 @@ class MongoMarksDaoTests
 
     marksDao.updatePrivateERatingId(m1.userId, m1.id, stateId, newPrivExpRating, m1.timeFrom).futureValue shouldEqual {}
 
-    val m = marksDao.retrieve(m1.userId, m1.id).futureValue.value
+    val m = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value
 
     m.privReprExpRating.exists(_.expRating.contains(newPrivExpRating)) shouldEqual true
 
   }
 
   it should "(UNIT) retrieve by uuid and id" in {
-    marksDao.retrieve(uuid1, m1.id).futureValue.value shouldEqual updateM1
-  it should "(UNIT) retrieve" in {
-    marksDao.retrieve(User(uuid1), m1.id).futureValue.value shouldEqual m1
+    marksDao.retrieve(User(uuid1), m1.id).futureValue.value shouldEqual updateM1
   }
 
   it should "(UNIT) retrieve by uuid" in {
-    marksDao.retrieve(uuid2).futureValue.map(_.id) shouldEqual Seq(m3.id, m4.id)
+    marksDao.retrieve(uuid2).futureValue.map(_.id) shouldEqual Seq(m3.id)
   }
 
   it should "(UNIT) retrieve mark history" in {
@@ -163,7 +160,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) find duplicate of mark data, for user, by subject" in {
-    marksDao.findDuplicateSubject(m4.userId, m4.mark.subj).futureValue should not equal None
+    marksDao.findDuplicateSubject(m3.userId, m3.mark.subj).futureValue should not equal None
   }
 
   it should "(UNIT) retrieve represented marks by uuid and tag set" in {
@@ -176,26 +173,26 @@ class MongoMarksDaoTests
 
   it should "update public representation id" in {
 
-    val timeFrom = marksDao.retrieve(m2.userId, m2.id).futureValue.value.timeFrom
+    val timeFrom = marksDao.retrieve(User(m2.userId), m2.id).futureValue.value.timeFrom
 
     marksDao.updatePublicReprId(m2.userId, m2.id, timeFrom, newPubReprId).futureValue shouldEqual {}
 
-    marksDao.retrieve(m2.userId, m2.id).futureValue.value.pubRepr.value shouldEqual newPubReprId
+    marksDao.retrieve(User(m2.userId), m2.id).futureValue.value.pubRepr.value shouldEqual newPubReprId
   }
 
   it should "update public representation expect rating" in {
 
-    val timeFrom = marksDao.retrieve(m2.userId, m2.id).futureValue.value.timeFrom
+    val timeFrom = marksDao.retrieve(User(m2.userId), m2.id).futureValue.value.timeFrom
 
     marksDao.updatePublicERatingId(m2.userId, m2.id, timeFrom, newPubReprExpRating).futureValue shouldEqual {}
 
-    marksDao.retrieve(m2.userId, m2.id).futureValue.value.pubExpRating.value shouldEqual newPubReprExpRating
+    marksDao.retrieve(User(m2.userId), m2.id).futureValue.value.pubExpRating.value shouldEqual newPubReprExpRating
   }
 
   it should "(UNIT) delete mark by uuid, id" in {
     marksDao.delete(uuid1, m1.id :: Nil).futureValue shouldEqual 1
 
-    marksDao.retrieve(m1.userId, m1.id).futureValue shouldEqual None
+    marksDao.retrieve(User(m1.userId), m1.id).futureValue shouldEqual None
   }
 
   it should "(UNIT) check if mark was every previously deleted" in {
