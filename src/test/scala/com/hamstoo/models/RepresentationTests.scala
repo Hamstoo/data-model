@@ -2,7 +2,7 @@ package com.hamstoo.models
 
 import com.hamstoo.models.Representation._
 import com.hamstoo.test.FlatSpecWithMatchers
-import com.hamstoo.utils.MediaType
+import com.hamstoo.utils.{MediaType, TIME_NOW}
 
 import scala.util.Random
 
@@ -17,10 +17,11 @@ class RepresentationTests extends FlatSpecWithMatchers {
   val s: Double = 2.0
 
   "Representation" should "(UNIT) be consistently hashable" in {
+    val now = TIME_NOW
     def rep = Representation(
       id = "",
       link = Some("xyz"),
-      page = Some(Page(MediaType.TEXT_HTML.toString, "".getBytes)),
+      page = Some(Page(MediaType.TEXT_HTML.toString, "".getBytes, created = now)),
       header = Some(""),
       doctext = "",
       othtext = Some(""),
