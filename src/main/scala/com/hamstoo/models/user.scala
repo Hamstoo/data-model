@@ -49,14 +49,14 @@ case class ExtensionOptions(autoSync: Option[Boolean] = None,
 
 /**
   * Base user data object.  Each User has one of these, but can have multiple linked social Profiles.
-  * @param userName   User handle or username (issue #139)
+  * @param username   Publicly-displayed user "handle" or username (issue #139).
   * @param extOpts    Extension options.
   * @param tutorial   If true, the user will see the tutorial on next login.
   */
 case class UserData(
                      firstName: Option[String] = None,
                      lastName: Option[String] = None,
-                     userName: Option[String] = None,
+                     username: Option[String] = None,
                      avatar: Option[String] = None,
                      extOpts: Option[ExtensionOptions] = None,
                      tutorial: Option[Boolean] = Some(true))
