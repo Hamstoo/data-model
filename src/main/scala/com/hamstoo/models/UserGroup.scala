@@ -32,6 +32,7 @@ trait Shareable {
 
   /** Returns true if the user owns the mark. */
   def ownedBy(user: User): Boolean = user.id == userId
+  def isAuthorizedDelete(user: Option[User]): Boolean = user.exists(this.ownedBy)
 
   /**
     * For a user to be authorized, one of the following must be satisfied:
@@ -61,7 +62,7 @@ trait Shareable {
     * The owner of a mark may share it with anyone, of course, but non-owners may only re-share (via email--without
     * updating `sharedWith` in the database, of course) if it's owner has previously made it public.
     */
-  def isAuthorizedShare(user: User): Boolean = ownedBy(user) || isPublic
+  def isAuthorizedShare(user: Option[User]): Boolean = user.exists(ownedBy(_) || isPublic)
   def isPublic: Boolean = sharedWith.exists { sw =>
     import SharedWith.{PUBLIC_LEVELS, Level}
     Seq(sw.readOnly, sw.readWrite).flatten.exists(sg => PUBLIC_LEVELS.contains(Level(sg.level)))

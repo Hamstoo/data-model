@@ -5,7 +5,7 @@ import com.hamstoo.models.SearchStats._
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
-import reactivemongo.api.indexes.IndexType.Ascending
+import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -27,6 +27,8 @@ class MongoSearchStatsDao(db: () => Future[DefaultDB]) {
     Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
     Index(USR -> Ascending :: MARKID -> Ascending :: QUERY -> Ascending :: Nil, unique = true) %
       s"bin-$USR-1-$MARKID-1-$QUERY-1-uniq" ::
+    // text index (there can be only one per collection)
+    Index(USR -> Ascending :: QUERY -> Text :: Nil) % s"bin-$USR-1--txt-$QUERY" ::
     Nil toMap;
   Await.result(dbColl() map (_.indexesManager ensure indxs), 334 seconds)
 

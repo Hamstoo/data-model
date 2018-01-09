@@ -13,7 +13,10 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   *
   * @param userId  User who initiated the search.
   * @param markId  The mark that was clicked.
-  * @param query   The search query string for which statistics are recorded.
+  * @param query   The search query string for which statistics are recorded.  Not using a Set to preserve future
+  *                analysis options--e.g. there might be intricacies in how a user types in a set of search terms
+  *                (such as their ordering) that we want to use to modify the returned results.  Using a Set would
+  *                perhaps be mildly more efficient, but not enough to really matter.
   * @param facets  If any search facets were used to tailor the query (e.g. label:books).
   * @param clicks  The "stats"; the things the user clicked as a result the search.
   */

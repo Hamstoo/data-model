@@ -55,9 +55,9 @@ class ShareableTests extends FlatSpecWithMatchers
   }
 
   it should "(UNIT) authorize sharing" in {
-    mNotShared.isAuthorizedShare(sharer) shouldBe true // owner can choose to share with anyone
-    mUserRead.isAuthorizedShare(sharer) shouldBe true
-    mPublicRead.isAuthorizedShare(sharee) shouldBe true
+    mNotShared.isAuthorizedShare(Some(sharer)) shouldBe true // owner can choose to share with anyone
+    mUserRead.isAuthorizedShare(Some(sharer)) shouldBe true
+    mPublicRead.isAuthorizedShare(Some(sharee)) shouldBe true
   }
 
   it should "(UNIT) prevent reading" in {
@@ -74,8 +74,8 @@ class ShareableTests extends FlatSpecWithMatchers
   }
 
   it should "(UNIT) prevent sharing" in {
-    mNotShared.isAuthorizedShare(sharee) shouldBe false
-    mEmailRW.isAuthorizedShare(sharee) shouldBe false // only public can be shared by sharee
+    mNotShared.isAuthorizedShare(Some(sharee)) shouldBe false
+    mEmailRW.isAuthorizedShare(Some(sharee)) shouldBe false // only public can be shared by sharee
   }
 
   "SharedWith" should "(UNIT) be convertable to a list of email addresses" in {
