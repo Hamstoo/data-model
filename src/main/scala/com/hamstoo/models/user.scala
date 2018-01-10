@@ -95,14 +95,15 @@ object User extends BSONHandlers {
   def apply(id: UUID): Option[User] = Some(User(id, UserData(), Nil))
 
   val ID: String = nameOf[User](_.id)
-  val LGNF: String = nameOf[Profile](_.loginInfo)
-  val PROF: String = nameOf[User](_.profiles)
-  val PLGNF: String = s"$PROF.$LGNF"
+  val USERNAMEx: String = nameOf[User](_.userData) + "." + nameOf[UserData](_.username)
+  val PROFILES: String = nameOf[User](_.profiles)
+  val LINFO: String = nameOf[Profile](_.loginInfo)
   val CONF: String = nameOf[Profile](_.confirmed)
   val PSWNF: String = nameOf[Profile](_.passwordInfo)
   val OA1NF: String = nameOf[Profile](_.oAuth1Info)
   val OA2NF: String = nameOf[Profile](_.oAuth2Info)
-  val EMAIL: String = nameOf[Profile](_.email)
+  val PLINFOx: String = PROFILES + "." + LINFO
+  val PEMAILx: String = PROFILES + "." + nameOf[Profile](_.email)
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]

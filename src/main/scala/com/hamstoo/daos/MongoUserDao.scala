@@ -33,10 +33,11 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
   // ensure mongo collection has proper indexes
   private val indxs: Map[String, Index] =
-    Index(PLGNF -> Ascending :: Nil, unique = true) % s"bin-$PLGNF-1-uniq" ::
-      Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
-      Index(s"$PROF.$EMAIL" -> Ascending :: Nil) % s"bin-$PROF.$EMAIL-1" ::
-      Nil toMap;
+    Index(PLINFOx -> Ascending :: Nil, unique = true) % s"bin-$PLINFOx-1-uniq" ::
+    Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
+    Index(PEMAILx -> Ascending :: Nil) % s"bin-$PEMAILx-1" ::
+    Index(USERNAMEx -> Ascending :: Nil, unique = true) % s"bin-$USERNAMEx-1-uniq" ::
+    Nil toMap;
   Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 323 seconds)
 
   private val groupIndxs: Map[String, Index] =
@@ -53,52 +54,46 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   } yield ()
 
   /** Retrieves user account data by login. */
-  def retrieve(loginInfo: LoginInfo): Future[Option[User]] = for {
-    c <- dbColl()
-    opt <- c.find(d :~ PLGNF -> loginInfo).one[User]
-  } yield opt
+  def retrieve(loginInfo: LoginInfo): Future[Option[User]] =
+    dbColl().flatMap(_.find(d :~ PLINFOx -> loginInfo).one[User])
 
   /** Retrieves user account data by user id. */
-  def retrieve(userId: UUID): Future[Option[User]] = for {
-    _ <- Future.successful(logger.debug(s"Retrieving user $userId"))
-    c <- dbColl()
-    opt <- c.find(d :~ ID -> userId.toString).one[User]
-  } yield {
-    if (opt.isDefined) logger.debug(s"Found user $userId")
-    opt
-  }
+  def retrieve(userId: UUID): Future[Option[User]] =
+    dbColl().flatMap(_.find(d :~ ID -> userId.toString).one[User])
 
   /** Retrieves user account data by email. */
-  def retrieve(email: String): Future[Option[User]] = for {
-    c <- dbColl()
-    opt <- c.find(d :~ s"$PROF.$EMAIL" -> email).one[User]
-  } yield opt
+  def retrieve(email: String): Future[Option[User]] =
+    dbColl().flatMap(_.find(d :~ PEMAILx -> email).one[User])
+
+  /** Retrieves user account data by email. */
+  def retrieveByUsername(username: String): Future[Option[User]] =
+    dbColl().flatMap(_.find(d :~ USERNAMEx -> username).one[User])
 
   /** Attaches provided `Profile` to user account by user id. */
   def link(userId: UUID, profile: Profile): Future[User] = for {
     c <- dbColl()
-    wr <- c.findAndUpdate(d :~ ID -> userId.toString, d :~ "$push" -> (d :~ PROF -> profile), fetchNewObject = true)
+    wr <- c.findAndUpdate(d :~ ID -> userId.toString, d :~ "$push" -> (d :~ PROFILES -> profile), fetchNewObject = true)
   } yield wr.result[User].get
 
   /** Detaches provided login from user account by id. */
   def unlink(userId: UUID, loginInfo: LoginInfo): Future[User] = for {
     c <- dbColl()
-    upd = d :~ "$pull" -> (d :~ s"$PROF" -> (d :~ s"$LGNF" -> loginInfo))
+    upd = d :~ "$pull" -> (d :~ PROFILES -> (d :~ LINFO -> loginInfo))
     wr <- c.findAndUpdate(d :~ ID -> userId.toString, upd, fetchNewObject = true)
   } yield wr.result[User].get
 
   /** Updates one of user account's profiles by login. */
   def update(profile: Profile): Future[User] = for {
     c <- dbColl()
-    upd = d :~ "$set" -> (d :~ s"$PROF.$$" -> profile)
-    wr <- c.findAndUpdate(d :~ PLGNF -> profile.loginInfo, upd, fetchNewObject = true)
+    upd = d :~ "$set" -> (d :~ s"$PROFILES.$$" -> profile)
+    wr <- c.findAndUpdate(d :~ PLINFOx -> profile.loginInfo, upd, fetchNewObject = true)
   } yield wr.result[User].get
 
   /** Sets one of user account profiles to 'confirmed' by login. */
   def confirm(loginInfo: LoginInfo): Future[User] = for {
     c <- dbColl()
-    upd = d :~ "$set" -> (d :~ s"$PROF.$$.$CONF" -> true)
-    wr <- c.findAndUpdate(d :~ PLGNF -> loginInfo, upd, fetchNewObject = true)
+    upd = d :~ "$set" -> (d :~ s"$PROFILES.$$.$CONF" -> true)
+    wr <- c.findAndUpdate(d :~ PLINFOx -> loginInfo, upd, fetchNewObject = true)
   } yield wr.result[User].get
 
   /** Removes user account by id. */
