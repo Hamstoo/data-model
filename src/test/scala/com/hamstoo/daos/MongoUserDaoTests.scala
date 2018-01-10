@@ -54,38 +54,29 @@ class MongoUserDaoTests
   it should "(UNIT) link profile to user" in {
     val linkedUser = user.copy(profiles = List(profile, newProfile))
     userDao.link(user.id, newProfile).futureValue shouldEqual linkedUser
-
     userDao.retrieve(newProfile.loginInfo).futureValue.value shouldEqual linkedUser
   }
 
   it should "(UNIT) unlink profile from user" in {
     userDao.unlink(user.id, newProfile.loginInfo).futureValue shouldEqual user
-
     userDao.retrieve(newProfile.loginInfo).futureValue shouldEqual None
   }
 
   it should "(UNIT) confirm user profile" in {
-
     val confirmedUser = user.copy(profiles = List(profile.copy(confirmed = true)))
-
     userDao.confirm(profile.loginInfo).futureValue shouldEqual confirmedUser
-
     userDao.retrieve(profile.loginInfo).futureValue.value shouldEqual confirmedUser
   }
 
   it should "(UNIT) update profile" in {
-
     val updProfile = newProfile.copy(loginInfo = profile.loginInfo)
     val updateUser = user.copy(profiles = List(updProfile))
-
     userDao.update(updProfile).futureValue shouldEqual updateUser
-
     userDao.retrieve(profile.loginInfo).futureValue.value shouldEqual updateUser
   }
 
   it should "(UNIT) delete user" in {
     userDao.delete(user.id).futureValue shouldEqual {}
-
     userDao.retrieve(user.id).futureValue shouldEqual None
   }
 }

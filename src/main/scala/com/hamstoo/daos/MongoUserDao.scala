@@ -36,7 +36,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     Index(PLINFOx -> Ascending :: Nil, unique = true) % s"bin-$PLINFOx-1-uniq" ::
     Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
     Index(PEMAILx -> Ascending :: Nil) % s"bin-$PEMAILx-1" ::
-    Index(USERNAMEx -> Ascending :: Nil, unique = true) % s"bin-$USERNAMEx-1-uniq" ::
+    Index(UNAMELOWx -> Ascending :: Nil, unique = true) % s"bin-$UNAMELOWx-1-uniq" ::
     Nil toMap;
   Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 323 seconds)
 
@@ -53,6 +53,15 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     _ <- wr.failIfError
   } yield ()
 
+  /** Start with a username, but then return a different one if that one is already taken. */
+  def nextUsername(startWith: String): Future[String] = {
+    retrieveByUsername(startWith).flatMap { _.fold(Future.successful(startWith)) { _ =>
+      val User.VALID_USERNAME(alpha, numeric) = startWith
+      val number = if (numeric.isEmpty) 2 else numeric.toInt + 1
+      nextUsername(alpha + number)
+    }}
+  }
+
   /** Retrieves user account data by login. */
   def retrieve(loginInfo: LoginInfo): Future[Option[User]] =
     dbColl().flatMap(_.find(d :~ PLINFOx -> loginInfo).one[User])
@@ -67,7 +76,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
   /** Retrieves user account data by email. */
   def retrieveByUsername(username: String): Future[Option[User]] =
-    dbColl().flatMap(_.find(d :~ USERNAMEx -> username).one[User])
+    dbColl().flatMap(_.find(d :~ UNAMELOWx -> username.toLowerCase).one[User])
 
   /** Attaches provided `Profile` to user account by user id. */
   def link(userId: UUID, profile: Profile): Future[User] = for {

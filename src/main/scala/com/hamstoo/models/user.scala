@@ -3,10 +3,15 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
+import com.hamstoo.daos.MongoUserDao
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
+
+import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Random
+import scala.util.matching.Regex
 
 /**
   * A User has a single UserData, but can have multiple social Profiles.
@@ -57,9 +62,22 @@ case class UserData(
                      firstName: Option[String] = None,
                      lastName: Option[String] = None,
                      username: Option[String] = None,
+                     var usernameLower: Option[String] = None,
                      avatar: Option[String] = None,
                      extOpts: Option[ExtensionOptions] = None,
-                     tutorial: Option[Boolean] = Some(true))
+                     tutorial: Option[Boolean] = Some(true)) {
+
+  usernameLower = username.map(_.toLowerCase) // impossible to set any other way
+
+  /** Assign a username consisting of first/last name and a random number. */
+  def assignUsername()(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[UserData] = {
+    val startWith = firstName.getOrElse("") + lastName.getOrElse("") match {
+      case User.VALID_USERNAME(alpha, _) => alpha
+      case _ => Random.alphanumeric.take(6).mkString.toLowerCase
+    }
+    userDao.nextUsername(startWith + Random.nextInt(9999)).map(nxt => copy(username = Some(nxt)))
+  }
+}
 
 /**
   * Finally, the full User object that is stored in the database for each user.  Notice that this class
@@ -69,15 +87,6 @@ case class UserData(
   * @param profiles  A list of linked social Profiles.
   */
 case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends Identity {
-
-  // TODO: where is this method used, if anywhere?  it's not overriding anything
-  /*override*/ def defaults(): User = {
-    val ps = profiles filter (_.confirmed)
-    this copy (userData = UserData(
-      this.userData.firstName orElse (ps collectFirst { case Profile(_, _, _, Some(s), _, _, _, _, _, _) => s }),
-      this.userData.lastName orElse (ps collectFirst { case Profile(_, _, _, _, Some(s), _, _, _, _, _) => s }),
-      this.userData.avatar orElse (ps collectFirst { case Profile(_, _, _, _, _, Some(s), _, _, _, _) => s })))
-  }
 
   /** Returns the Profile corresponding to the given LoginInfo. */
   def profileFor(loginInfo: LoginInfo): Option[Profile] = profiles.find(_.loginInfo == loginInfo)
@@ -91,11 +100,13 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
 
 object User extends BSONHandlers {
 
+  val VALID_USERNAME: Regex = raw"^([a-zA-Z][a-zA-Z0-9_]+[a-zA-Z_])([0-9]*)$$".r
+
   /** Creates a dummy User without anything but an ID, which is useful to have in some cases. */
   def apply(id: UUID): Option[User] = Some(User(id, UserData(), Nil))
 
   val ID: String = nameOf[User](_.id)
-  val USERNAMEx: String = nameOf[User](_.userData) + "." + nameOf[UserData](_.username)
+  val UNAMELOWx: String = nameOf[User](_.userData) + "." + nameOf[UserData](_.usernameLower)
   val PROFILES: String = nameOf[User](_.profiles)
   val LINFO: String = nameOf[Profile](_.loginInfo)
   val CONF: String = nameOf[Profile](_.confirmed)
