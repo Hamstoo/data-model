@@ -34,8 +34,9 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
     Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
       s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
-    Nil toMap;
+    Nil toMap
 
+  // TODO: Test me
   /**
     * Insert annotation instance into mongodb collection
     * @param annotation - object that must be inserted
@@ -47,7 +48,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
       c <- dbColl()
       wr <- c.insert(annotation)
       _ <- wr.failIfError
-      _ <- marksDao.unsetUserContentReprId(annotation.usrId, annotation.markId)
+      _ <- marksDao.unsetUserRepr(annotation.usrId, annotation.markId)
     } yield {
       logger.debug(s"$name: ${annotation.id} was successfully inserted")
       annotation
@@ -89,6 +90,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
     }
   }
 
+  // TODO: Test me
   /**
     * Delete annotation object from mongodb collection by several parameters
     * @param usr - unique owner identifier
@@ -102,7 +104,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
       wr <- c.findAndUpdate(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> TIME_NOW))
       annotation <- wr.result[A].map(Future.successful).getOrElse(
         Future.failed(new Exception(s"MongoAnnotationDao.delete: unable to find $name $id")))
-      _ <- marksDao.unsetUserContentReprId(annotation.usrId, annotation.markId)
+      _ <- marksDao.unsetUserRepr(annotation.usrId, annotation.markId)
     } yield logger.debug(s"$name was successfully deleted")
   }
 
