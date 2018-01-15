@@ -106,7 +106,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     * @param timeThru  TimeThru of requested mark.  Defaults to INF_TIME--i.e. current revision of mark.
     * @return          None if no such mark is found.
     */
-  def retrieveInsecure(id: String, timeThru: TimeStamp = INF_TIME): Future[Option[Mark]] = {
+  def retrieveInsecure(id: ObjectId, timeThru: TimeStamp = INF_TIME): Future[Option[Mark]] = {
     logger.debug(s"Retrieving (insecure) mark $id")
     for {
       c <- dbColl()
@@ -118,7 +118,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
   }
 
   /** Retrieves a mark by user and ID, None if not found or not authorized. */
-  def retrieve(user: Option[User], id: String, timeThru: TimeStamp = INF_TIME): Future[Option[Mark]] = {
+  def retrieve(user: Option[User], id: ObjectId, timeThru: TimeStamp = INF_TIME): Future[Option[Mark]] = {
     logger.debug(s"Retrieving mark $id for user ${user.map(_.id)}")
     for {
       mInsecure <- retrieveInsecure(id, timeThru = timeThru)

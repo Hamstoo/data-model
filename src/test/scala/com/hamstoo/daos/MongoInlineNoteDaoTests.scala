@@ -2,10 +2,9 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{InlineNote, Mark}
+import com.hamstoo.models.{InlineNote, User}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.generateDbId
 import org.scalatest.OptionValues
 
 /**
@@ -32,7 +31,7 @@ class MongoInlineNoteDaoTests
   }*/
 
   it should "UNIT) retrieve inline note by markId" in {
-    notesDao.retrieve(c.usrId, c.markId).futureValue shouldEqual Seq(c)
+    notesDao.retrieve(User(c.usrId), c.markId).futureValue shouldEqual Seq(c)
   }
 
   it should "(UNIT) update inline note" in {
