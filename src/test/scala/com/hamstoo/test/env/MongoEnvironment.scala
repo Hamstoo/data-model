@@ -61,9 +61,10 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   def coll(name: String): Future[BSONCollection] = db().map(_ collection name)
 
 
-  lazy val statsDao = new MongoUserStatsDao(db)
+  lazy implicit val passDao = new MongoPasswordInfoDao(db)
   lazy implicit val userDao = new MongoUserDao(db)
   lazy implicit val marksDao = new MongoMarksDao(db)
+  lazy val statsDao = new MongoUserStatsDao(db)
   lazy val notesDao = new MongoInlineNoteDao(db)
   lazy val hlightsDao = new MongoHighlightDao(db)
   lazy val reprsDao = new MongoRepresentationDao(db)
@@ -71,10 +72,10 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   lazy val vectorsDao = new MongoVectorsDao(db)
   lazy val auth1Dao = new MongoOAuth1InfoDao(db)
   lazy val auth2Dao = new MongoOAuth2InfoDao(db)
-  lazy val passDao = new MongoPasswordInfoDao(db)
   lazy val searchDao = new MongoSearchStatsDao(db)
   lazy val tokenDao = new MongoUserTokenDao(db)
   lazy val hlIntersectionSvc = new HighlightsIntersectionService(hlightsDao)
+  lazy val pagesDao = new MongoPagesDao(db)
 }
 
 object MongoEnvironment {

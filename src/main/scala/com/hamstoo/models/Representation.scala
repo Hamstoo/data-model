@@ -262,6 +262,10 @@ object Representation extends BSONHandlers {
       = Value
   }
 
+  final val PRIVATE = "Private"
+  final val USERS = "Users"
+  final val PUBLIC = "Public"
+
   val ID_LENGTH: Int = 12
 
   val LNK: String = nameOf[Representation](_.link)

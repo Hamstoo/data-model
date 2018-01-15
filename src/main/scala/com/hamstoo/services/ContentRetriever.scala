@@ -1,31 +1,31 @@
 package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
-import java.net.{SocketAddress, URI}
+import java.net.URI
 import java.nio.ByteBuffer
+import java.util.UUID
 
 import akka.util.ByteString
 import com.gargoylesoftware.htmlunit.html.HtmlPage
-import com.gargoylesoftware.htmlunit.{AjaxController, BrowserVersion, FailingHttpStatusCodeException, WebClient, WebRequest}
+import com.gargoylesoftware.htmlunit._
 import com.hamstoo.models.Page
 import com.hamstoo.utils.MediaType
 import play.api.libs.ws.ahc.cache.CacheableHttpResponseStatus
-import play.shaded.ahc.org.asynchttpclient.{AsyncHttpClientConfig, HttpResponseStatus}
 import play.shaded.ahc.org.asynchttpclient.uri.Uri
 //import net.ruippeixotog.scalascraper.browser.HtmlUnitBrowser
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import play.api.Logger
 import play.api.libs.ws.ahc.{AhcWSResponse, StandaloneAhcWSResponse}
 import play.api.libs.ws.{WSClient, WSResponse}
-import play.api.Logger
-import play.shaded.ahc.org.asynchttpclient.{HttpResponseBodyPart, Response}
 import play.shaded.ahc.org.asynchttpclient.Response.ResponseBuilder
+import play.shaded.ahc.org.asynchttpclient.{HttpResponseBodyPart, Response}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Success, Try}
 import scala.util.matching.Regex
+import scala.util.{Failure, Success, Try}
 
 /**
   * ContentRetriever companion class.
@@ -109,12 +109,14 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
   import ContentRetriever._
 
   /** Retrieve mime type and content (e.g. HTML) given a URL. */
-  def retrieve(url: String): Future[Page] = {
+  def retrieve(userId: UUID, id: String, reprType: String, url: String): Future[Page] = {
     val mediaType = MediaType(TikaInstance.detect(url))
     logger.debug(s"Retrieving URL '$url' with MIME type '${Try(mediaType)}'")
 
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
-    val futPage = digest(url).map(x => Page(x._2.bodyAsBytes.toArray))
+    val futPage = digest(url).map { case(_, wsResp) =>
+      Page(userId, id, reprType, wsResp.bodyAsBytes.toArray)
+    }
 
     // check if html, than try to load frame tags if they are found in body
     if (!MediaTypeSupport.isHTML(mediaType)) futPage else {
@@ -136,8 +138,10 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     // simple method to retrieve data by url
     // takes Element instance as parameter and
     // sets loaded data into content of that Element instance of docJsoup val
-    def loadFrame(frameElement: Element): Future[Element] = retrieve(url + frameElement.attr("src")).map { page =>
-      frameElement.html(ByteString(page.content.toArray).utf8String)
+    def loadFrame(frameElement: Element): Future[Element] = {
+      retrieve(page.userId, page.id, page.reprType, url + frameElement.attr("src")).map { page =>
+        frameElement.html(ByteString(page.content.toArray).utf8String)
+      }
     }
 
     // find all frames in framesets and load them
