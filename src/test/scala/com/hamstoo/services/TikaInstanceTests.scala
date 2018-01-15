@@ -2,7 +2,7 @@ package com.hamstoo.services
 
 import java.nio.file.{Files, Path, Paths}
 
-import com.hamstoo.models.Page
+import com.hamstoo.models.{Page, Representation}
 import com.hamstoo.test.FlatSpecWithMatchers
 
 /**
@@ -19,7 +19,11 @@ class TikaInstanceTests extends FlatSpecWithMatchers {
   }
 
   it should "(UNIT) detect MIME types via Page.apply" in {
-    val page = Page(content)
+    import com.hamstoo.utils.DataInfo._
+    val uuid = constructUserId()
+    val id = constructMarkId()
+
+    val page = Page(uuid, id, Representation.PUBLIC, content)
     page.mimeType shouldEqual "text/plain"
   }
 }

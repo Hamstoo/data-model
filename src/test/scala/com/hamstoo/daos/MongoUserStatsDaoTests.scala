@@ -35,8 +35,8 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
   val pubRepr = Some("reprasdsad")
   val newMarkData = MarkData("a NEW subjфывыфвect1", Some("https://github.com"))
   val m1 = Mark(userId, mark =  MarkData("a subjasdect342", Some("http://hamstoo231321.com"), tags = tagSet, comment = cmt))
-  val m2 = Mark(userId, mark = MarkData("a subasdject1", Some("http://hamstoo223.com"), tags = tagSet), pubRepr = pubRepr)
-  val m3 = Mark(userId, mark = MarkData("a subasdject1asdasd", Some("http://hamstooasdasd223.com"), tags = tagSet), pubRepr = pubRepr)
+  val m2 = Mark(userId, mark = MarkData("a subasdject1", Some("http://hamstoo223.com"), tags = tagSet)/*, pubRepr = pubRepr*/)
+  val m3 = Mark(userId, mark = MarkData("a subasdject1asdasd", Some("http://hamstooasdasd223.com"), tags = tagSet)/*, pubRepr = pubRepr*/)
 
   /** This test is designed to create two marks for user. */
   "MongoUserStatsDao" should "(UNIT) calculate marks inserted by userId" in {

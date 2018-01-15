@@ -28,8 +28,8 @@ object DataInfo {
 
   val mdA = MarkData("a subject", Some("http://a.com"), Some(3.0), Some(Set("atag")), Some("a comment"))
   val mdB = MarkData("b subject", Some("http://b.com"), Some(4.0), Some(Set("btag")), Some("b comment"))
-  val mA = Mark(valUserId, mark = mdA, pubRepr = Some("aPubRepr"), reprs = Seq(msA))
-  val mB = Mark(valUserId, mark = mdB, pubRepr = Some("bPubRepr"), reprs = Seq(msB))
+  val mA = Mark(valUserId, mark = mdA, /*pubRepr = Some("aPubRepr"),*/ reprs = Seq(msA))
+  val mB = Mark(valUserId, mark = mdB, /*pubRepr = Some("bPubRepr"),*/ reprs = Seq(msB))
 
   val loginInfoA = LoginInfo("GProviderBookMailFace", "some_provider_key_A")
   val loginInfoB = LoginInfo("GProviderBookMailFace", "some_provider_key_B")

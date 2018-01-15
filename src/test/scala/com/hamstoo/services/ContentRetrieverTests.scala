@@ -1,11 +1,9 @@
 package com.hamstoo.services
 
 import akka.stream.ActorMaterializer
-import com.hamstoo.models.Page
+import com.hamstoo.models.{Page, Representation}
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
-import com.hamstoo.utils.DataInfo
-import org.jsoup.Jsoup
 import play.api.libs.ws.ahc.AhcWSClient
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -23,21 +21,24 @@ class ContentRetrieverTests
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
   val contriever = new ContentRetriever(httpClient = AhcWSClient())
+  val uuid = constructUserId()
+  val id = constructMarkId()
+  val reprType = Representation.PUBLIC
 
   "ContentRetriever" should "(UNIT) fail on bogus URL" in {
     val bogusURL = "http://string"
-    intercept[Exception] { contriever.retrieve(bogusURL).futureValue }
+    intercept[Exception] { contriever.retrieve(uuid, id, reprType, bogusURL).futureValue }
   }
 
   it should "(UNIT) succeed on non-bogus URL and be able to get its title" in {
-    val page = contriever.retrieve(urlHTML).futureValue
+    val page = contriever.retrieve(uuid, id, reprType, urlHTML).futureValue
     page shouldBe a [Page]
     import com.hamstoo.services.ContentRetriever.PageFunctions
     page.getTitle shouldBe Some("Futures and Promises | Scala Documentation")
   }
 
   it should "(UNIT) get PDF titles" in {
-    val page = contriever.retrieve(urlPDF).futureValue
+    val page = contriever.retrieve(uuid, id, reprType, urlPDF).futureValue
     import com.hamstoo.services.ContentRetriever.PageFunctions
     page.getTitle shouldBe Some("Actors in Scala")
   }
@@ -45,7 +46,7 @@ class ContentRetrieverTests
   it should "(UNIT) not duplicate frames which are nested in framesets and " +
             "load frames which are not nested in framesets" in {
     val elems = contriever.loadFrames("https://ant.apache.org/manual/",
-                                      new Page("text/html", htmlWithFrames.toCharArray.map(_.toByte))).futureValue
+                                      new Page(uuid, id, reprType, "text/html", htmlWithFrames.toCharArray.map(_.toByte))).futureValue
     // should load only 3 frames total
     elems._2 shouldBe 3
   }
