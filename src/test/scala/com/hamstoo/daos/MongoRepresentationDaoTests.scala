@@ -3,7 +3,8 @@ package com.hamstoo.daos
 import com.hamstoo.models.{MarkData, Page, Representation}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.{INF_TIME, MediaType, TIME_NOW}
+import com.hamstoo.utils.DataInfo._
+import com.hamstoo.utils._
 
 import scala.util.Random
 
@@ -25,6 +26,9 @@ class MongoRepresentationDaoTests
     MarkData("a subject", Some(s"http://$domain.com"))
   }
 
+  val uuid = constructUserId()
+  val markId = constructMarkId()
+
   val repr = Representation(
     link = None,
     page = None,
@@ -44,7 +48,7 @@ class MongoRepresentationDaoTests
     val vec2: Representation.Vec = Seq(2304932.039423, 39402.3043, 2304932.039423, 39402.3043, 2304932.039423, 39402.3043)
 
     val reprOrig = Representation(link = url,
-      page = Some(Page(MediaType.TEXT_HTML.toString, "sdf".getBytes)),
+      page = Some(Page(uuid, markId, MediaType.TEXT_HTML.toString, "sdf".getBytes)),
       header = None,
       doctext = "sdf",
       othtext = None,
@@ -54,7 +58,7 @@ class MongoRepresentationDaoTests
     println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
     val reprCopy = reprOrig.copy(
-      page = Some(Page(MediaType.TEXT_HTML.toString, "sывфывdf".getBytes)),
+      page = Some(Page(uuid, markId, MediaType.TEXT_HTML.toString, "sывфывdf".getBytes)),
       header = None,
       doctext = "sasdasdf",
       othtext = None,

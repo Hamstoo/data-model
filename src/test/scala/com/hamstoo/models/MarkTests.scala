@@ -137,7 +137,7 @@ class MarkTests extends FlatSpecWithMatchers {
       merged.mark.rating shouldEqual mdB.rating // B!
       merged.mark.tags.get shouldEqual (mdA.tags.get ++ mdB.tags.get)
       merged.mark.comment.get shouldEqual (mdA.comment.get + "\n\n---\n\n" + mdB.comment.get)
-      merged.pubRepr shouldEqual mA.pubRepr
+//      merged.pubRepr shouldEqual mA.pubRepr
       merged.reprs shouldEqual mA.reprs
     }
 

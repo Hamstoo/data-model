@@ -20,7 +20,7 @@ import scala.concurrent.{Await, Future}
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
   */
 class MongoMarksDao(db: () => Future[DefaultDB])
-                   (implicit userDao: MongoUserDao) {
+                   (implicit userDao: MongoUserDao, pagesDao: MongoPagesDao) {
 
   import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MongoMarksDao])
@@ -422,25 +422,37 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * Merge two marks by setting their `timeThru`s to the time of execution and inserting a new mark with the
     * same `timeFrom`.
     */
-  // TODO: combine with pages dao
   def merge(oldMark: Mark, newMark: Mark, now: Long = TIME_NOW): Future[Mark] = {
     val oldMarkId = oldMark.id
     val newMarkId = newMark.id
 
     logger.debug(s"Merge marks (oldOne: $oldMarkId and newOne: $newMarkId")
+
     for {
       c <- dbColl()
 
-    // delete the newer mark and merge it into the older/pre-existing one (will return 0 if newMark not in db yet)
-    _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id), ensureDeletion = false)
+      // delete the newer mark and merge it into the older/pre-existing one (will return 0 if newMark not in db yet)
+      _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id), ensureDeletion = false)
+
+      // merge user page
+      _ <- pagesDao.mergeUserPages(newMark.userId, oldMarkId, newMarkId)
+
+      // merge public page
+      _ <- pagesDao.mergePublicPages(newMark.userId, oldMarkId, newMarkId)
+
+      // merge private page
+      _ <- pagesDao.mergePrivatePages(newMark.userId, oldMarkId, newMarkId)
 
       mergedMk = oldMark.merge(newMark).copy(timeFrom = now, timeThru = INF_TIME)
 
-      // don't do anything if there wasn't a meaningful change to the old mark
-      _ <- if (oldMark equalsIgnoreTimeStamps mergedMk) Future.successful(oldMark) else for {
+      sel = d :~ USR -> mergedMk.userId :~ ID -> mergedMk.id :~ curnt
 
-        wr <- c.update(d :~ USR -> mergedMk.userId :~ ID -> mergedMk.id :~ curnt,
-          d :~ "$set" -> (d :~ TIMETHRU -> now))
+      mod = d :~ "$set" -> (d :~ TIMETHRU -> now)
+
+      // don't do anything if there wasn't a meaningful change to the old mark
+      _ <- if (oldMark equalsIgnoreTimeStamps mergedMk) Future.unit else for {
+
+        wr <- c.update(sel, mod)
         _ <- wr.failIfError
 
         wr <- c.insert(mergedMk)
