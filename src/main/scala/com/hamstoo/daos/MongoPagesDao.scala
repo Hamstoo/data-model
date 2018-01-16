@@ -46,7 +46,9 @@ class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) 
       c <- dbColl()
 
       pgs = pages.map(Mark.pageFmt.write)
+
       wr <- c.bulkInsert(pgs, ordered = false)
+
     } yield {
       val count = wr.totalN
       logger.debug(s"$count pages were successfully inserted")
@@ -71,7 +73,7 @@ class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) 
 
       seq <- c.find(sel).coll[Page, Seq]()
     } yield {
-      logger.debug(s"${seq.size} pages were retrieved fro user: $userId of mark: $id")
+      logger.debug(s"${seq.size} pages were retrieved for user: $userId of mark: $id")
       seq
     }
   }
@@ -79,6 +81,7 @@ class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) 
   /** Merging mark's pages together, the main action it's to deleting new*/
   def mergePrivatePages(userId: UUID, oldId: String, newId: String): Future[Unit] = {
     logger.debug(s"Merging private pages for user: $userId marks: $oldId and $newId")
+
     for {
       // retrieve only private representations
       pages <- retrievePrivatePages(userId, newId)
@@ -151,7 +154,7 @@ class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) 
 
       seq <- c.find(sel).coll[Page, Seq]()
     } yield {
-      logger.debug(s"${seq.size} $reprType pages were retrieved fro user: $userId of mark: $id")
+      logger.debug(s"${seq.size} $reprType pages were retrieved for user: $userId of mark: $id")
       seq
     }
   }
