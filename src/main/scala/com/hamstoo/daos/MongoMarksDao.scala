@@ -332,6 +332,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     wr <- c.update(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
     _ <- wr.failIfError
 
+
+    _ = logger.debug(s"0 REPRS: ${mOld.reprs}")
     // if the URL has changed then discard the old public repr (only the public one though as the private one is
     // based on private user content that was only available from the browser extension at the time the user first
     // created it)
@@ -339,6 +341,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
     // if user-generated content has changed then discard the old user repr (also see unsetUserContentReprId below)
     reprs1 = if (mdata.equalsPerUserRepr(mOld.mark)) reprs0 else reprs0.filterNot(_.reprType == Representation.USERS)
+
+    _ = logger.debug(s"REPRS: $reprs1")
 
     newMk = mOld.copy(mark = mdata, reprs = reprs1, timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
 
@@ -590,7 +594,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       c <- dbColl()
 
       // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
-      sel = d :~ curnt :~ REPRS -> (d :~ "$size" -> 0) // Seq gets automatically converted to BSONArray
+      sel = d :~ curnt :~ REPRS -> (d :~ "$size" -> 0)
 
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
@@ -641,30 +645,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
   /** Remove a publicRepr from a Mark.  Used by MongoAnnotationDao when annotations are created and destroyed. */
   def unsetPublicRepr(user: UUID, id: String): Future[Unit] = unsetRepr(user, id, Representation.PUBLIC)
-
-  private def updateERatingId(user: UUID,
-                      markId: String,
-                      reprType: String,
-                      erId: String,
-                      timeFrom: Long): Future[Unit] = {
-    logger.debug(s"Updating $reprType representation expect rating for user: $user of mark: $markId")
-    for {
-      c <- dbColl()
-
-      sel = d :~
-        USR -> user :~
-        ID -> markId :~
-        REPRS -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> reprType)) :~
-        TIMEFROM -> timeFrom
-
-      mod = d :~ "$set" -> (d :~ EXPRATxp -> erId)
-
-      ur <- c.update(sel, mod)
-      _ <- ur failIfError
-    } yield {
-      logger.debug(s"$reprType expect rating was updated, for user: $user of mark: $markId")
-    }
-  }
 
   def updatePrivateERatingId(user: UUID,
                              markId: String,
@@ -728,6 +708,30 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     } yield {
       logger.debug(s"Searching for duplicate subject marks finished with result mark ${opt.map(_.id)}")
       opt
+    }
+  }
+
+  private def updateERatingId(user: UUID,
+                              markId: String,
+                              reprType: String,
+                              erId: String,
+                              timeFrom: Long): Future[Unit] = {
+    logger.debug(s"Updating $reprType representation expect rating for user: $user of mark: $markId")
+    for {
+      c <- dbColl()
+
+      sel = d :~
+        USR -> user :~
+        ID -> markId :~
+        REPRS -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> reprType)) :~
+        TIMEFROM -> timeFrom
+
+      mod = d :~ "$set" -> (d :~ EXPRATxp -> erId)
+
+      ur <- c.update(sel, mod)
+      _ <- ur failIfError
+    } yield {
+      logger.debug(s"$reprType expect rating was updated, for user: $user of mark: $markId")
     }
   }
 }
