@@ -197,7 +197,10 @@ case class ReprInfo(reprId: String,
                     created: TimeStamp) {
 
   // check if object has not yet rated
-  def ratable: Boolean = expRating.isEmpty
+  def ratablePrivate: Boolean = reprType == Representation.PRIVATE && expRating.isEmpty
+  def ratablePublic: Boolean = reprType == Representation.PUBLIC && expRating.isEmpty
+  def ratableUser: Boolean = reprType == Representation.USERS && expRating.isEmpty
+
 }
 
 /**
@@ -249,10 +252,10 @@ case class Mark(
 
   import Mark._
 
-  /**
-    * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
-    * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
-    */
+//  /**
+//    * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
+//    * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
+//    */
     // todo: need to discuss, do we need this methods, if yes, how we will choose primary repr, maybe by time?(last one)
 //  def primaryRepr   :        String  = reconcilePrivPub(privRepr     , pubRepr     ).getOrElse("")
 //  def expectedRating: Option[String] = reconcilePrivPub(privExpRating, pubExpRating)
@@ -262,29 +265,19 @@ case class Mark(
     * representations, even if the mark doesn't have a URL, we'll still try to derive a representation from the subject
     * in case LinkageService.digest timed out when originally trying to generate a title for the mark (issue #195).
     */
-  def representablePublic: Boolean = !reprs.exists(_.reprType == Representation.PUBLIC)
-  def representableUserContent: Boolean = !reprs.exists(_.reprType == Representation.USERS)
-  def eratablePublic: Boolean = {
-    reprs.exists { ri =>
-      ri.reprType == Representation.PUBLIC && ri.expRating.isEmpty
-    }
-  }
-
-    // moved to MongoPagesDao
-//  def representablePrivate: Boolean = reprs.isEmpty && pages.nonEmpty
-  def eratablePrivate: Boolean = reprs.exists(_.ratable)
+  def eratablePublic: Boolean = reprs.exists(_.ratablePublic)
+  def eratablePrivate: Boolean = reprs.exists(_.ratablePrivate)
+  def eratableUser: Boolean = reprs.exists(_.ratableUser)
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
-
-  /** Return all marks representation IDs */
-  def representationIds: Seq[String] = reprs.map(_.reprId)
 
   /**
     * Merge two marks.  This method is called from the `repr-engine` when a new mark's, `oth`, representations are
     * similar enough (according to `Representation.isDuplicate`) to an existing mark's, `this`.  So `oth` probably
     * won't have it's reprs set--unless one of them was set and the other not.
     */
+  // carefull, it's must be combined with pages merge
   def merge(oth: Mark): Mark = {
     assert(this.userId == oth.userId)
 

@@ -138,7 +138,7 @@ class MarkTests extends FlatSpecWithMatchers {
       merged.mark.tags.get shouldEqual (mdA.tags.get ++ mdB.tags.get)
       merged.mark.comment.get shouldEqual (mdA.comment.get + "\n\n---\n\n" + mdB.comment.get)
 //      merged.pubRepr shouldEqual mA.pubRepr
-      merged.reprs shouldEqual mA.reprs
+      merged.reprs shouldEqual mA.reprs ++ mB.reprs
     }
 
   it should "throw an exception when merging marks with different userIds" in {
