@@ -624,19 +624,19 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
-  private def unsetRepr(user: UUID, id: String, reprType: String): Future[Unit] = {
-    logger.debug(s"Removing $reprType representation for user: $user of mark: $id")
+  def saveReprInfo(user: UUID, markId: String, reprInfo: ReprInfo): Future[Unit] = {
+    logger.debug(s"Saving Representation info for user: $user of mark: $markId")
+
     for {
       c <- dbColl()
 
-      sel = d :~ USR -> user :~ ID -> id :~ curnt
-      mod = d :~ "$pull" -> (d :~ REPRS -> (d :~ REPR_TYPE -> reprType))
+      sel = d :~ USR -> user :~ ID -> markId
+      mod = d :~ "$push" -> (d :~ REPRS -> reprInfo)
 
-      wr <- c.update(sel, mod)
-      _ <- wr.failIfError
-      // TODO: should we delete from the representations collection as well?
+      ur <- c.update(sel, mod)
+      _ <- ur failIfError
     } yield {
-      logger.debug(s"$reprType representation was removed")
+      logger.debug(s"Representation Info was inserted for user: $user of mark: $markId")
     }
   }
 
@@ -645,6 +645,20 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
   /** Remove a publicRepr from a Mark.  Used by MongoAnnotationDao when annotations are created and destroyed. */
   def unsetPublicRepr(user: UUID, id: String): Future[Unit] = unsetRepr(user, id, Representation.PUBLIC)
+
+  def unsetPrivateRepr(user: UUID, id: String, reprId: String): Future[Unit] = {
+    logger.debug(s"Remove private representation for user: $user of mark: $id")
+
+    for {
+      c <- dbColl()
+      sel = d :~ USR -> user :~ ID -> id
+      mod = d :~ "$pull" -> (d :~ REPR_ID -> reprId)
+      ur <- c.update(sel, mod)
+      _ <- ur failIfError
+    } yield {
+      logger.debug(s"Private representation $reprId was removed for user: $user of mark: $id")
+    }
+  }
 
   def updatePrivateERatingId(user: UUID,
                              markId: String,
@@ -732,6 +746,22 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       _ <- ur failIfError
     } yield {
       logger.debug(s"$reprType expect rating was updated, for user: $user of mark: $markId")
+    }
+  }
+
+  private def unsetRepr(user: UUID, id: String, reprType: String): Future[Unit] = {
+    logger.debug(s"Removing $reprType representation for user: $user of mark: $id")
+    for {
+      c <- dbColl()
+
+      sel = d :~ USR -> user :~ ID -> id :~ curnt
+      mod = d :~ "$pull" -> (d :~ REPRS -> (d :~ REPR_TYPE -> reprType))
+
+      wr <- c.update(sel, mod)
+      _ <- wr.failIfError
+      // TODO: should we delete from the representations collection as well?
+    } yield {
+      logger.debug(s"$reprType representation was removed")
     }
   }
 }

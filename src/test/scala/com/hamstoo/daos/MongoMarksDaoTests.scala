@@ -37,7 +37,7 @@ class MongoMarksDaoTests
 
   val msPub = ReprInfo("reprId1", Representation.PUBLIC, created = TIME_NOW)
   val msUser = ReprInfo("reprId2", Representation.USERS, created = TIME_NOW)
-  val states = Seq(msPub, msUser)
+  val states = Seq(msUser)
   val url = "http://hamstoo.com/as"
 
   val m1 = Mark(
@@ -58,6 +58,15 @@ class MongoMarksDaoTests
 
   "MongoMarksDao" should "(UNIT) insert mark" in {
     marksDao.insert(m1).futureValue shouldEqual m1
+  }
+
+  it should "save representation info" in {
+    marksDao.saveReprInfo(m1.userId, m1.id, msPub).futureValue shouldEqual {}
+
+    val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.reprs
+
+    reprs.size shouldEqual 2
+    reprs.exists(_.reprType == Representation.PUBLIC) shouldEqual true
   }
 
   it should "(UNIT) insert stream of mark" in {
@@ -118,7 +127,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) search marks by uuid, query and tags" in {
-    marksDao.search(uuid1, cmt.get, tagSet.get).futureValue shouldEqual Seq(m1)
+    marksDao.search(uuid1, cmt.get, tagSet.get).futureValue.map(_.id) shouldEqual Seq(m1.id)
   }
 
   it should "(UNIT) find duplicate of mark data, for user, by subject" in {
@@ -131,6 +140,55 @@ class MongoMarksDaoTests
 
     repred.size shouldEqual 1
     repred.contains(m1.id) shouldEqual true
+  }
+
+  it should "(UNIT) update public representation rating id" in {
+    val newERat = "NewRatID"
+    marksDao.updatePublicERatingId(m1.userId, m1.id, "NewRatID", m1.timeFrom).futureValue shouldEqual {}
+
+    val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.reprs
+
+    val pubRepr = reprs.find(_.reprType == Representation.PUBLIC)
+
+    pubRepr should not equal None
+
+    pubRepr.value.expRating.value shouldEqual newERat
+  }
+
+  it should "(UNIT) update users representation rating id" in {
+    val newERat = "NewRatID"
+    marksDao.updateUsersERatingId(m1.userId, m1.id, "NewRatID", m1.timeFrom).futureValue shouldEqual {}
+
+    val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.reprs
+
+    val pubRepr = reprs.find(_.reprType == Representation.USERS)
+
+    pubRepr should not equal None
+
+    pubRepr.value.expRating.value shouldEqual newERat
+  }
+
+  it should "(UNIT) update private representation rating id" in {
+    val newERat = "NewRatID"
+    val privRepr = ReprInfo("reprId2", Representation.PRIVATE, created = TIME_NOW)
+
+    marksDao.saveReprInfo(m1.userId, m1.id, privRepr).futureValue shouldEqual {}
+
+    val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.reprs
+
+    reprs.size shouldEqual 3
+    reprs.exists(_.reprType == Representation.PRIVATE) shouldEqual true
+
+    marksDao.updatePrivateERatingId(m1.userId, m1.id, privRepr.reprId, newERat, m1.timeFrom).futureValue shouldEqual {}
+
+
+    val updatedReprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.reprs
+
+    val updatedPrivRepr = updatedReprs.find(_.reprId == privRepr.reprId)
+
+    updatedPrivRepr should not equal None
+
+    updatedPrivRepr.value.expRating.value shouldEqual newERat
   }
 
   it should "(UNIT) unset public representation info" in {
