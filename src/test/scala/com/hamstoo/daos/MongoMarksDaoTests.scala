@@ -60,6 +60,19 @@ class MongoMarksDaoTests
     marksDao.insert(m1).futureValue shouldEqual m1
   }
 
+  it should "(UNIT) insert stream of mark" in {
+    val markStream = m2 #:: m3 #:: Stream.empty[Mark]
+    marksDao.insertStream(markStream).futureValue shouldEqual 2
+  }
+
+  it should "(UNIT) find marks with missing public reprs" in {
+    val noPubReprs = marksDao.findMissingPublicReprs(-1).futureValue
+
+    noPubReprs.size shouldEqual 3
+
+    noPubReprs.exists(_.id == m1.id) shouldEqual true
+  }
+
   it should "save representation info" in {
     marksDao.saveReprInfo(m1.userId, m1.id, msPub).futureValue shouldEqual {}
 
@@ -67,11 +80,6 @@ class MongoMarksDaoTests
 
     reprs.size shouldEqual 2
     reprs.exists(_.reprType == Representation.PUBLIC) shouldEqual true
-  }
-
-  it should "(UNIT) insert stream of mark" in {
-    val markStream = m2 #:: m3 #:: Stream.empty[Mark]
-    marksDao.insertStream(markStream).futureValue shouldEqual 2
   }
 
   it should "(UNIT) find marks with missing reprs, both current and not (update: no longer finding non-current)" in {

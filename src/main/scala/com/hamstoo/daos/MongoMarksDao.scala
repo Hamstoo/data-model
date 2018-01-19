@@ -603,6 +603,23 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
+  def findMissingPublicReprs(n: Int): Future[Seq[Mark]] = {
+    logger.debug("Finding marks with missing public representations")
+
+    for {
+      c <- dbColl()
+
+      sel = d :~
+        curnt :~
+        REPRS -> (d :~ "$not" -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> Representation.PUBLIC)))
+
+      seq <- c.find(sel).coll[Mark, Seq](n)
+    } yield {
+      logger.debug(s"${seq.size} marks with missing public representations were retrieved")
+      seq
+    }
+  }
+
   /**
     * Retrieves a list of n marks that require expected ratings. Intentionally not filtering for `curnt` marks.
     *
