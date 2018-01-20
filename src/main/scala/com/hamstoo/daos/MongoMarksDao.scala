@@ -4,6 +4,7 @@ import java.nio.file.Files
 import java.util.UUID
 
 import com.hamstoo.models.Mark._
+import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
 import com.mohiva.play.silhouette.api.exceptions.NotAuthorizedException
@@ -369,33 +370,41 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
 
     now: Long = TIME_NOW
 
-    // if `mdata` arrives without a rating then that indicates the mark was saved not by clicking stars so we need
-    // to populate it with the existing value (see SingleMarkController.updateMark in frontend and updateMarkRef also)
-    populatedRating = mdata.rating.fold(mdata.copy(rating = mOld.mark.rating))(_ => mdata)
-
     // if updateRef is true then just update a mark with a MarkRef, o/w update the actual mark (with the MarkData)
-    m <- if (updateRef) updateMarkRef(user.get.id, mOld, mdata)
-    else if (mOld.mark == populatedRating) Future.successful(mOld) else for {
+    m <- if (updateRef) updateMarkRef(user.get.id, mOld, mdata) else {
 
-      // be sure to not use `user`, which could be different from `mOld.userId` if the the mark has been shared
-      wr <- c.update(d :~ USR -> mOld.userId :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now))
-      _ <- wr.failIfError
+      // if `mdata` arrives without a rating then that indicates the mark was saved not by clicking stars so we need
+      // to populate it with the existing value (see SingleMarkController.updateMark in frontend and updateMarkRef also)
+      val populatedRating = mdata.rating
+        .fold(mdata.copy(rating = mOld.mark.rating))(_ => mdata)
+        .copy(tags = mdata.tags.map(_ - SHARED_WITH_ME_TAG)) // never put SHARED_WITH_ME_TAG on a real non-MarkRef mark
 
-      // if the URL has changed then discard the old public repr (only the public one though as the private one is
-      // based on private user content that was only available from the browser extension at the time the user first
-      // created it)
-      pubRp = if (populatedRating.equalsPerPubRepr(mOld.mark)) mOld.pubRepr else None
-      // TODO: should pubExpRating be dumped in this case also?
+      if (mOld.mark == populatedRating) Future.successful(mOld) else for {
 
-      // if user-generated content has changed then discard the old user repr (also see unsetUserContentReprId below)
-      usrRp = if (populatedRating.equalsPerUserRepr(mOld.mark)) mOld.userRepr else None
+        // be sure to not use `user`, which could be different from `mOld.userId` if the the mark has been shared
+        wr <- c.update(d :~ USR -> mOld.userId :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now))
+        _ <- wr.failIfError
 
-      mNew = mOld.copy(mark = populatedRating, pubRepr = pubRp, userRepr = usrRp,
-                       timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
+        // if the URL has changed then discard the old public repr (only the public one though as the private one is
+        // based on private user content that was only available from the browser extension at the time the user first
+        // created it)
+        pubRp = if (populatedRating.equalsPerPubRepr(mOld.mark)) mOld.pubRepr else None
+        // TODO: should pubExpRating be dumped in this case also?
 
-      wr <- c.insert(mNew)
-      _ <- wr.failIfError
-    } yield mNew
+        // if user-generated content has changed then discard the old user repr (also see unsetUserContentReprId below)
+        usrRp = if (populatedRating.equalsPerUserRepr(mOld.mark)) mOld.userRepr else None
+
+        mNew = mOld.copy(mark = populatedRating, pubRepr = pubRp, userRepr = usrRp,
+          timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
+
+        wr <- c.insert(mNew)
+        _ <- wr.failIfError
+
+        ref <- if (user.exists(!mNew.ownedBy(_))) findOrCreateMarkRef(user.get.id, mNew.id).map(Some(_))
+        else Future.successful(None)
+
+      } yield ref.flatMap(_.markRef).fold(mNew)(mNew + _)
+    }
   } yield m
 
   /** Is this useful? */
@@ -409,7 +418,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     c <- dbColl()
     mOld <- c.find(refSel(user, refId)).one[Mark]
     m <- if (mOld.isDefined) Future.successful(mOld.get) else {
-      val ref = MarkRef(refId, tags = Some(Set(MarkData.SHARED_WITH_ME_TAG))) // user can remove this tag later
+      val ref = MarkRef(refId, tags = Some(Set(SHARED_WITH_ME_TAG))) // user can remove this tag later
 
       // for now we'll set pubRepr/userRepr/pubExpRating to prevent repr-engine from doing the same, but
       // once issue #260 is implemented we will merely not send a message to repr-engine to process this mark
