@@ -307,7 +307,10 @@ case class Mark(
     )
   }
 
-  /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
+  /**
+    * Fairly standard equals definition.  Required b/c of the overriding of hashCode.
+    * TODO: can this be removed now that we're no longer relying on it for set-union in backend's SearchService.search?
+    */
   override def equals(other: Any): Boolean = other match {
     case other: Mark => other.canEqual(this) && this.hashCode == other.hashCode
     case _ => false

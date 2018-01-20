@@ -369,9 +369,13 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
 
     now: Long = TIME_NOW
 
+    // if `mdata` arrives without a rating then that indicates the mark was saved not by clicking stars so we need
+    // to populate it with the existing value (see SingleMarkController.updateMark in frontend and updateMarkRef also)
+    populatedRating = mdata.rating.fold(mdata.copy(rating = mOld.mark.rating))(_ => mdata)
+
     // if updateRef is true then just update a mark with a MarkRef, o/w update the actual mark (with the MarkData)
     m <- if (updateRef) updateMarkRef(user.get.id, mOld, mdata)
-    else if (mOld.mark == mdata) Future.successful(mOld) else for {
+    else if (mOld.mark == populatedRating) Future.successful(mOld) else for {
 
       // be sure to not use `user`, which could be different from `mOld.userId` if the the mark has been shared
       wr <- c.update(d :~ USR -> mOld.userId :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now))
@@ -380,13 +384,13 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       // if the URL has changed then discard the old public repr (only the public one though as the private one is
       // based on private user content that was only available from the browser extension at the time the user first
       // created it)
-      pubRp = if (mdata.equalsPerPubRepr(mOld.mark)) mOld.pubRepr else None
+      pubRp = if (populatedRating.equalsPerPubRepr(mOld.mark)) mOld.pubRepr else None
       // TODO: should pubExpRating be dumped in this case also?
 
       // if user-generated content has changed then discard the old user repr (also see unsetUserContentReprId below)
-      usrRp = if (mdata.equalsPerUserRepr(mOld.mark)) mOld.userRepr else None
+      usrRp = if (populatedRating.equalsPerUserRepr(mOld.mark)) mOld.userRepr else None
 
-      mNew = mOld.copy(mark = mdata, pubRepr = pubRp, userRepr = usrRp,
+      mNew = mOld.copy(mark = populatedRating, pubRepr = pubRp, userRepr = usrRp,
                        timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
 
       wr <- c.insert(mNew)
