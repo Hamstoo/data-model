@@ -308,21 +308,27 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     */
   def search(users: Seq[UUID], query: String, ids: Set[ObjectId] = Set.empty[ObjectId]): Future[Seq[Mark]] = {
     logger.debug(s"Searching for marks for ${users.size} users (first, at most, 5: ${users.take(5)}) by text query '$query'")
-    for {
-      c <- dbColl()
-      sel0 = d :~ USR -> (d :~ "$in" -> users) :~ curnt
 
-      // this projection doesn't have any effect without this selection
-      searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
-      searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
+    // this projection doesn't have any effect without this selection
+    val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
+    val searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
-      idsFilter = if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids)
+    val idsFilter = if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids)
 
-      seq <- c.find(sel0 :~ searchScoreSelection :~ idsFilter,
-                    searchExcludedFields :~ searchScoreProjection)/*.sort(searchScoreProjection)*/
-        .coll[Mark, Seq]()
+    // it appears that `$in` is not an "equality match condition" as mentioned in the MongoDB Text Index
+    // documentation, using it here (rather than Future.sequence) generates the following database error:
+    // "planner returned error: failed to use text index to satisfy $text query (if text index is compound,
+    // are equality predicates given for all prefix fields?)"
+    //val sel = d :~ USR -> (d :~ "$in" -> users) :~ curnt
 
-    } yield {
+    // be sure to call dbColl() separately for each element of the following sequence to ensure asynchronous execution
+    Future.sequence {
+      users.map { u =>
+        val sel = d :~ USR -> u :~ curnt
+        dbColl().flatMap(_.find(sel :~ searchScoreSelection :~ idsFilter,
+                                searchExcludedFields :~ searchScoreProjection).coll[Mark, Seq]())
+      }
+    }.map(_.flatten).map { seq =>
       logger.debug(s"Search retrieved ${seq.size} marks")
       seq.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
     }
@@ -400,7 +406,12 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     mOld <- c.find(refSel(user, refId)).one[Mark]
     m <- if (mOld.isDefined) Future.successful(mOld.get) else {
       val ref = MarkRef(refId, tags = Some(Set(MarkData.SHARED_WITH_ME_TAG))) // user can remove this tag later
-      val mNew = Mark(user, mark = MarkData("", None), markRef = Some(ref))
+
+      // for now we'll set pubRepr/userRepr/pubExpRating to prevent repr-engine from doing the same, but
+      // once issue #260 is implemented we will merely not send a message to repr-engine to process this mark
+      val mNew = Mark(user, mark = MarkData("", None), markRef = Some(ref), pubRepr = Some(NONE_REPR_ID),
+                      userRepr = Some(NONE_REPR_ID), pubExpRating = Some(NO_REPR_ERATING_ID))
+
       c.insert(mNew).map(_ => mNew)
     }
   } yield m
