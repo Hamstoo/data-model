@@ -265,7 +265,7 @@ case class Mark(
   /** Returns true if this Mark's MarkData has all of the test tags. */
   def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.contains(t)))
 
-  /** Mask a Mark's MarkData with a MarkRef--for the benefit of a non-owner of the Mark. */
+  /** Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a shared-with, non-owner of the Mark. */
   def +(ref: MarkRef): Mark = {
     val unionedTags = mark.tags.getOrElse(Set.empty[String] ) ++ ref.tags.getOrElse(Set.empty[String])
     copy(mark = mark.copy(rating = ref.rating.orElse(mark.rating),
