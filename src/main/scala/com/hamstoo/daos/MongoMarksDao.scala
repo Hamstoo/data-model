@@ -446,7 +446,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       wr <- c.insert(mNew)
       _ <- wr.failIfError
     } yield mNew
-  } yield m + refNew
+  } yield referenced + refNew
 
   /**
     * R sharing level must be at or above RW sharing level.
