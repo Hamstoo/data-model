@@ -122,7 +122,19 @@ object MarkData {
   val AUTOSAVE_TAG = "Automarked"
   val IMPORT_TAG = "Imported"
   val UPLOAD_TAG = "Uploaded"
+  val SHARED_WITH_ME_TAG = "SharedWithMe"
 }
+
+/**
+  * Non-owners of marks may want to add their own ratings and/or labels.  This class allows them to do so.
+  * @param markId  A reference to another user's mark.
+  * @param rating  This user's rating.
+  * @param tags    This user's additional tags (in addition to those of the owner user) which could include
+  *                SHARED_WITH_ME_TAG initially (the first time this non-owner user visits the shared mark) by default.
+  */
+case class MarkRef(markId: ObjectId,
+                   rating: Option[Double] = None,
+                   tags: Option[Set[String]] = None)
 
 /**
   * This is the data structure used to store external content, e.g. HTML files or PDFs.  It could be private content
@@ -186,6 +198,9 @@ object TextNodesVisitor {
   * @param sharedWith - defines which other users are allowed to read or write this Mark[Data]
   * @param id       - the mark's alphanumerical string, used as an identifier common with all the marks versions
   * @param mark     - user-provided content
+  * @param markRef - Content that references (and masks) another mark that is owned by a different user.
+  *                 When this field is provided, the `mark` field should be empty.
+  *                 TODO: What if this non-owner goes and marks the same URL?  Just create another mark!
   * @param aux      - additional fields holding satellite data
   * @param urlPrfx  - binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init
   *                 Binary prefix is used as filtering and 1st stage of urls equality estimation
@@ -205,6 +220,7 @@ case class Mark(
                  userId: UUID,
                  id: ObjectId = generateDbId(Mark.ID_LENGTH),
                  mark: MarkData,
+                 markRef: Option[MarkRef] = None,
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
                  page: Option[Page] = None,
@@ -245,6 +261,16 @@ case class Mark(
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
+
+  /** Returns true if this Mark's MarkData has all of the test tags. */
+  def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.contains(t)))
+
+  /** Mask a Mark's MarkData with a MarkRef--for the benefit of a non-owner of the Mark. */
+  def +(ref: MarkRef): Mark = {
+    val unionedTags = mark.tags.getOrElse(Set.empty[String] ) ++ ref.tags.getOrElse(Set.empty[String])
+    copy(mark = mark.copy(rating = ref.rating.orElse(mark.rating),
+                          tags = if (unionedTags.isEmpty) None else Some(unionedTags)))
+  }
 
   /**
     * Merge two marks.  This method is called from the `repr-engine` when a new mark's, `oth`, representations are
@@ -403,6 +429,8 @@ object Mark extends BSONHandlers {
   val COMNTENCx: String = MARK + "." + nameOf[MarkData](_.commentEncoded)
   val PGPENDx: String = MARK + "." + nameOf[MarkData](_.pagePending)
 
+  val REFIDx: String = nameOf[Mark](_.markRef) + "." + nameOf[MarkRef](_.markId)
+
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
   val TOTVISx: String = AUX + "." + nameOf[MarkAux](_.totalVisible)
@@ -418,7 +446,8 @@ object Mark extends BSONHandlers {
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
   implicit val eratingBsonHandler: BSONDocumentHandler[ExpectedRating] = Macros.handler[ExpectedRating]
-  implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
+  implicit val markRefBsonHandler: BSONDocumentHandler[MarkRef] = Macros.handler[MarkRef]
+  implicit val markDataBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
   implicit val urldupBsonHandler: BSONDocumentHandler[UrlDuplicate] = Macros.handler[UrlDuplicate]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]

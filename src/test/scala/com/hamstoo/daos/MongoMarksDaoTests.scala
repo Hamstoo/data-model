@@ -8,6 +8,8 @@ import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.INF_TIME
 import org.scalatest.OptionValues
 
+import scala.concurrent.ExecutionContext.Implicits.global // why wasn't this necessary before?
+
 /**
   * MongoMarksDao tests.
   */
@@ -71,11 +73,10 @@ class MongoMarksDaoTests
     marksDao.retrieveTags(uuid1).futureValue shouldEqual tagSet.get
   }
 
-  // depend on index text query (FWC - wtf does this comment mean, and why is it relevant?)
-  it should "(UNIT) search marks by uuid, query and tags" in {
+  it should "(UNIT) perform MongoDB Text Index marks search by user ID, query and tags" in {
     val md1Stub = MarkData(m1.mark.subj, m1.mark.url, tags = m1.mark.tags, comment = m1.mark.comment)
     val m1Stub = m1.copy(mark = md1Stub, aux = m1.aux.map(_.cleanRanges))
-    marksDao.search(uuid1, cmt.get, tagSet.get).futureValue shouldEqual Seq(m1Stub)
+    marksDao.search(uuid1, cmt.get).map(_.filter(_.hasTags(tagSet.get))).futureValue shouldEqual Seq(m1Stub)
   }
 
   it should "(UNIT) update marks by uuid, id, markData" in {
