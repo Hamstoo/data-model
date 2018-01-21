@@ -47,6 +47,10 @@ class MongoPagesDaoTests
     pagesDao.retrievePrivatePages(uuid, oldId).futureValue shouldEqual Seq(privatePage)
   }
 
+  it should "(UNIT) retrieve private page" in {
+    pagesDao.retrieveOnePrivatePage(uuid, oldId).futureValue.value shouldEqual privatePage
+  }
+
   it should "(UNIT) retrieve all pages" in {
     pagesDao.retrieveAllPages(uuid, oldId).futureValue shouldEqual Seq(privatePage)
 

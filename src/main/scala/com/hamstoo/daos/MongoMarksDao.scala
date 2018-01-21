@@ -680,8 +680,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   def updatePrivateERatingId(user: UUID,
                              markId: String,
                              reprId: String,
-                             erId: String,
-                             timeFrom: Long): Future[Unit] = {
+                             timeFrom: Long,
+                             erId: String): Future[Unit] = {
 
     logger.debug(s"Updating private expect rating for representation: $reprId of mark: $markId")
     for {
@@ -704,13 +704,13 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
   def updatePublicERatingId(user: UUID,
                             markId: String,
-                            erId: String,
-                            timeFrom: Long): Future[Unit] = updateERatingId(user, markId, Representation.PUBLIC, erId, timeFrom)
+                            timeFrom: Long,
+                            erId: String): Future[Unit] = updateERatingId(user, markId, Representation.PUBLIC, timeFrom, erId)
 
   def updateUsersERatingId(user: UUID,
                            markId: String,
-                           erId: String,
-                           timeFrom: Long): Future[Unit] = updateERatingId(user, markId, Representation.USERS, erId, timeFrom)
+                           timeFrom: Long,
+                           erId: String): Future[Unit] = updateERatingId(user, markId, Representation.USERS, timeFrom, erId)
 
   /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */
   def isDeleted(user: UUID, url: String): Future[Boolean] = {
@@ -745,8 +745,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   private def updateERatingId(user: UUID,
                               markId: String,
                               reprType: String,
-                              erId: String,
-                              timeFrom: Long): Future[Unit] = {
+                              timeFrom: Long,
+                              erId: String): Future[Unit] = {
     logger.debug(s"Updating $reprType representation expect rating for user: $user of mark: $markId")
     for {
       c <- dbColl()
