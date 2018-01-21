@@ -252,12 +252,34 @@ case class Mark(
 
   import Mark._
 
-//  /**
-//    * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
-//    * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
-//    */
-    // todo: need to discuss, do we need this methods, if yes, how we will choose primary repr, maybe by time?(last one)
-//  def primaryRepr   :        String  = reconcilePrivPub(privRepr     , pubRepr     ).getOrElse("")
+  /**
+    * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
+    * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
+    */
+  def primaryRepr: String  = getLastPrivateReprId.orElse(getPublicReprId).getOrElse("")
+
+  /** Return the most latest private representation id, if exist */
+  def getLastPrivateReprId: Option[String] = {
+    reprs
+      .filter(_.reprType == Representation.PRIVATE)
+      .sortBy(_.created)
+      .lastOption
+      .map(_.reprId)
+  }
+
+  /** Return public representation id, if exist */
+  def getPublicReprId: Option[String] = {
+    reprs
+      .find(_.reprType == Representation.PUBLIC)
+      .map(_.reprId)
+  }
+
+  /** Get unrated private representation id, if exist */
+  def getUnratedPrivateReprId: Option[String] = {
+    reprs
+      .find(_.ratablePrivate)
+      .map(_.reprId)
+  }
 //  def expectedRating: Option[String] = reconcilePrivPub(privExpRating, pubExpRating)
 
   /**

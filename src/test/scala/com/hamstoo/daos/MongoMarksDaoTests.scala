@@ -152,7 +152,7 @@ class MongoMarksDaoTests
 
   it should "(UNIT) update public representation rating id" in {
     val newERat = "NewRatID"
-    marksDao.updatePublicERatingId(m1.userId, m1.id, "NewRatID", m1.timeFrom).futureValue shouldEqual {}
+    marksDao.updatePublicERatingId(m1.userId, m1.id, m1.timeFrom, "NewRatID").futureValue shouldEqual {}
 
     val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.reprs
 
@@ -165,7 +165,7 @@ class MongoMarksDaoTests
 
   it should "(UNIT) update users representation rating id" in {
     val newERat = "NewRatID"
-    marksDao.updateUsersERatingId(m1.userId, m1.id, "NewRatID", m1.timeFrom).futureValue shouldEqual {}
+    marksDao.updateUsersERatingId(m1.userId, m1.id, m1.timeFrom, "NewRatID").futureValue shouldEqual {}
 
     val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.reprs
 
@@ -187,7 +187,7 @@ class MongoMarksDaoTests
     reprs.size shouldEqual 3
     reprs.exists(_.reprType == Representation.PRIVATE) shouldEqual true
 
-    marksDao.updatePrivateERatingId(m1.userId, m1.id, privRepr.reprId, newERat, m1.timeFrom).futureValue shouldEqual {}
+    marksDao.updatePrivateERatingId(m1.userId, m1.id, privRepr.reprId, m1.timeFrom, newERat).futureValue shouldEqual {}
 
 
     val updatedReprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.reprs

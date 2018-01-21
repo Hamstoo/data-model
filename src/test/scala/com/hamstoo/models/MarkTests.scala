@@ -1,12 +1,14 @@
 package com.hamstoo.models
 
 import com.hamstoo.test.FlatSpecWithMatchers
+import com.hamstoo.utils.TIME_NOW
 import org.apache.commons.text.StringEscapeUtils
+import org.scalatest.OptionValues
 
 /**
   * Mark model tests.
   */
-class MarkTests extends FlatSpecWithMatchers {
+class MarkTests extends FlatSpecWithMatchers with OptionValues {
 
   import com.hamstoo.utils.DataInfo._
 
@@ -141,12 +143,22 @@ class MarkTests extends FlatSpecWithMatchers {
       merged.reprs shouldEqual mA.reprs ++ mB.reprs
     }
 
-  it should "throw an exception when merging marks with different userIds" in {
+  it should "(UNIT) throw an exception when merging marks with different userIds" in {
     // different userIds should throw an AssertionError
 
     intercept[AssertionError] {
       val c = Mark(constructUserId(), mark = mdB)
       mA.merge(c)
     }
+  }
+
+  it should "(UNIT) corrctly retrieve marks info" in {
+    val unrated = ReprInfo("someid", Representation.PRIVATE, None, TIME_NOW)
+    val rated = unrated.copy(reprId = "someId1", expRating = Some("rat"))
+    val m = Mark(constructUserId(), mark = mdA, reprs = Seq(unrated))
+    val mRated = m.copy(reprs = Seq(rated))
+
+    m.getUnratedPrivateReprId.value shouldEqual unrated.reprId
+    mRated.getUnratedPrivateReprId shouldEqual None
   }
 }
