@@ -4,6 +4,7 @@ import java.util.Locale
 
 import org.joda.time.DateTime
 import play.api.Logger
+import play.api.libs.json.Json
 import play.api.mvc.{Call, Request}
 import reactivemongo.api.BSONSerializationPack.Reader
 import reactivemongo.api.collections.GenericQueryBuilder
@@ -195,6 +196,9 @@ package object utils {
   implicit class ExtendedTimeStamp(private val ms: TimeStamp) extends AnyVal {
     /** Converts from time in milliseconds to a Joda DateTime. */
     def dt: DateTime = new DateTime(ms)
+    /** Converts from time in milliseconds to a JsValueWrapper. */
+    def toJson: Json.JsValueWrapper =
+      s"${dt.year.getAsString}-${dt.monthOfYear.getAsString}-${dt.dayOfMonth.getAsString}"
   }
 
   /** A couple of handy ReactiveMongo shortcuts that were formerly being defined in every DAO class. */
