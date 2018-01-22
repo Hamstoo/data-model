@@ -168,6 +168,10 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     }
   }
 
+  /** Retrieves the original creation time of a mark. */
+  def retrieveCreationTime(id: String): Future[Option[TimeStamp]] =
+    retrieveInsecureHist(id).map(_.lastOption.map(_.timeFrom))
+
   /**
     * Retrieves a current mark by user and URL, None if not found.  This is used in the Chrome extension via the
     * backend's `MarksController` to quickly get the mark for an active tab.  Eventually we'll probably want to
