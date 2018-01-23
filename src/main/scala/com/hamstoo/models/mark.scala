@@ -229,8 +229,8 @@ case class Mark(
                  userRepr: Option[String] = None,      // all user generated data concatenated into a single string and processed as representation
                  pubExpRating: Option[String] = None,  // "failed" or "none" if desired (e.g. see
                  privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
-                 timeFrom: Long = TIME_NOW,            // TODO: make a TrackChanges trait to include timeFrom/Thru
-                 timeThru: Long = INF_TIME,
+                 timeFrom: TimeStamp = TIME_NOW,            // TODO: make a TrackChanges trait to include timeFrom/Thru
+                 timeThru: TimeStamp = INF_TIME,
                  modifiedBy: Option[UUID] = None,
                  mergeId: Option[String] = None,
                  sharedWith: Option[SharedWith] = None,
