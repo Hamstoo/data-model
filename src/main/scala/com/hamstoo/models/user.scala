@@ -106,7 +106,8 @@ object User extends BSONHandlers {
   def apply(id: UUID): Option[User] = Some(User(id, UserData(), Nil))
 
   val ID: String = nameOf[User](_.id)
-  val UNAMELOWx: String = nameOf[User](_.userData) + "." + nameOf[UserData](_.usernameLower)
+  val UDATA: String = nameOf[User](_.userData)
+  val UNAMELOWx: String = UDATA + "." + nameOf[UserData](_.usernameLower)
   val PROFILES: String = nameOf[User](_.profiles)
   val LINFO: String = nameOf[Profile](_.loginInfo)
   val CONF: String = nameOf[Profile](_.confirmed)

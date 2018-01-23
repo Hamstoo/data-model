@@ -11,11 +11,11 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.BSONDocument
+import reactivemongo.bson.{BSONArray, BSONDocument}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 /**
   * Data access object for user accounts.
@@ -33,6 +33,26 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   private def dbColl(): Future[BSONCollection] = db().map(_ collection "users")
   private def groupColl(): Future[BSONCollection] = db().map(_ collection "usergroups")
   private def marksColl(): Future[BSONCollection] = db().map(_ collection "entries")
+
+  // temporary data migration code
+  if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
+    Await.result(for {
+      c <- dbColl()
+      _ = logger.info(s"Performing data migration for `${c.name}` collection")
+      sel = d :~ "$or" -> BSONArray(d :~ UNAMELOWx -> (d :~ "$exists" -> 0), d :~ UNAMELOWx -> "")
+      nonames <- c.find(sel).coll[User, Seq]()
+      newnames <- Future.sequence { nonames.map { u =>
+        u.userData.usernameLower.filter(_.trim.nonEmpty).fold {
+          u.userData.assignUsername()(this, implicitly[ExecutionContext]).map(ud => u.copy(userData = ud))
+        }{ _ => Future.successful(u) } // this can happen if usernameLower isn't set in the db but username is
+      }}
+      updated <- Future.sequence { newnames.map { u =>
+        c.update(d :~ ID -> u.id, d :~ "$set" -> (d :~ UDATA -> u.userData))
+      }}
+      _ = logger.info(s"Successfully assigned usernames to ${updated.size} users")
+    // put actual data migration code here
+    } yield (), 363 seconds)
+  } else logger.info(s"Skipping data migration for `users` collection")
 
   // ensure mongo collection has proper indexes
   private val indxs: Map[String, Index] =
