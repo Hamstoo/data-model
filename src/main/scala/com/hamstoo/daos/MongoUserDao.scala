@@ -3,7 +3,7 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.User._
-import com.hamstoo.models.{Profile, User, UserGroup}
+import com.hamstoo.models.{Mark, Profile, Shareable, SharedWith, User, UserGroup}
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.api.services.IdentityService
 import play.api.Logger
@@ -11,6 +11,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
+import reactivemongo.bson.BSONDocument
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -23,13 +24,15 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
   val logger: Logger = Logger(classOf[MongoUserDao])
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}
-  import com.hamstoo.models.UserGroup.{HASH, SHROBJS, userGroupHandler, sharedObjHandler}
+  import com.hamstoo.models.UserGroup.{HASH, SHROBJS, userGroupHandler, sharedObjHandler, sharedWithHandler}
+  import com.hamstoo.models.Shareable.SHARED_WITH
   import com.hamstoo.utils._
 
   // get the "users" collection (in the future); the `map` is `Future.map`
   // http://reactivemongo.org/releases/0.12/api/#reactivemongo.api.DefaultDB
   private def dbColl(): Future[BSONCollection] = db().map(_ collection "users")
   private def groupColl(): Future[BSONCollection] = db().map(_ collection "usergroups")
+  private def marksColl(): Future[BSONCollection] = db().map(_ collection "entries")
 
   // ensure mongo collection has proper indexes
   private val indxs: Map[String, Index] =
@@ -141,11 +144,52 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     opt
   }
 
-  /** Retrieves a user group from the database first based on its hash, then on its hashed fields. */
+  /**
+    * Retrieves a user group from the database first based on its hash, then on its hashed fields. This allows
+    * for the prevention of UserGroup duplicates.
+    */
   protected def retrieveGroup(ug: UserGroup): Future[Option[UserGroup]] = for {
     c <- groupColl()
     found <- c.find(d :~ HASH -> UserGroup.hash(ug)).coll[UserGroup, Seq]()
   } yield found.find(x => x.userIds == ug.userIds && x.emails == ug.emails)
+
+  /** Retrieve a list of usernames and email addresses that the given user has shared with, in that order. */
+  def retrieveRecentSharees(userId: UUID): Future[Seq[String]] = for {
+
+    // first fetch the SharedWiths from the given user's (current) marks
+    cMarks <- marksColl()
+    sel = d :~ Mark.USR -> userId :~ curnt :~ SHARED_WITH -> (d :~ "$exists" -> 1)
+    prj = d :~ Shareable.SHARED_WITH -> 1 :~ "_id" -> 0
+    sharedWiths <- cMarks.find(sel, prj).coll[BSONDocument, Seq]()
+
+    // traverse down through the data model hierarchy to get UserGroup IDs mapped to their most recent time stamps
+    ugIds = sharedWiths.flatMap(_.getAs[SharedWith](SHARED_WITH).map { sw =>
+      Seq(sw.readOnly, sw.readWrite).flatten.flatMap(_.group.map(_ -> sw.ts))
+    })
+    ug2TimeStamp = ugIds.flatten.groupBy(_._1).mapValues(_.map(_._2).max)
+
+    // lookup the UserGroups given their IDs ("application-level join")
+    cGroup <- groupColl()
+    ugs <- cGroup.find(d :~ ID -> (d :~ "$in" -> ug2TimeStamp.keys)).coll[UserGroup, Seq]()
+    shareeUserIds = ugs.flatMap(_.userIds).flatten.toSet
+
+    // get all the usernames of the shared-with users ("sharees")
+    cUsers <- dbColl()
+    sharees <- cUsers.find(d :~ User.ID -> (d :~ "$in" -> shareeUserIds)).coll[User, Seq]()
+    shareeId2Username = sharees.flatMap(u => u.userData.username.map(u.id -> _)).toMap
+
+  } yield {
+
+    // combine usernames and emails of shared-with people into a single collection of "sharee" strings
+    val sharee2TimeStamp = ugs.flatMap { ug =>
+      val shareeStrings = ug.emails.getOrElse(Set.empty[String]) ++
+                          ug.userIds.fold(Set.empty[String])(_.flatMap(shareeId2Username.get).map("@" + _))
+      shareeStrings.map(_ -> ug2TimeStamp(ug.id))
+    }
+
+    // map each sharee to its most recent usage, sort descending, and then return the most recent 50
+    sharee2TimeStamp.groupBy(_._1).mapValues(_.map(_._2).max).toSeq.sortBy(-_._2).map(_._1).take(50)
+  }
 
   /** Removes user group given ID. */
   def deleteGroup(groupId: ObjectId): Future[Unit] = for {

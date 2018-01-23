@@ -155,7 +155,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
     }
   }
 
-  /** Retrieves all marks by ID, including previous versions, sorted by timeFrom, descending.  See retrieveInsecure. */
+  /** Retrieves all versions of a mark, current and previous, sorted by timeFrom, descending. */
   def retrieveInsecureHist(id: String): Future[Seq[Mark]] = {
     logger.debug(s"Retrieving history of mark $id")
     for {
