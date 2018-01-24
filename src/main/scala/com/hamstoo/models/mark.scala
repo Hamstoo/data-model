@@ -197,9 +197,9 @@ case class ReprInfo(reprId: String,
                     created: TimeStamp) {
 
   // check if object has not yet rated
-  def ratablePrivate: Boolean = reprType == Representation.PRIVATE && expRating.isEmpty
-  def ratablePublic: Boolean = reprType == Representation.PUBLIC && expRating.isEmpty
-  def ratableUser: Boolean = reprType == Representation.USERS && expRating.isEmpty
+  def eratablePrivate: Boolean = reprType == Representation.PRIVATE && expRating.isEmpty
+  def eratablePublic: Boolean = reprType == Representation.PUBLIC && expRating.isEmpty
+  def eratableUser: Boolean = reprType == Representation.USERS && expRating.isEmpty
 
 }
 
@@ -269,16 +269,17 @@ case class Mark(
   }
 
   /** Return public representation id, if exist */
+  // TODO: rename this back to simply pubRepr (i.e. no "get" and no "Id") once issue/branch-146 is complete
   def getPublicReprId: Option[String] = {
     reprs
       .find(_.reprType == Representation.PUBLIC)
       .map(_.reprId)
   }
 
-  /** Get unrated private representation id, if exist */
-  def getUnratedPrivateReprId: Option[String] = {
+  /** Get a private representation without an expected rating, if it exists. */
+  def getNoExpRatingPrivateReprId: Option[String] = {
     reprs
-      .find(_.ratablePrivate)
+      .find(_.eratablePrivate)
       .map(_.reprId)
   }
 
@@ -287,9 +288,9 @@ case class Mark(
     * representations, even if the mark doesn't have a URL, we'll still try to derive a representation from the subject
     * in case LinkageService.digest timed out when originally trying to generate a title for the mark (issue #195).
     */
-  def eratablePublic: Boolean = reprs.exists(_.ratablePublic)
-  def eratablePrivate: Boolean = reprs.exists(_.ratablePrivate)
-  def eratableUser: Boolean = reprs.exists(_.ratableUser)
+  def eratablePublic: Boolean = reprs.exists(_.eratablePublic)
+  def eratablePrivate: Boolean = reprs.exists(_.eratablePrivate)
+  def eratableUser: Boolean = reprs.exists(_.eratableUser)
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
@@ -359,11 +360,6 @@ case class Mark(
 }
 
 object Mark extends BSONHandlers {
-
-  type Repr = String
-  type Rating = String
-  type TimeStamp = Long
-
   val logger: Logger = Logger(classOf[Mark])
 
   // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once
@@ -445,12 +441,6 @@ object Mark extends BSONHandlers {
   val MERGEID: String = nameOf[Mark](_.mergeId)
   val REPRS: String = nameOf[Mark](_.reprs)
 
-
-  // ReprInfo constants value
-  val EXP_RATINGx: String = nameOf[ReprInfo](_.expRating)
-  val REPR_TYPE: String = nameOf[ReprInfo](_.reprType)
-  val REPR_ID: String = nameOf[ReprInfo](_.reprId)
-
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)
 
@@ -470,14 +460,18 @@ object Mark extends BSONHandlers {
 
 //  val STATEIDx: String = PRVEXPRAT + "." + nameOf[ReprInfo](_.stateId)
 //  val REPRIDx: String = PRVEXPRAT + "." + nameOf[ReprInfo](_.reprId)
-  val EXPRATx: String = REPRS + "." + nameOf[ReprInfo](_.expRating)
-
-  val EXPRAT: String = nameOf[ReprInfo](_.expRating)
+//  val EXPRAT: String = nameOf[ReprInfo](_.expRating)
 //  val STATEID: String = nameOf[ReprInfo](_.stateId)
 
-  // this values for position update operators
+  // ReprInfo constants value (note that these are not 'x'/extended as they aren't prefixed w/ "mark.")
+  val REPR_TYPE: String = nameOf[ReprInfo](_.reprType)
+  val REPR_ID: String = nameOf[ReprInfo](_.reprId)
+  val EXP_RATING: String = nameOf[ReprInfo](_.expRating)
+
+  // the 'p' is for "position" update operator
+  val EXP_RATINGx: String = REPRS + "." + EXP_RATING
+  val EXP_RATINGxp: String = REPRS + ".$." + EXP_RATING
 //  val REPRIDxp: String = PRVEXPRAT + ".$." + nameOf[ReprInfo](_.reprId)
-  val EXPRATxp: String = REPRS + ".$." + nameOf[ReprInfo](_.expRating)
 
   val USRPRFX: String = nameOf[UrlDuplicate](_.userIdPrfx)
   assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
