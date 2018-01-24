@@ -191,6 +191,19 @@ class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) 
   def removePrivatePage(userId: UUID, id: String): Future[Unit] =
     removePage(userId, id, Representation.PRIVATE)
 
+  /** General method to handle delete of PUBLIC or USERS pages. */
+  def removeSinglePage(page: Page): Future[Unit] = {
+    logger.debug(s"Removing ${page.reprType} page for user: ${page.userId} of mark: ${page.id}")
+
+    for {
+      c <- dbColl()
+      rr <- c.remove(page)
+      _ <- rr failIfError
+    } yield {
+      logger.debug(s"${page.reprType} page was deleted")
+    }
+  }
+
   /**  Remove mark's all pages */
   def removeAllPages(userId: UUID, id: String): Future[Unit] = {
     logger.debug(s"Removing page for user: $userId of mark: $id")
