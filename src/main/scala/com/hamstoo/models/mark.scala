@@ -266,7 +266,7 @@ case class Mark(
   def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.contains(t)))
 
   /** Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a shared-with, non-owner of the Mark. */
-  def +(ref: MarkRef): Mark = {
+  def mask(ref: MarkRef): Mark = {
     val unionedTags = mark.tags.getOrElse(Set.empty[String] ) ++ ref.tags.getOrElse(Set.empty[String])
     copy(mark = mark.copy(rating = ref.rating.orElse(mark.rating),
                           tags = if (unionedTags.isEmpty) None else Some(unionedTags)))

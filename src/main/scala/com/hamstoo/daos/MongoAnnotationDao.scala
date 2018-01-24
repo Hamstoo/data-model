@@ -78,7 +78,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
     * @return - future with sequence of annotations that match condition
     */
   def retrieve(usr: Option[User], markId: ObjectId): Future[Seq[A]] = {
-    logger.debug(s"Retrieving ${name + "s"} for user $usr and mark $markId")
+    logger.debug(s"Retrieving ${name + "s"} for user ${usr.map(_.usernameId)} and mark $markId")
     for {
       insecures <- retrieveInsecure(markId)
       authorizedReads <- Future.sequence(insecures.map(_.isAuthorizedRead(usr)))
