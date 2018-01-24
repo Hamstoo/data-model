@@ -96,6 +96,9 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
 
   /** Returns a list of all of the User's *confirmed* email addresses on file. */
   def emails: Set[String] = profiles.filter(_.confirmed).flatMap(_.email).toSet
+
+  /** Returns a @username or UUID if username is absent--useful for logging. */
+  def usernameId: String = userData.username.fold(id.toString)("@" + _)
 }
 
 object User extends BSONHandlers {

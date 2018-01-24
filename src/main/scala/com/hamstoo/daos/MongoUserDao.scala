@@ -97,7 +97,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   def retrieve(email: String): Future[Option[User]] =
     dbColl().flatMap(_.find(d :~ PEMAILx -> email).one[User])
 
-  /** Retrieves user account data by email. */
+  /** Retrieves user account data by username. */
   def retrieveByUsername(username: String): Future[Option[User]] =
     dbColl().flatMap(_.find(d :~ UNAMELOWx -> username.toLowerCase).one[User])
 
