@@ -106,4 +106,14 @@ class MongoPagesDaoTests
 
     pagesDao.retrievePrivatePages(uuid, oldId).futureValue shouldEqual Nil
   }
+
+  it should "(UNIT) remove single page" in {
+    pagesDao.insertPage(privatePage).futureValue shouldEqual privatePage
+
+    pagesDao.retrieveOnePrivatePage(privatePage.userId, privatePage.id).futureValue.value shouldEqual privatePage
+
+    pagesDao.removeSinglePage(privatePage).futureValue shouldEqual {}
+
+    pagesDao.retrieveOnePrivatePage(privatePage.userId, privatePage.id).futureValue shouldEqual None
+  }
 }

@@ -257,6 +257,7 @@ case class Mark(
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
   def primaryRepr: String  = getLastPrivateReprId.orElse(getPublicReprId).getOrElse("")
+  def representableUser: Boolean = reprs.exists(_.reprType == Representation.USERS)
 
   /** Return the most latest private representation id, if exist */
   def getLastPrivateReprId: Option[String] = {
@@ -280,7 +281,6 @@ case class Mark(
       .find(_.ratablePrivate)
       .map(_.reprId)
   }
-//  def expectedRating: Option[String] = reconcilePrivPub(privExpRating, pubExpRating)
 
   /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
