@@ -693,7 +693,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
         REPRS -> (d :~ "$elemMatch" -> (d :~ REPR_ID -> reprId)) :~
         TIMEFROM -> timeFrom
 
-      mod = d :~ "$set" -> (d :~ EXPRATxp -> erId)
+      mod = d :~ "$set" -> (d :~ EXP_RATINGxp -> erId)
 
       ur <- c.update(sel, mod)
       _ <- ur failIfError
@@ -757,7 +757,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
         REPRS -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> reprType)) :~
         TIMEFROM -> timeFrom
 
-      mod = d :~ "$set" -> (d :~ EXPRATxp -> erId)
+      mod = d :~ "$set" -> (d :~ EXP_RATINGxp -> erId)
 
       ur <- c.update(sel, mod)
       _ <- ur failIfError
