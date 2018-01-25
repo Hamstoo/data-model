@@ -201,6 +201,10 @@ case class ReprInfo(reprId: String,
   def eratablePublic: Boolean = reprType == Representation.PUBLIC && expRating.isEmpty
   def eratableUser: Boolean = reprType == Representation.USERS && expRating.isEmpty
 
+  def isPublic: Boolean = reprType == Representation.PUBLIC
+  def isPrivate: Boolean = reprType == Representation.PRIVATE
+  def isUserContent: Boolean = reprType == Representation.USERS
+
 }
 
 /**
@@ -232,14 +236,7 @@ case class Mark(
                  mark: MarkData,
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
-//                 pages: Seq[Page] = Nil,
-//                 pubRepr: Option[String] = None, // it's helpful for these fields to be (foreign key'ish)
-//                 pubExpRating: Option[String] = None, // "failed" or "none" if desired (e.g. see
-                 //                 privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID
-                 //                 privRepr: Option[String] = None,      // strings rather than objects so that they can be set to
-
                  reprs: Seq[ReprInfo] = Nil,
-//                 userRepr: Option[String] = None, // all user generated data concatenated into a single string and processed as representation
                  timeFrom: Long = TIME_NOW,
                  timeThru: Long = INF_TIME,
                  modifiedBy: Option[UUID] = None,
@@ -256,11 +253,18 @@ case class Mark(
     * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
-  def primaryRepr: String  = getLastPrivateReprId.orElse(getPublicReprId).getOrElse("")
+  def primaryRepr: String  = privRepr.orElse(pubRepr).getOrElse("")
   def representableUser: Boolean = reprs.exists(_.reprType == Representation.USERS)
 
-  /** Return the most latest private representation id, if exist */
-  def getLastPrivateReprId: Option[String] = {
+  /** Get a private representation without an expected rating, if it exists. */
+  def unratedPrivRepr: Option[String] = {
+    reprs
+      .find(_.eratablePrivate)
+      .map(_.reprId)
+  }
+
+  /** Return latest private representation id, if exist */
+  def privRepr: Option[String] = {
     reprs
       .filter(_.reprType == Representation.PRIVATE)
       .sortBy(_.created)
@@ -269,17 +273,16 @@ case class Mark(
   }
 
   /** Return public representation id, if exist */
-  // TODO: rename this back to simply pubRepr (i.e. no "get" and no "Id") once issue/branch-146 is complete
-  def getPublicReprId: Option[String] = {
+  def pubRepr: Option[String] = {
     reprs
-      .find(_.reprType == Representation.PUBLIC)
+      .find(_.isPublic)
       .map(_.reprId)
   }
 
-  /** Get a private representation without an expected rating, if it exists. */
-  def getNoExpRatingPrivateReprId: Option[String] = {
+  /** Return user representation id, if exist */
+  def userRepr: Option[String] = {
     reprs
-      .find(_.eratablePrivate)
+      .find(_.isUserContent)
       .map(_.reprId)
   }
 

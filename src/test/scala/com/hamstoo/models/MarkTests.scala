@@ -158,7 +158,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
     val m = Mark(constructUserId(), mark = mdA, reprs = Seq(unrated))
     val mRated = m.copy(reprs = Seq(rated))
 
-    m.getNoExpRatingPrivateReprId.value shouldEqual unrated.reprId
-    mRated.getNoExpRatingPrivateReprId shouldEqual None
+    m.unratedPrivRepr.value shouldEqual unrated.reprId
+    mRated.unratedPrivRepr shouldEqual None
   }
 }

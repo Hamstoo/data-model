@@ -168,7 +168,7 @@ class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) 
     retrievePage(userId, id, Representation.PUBLIC)
 
   /** Retrieve mark's private page */
-  def retrieveOnePrivatePage(userId: UUID, id: String): Future[Option[Page]] =
+  def retrievePrivatePage(userId: UUID, id: String): Future[Option[Page]] =
     retrievePage(userId, id, Representation.PRIVATE)
 
   /** Update marks user page */
