@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.models.Mark.MarkAux
+import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
 import com.hamstoo.services.TikaInstance
 import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId, reconcilePrivPub}
 import org.apache.commons.text.StringEscapeUtils
@@ -44,6 +44,12 @@ case class MarkData(
 
   import MarkData._
 
+  // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
+  // rating value (not part of the data(base) model)
+  var bMasked: Boolean = false
+  var ownerRating: Option[Double] = None
+
+  // populate `commentEncoded` by deriving it from the value of `comment`
   commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
     // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
@@ -265,12 +271,27 @@ case class Mark(
   /** Returns true if this Mark's MarkData has all of the test tags. */
   def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.contains(t)))
 
-  /** Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a shared-with, non-owner of the Mark. */
+  /**
+    * Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a shared-with, non-owner of the Mark.
+    * Returns the original rating as the second element of the 2-tuple.
+    */
   def mask(ref: MarkRef): Mark = {
     val unionedTags = mark.tags.getOrElse(Set.empty[String] ) ++ ref.tags.getOrElse(Set.empty[String])
-    copy(mark = mark.copy(rating = ref.rating.orElse(mark.rating),
-                          tags = if (unionedTags.isEmpty) None else Some(unionedTags)))
+    val mdata = mark.copy(rating = ref.rating,
+                          tags = if (unionedTags.isEmpty) None else Some(unionedTags))
+    mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
+    mdata.ownerRating = mark.rating
+    copy(mark = mdata)
   }
+
+  /**
+    * If the mark has been masked, show the original rating in blue, o/w lookup the mark's expected rating ID in
+    * the given `eratings` map and show that in blue.  This allows us to (1) always show the current user's rating
+    * in orange, even when displaying another shared-from user's mark, and (2) hide shared-from users' rating
+    * predictions, which contain information about more than just the mark being shared, from shared-to users.
+    */
+  def blueRating(eratings: Map[ObjectId, ExpectedRating]): Option[Double] =
+    if (mark.bMasked) mark.ownerRating else expectedRating.flatMap(eratings.get).flatMap(_.value)
 
   /**
     * Merge two marks.  This method is called from the `repr-engine` when a new mark's, `oth`, representations are
