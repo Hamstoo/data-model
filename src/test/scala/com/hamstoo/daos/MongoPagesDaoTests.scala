@@ -48,7 +48,7 @@ class MongoPagesDaoTests
   }
 
   it should "(UNIT) retrieve private page" in {
-    pagesDao.retrieveOnePrivatePage(uuid, oldId).futureValue.value shouldEqual privatePage
+    pagesDao.retrievePrivatePage(uuid, oldId).futureValue.value shouldEqual privatePage
   }
 
   it should "(UNIT) retrieve all pages" in {
@@ -110,10 +110,10 @@ class MongoPagesDaoTests
   it should "(UNIT) remove single page" in {
     pagesDao.insertPage(privatePage).futureValue shouldEqual privatePage
 
-    pagesDao.retrieveOnePrivatePage(privatePage.userId, privatePage.id).futureValue.value shouldEqual privatePage
+    pagesDao.retrievePrivatePage(privatePage.userId, privatePage.id).futureValue.value shouldEqual privatePage
 
     pagesDao.removeSinglePage(privatePage).futureValue shouldEqual {}
 
-    pagesDao.retrieveOnePrivatePage(privatePage.userId, privatePage.id).futureValue shouldEqual None
+    pagesDao.retrievePrivatePage(privatePage.userId, privatePage.id).futureValue shouldEqual None
   }
 }
