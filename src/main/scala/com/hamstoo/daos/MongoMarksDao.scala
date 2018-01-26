@@ -410,10 +410,11 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
         wr <- c.insert(mNew)
         _ <- wr.failIfError
 
+        // only create a MarkRef in the database if the user is non-None, o/w there'd be nowhere to put it
         ref <- if (user.exists(!mNew.ownedBy(_))) findOrCreateMarkRef(user.get.id, mNew.id).map(Some(_))
-        else Future.successful(None)
+               else Future.successful(None)
 
-      } yield ref.flatMap(_.markRef).fold(mNew)(mNew.mask)
+      } yield mNew.mask(ref.flatMap(_.markRef), user) // might be a no-op if user owns the mark
     }
   } yield m
 
@@ -480,7 +481,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       wr <- c.insert(mNew)
       _ <- wr.failIfError
     } yield mNew
-  } yield referenced.mask(refNew)
+  } yield referenced.mask(Some(refNew), None)
 
   /**
     * R sharing level must be at or above RW sharing level.
