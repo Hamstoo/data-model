@@ -273,15 +273,22 @@ case class Mark(
 
   /**
     * Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a shared-with, non-owner of the Mark.
-    * Returns the original rating as the second element of the 2-tuple.
+    * Returns the mark owner's rating in the `ownerRating` field of the returned MarkData.  Note that if
+    * `callingUser` owns the mark, the supplied optRef is completely ignored.
     */
-  def mask(ref: MarkRef): Mark = {
-    val unionedTags = mark.tags.getOrElse(Set.empty[String] ) ++ ref.tags.getOrElse(Set.empty[String])
-    val mdata = mark.copy(rating = ref.rating,
-                          tags = if (unionedTags.isEmpty) None else Some(unionedTags))
-    mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
-    mdata.ownerRating = mark.rating
-    copy(mark = mdata)
+  def mask(optRef: Option[MarkRef], callingUser: Option[User]): Mark = {
+    if (callingUser.exists(ownedBy)) this else {
+
+      // still mask even if optRef is None to ensure that the owner's rating is moved to the `ownerRating` field
+      val ref = optRef.getOrElse(MarkRef(id)) // create an empty MarkRef (id isn't really used)
+
+      val unionedTags = mark.tags.getOrElse(Set.empty[String]) ++ ref.tags.getOrElse(Set.empty[String])
+      val mdata = mark.copy(rating = ref.rating,
+                            tags = if (unionedTags.isEmpty) None else Some(unionedTags))
+      mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
+      mdata.ownerRating = mark.rating
+      copy(mark = mdata)
+    }
   }
 
   /**
