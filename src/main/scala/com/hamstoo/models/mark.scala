@@ -254,7 +254,7 @@ case class Mark(
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
   def primaryRepr: String  = privRepr.orElse(pubRepr).getOrElse("")
-  def representableUser: Boolean = reprs.exists(_.reprType == Representation.USERS)
+  def representableUser: Boolean = !reprs.exists(_.reprType == Representation.USERS)
 
   /** Get a private representation without an expected rating, if it exists. */
   def unratedPrivRepr: Option[String] = {
