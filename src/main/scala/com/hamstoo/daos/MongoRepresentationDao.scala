@@ -80,7 +80,6 @@ class MongoRepresentationDao(db: () => Future[DefaultDB])
       val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
       val searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
-      logger.debug(BSONDocument.pretty(sel :~ searchScoreSelection))
       c.find(sel :~ searchScoreSelection, searchScoreProjection).one[RSearchable]
     }}
   } yield seq.flatten.map { repr => repr.id -> repr }.toMap
