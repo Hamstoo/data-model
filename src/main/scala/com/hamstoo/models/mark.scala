@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
+import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.services.TikaInstance
 import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
@@ -277,6 +277,17 @@ case class Mark(
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
   def primaryRepr: String  = privRepr.orElse(pubRepr).getOrElse("")
+  def expectedRating: Option[String] =
+    reprs
+    .filter(_.reprType == Representation.PRIVATE)
+    .sortBy(_.created)
+    .lastOption
+    .flatMap(_.expRating) // expect rating from private representation
+    .orElse(
+      reprs
+      .find(_.isPublic)
+      .flatMap(_.expRating)
+    )
   def representableUser: Boolean = !reprs.exists(_.reprType == Representation.USERS)
 
   /** Get a private representation without an expected rating, if it exists. */
@@ -502,11 +513,6 @@ object Mark extends BSONHandlers {
   val TOTVISx: String = AUX + "." + nameOf[MarkAux](_.totalVisible)
   val TOTBGx: String = AUX + "." + nameOf[MarkAux](_.totalBground)
 
-//  val STATEIDx: String = PRVEXPRAT + "." + nameOf[ReprInfo](_.stateId)
-//  val REPRIDx: String = PRVEXPRAT + "." + nameOf[ReprInfo](_.reprId)
-//  val EXPRAT: String = nameOf[ReprInfo](_.expRating)
-//  val STATEID: String = nameOf[ReprInfo](_.stateId)
-
   // ReprInfo constants value (note that these are not 'x'/extended as they aren't prefixed w/ "mark.")
   val REPR_TYPE: String = nameOf[ReprInfo](_.reprType)
   val REPR_ID: String = nameOf[ReprInfo](_.reprId)
@@ -530,7 +536,6 @@ object Mark extends BSONHandlers {
   implicit val eratingBsonHandler: BSONDocumentHandler[ExpectedRating] = Macros.handler[ExpectedRating]
   implicit val markRefBsonHandler: BSONDocumentHandler[MarkRef] = Macros.handler[MarkRef]
   implicit val markDataBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
-  implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
   implicit val reprRating: BSONDocumentHandler[ReprInfo] = Macros.handler[ReprInfo]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
   implicit val urldupBsonHandler: BSONDocumentHandler[UrlDuplicate] = Macros.handler[UrlDuplicate]

@@ -336,12 +336,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     (MERGEID -> 0) :~ (COMNTENCx -> 0)
 
   /**
-    * Executes a MongoDB Text Index search using text index with sorting in user's marks, constrained by tags.
-    * Mark state must be current (i.e. timeThru == INF_TIME) and have all tags to qualify.
-    */
-  def search(user: UUID, query: String): Future[Set[Mark]] = search(Set(user), query)
-
-  /**
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,
     * and potentially filter for specific mark IDs.
     */
@@ -426,40 +420,20 @@ class MongoMarksDao(db: () => Future[DefaultDB])
         // if the URL has changed then discard the old public repr (only the public one though as the private one is
         // based on private user content that was only available from the browser extension at the time the user first
         // created it)
-        pubRp = if (populatedRating.equalsPerPubRepr(mOld.mark)) mOld.pubRepr else None
-        // TODO: should pubExpRating be dumped in this case also?
+        reprs0 = if (populatedRating.equalsPerPubRepr(mOld.mark)) mOld.reprs else mOld.reprs.filterNot(_.reprType == Representation.PUBLIC)
 
-    _ = logger.debug(s"0 REPRS: ${mOld.reprs}")
-    // if the URL has changed then discard the old public repr (only the public one though as the private one is
-    // based on private user content that was only available from the browser extension at the time the user first
-    // created it)
-    reprs0 = if (mdata.equalsPerPubRepr(mOld.mark)) mOld.reprs else mOld.reprs.filterNot(_.reprType == Representation.PUBLIC)
-
-    // if user-generated content has changed then discard the old user repr (also see unsetUserContentReprId below)
-    reprs1 = if (mdata.equalsPerUserRepr(mOld.mark)) reprs0 else reprs0.filterNot(_.reprType == Representation.USERS)
-
-    _ = logger.debug(s"REPRS: $reprs1")
         // if user-generated content has changed then discard the old user repr (also see unsetUserContentReprId below)
-        usrRp = if (populatedRating.equalsPerUserRepr(mOld.mark)) mOld.userRepr else None
+        reprs1 = if (populatedRating.equalsPerUserRepr(mOld.mark)) reprs0 else reprs0.filterNot(_.reprType == Representation.USERS)
 
-        mNew = mOld.copy(mark = populatedRating, pubRepr = pubRp, userRepr = usrRp,
-                         timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
+        mNew = mOld.copy(mark = populatedRating, timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id), reprs = reprs1)
 
         wr <- c.insert(mNew)
         _ <- wr.failIfError
 
         // only create a MarkRef in the database if the user is non-None, o/w there'd be nowhere to put it
         ref <- if (user.exists(!mNew.ownedBy(_))) findOrCreateMarkRef(user.get.id, mNew.id).map(Some(_))
-               else Future.successful(None)
+        else Future.successful(None)
 
-    newMk = mOld.copy(mark = mdata, reprs = reprs1, timeFrom = now, timeThru = INF_TIME, modifiedBy = user.map(_.id))
-
-    wr <- c.insert(newMk)
-    _ <- wr.failIfError
-  } yield {
-    logger.debug(s"Mark: $id was successfully updated...")
-    newMk
-  }
       } yield mNew.mask(ref.flatMap(_.markRef), user) // might be a no-op if user owns the mark
     }
   } yield m
@@ -479,8 +453,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
       // for now we'll set pubRepr/userRepr/pubExpRating to prevent repr-engine from doing the same, but
       // once issue #260 is implemented we will merely not send a message to repr-engine to process this mark
-      val mNew = Mark(user, mark = MarkData("", None), markRef = Some(ref), pubRepr = Some(NONE_REPR_ID),
-                      userRepr = Some(NONE_REPR_ID), pubExpRating = Some(NO_REPR_ERATING_ID))
+      val mNew = Mark(user, mark = MarkData("", None), markRef = Some(ref))
 
       c.insert(mNew).map(_ => mNew)
     }
