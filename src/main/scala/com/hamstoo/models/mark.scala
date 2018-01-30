@@ -237,6 +237,7 @@ case class Mark(
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
                  reprs: Seq[ReprInfo] = Nil,
+                 pndPrivPages: Int = 0,
                  timeFrom: Long = TIME_NOW,
                  timeThru: Long = INF_TIME,
                  modifiedBy: Option[UUID] = None,
@@ -303,15 +304,8 @@ case class Mark(
     * similar enough (according to `Representation.isDuplicate`) to an existing mark's, `this`.  So `oth` probably
     * won't have it's reprs set--unless one of them was set and the other not.
     */
-  // carefull, it's must be combined with pages merge
   def merge(oth: Mark): Mark = {
     assert(this.userId == oth.userId)
-
-    // TODO: move it to marks dao, to fully implement page merges
-//    // warning messages
-//    if (pubRepr.isDefined && oth.pubRepr.isDefined && pubRepr.get != oth.pubRepr.get) {
-//      logger.warn(s"Merging two marks, $id and ${oth.id}, with different public representations; ignoring latter")
-//    }
 
     if (reprs.nonEmpty && oth.reprs.nonEmpty && reprs != oth.reprs)
       logger.warn(s"Merging two marks, $id and ${oth.id}, with different private representations; ignoring latter")
@@ -320,22 +314,9 @@ case class Mark(
     // TODO: how do we ensure that other data (like highlights) that reference markIds are accounted for?
     copy(
       mark = mark.merge(oth.mark),
-
       aux = if (oth.aux.isDefined) aux.map(_.merge(oth.aux.get)).orElse(oth.aux) else aux,
-
-         // `page`s should all have been processed already if any private repr is defined, so only merge them if
-         // that is not the case; in which case it's very unlikely that both will be defined, but use newer one if so
-         // just in case the user wasn't logged in originally or something (but then `Representation.isDuplicate`
-         // would have returned false, so we wouldn't even be here in this awkward position)
-//      pages = if ((reprs ++ oth.reprs).nonEmpty) Nil else if (oth.pages.isEmpty) pages else oth.pages,
-
-         // it's remotely possible that these are different, which we warn about above
-//         pubRepr  = pubRepr .orElse(oth.pubRepr ),
-//         privRepr = privRepr.orElse(oth.privRepr),
-      reprs = reprs ++ oth.reprs
-
-    // intentionally skip expectedRating and userRepr; let the repr-engine generate new values for both later on
-    // given the newly merged mark    )
+      reprs = reprs ++ oth.reprs,
+      pndPrivPages = pndPrivPages + oth.pndPrivPages
     )
   }
 
@@ -443,6 +424,7 @@ object Mark extends BSONHandlers {
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
   val MERGEID: String = nameOf[Mark](_.mergeId)
   val REPRS: String = nameOf[Mark](_.reprs)
+  val PENDING_PAGES = nameOf[Mark](_.pndPrivPages)
 
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)

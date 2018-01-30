@@ -98,6 +98,28 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
+  def insertPage(page: Page): Future[Page] = {
+    logger.debug("Inserting page...")
+    for {
+      pg <- pagesDao.insertPage(page)
+      _ <- changePendingPageNumber(page.userId, page.id)
+    } yield {
+      logger.debug("Page was inserted")
+      page
+    }
+  }
+
+  def removePage(page: Page): Future[Unit] = {
+    logger.debug("Removing page")
+
+    for {
+      _ <- pagesDao.removeSinglePage(page)
+      _ <- changePendingPageNumber(page.userId, page.id, increment = false)
+    } yield {
+      logger.debug("Page was removed")
+    }
+  }
+
   /**
     * Retrieves a mark by ID, ignoring whether or not the user is authorized to view the mark, which means the
     * calling code must perform this check itself.
@@ -436,7 +458,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       c <- dbColl()
 
       // delete the newer mark and merge it into the older/pre-existing one (will return 0 if newMark not in db yet)
-      _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id), ensureDeletion = false)
+      _ <- delete(newMark.userId, Seq(newMarkId), now = now, mergeId = Some(oldMarkId), ensureDeletion = false)
 
       // merge user page
       _ <- pagesDao.mergeUserPages(newMark.userId, oldMarkId, newMarkId)
@@ -594,12 +616,31 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       c <- dbColl()
 
       // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
-      sel = d :~ curnt :~ REPRS -> (d :~ "$size" -> 0)
+      selPriv = d :~ curnt :~ PENDING_PAGES -> (d :~ "$not" -> (d :~ "$size" -> 0))
+      selPub = d :~ curnt :~ REPRS -> (d :~ "$not" -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> Representation.PUBLIC)))
+      selUser = d :~ curnt :~ REPRS -> (d :~ "$not" -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> Representation.USERS)))
 
+      sel = d :~ "$or" -> Seq(selPub, selPriv,  selUser)
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
       logger.debug(s"${seq.size} marks with missing representations were retrieved")
       seq
+    }
+  }
+
+  def changePendingPageNumber(userId: UUID, id: String, increment: Boolean = true): Future[Unit] = {
+    logger.debug("Incrementing number of pending pages")
+
+    for {
+      c <- dbColl()
+
+      sel = d :~ USR -> userId :~ ID -> id :~ curnt
+      mod = if (increment) d :~ "$inc" -> (d :~ PENDING_PAGES -> 1) else d :~ "$inc" -> (d :~ PENDING_PAGES -> -1)
+
+      ur <- c.update(sel, mod)
+      _ <- ur failIfError
+    } yield {
+      logger.debug(s"Pending page number was changed for user: $userId and mark: $id")
     }
   }
 
