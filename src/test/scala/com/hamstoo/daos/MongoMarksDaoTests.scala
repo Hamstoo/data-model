@@ -156,12 +156,8 @@ class MongoMarksDaoTests
 
   it should "(UNIT) perform MongoDB Text Index marks search by user ID, query and tags" in {
     val md1Stub = MarkData(m1.mark.subj, m1.mark.url, tags = m1.mark.tags, comment = m1.mark.comment)
-    val m1Stub = m1.copy(mark = md1Stub, aux = m1.aux.map(_.cleanRanges), score = Some(1.0))
-    marksDao.search(uuid1, cmt.get).map(_.filter(_.hasTags(tagSet.get))).futureValue shouldEqual Set(m1Stub)
-  }
-
-  it should "(UNIT) search marks by uuid, query and tags" in {
-    marksDao.search(uuid1, cmt.get, tagSet.get).futureValue.map(_.id) shouldEqual Seq(m1.id)
+    val m1Stub = m1.copy(mark = md1Stub, aux = m1.aux.map(_.cleanRanges), score = Some(1.0), reprs = Seq(msUser, msPub))
+    marksDao.search(Set(uuid1), cmt.get).map(_.filter(_.hasTags(tagSet.get))).futureValue shouldEqual Set(m1Stub)
   }
 
   it should "(UNIT) find duplicate of mark data, for user, by subject" in {
