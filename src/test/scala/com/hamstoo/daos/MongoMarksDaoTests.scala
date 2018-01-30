@@ -55,9 +55,26 @@ class MongoMarksDaoTests
   val m4 = Mark(uuid2, m3.id, MarkData("a subject4", Some("http://hamstoo.com")), timeThru = INF_TIME - 1)
 
   val page = Page(m1.userId, m1.id, Representation.PUBLIC, "asdasd".toCharArray.map(_.toByte))
+  val p = Page(m1.userId, m1.id, Representation.PUBLIC, "content".toCharArray.map(_.toByte))
 
   "MongoMarksDao" should "(UNIT) insert mark" in {
     marksDao.insert(m1).futureValue shouldEqual m1
+  }
+
+  it should "(UNIT) insert page for mark and increase 'pndPrivPages' number" in {
+    marksDao.insertPage(p).futureValue shouldEqual p
+
+    pagesDao.retrievePublicPage(m1.userId, m1.id).futureValue.value shouldEqual p
+
+    marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.pndPrivPages shouldEqual 1
+  }
+
+  it should "(UNIT) remove page for mark and increase 'pndPrivPages' number" in {
+    marksDao.removePage(p).futureValue shouldEqual {}
+
+    pagesDao.retrievePublicPage(m1.userId, m1.id).futureValue shouldEqual None
+
+    marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.pndPrivPages shouldEqual 0
   }
 
   it should "(UNIT) insert stream of mark" in {
@@ -73,7 +90,7 @@ class MongoMarksDaoTests
     noPubReprs.exists(_.id == m1.id) shouldEqual true
   }
 
-  it should "save representation info" in {
+  it should "(UNIT) save representation info" in {
     marksDao.saveReprInfo(m1.userId, m1.id, msPub).futureValue shouldEqual {}
 
     val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.reprs
@@ -84,7 +101,8 @@ class MongoMarksDaoTests
 
   it should "(UNIT) find marks with missing reprs, both current and not (update: no longer finding non-current)" in {
     val reprs = marksDao.findMissingReprs(-1).futureValue.map(_.id)
-    reprs.size shouldEqual 2
+
+    reprs.size shouldEqual 3
 
     reprs.contains(m2.id) shouldEqual true
 
@@ -92,7 +110,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) find marks with missing reprs, and be able to limit the quantity returned" in {
-    marksDao.findMissingReprs(1).futureValue.map(_.id) shouldEqual Seq(m2.id)
+    marksDao.findMissingReprs(1).futureValue.map(_.id) shouldEqual Seq(m1.id)
   }
 
   it should "(UNIT) find marks with missing expect rating" in {
