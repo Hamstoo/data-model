@@ -98,6 +98,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
+  /** Must be used only for private page */
   def insertPage(page: Page): Future[Page] = {
     logger.debug("Inserting page...")
     for {
@@ -109,6 +110,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
+  /** Must be used only for private page */
   def removePage(page: Page): Future[Unit] = {
     logger.debug("Removing page")
 
@@ -616,7 +618,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       c <- dbColl()
 
       // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
-      selPriv = d :~ curnt :~ PENDING_PAGES -> (d :~ "$not" -> (d :~ "$size" -> 0))
+      selPriv = d :~ curnt :~ PENDING_PAGES -> (d :~ "$ne" -> 0)
       selPub = d :~ curnt :~ REPRS -> (d :~ "$not" -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> Representation.PUBLIC)))
       selUser = d :~ curnt :~ REPRS -> (d :~ "$not" -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> Representation.USERS)))
 

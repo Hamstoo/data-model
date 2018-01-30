@@ -102,7 +102,7 @@ class MongoMarksDaoTests
   it should "(UNIT) find marks with missing reprs, both current and not (update: no longer finding non-current)" in {
     val reprs = marksDao.findMissingReprs(-1).futureValue.map(_.id)
 
-    reprs.size shouldEqual 3
+    reprs.size shouldEqual 2
 
     reprs.contains(m2.id) shouldEqual true
 
@@ -110,7 +110,7 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) find marks with missing reprs, and be able to limit the quantity returned" in {
-    marksDao.findMissingReprs(1).futureValue.map(_.id) shouldEqual Seq(m1.id)
+    marksDao.findMissingReprs(1).futureValue.map(_.id) shouldEqual Seq(m2.id)
   }
 
   it should "(UNIT) find marks with missing expect rating" in {
