@@ -21,7 +21,7 @@ import scala.concurrent.{ExecutionContext, Future}
   */
 abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
                                  (name: String, db: () => Future[DefaultDB])
-                                 (implicit marksDao: MongoMarksDao, ec: ExecutionContext)
+                                 (implicit marksDao: MongoMarksDao, userDao: MongoUserDao, ec: ExecutionContext)
                 extends AnnotationInfo {
 
   val logger: Logger
@@ -30,7 +30,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
 
   // indexes with names for this mongo collection (whichever one it turns out to be)
   protected val indxs: Map[String, Index] =
-    Index(USR -> Ascending :: MARKID -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1" ::
+    Index(MARKID -> Ascending :: TIMETHRU -> Ascending :: Nil) % s"bin-$MARKID-1-$TIMETHRU-1" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
     Index(USR -> Ascending :: ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) %
       s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
@@ -56,22 +56,21 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
   }
 
   /**
-    * Retrieve annotation object from mongodb collection by several parameters
-    * @param usr - unique owner identifier
-    * @param id - unique annotation identifier
-    * @return - option value with annotation object
+    * Retrieves annotations by mark ID, ignoring whether or not the user is authorized to view them, which
+    * means the calling code must perform this check itself.
+    * @param markId  Mark ID of requested annotations.
+    * @return        Empty sequence if no such annotations are found.
     */
-  /*def retrieve(usr: UUID, id: String): Future[Option[A]] = {
-    logger.debug(s"Retrieving $name $id for user $usr")
-
+  def retrieveInsecure(markId: ObjectId): Future[Seq[A]] = {
+    logger.debug(s"Retrieving (insecure) ${name + "s"} for mark $markId")
     for {
-      c <- dbColl()          // this `find` fails because the projection removes the usrId field
-      mbHl <- c.find(d :~ USR -> usr :~ ID -> id :~ curnt).projection(d :~ POS -> 1).one[A]
+      c <- dbColl()
+      seq <- c.find(d :~ MARKID -> markId :~ curnt).coll[A, Seq]()
     } yield {
-      logger.debug(s"$name: $mbHl was successfully retrieved")
-      mbHl
+      logger.debug(s"${seq.size} ${name + "s"} retrieved (insecure)")
+      seq
     }
-  }*/
+  }
 
   /**
     * Retrieve annotations from mongodb collection by several parameters
@@ -79,14 +78,15 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
     * @param markId - markId of the web page where annotation was done
     * @return - future with sequence of annotations that match condition
     */
-  def retrieve(usr: UUID, markId: String): Future[Seq[A]] = {
-    logger.debug(s"Retrieving ${name + "s"} for user $usr and mark $markId")
+  def retrieve(usr: Option[User], markId: ObjectId): Future[Seq[A]] = {
+    logger.debug(s"Retrieving ${name + "s"} for user ${usr.map(_.usernameId)} and mark $markId")
     for {
-      c <- dbColl()
-      seq <- c.find(d :~ USR -> usr :~ MARKID -> markId :~ curnt).coll[A, Seq]()
+      insecures <- retrieveInsecure(markId)
+      authorizedReads <- Future.sequence(insecures.map(_.isAuthorizedRead(usr)))
     } yield {
-      logger.debug(s"${seq.size} ${name + "s"} was successfully retrieved")
-      seq
+      val secures = insecures.view.zip(authorizedReads).filter(_._2).map(_._1).force
+      logger.debug(s"${secures.size} ${name + "s"} were retrieved")
+      secures
     }
   }
 

@@ -32,6 +32,7 @@ trait Shareable {
 
   /** Returns true if the user owns the mark. */
   def ownedBy(user: User): Boolean = user.id == userId
+  def isAuthorizedDelete(user: Option[User]): Boolean = user.exists(this.ownedBy)
 
   /**
     * For a user to be authorized, one of the following must be satisfied:
@@ -61,7 +62,7 @@ trait Shareable {
     * The owner of a mark may share it with anyone, of course, but non-owners may only re-share (via email--without
     * updating `sharedWith` in the database, of course) if it's owner has previously made it public.
     */
-  def isAuthorizedShare(user: User): Boolean = ownedBy(user) || isPublic
+  def isAuthorizedShare(user: Option[User]): Boolean = user.exists(ownedBy(_) || isPublic)
   def isPublic: Boolean = sharedWith.exists { sw =>
     import SharedWith.{PUBLIC_LEVELS, Level}
     Seq(sw.readOnly, sw.readWrite).flatten.exists(sg => PUBLIC_LEVELS.contains(Level(sg.level)))
@@ -159,8 +160,9 @@ case class ShareGroup(level: Int, group: Option[ObjectId]) {
   /** Returns true if the given user is authorized, either via (optional) user ID or email. */
   def isAuthorized(user: Option[User])(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] =
     PUBLIC_LEVELS.get(Level(level)).fold {
-      UserGroup.retrieve(group).map(_.exists(_.isAuthorized(user))) // defer to the "listed" users in the group
-    }(isAuthorized => Future.successful(isAuthorized(user)))
+      // defer to the "listed" users in the group
+      UserGroup.retrieve(group).flatMap(_.fold(Future.successful(false))(_.isAuthorized(user)))
+    }(isAuthFunc => Future.successful(isAuthFunc(user)))
 
   /**
     * Greater than (>) indicates that a ShareGroup dominates (i.e. is shared with strictly more people than)
@@ -222,8 +224,21 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
   protected def isAuthorizedEmail(email: String): Boolean = emails.exists(_.contains(email))
 
   /** Returns true if the given user is authorized, either via (optional) user ID or email. */
-  def isAuthorized(user: Option[User]): Boolean =
-    isAuthorizedUserId(user.map(_.id)) || user.exists(_.emails.exists(isAuthorizedEmail))
+  def isAuthorized(user: Option[User])(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] = {
+
+    // isAuthorizedUserId(user.map(_.id)) || user.exists(_.emails.exists(isAuthorizedEmail))
+    if (isAuthorizedUserId(user.map(_.id))) Future.successful(true) else {
+
+      // the User instance may have been constructed with User.apply from merely a UUID, in which case we need
+      // to get its emails from the db (this allows callers with a UUID to not have to perform this lookup themselves)
+      user match {
+        case None => Future.successful(false)
+        case Some(u) =>
+          if (u.emails.nonEmpty) Future.successful(u.emails.exists(isAuthorizedEmail))
+          else userDao.retrieve(u.id).map(_.fold(false)(_.emails.exists(isAuthorizedEmail)))
+      }
+    }
+  }
 }
 
 object UserGroup extends BSONHandlers {
@@ -240,8 +255,8 @@ object UserGroup extends BSONHandlers {
   case class SharedObj(id: ObjectId, ts: TimeStamp)
 
   /** Query the database for a UserGroup given its ID. */
-  def retrieve(opt: Option[ObjectId])(implicit userDao: MongoUserDao, ec: ExecutionContext):
-    Future[Option[UserGroup]] = opt.fold(Future.successful(Option.empty[UserGroup]))(userDao.retrieveGroup)
+  def retrieve(opt: Option[ObjectId])(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Option[UserGroup]] =
+    opt.fold(Future.successful(Option.empty[UserGroup]))(userDao.retrieveGroup)
 
   implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
   implicit val userGroupHandler: BSONDocumentHandler[UserGroup] = Macros.handler[UserGroup]

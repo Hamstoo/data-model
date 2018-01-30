@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Highlight, PageCoord}
+import com.hamstoo.models.{Highlight, PageCoord, User}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import org.scalatest.OptionValues
@@ -32,7 +32,7 @@ class MongoHighlightDaoTests
   }*/
 
   it should "(UNIT) retrieve highlights by markId" in {
-    hlightsDao.retrieve(h.usrId, h.markId).futureValue shouldEqual Seq(h)
+    hlightsDao.retrieve(User(h.usrId), h.markId).futureValue shouldEqual Seq(h)
   }
 
   it should "(UNIT) update highlights" in {
@@ -42,6 +42,6 @@ class MongoHighlightDaoTests
 
   it should "(UNIT) delete highlight" in {
     hlightsDao.delete(h.usrId, h.id).futureValue shouldEqual {}
-    hlightsDao.retrieve(h.usrId, h.markId).futureValue shouldEqual Nil
+    hlightsDao.retrieve(User(h.usrId), h.markId).futureValue shouldEqual Nil
   }
 }
