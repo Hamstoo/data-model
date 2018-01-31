@@ -125,7 +125,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   def removePage(page: Page): Future[Unit] = {
     logger.debug("Removing page")
     for {
-      _ <- pagesDao.removePage(page.u_id)
+      _ <- pagesDao.removePage(page.id)
       _ <- updateNumberOfPendingPrivatePages(page.userId, page.markId, increment = false)
     } yield {
       logger.debug("Page was removed")
