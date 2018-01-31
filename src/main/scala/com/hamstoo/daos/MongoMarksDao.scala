@@ -3,6 +3,9 @@ package com.hamstoo.daos
 import java.nio.file.Files
 import java.util.UUID
 
+import akka.NotUsed
+import akka.stream.Materializer
+import akka.stream.scaladsl.Source
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
@@ -343,6 +346,18 @@ class MongoMarksDao(db: () => Future[DefaultDB])(implicit userDao: MongoUserDao)
       logger.debug(s"Search retrieved ${set.size} marks")
       set.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
     }
+  }
+
+  /** Akka Stream */
+  def stream(userId: UUID)(implicit m: Materializer): Source[Mark, NotUsed] = {
+    logger.debug(s"Streaming marks of user $userId")
+
+    // TODO: issue #146, loop through all of each mark's reprs and timestamps
+    Source.fromFuture(dbColl())
+      .flatMapConcat { c =>
+        import reactivemongo.akkastream.cursorProducer
+        c.find(d :~ USR -> userId).sort(d :~ TIMEFROM -> 1).cursor[Mark]().documentSource()
+      }
   }
 
   /**

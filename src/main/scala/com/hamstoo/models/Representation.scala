@@ -177,15 +177,15 @@ object Representation extends BSONHandlers {
     // on the list to make evaluation lazy, though View construction also has its cost.
     def -(other: Vec): Vec = {
       @tailrec
-      def rec(a: Vec, b: Vec, c: Vec): Vec = if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head - b.head) +: c)
-
+      def rec(a: Vec, b: Vec, c: Vec): Vec =
+        if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head - b.head) +: c)
       rec(vec, other, Nil)
     }
 
     def +(other: Vec): Vec = {
       @tailrec
-      def rec(a: Vec, b: Vec, c: Vec): Vec = if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head + b.head) +: c)
-
+      def rec(a: Vec, b: Vec, c: Vec): Vec =
+        if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head + b.head) +: c)
       rec(vec, other, Nil)
     }
 
@@ -218,8 +218,8 @@ object Representation extends BSONHandlers {
 
     def dot(other: Vec): Double = {
       @tailrec
-      def rec(a: Vec, b: Vec, sum: Double): Double = if (a.isEmpty || b.isEmpty) sum else rec(a.tail, b.tail, sum + a.head * b.head)
-
+      def rec(a: Vec, b: Vec, sum: Double): Double =
+        if (a.isEmpty || b.isEmpty) sum else rec(a.tail, b.tail, sum + a.head * b.head)
       rec(vec, other, 0.0)
     }
 
