@@ -62,19 +62,19 @@ class MongoPagesDaoTests
 
   it should "(UNIT) remove user page" in {
     val pg = pagesDao.retrievePages(uuid, newId, ReprType.USER_CONTENT).futureValue.head
-    pagesDao.removePage(pg.u_id).futureValue shouldEqual {}
+    pagesDao.removePage(pg.id).futureValue shouldEqual {}
     pagesDao.retrievePages(uuid, newId, ReprType.USER_CONTENT).futureValue shouldEqual Nil
   }
 
   it should "(UNIT) remove public page" in {
     val pg = pagesDao.retrievePages(uuid, newId, ReprType.PUBLIC).futureValue.head
-    pagesDao.removePage(pg.u_id).futureValue shouldEqual {}
+    pagesDao.removePage(pg.id).futureValue shouldEqual {}
     pagesDao.retrievePages(uuid, newId, ReprType.PUBLIC).futureValue shouldEqual Nil
   }
 
   it should "(UNIT) remove private pages" in {
     val pg = pagesDao.retrievePages(uuid, oldId, ReprType.PRIVATE).futureValue.head
-    pagesDao.removePage(pg.u_id).futureValue shouldEqual {}
+    pagesDao.removePage(pg.id).futureValue shouldEqual {}
     pagesDao.retrievePages(uuid, oldId, ReprType.PRIVATE).futureValue shouldEqual Nil
   }
 
@@ -82,7 +82,7 @@ class MongoPagesDaoTests
     pagesDao.insertPage(privatePage).futureValue shouldEqual privatePage
     val retrieved = pagesDao.retrievePages(privatePage.userId, privatePage.markId, ReprType.PRIVATE).futureValue.head
     retrieved shouldEqual privatePage
-    pagesDao.removePage(privatePage.u_id).futureValue shouldEqual {}
+    pagesDao.removePage(privatePage.id).futureValue shouldEqual {}
     pagesDao.retrievePages(privatePage.userId, privatePage.markId, ReprType.PRIVATE).futureValue shouldEqual Nil
   }
 }

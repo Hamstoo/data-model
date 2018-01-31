@@ -22,7 +22,7 @@ case class Page(userId: UUID,
                 mimeType: String,
                 content: mutable.WrappedArray[Byte],
                 created: TimeStamp = TIME_NOW,
-                u_id: ObjectId = generateDbId(Mark.ID_LENGTH))
+                id: ObjectId = generateDbId(Mark.ID_LENGTH))
 
 object Page extends BSONHandlers {
 
@@ -32,8 +32,7 @@ object Page extends BSONHandlers {
     Page(userId, markId, reprType.toString, mimeType, content)
   }
 
-  val U_ID: String = nameOf[Page](_.u_id)
-  //val ID: String = com.hamstoo.models.Mark.ID;  assert(nameOf[Page](_.id) == ID)
+  val ID: String = com.hamstoo.models.Mark.ID;  assert(nameOf[Page](_.id) == ID)
   val USR: String = com.hamstoo.models.Mark.USR; assert(nameOf[Page](_.userId) == USR)
   val MARK_ID: String = nameOf[Page](_.markId)
   val REPR_TYPE: String = nameOf[Page](_.reprType)
