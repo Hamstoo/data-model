@@ -23,7 +23,7 @@ class MongoPasswordInfoDaoTests
   }
 
   it should "(UNIT) find auth1 info" in {
-    passDao.find(loginInfoA).futureValue.value shouldEqual passInfo
+    passDao.find(loginInfoA).futureValue.get shouldEqual passInfo
   }
 
   it should "(UNIT) remove auth1 info" in {

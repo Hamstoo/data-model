@@ -1,9 +1,11 @@
 package com.hamstoo.models
 
+import java.util.UUID
+
 import com.hamstoo.models.Representation._
 import com.hamstoo.test.FlatSpecWithMatchers
 import com.hamstoo.utils.DataInfo._
-import com.hamstoo.utils.{MediaType, TIME_NOW}
+import com.hamstoo.utils.{ObjectId, TIME_NOW}
 
 import scala.util.Random
 
@@ -16,15 +18,14 @@ class RepresentationTests extends FlatSpecWithMatchers {
   val v0: Vec = Seq(1, 2, 3)
   val v1: Vec = Seq(4, 5, 6)
   val s: Double = 2.0
-  val uuid = constructUserId()
-  val id = constructMarkId()
+  val uuid: UUID = constructUserId()
+  val id: ObjectId = constructMarkId()
 
   "Representation" should "(UNIT) be consistently hashable" in {
     val now = TIME_NOW
     def rep = Representation(
       id = "",
       link = Some("xyz"),
-      page = Some(Page(uuid, id, Representation.PUBLIC, MediaType.TEXT_HTML.toString, "".getBytes, created = now)),
       header = Some(""),
       doctext = "",
       othtext = Some(""),

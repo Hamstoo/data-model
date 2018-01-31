@@ -3,210 +3,101 @@ package com.hamstoo.daos
 import java.nio.file.Files
 import java.util.UUID
 
-import com.hamstoo.models.Mark.{ID, USR, pageFmt, _}
-import com.hamstoo.models.{Mark, Page, Representation}
+import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.models._
 import play.api.Logger
 import play.api.libs.Files.TemporaryFile
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
+import reactivemongo.api.indexes.Index
+import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson._
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.duration._
 
+/**
+  * Website page content MongoDB data access object.  These used to be stored on the Marks themselves and
+  * then moved over to the Reprs upon Representation computation, but now we just have them in their own
+  * collection with references pointing in every which direction.
+  */
 class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) {
 
   import com.hamstoo.utils._
-
+  import com.hamstoo.models.Page._
   val logger: Logger = Logger(classOf[MongoMarksDao])
 
-  val collName: String = "pages"
+  private val dbColl: () => Future[BSONCollection] = () => db().map(_.collection("pages"))
 
-  private val dbColl: () => Future[BSONCollection] = () => db().map(_ collection collName)
+  // indexes with names for this mongo collection
+  private val indxs: Map[String, Index] =
+    Index(USR -> Ascending :: MARK_ID -> Ascending :: Nil) % s"bin-$USR-1-$MARK_ID-1" ::
+    Nil toMap;
+  Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 203 seconds)
 
   /** Insert page to collection. */
-  def insertPage(page: Page): Future[Page] = {
-    logger.debug(s"Inserting page for user: ${page.userId} of mark: ${page.id}...")
-    for {
-      c <- dbColl()
-
-      wr <- c.insert(page)
-
-      _ <- wr failIfError
-    } yield {
-      logger.debug("Page was inserted.")
-      page
-    }
+  def insertPage(page: Page): Future[Page] = for {
+    c <- dbColl()
+    _ = logger.debug(s"Inserting page for user ${page.userId} and mark ${page.markId}")
+    wr <- c.insert(page)
+    _ <- wr.failIfError
+  } yield {
+    logger.debug("Page was inserted")
+    page
   }
 
-  /** Insert multiple pages to collections. */
-  def bulkInsertPages(pages: Stream[Page]): Future[Int] = {
-    logger.debug(s"Inserting stream of pages")
-
-    for {
-      c <- dbColl()
-
-      pgs = pages.map(Mark.pageFmt.write)
-
-      wr <- c.bulkInsert(pgs, ordered = false)
-
-    } yield {
-      val count = wr.totalN
-      logger.debug(s"$count pages were successfully inserted")
-      count
-    }
-  }
-
-    /** Process the file into a Page instance and add it to the Mark in the database. */
-  def insertFilePage(userId: UUID, id: String, file: TemporaryFile): Future[Page] = {
-    val page = Page(userId, id, Representation.PRIVATE, Files.readAllBytes(file))
-    insertPage(page)
-  }
+   /** Process the file into a Page instance and add it to the Mark in the database. */
+  def insertFilePage(userId: UUID, id: String, file: TemporaryFile): Future[Page] =
+    insertPage(Page(userId, id, ReprType.PRIVATE, Files.readAllBytes(file)))
 
   /** Retrieves all mark's pages. */
-  def retrieveAllPages(userId: UUID, id: String): Future[Seq[Page]] = {
-    logger.debug(s"Retrieving representations for user: $userId of mark: $id")
-
-    for {
-      c <- dbColl()
-
-      sel = d :~ USR -> userId :~ ID -> id
-
-      seq <- c.find(sel).coll[Page, Seq]()
-    } yield {
-      logger.debug(s"${seq.size} pages were retrieved for user: $userId of mark: $id")
-      seq
-    }
+  def retrieveAllPages(userId: UUID, markId: ObjectId): Future[Seq[Page]] = for {
+    c <- dbColl()
+    _ = logger.debug(s"Retrieving representations for user $userId and mark $markId")
+    sel = d :~ USR -> userId :~ MARK_ID -> markId
+    seq <- c.find(sel).coll[Page, Seq]()
+  } yield {
+    logger.debug(s"${seq.size} pages were retrieved for user $userId and mark $markId")
+    seq
   }
 
-  /** Merging mark's pages together, the main action it's to deleting new*/
-  def mergePrivatePages(userId: UUID, oldId: String, newId: String): Future[Unit] = {
-    logger.debug(s"Merging private pages for user: $userId marks: $oldId and $newId")
+  /**
+    * Merge newMarkId's private pages into those of the existing existMarkId.  Public and user-content
+    * pages need not be merged; instead, they can be calculated again for the merged mark.
+    */
+  def mergePrivatePages(existMarkId: String, userId: UUID, newMarkId: String): Future[Unit] = for {
+    c <- dbColl()
+    _ = logger.debug(s"Merging private pages for user $userId and marks: $existMarkId and $newMarkId")
+    // this next line should be consistent w/ the behavior of Mark.merge (i.e. only merge private reprs)
+    sel = d :~ USR -> userId :~ MARK_ID -> newMarkId :~ REPR_TYPE -> ReprType.PRIVATE.toString
+    mod = d :~ "$set" -> (d :~ MARK_ID -> existMarkId)
+    wr <- c.update(sel, mod, multi = true)
+    _ <- wr.failIfError
+  } yield logger.debug(s"${wr.nModified} pages were merged")
 
-    for {
-      // retrieve only private representations
-      pages <- retrievePrivatePages(userId, newId)
-
-      // map pages to old one mark
-      pgs = pages.map(_.copy(id = oldId)).toStream
-
-      // remove new one pages
-      _ <- removePrivatePage(userId, newId)
-
-      // reinsert pages with old mark id
-      _ <- bulkInsertPages(pgs)
-    } yield {
-      logger.debug(s"Private pages was merged")
-    }
+  /** Retrieves a mark's pages of a certain type. */
+  def retrievePages(userId: UUID, markId: ObjectId, reprType: ReprType.Value): Future[Seq[Page]] = for {
+    c <- dbColl()
+    _ = logger.debug(s"Retrieving $reprType representations for user $userId for mark $markId")
+    sel = d :~ USR -> userId :~ MARK_ID -> markId :~ REPR_TYPE -> reprType.toString
+    seq <- c.find(sel).coll[Page, Seq]()
+  } yield {
+    logger.debug(s"${seq.size} $reprType pages were retrieved for user $userId for mark $markId")
+    seq
   }
 
-  /** Merge public marks pages */
-  def mergePublicPages(userId: UUID, oldId: String, newId: String): Future[Unit] = {
-    logger.debug(s"Merging public pages for user: $userId of marks: $oldId and $newId")
+  /** General method to handle deletion of Pages given a unique page ID. */
+  def removePage(pageId: ObjectId): Future[Unit] = for {
+    c <- dbColl()
+    _ = logger.debug(s"Removing page $pageId")
+    wr <- c.remove(d :~ U_ID -> pageId)
+    _ <- wr.failIfError
+  } yield logger.debug(s"Page $pageId was deleted")
 
-    for {
-      // retrieve new one pub page
-      optNewPg <- retrievePublicPage(userId, newId)
-
-      // change marks id
-      updPg = optNewPg.map(_.copy(id = oldId))
-
-      // delete new one public marks
-      _ <- removePublicPage(userId, newId)
-
-      // update old one public repr by new, if exist
-      _ <- updatePublicPage(userId, oldId, updPg)
-    } yield {
-      logger.debug(s"Public pages was merged for user: $userId of marks: $oldId, $newId")
-    }
-  }
-
-  /** Merge user marks pages */
-  def mergeUserPages(userId: UUID, oldId: String, newId: String): Future[Unit] = {
-    logger.debug(s"Merging user pages for user: $userId of marks: $oldId and $newId")
-
-    for {
-      // retrieve new one pub page
-      optNewPg <- retrieveUserPage(userId, newId)
-
-      // change marks id
-      updPg = optNewPg.map(_.copy(id = oldId))
-
-      // delete new one public marks
-      _ <- removeUserPage(userId, newId)
-
-      // update old one public repr by new, if exist
-      _ <- updateUserPage(userId, oldId, updPg)
-    } yield {
-      logger.debug(s"User pages was merged for user: $userId of marks: $oldId, $newId")
-    }
-  }
-
-  /** Retrieves mark's private pages */
-  def retrievePrivatePages(userId: UUID, id: String): Future[Seq[Page]] = {
-    val reprType = Representation.PRIVATE
-
-    logger.debug(s"Retrieving $reprType representations for user: $userId of mark: $id")
-
-    for {
-      c <- dbColl()
-
-      sel = d :~ USR -> userId :~ ID -> id :~ REPR_TYPE -> reprType
-
-      seq <- c.find(sel).coll[Page, Seq]()
-    } yield {
-      logger.debug(s"${seq.size} $reprType pages were retrieved for user: $userId of mark: $id")
-      seq
-    }
-  }
-
-  /** Retrieves mark's users page */
-  def retrieveUserPage(userId: UUID, id: String): Future[Option[Page]] =
-    retrievePage(userId, id, Representation.USERS)
-
-  /** Retrieves mark's public page */
-  def retrievePublicPage(userId: UUID, id: String): Future[Option[Page]] =
-    retrievePage(userId, id, Representation.PUBLIC)
-
-  /** Retrieve mark's private page */
-  def retrievePrivatePage(userId: UUID, id: String): Future[Option[Page]] =
-    retrievePage(userId, id, Representation.PRIVATE)
-
-  /** Update marks user page */
-  def updateUserPage(userId: UUID, id: String, optPage: Option[Page]): Future[Unit] =
-    updatePage(userId, id, Representation.USERS, optPage)
-
-  /** Update marks public page */
-  def updatePublicPage(userId: UUID, id: String, optPage: Option[Page]): Future[Unit] =
-    updatePage(userId, id, Representation.PUBLIC, optPage)
-
-  /** Remove marks users page */
-  def removeUserPage(userId: UUID, id: String): Future[Unit] =
-    removePage(userId, id, Representation.USERS)
-
-  /** Remove marks public page */
-  def removePublicPage(userId: UUID, id: String): Future[Unit] =
-    removePage(userId, id, Representation.PUBLIC)
-
-  /** Remove marks private pages*/
-  def removePrivatePage(userId: UUID, id: String): Future[Unit] =
-    removePage(userId, id, Representation.PRIVATE)
-
-  /** General method to handle delete of PUBLIC or USERS pages. */
-  def removeSinglePage(page: Page): Future[Unit] = {
-    logger.debug(s"Removing ${page.reprType} page for user: ${page.userId} of mark: ${page.id}")
-
-    for {
-      c <- dbColl()
-      rr <- c.remove(page)
-      _ <- rr failIfError
-    } yield {
-      logger.debug(s"${page.reprType} page was deleted")
-    }
-  }
-
-  /**  Remove mark's all pages */
+/*
+  /** Remove mark's all pages */
   def removeAllPages(userId: UUID, id: String): Future[Unit] = {
-    logger.debug(s"Removing page for user: $userId of mark: $id")
+    logger.debug(s"Removing page for user $userId for mark $markId")
 
     for {
       c <- dbColl()
@@ -228,38 +119,31 @@ class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) 
       ur <- c.update(fkSel(userId, id, reprType), optPage.get)
       _ <- ur failIfError
     } yield {
-      logger.debug(s"$reprType page was updated for user: $userId of mark: $id")
+      logger.debug(s"$reprType page was updated for user $userId for mark $markId")
     }
   }
 
   /** General method to handle retrieving of PUBLIC or USERS pages. */
-  private def retrievePage(userId: UUID, id: String, reprType: String): Future[Option[Page]] = {
-    logger.debug(s"Retrieving $reprType representations for user: $userId of mark: $id")
-
-    for {
-      c <- dbColl()
-
-      seq <- c.find(fkSel(userId, id, reprType)).one[Page]
-    } yield {
-      logger.debug(s"${seq.size} $reprType pages were retrieved fro user: $userId of mark: $id")
-      seq
-    }
+  def retrievePage(userId: UUID, id: String, reprType: String): Future[Option[Page]] = for {
+    c <- dbColl()
+    _ = logger.debug(s"Retrieving $reprType representations for user $userId for mark $markId")
+    seq <- c.find(fkSel(userId, id, reprType)).one[Page]
+  } yield {
+    logger.debug(s"${seq.size} $reprType pages were retrieved fro user: $userId of mark: $id")
+    seq
   }
 
   /** General method to handle delete of PUBLIC or USERS pages. */
-  private def removePage(userId: UUID, id: String, reprType: String) = {
-    logger.debug(s"Removing $reprType page for user: $userId of mark: $id")
-
-    for {
-      c <- dbColl()
-      rr <- c.remove(fkSel(userId, id, reprType))
-      _ <- rr failIfError
-    } yield {
-      logger.debug(s"$reprType page was deleted")
-    }
+  def removePage(userId: UUID, id: String, repr: Either[ObjectId, ReprType.Value]) = for {
+    c <- dbColl()
+    _ = logger.debug(s"Removing $repr page for user $userId for mark $markId")
+    rr <- c.remove(fkSel(userId, id, reprType))
+    _ <- rr failIfError
+  } yield {
+    logger.debug(s"$reprType page was deleted")
   }
 
-  private def fkSel(userId: UUID, id: String, reprType: String): BSONDocument = {
+  private def fkSel(userId: UUID, id: String, repr: Either[ObjectId, ReprType.Value]): BSONDocument = {
     d :~ USR -> userId :~ ID -> id :~ REPR_TYPE -> reprType
-  }
+  }*/
 }

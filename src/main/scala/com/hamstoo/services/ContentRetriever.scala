@@ -9,7 +9,8 @@ import akka.util.ByteString
 import com.gargoylesoftware.htmlunit.html.HtmlPage
 import com.gargoylesoftware.htmlunit._
 import com.hamstoo.models.Page
-import com.hamstoo.utils.MediaType
+import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.utils.{MediaType, ObjectId}
 import play.api.libs.ws.ahc.cache.CacheableHttpResponseStatus
 import play.shaded.ahc.org.asynchttpclient.uri.Uri
 //import net.ruippeixotog.scalascraper.browser.HtmlUnitBrowser
@@ -109,13 +110,13 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
   import ContentRetriever._
 
   /** Retrieve mime type and content (e.g. HTML) given a URL. */
-  def retrieve(userId: UUID, id: String, reprType: String, url: String): Future[Page] = {
+  def retrieve(userId: UUID, markId: ObjectId, reprType: ReprType.Value, url: String): Future[Page] = {
     val mediaType = MediaType(TikaInstance.detect(url))
     logger.debug(s"Retrieving URL '$url' with MIME type '${Try(mediaType)}'")
 
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
     val futPage = digest(url).map { case(_, wsResp) =>
-      Page(userId, id, reprType, wsResp.bodyAsBytes.toArray)
+      Page(userId, markId, reprType, wsResp.bodyAsBytes.toArray)
     }
 
     // check if html, than try to load frame tags if they are found in body
@@ -139,7 +140,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     // takes Element instance as parameter and
     // sets loaded data into content of that Element instance of docJsoup val
     def loadFrame(frameElement: Element): Future[Element] = {
-      retrieve(page.userId, page.id, page.reprType, url + frameElement.attr("src")).map { page =>
+      retrieve(page.userId, page.markId, ReprType.withName(page.reprType), url + frameElement.attr("src")).map { page =>
         frameElement.html(ByteString(page.content.toArray).utf8String)
       }
     }
