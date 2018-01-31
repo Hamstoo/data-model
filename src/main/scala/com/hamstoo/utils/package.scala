@@ -96,8 +96,13 @@ package object utils {
   def endpoint2Link(endpoint: Call)(implicit request: Request[Any]): String = httpHost + endpoint
   def httpHost(implicit request: Request[Any]): String = s"http${if (request.secure) "s" else ""}://${request.host}"
 
+  /** Extended ReactiveMongo QueryBuilder */
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
-    /** Short for `.cursor` with `.collect` consecutive calls with default error handler. */
+
+    /**
+      * Short for `.cursor` with `.collect` consecutive calls with default error handler. Or maybe this is
+      * short for "collection" analogous to `GenericQueryBuilder.one`.  Either way, it works.
+      */
     def coll[E, C[_] <: Iterable[_]](n: Int = -1)
                                     (implicit r: Reader[E], cbf: CanBuildFrom[C[_], E, C[E]]): Future[C[E]] = {
 
