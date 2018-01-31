@@ -75,8 +75,8 @@ class MongoUserStatsDaoTests extends FlatSpecWithMatchers
     } yield optRes
 
     statsDao.imprt(userId, 5).futureValue shouldEqual {}
-    retrieveImportsCount.futureValue.value.imports shouldEqual 5
+    retrieveImportsCount.futureValue.get.imports shouldEqual 5
     statsDao.imprt(userId, 2).futureValue shouldEqual {}
-    retrieveImportsCount.futureValue.value.imports shouldEqual 7
+    retrieveImportsCount.futureValue.get.imports shouldEqual 7
   }
 }

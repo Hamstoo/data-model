@@ -1,9 +1,13 @@
 package com.hamstoo.services
 
+import java.util.UUID
+
 import akka.stream.ActorMaterializer
-import com.hamstoo.models.{Page, Representation}
+import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.models.Page
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
+import com.hamstoo.utils.ObjectId
 import play.api.libs.ws.ahc.AhcWSClient
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -21,9 +25,9 @@ class ContentRetrieverTests
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
   val contriever = new ContentRetriever(httpClient = AhcWSClient())
-  val uuid = constructUserId()
-  val id = constructMarkId()
-  val reprType = Representation.PUBLIC
+  val uuid: UUID = constructUserId()
+  val id: ObjectId = constructMarkId()
+  val reprType: ReprType.Value = ReprType.PUBLIC
 
   "ContentRetriever" should "(UNIT) fail on bogus URL" in {
     val bogusURL = "http://string"

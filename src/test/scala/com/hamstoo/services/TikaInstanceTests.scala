@@ -2,6 +2,7 @@ package com.hamstoo.services
 
 import java.nio.file.{Files, Path, Paths}
 
+import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.{Page, Representation}
 import com.hamstoo.test.FlatSpecWithMatchers
 
@@ -23,7 +24,7 @@ class TikaInstanceTests extends FlatSpecWithMatchers {
     val uuid = constructUserId()
     val id = constructMarkId()
 
-    val page = Page(uuid, id, Representation.PUBLIC, content)
+    val page = Page(uuid, id, ReprType.PUBLIC, content)
     page.mimeType shouldEqual "text/plain"
   }
 }

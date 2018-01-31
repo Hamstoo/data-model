@@ -2,6 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.{Page, Representation}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
@@ -23,97 +24,65 @@ class MongoPagesDaoTests
 
   val mergeContent: Array[Byte] = "Hello new public".toCharArray.map(_.toByte)
 
-  val privatePage = Page(uuid, oldId, Representation.PRIVATE, "Hello private".toCharArray.map(_.toByte))
-  val publicPage = Page(uuid, newId, Representation.PUBLIC, "Hello public".toCharArray.map(_.toByte))
-  val userPage = Page(uuid, newId, Representation.USERS, "Hello users".toCharArray.map(_.toByte))
+  val privatePage = Page(uuid, oldId, ReprType.PRIVATE, "Hello private".toCharArray.map(_.toByte))
+  val publicPage = Page(uuid, newId, ReprType.PUBLIC, "Hello public".toCharArray.map(_.toByte))
+  val userPage = Page(uuid, newId, ReprType.USER_CONTENT, "Hello users".toCharArray.map(_.toByte))
 
-  "MongoPagesDao" should "(UNIT) insert page" in {
+  "MongoPagesDao" should "(UNIT) insert pages" in {
     pagesDao.insertPage(privatePage).futureValue shouldEqual privatePage
-  }
-
-  it should "(UNIT) insert stream of pages" in {
-    pagesDao.bulkInsertPages(Seq(publicPage, userPage).toStream).futureValue shouldEqual 2
+    pagesDao.insertPage(publicPage).futureValue shouldEqual publicPage
+    pagesDao.insertPage(userPage).futureValue shouldEqual userPage
   }
 
   it should "(UNIT) retrieve public page" in {
-    pagesDao.retrievePublicPage(uuid, newId).futureValue.value shouldEqual publicPage
+    pagesDao.retrievePages(uuid, newId, ReprType.PUBLIC).futureValue.head shouldEqual publicPage
   }
 
   it should "(UNIT) retrieve user page" in {
-    pagesDao.retrieveUserPage(uuid, newId).futureValue.value shouldEqual userPage
+    pagesDao.retrievePages(uuid, newId, ReprType.USER_CONTENT).futureValue.head shouldEqual userPage
   }
 
   it should "(UNIT) retrieve private pages" in {
-    pagesDao.retrievePrivatePages(uuid, oldId).futureValue shouldEqual Seq(privatePage)
-  }
-
-  it should "(UNIT) retrieve private page" in {
-    pagesDao.retrievePrivatePage(uuid, oldId).futureValue.value shouldEqual privatePage
+    pagesDao.retrievePages(uuid, oldId, ReprType.PRIVATE).futureValue shouldEqual Seq(privatePage)
   }
 
   it should "(UNIT) retrieve all pages" in {
     pagesDao.retrieveAllPages(uuid, oldId).futureValue shouldEqual Seq(privatePage)
-
     pagesDao.retrieveAllPages(uuid, newId).futureValue shouldEqual Seq(publicPage, userPage)
   }
 
-  it should "(UNIT) merge public page" in {
-    pagesDao.insertPage(publicPage.copy(id = mergeId, content = mergeContent)).futureValue.id shouldEqual mergeId
-
-    pagesDao.mergePublicPages(uuid, newId, mergeId).futureValue shouldEqual {}
-
-    pagesDao.retrievePublicPage(uuid, mergeId).futureValue shouldEqual None
-
-    pagesDao.retrievePublicPage(uuid, newId).futureValue.value.content shouldEqual mergeContent
-  }
-
-  it should "(UNIT) merge user page" in {
-    pagesDao.insertPage(userPage.copy(id = mergeId, content = mergeContent)).futureValue.id shouldEqual mergeId
-
-    pagesDao.mergeUserPages(uuid, newId, mergeId).futureValue shouldEqual {}
-
-    pagesDao.retrieveUserPage(uuid, mergeId).futureValue shouldEqual None
-
-    pagesDao.retrieveUserPage(uuid, newId).futureValue.value.content shouldEqual mergeContent
-  }
-
   it should "(UNIT) merge private pages" in {
-    pagesDao.insertPage(privatePage.copy(id =  mergeId, content = mergeContent)).futureValue.id shouldEqual mergeId
-
-    pagesDao.mergePrivatePages(uuid, oldId, mergeId).futureValue shouldEqual {}
-
-    pagesDao.retrievePrivatePages(uuid, mergeId).futureValue shouldEqual Nil
-
-    val privRepr = pagesDao.retrievePrivatePages(uuid, oldId).futureValue.map(_.id)
-
+    val mergePage = privatePage.copy(markId =  mergeId, content = mergeContent)
+    pagesDao.insertPage(mergePage).futureValue.markId shouldEqual mergeId
+    pagesDao.mergePrivatePages(oldId, uuid, mergeId).futureValue shouldEqual {}
+    pagesDao.retrievePages(uuid, mergeId, ReprType.PRIVATE).futureValue shouldEqual Nil
+    val privRepr = pagesDao.retrievePages(uuid, oldId, ReprType.PRIVATE).futureValue.map(_.markId)
     privRepr.size shouldEqual 2
   }
 
   it should "(UNIT) remove user page" in {
-    pagesDao.removeUserPage(uuid, newId).futureValue shouldEqual {}
-
-    pagesDao.retrieveUserPage(uuid, newId).futureValue shouldEqual None
+    val pg = pagesDao.retrievePages(uuid, newId, ReprType.USER_CONTENT).futureValue.head
+    pagesDao.removePage(pg.u_id).futureValue shouldEqual {}
+    pagesDao.retrievePages(uuid, newId, ReprType.USER_CONTENT).futureValue shouldEqual Nil
   }
 
   it should "(UNIT) remove public page" in {
-    pagesDao.removePublicPage(uuid, newId).futureValue shouldEqual {}
-
-    pagesDao.retrievePublicPage(uuid, newId).futureValue shouldEqual None
+    val pg = pagesDao.retrievePages(uuid, newId, ReprType.PUBLIC).futureValue.head
+    pagesDao.removePage(pg.u_id).futureValue shouldEqual {}
+    pagesDao.retrievePages(uuid, newId, ReprType.PUBLIC).futureValue shouldEqual Nil
   }
 
   it should "(UNIT) remove private pages" in {
-    pagesDao.removePrivatePage(uuid, oldId).futureValue shouldEqual {}
-
-    pagesDao.retrievePrivatePages(uuid, oldId).futureValue shouldEqual Nil
+    val pg = pagesDao.retrievePages(uuid, oldId, ReprType.PRIVATE).futureValue.head
+    pagesDao.removePage(pg.u_id).futureValue shouldEqual {}
+    pagesDao.retrievePages(uuid, oldId, ReprType.PRIVATE).futureValue shouldEqual Nil
   }
 
   it should "(UNIT) remove single page" in {
     pagesDao.insertPage(privatePage).futureValue shouldEqual privatePage
-
-    pagesDao.retrievePrivatePage(privatePage.userId, privatePage.id).futureValue.value shouldEqual privatePage
-
-    pagesDao.removeSinglePage(privatePage).futureValue shouldEqual {}
-
-    pagesDao.retrievePrivatePage(privatePage.userId, privatePage.id).futureValue shouldEqual None
+    val retrieved = pagesDao.retrievePages(privatePage.userId, privatePage.markId, ReprType.PRIVATE).futureValue.head
+    retrieved shouldEqual privatePage
+    pagesDao.removePage(privatePage.u_id).futureValue shouldEqual {}
+    pagesDao.retrievePages(privatePage.userId, privatePage.markId, ReprType.PRIVATE).futureValue shouldEqual Nil
   }
 }

@@ -27,7 +27,7 @@ class MongoUserTokenDaoTests
   }
 
   it should "retrieve user token" in {
-    tokenDao.retrieve(token.id).futureValue.value shouldEqual token
+    tokenDao.retrieve(token.id).futureValue.get shouldEqual token
   }
 
   it should "remove user token" in {

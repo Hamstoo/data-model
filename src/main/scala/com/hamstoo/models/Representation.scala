@@ -1,13 +1,17 @@
 package com.hamstoo.models
 
+import java.util.UUID
+
 import com.github.dwickern.macros.NameOf._
+import com.hamstoo.daos.MongoMarksDao
 import com.hamstoo.models.Representation.VecEnum
-import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, generateDbId}
 import org.apache.commons.text.similarity.LevenshteinDistance
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
   * A ReprEngineProduct is something that is computed by the repr-engine.  Though perhaps all of our
@@ -100,15 +104,9 @@ object RSearchable {
   * representations of URLs.  The scraping and parsing are performed by an
   * instance of a RepresentationFactory.
   *
-  * This class used to have a `users` parameter (removed 2017-9-12) described as "User UUIDs from whom webpage
-  * source was received."  There doesn't seem to be any need for this, however, as it can be computed from marks
-  * that point to a repr with their `privRepr`.  Indeed, `users` may have predated the implementation of `privRepr`
-  * and `pubRepr` anyway.
-  *
   * @param id         Unique alphanumeric ID.
   * @param link       URL link used to generate this Representation.
   * @param lprefx     Binary URL prefix for indexing by mongodb. Gets overwritten by class init.
-  * @param page       Webpage source string provided by browser extension or retrieved with http request.
   * @param header     Title and `h1` headers concatenated.
   * @param doctext    Document text.
   * @param othtext    Other text not included in document text.
@@ -124,7 +122,11 @@ case class Representation(
                            override val id: String = generateDbId(Representation.ID_LENGTH),
                            link: Option[String],
                            var lprefx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
-                           page: Option[Page],
+
+     // TODO: FWC: per discussed design `page` should no longer be part of a Representation
+     //page: Option[Page],
+
+
                            override val header: Option[String],
                            override val doctext: String,
                            othtext: Option[String],
@@ -156,6 +158,8 @@ case class Representation(
     * case classes has to be copy and pasted here.  More at the following link:
     * https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
     * And an explanation here: https://stackoverflow.com/a/44708937/2030627
+    * TODO: why is this necessary?  it would be better to implement something like equalsIgnoreScore similar to
+    * TODO: Mark.equalsIgnoreTimeStamps
     */
   override def hashCode: Int = this.score match {
     case None => scala.runtime.ScalaRunTime._hashCode(this)
@@ -262,15 +266,43 @@ object Representation extends BSONHandlers {
       = Value
   }
 
-  final val PRIVATE = "Private"
-  final val USERS = "Users"
-  final val PUBLIC = "Public"
+  /** Representation type enumeration. */
+  object ReprType extends Enumeration {
+
+    // URL page content fetched from repr-engine/ContentRetriever when user enters a URL mark from Add page
+    // of the website.  If user attempts to mark a page that requires a login, repr-engine will not have access
+    // to the user's login information and so whatever content is fetched will be necessarily "public".
+    val PUBLIC,
+
+    // URL page content fetched from browser extension when user clicks our bookmark star icon on browser
+    // toolbar.  User could be privately logged into a site when performing this action, which is why we label
+    // this content "private."
+        PRIVATE,
+
+    // Content obtained from user's mark including user's comments/highlights/notes/etc.
+        USER_CONTENT = Value
+  }
+
+  // make it implicit
+  implicit def reprType2String(reprType: ReprType.Value): String = reprType.toString
+
+  /** Implicit class for converting an Either[ObjectId, ReprType.Value] into a Future[ObjectId]. */
+  implicit class ExtendedEitherRepr(private val repr: Either[ObjectId, ReprType.Value]) /*extends AnyVal*/ {
+
+    def toReprId(mark: Mark)(implicit marksDao: MongoMarksDao, ex: ExecutionContext): Future[ObjectId] = {
+      repr.fold(
+        rid => Future.successful(rid),
+        rtyp => marksDao.retrieve(User(mark.userId), mark.id, timeFrom = Some(mark.timeFrom)).map { mbMark =>
+          mbMark.flatMap(_.reprs.find(_.reprType == rtyp.toString)).map(_.reprId).getOrElse("")
+        }
+      )
+    }
+  }
 
   val ID_LENGTH: Int = 12
 
   val LNK: String = nameOf[Representation](_.link)
   val LPREFX: String = nameOf[Representation](_.lprefx)
-  val PAGE: String = nameOf[Representation](_.page)
   val HEADR: String = nameOf[Representation](_.header)
   val DTXT: String = nameOf[Representation](_.doctext)
   val OTXT: String = nameOf[Representation](_.othtext)
@@ -278,6 +310,7 @@ object Representation extends BSONHandlers {
   val N_WORDS: String = nameOf[Representation](_.nWords)
   val VECS: String = nameOf[Representation](_.vectors)
   assert(nameOf[Representation](_.score) == com.hamstoo.models.Mark.SCORE)
+
   implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val reprHandler: BSONDocumentHandler[Representation] = Macros.handler[Representation]
   implicit val rsearchBsonHandler: BSONDocumentHandler[RSearchable] = Macros.handler[RSearchable]

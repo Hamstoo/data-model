@@ -2,6 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models._
 import com.hamstoo.utils._
 import play.api.Logger
@@ -36,7 +37,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
       s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
     Nil toMap
 
-  // TODO: Test me
+  // TODO: FWC: Test me
   /**
     * Insert annotation instance into mongodb collection
     * @param annotation - object that must be inserted
@@ -48,9 +49,10 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
       c <- dbColl()
       wr <- c.insert(annotation)
       _ <- wr.failIfError
-      _ <- marksDao.unsetUserRepr(annotation.usrId, annotation.markId)
+      mbMark <- marksDao.retrieve(User(annotation.usrId), annotation.markId)
+      _ <- mbMark.fold(Future.unit)(marksDao.unsetRepr(_, Right(ReprType.USER_CONTENT)))
     } yield {
-      logger.debug(s"$name: ${annotation.id} was successfully inserted")
+      logger.debug(s"$name ${annotation.id} was successfully inserted")
       annotation
     }
   }
@@ -90,7 +92,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
     }
   }
 
-  // TODO: Test me
+  // TODO: FWC: Test me
   /**
     * Delete annotation object from mongodb collection by several parameters
     * @param usr - unique owner identifier
@@ -104,7 +106,8 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
       wr <- c.findAndUpdate(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> TIME_NOW))
       annotation <- wr.result[A].map(Future.successful).getOrElse(
         Future.failed(new Exception(s"MongoAnnotationDao.delete: unable to find $name $id")))
-      _ <- marksDao.unsetUserRepr(annotation.usrId, annotation.markId)
+      mbMark <- marksDao.retrieve(User(annotation.usrId), annotation.markId)
+      _ <- mbMark.fold(Future.unit)(marksDao.unsetRepr(_, Right(ReprType.USER_CONTENT)))
     } yield logger.debug(s"$name was successfully deleted")
   }
 

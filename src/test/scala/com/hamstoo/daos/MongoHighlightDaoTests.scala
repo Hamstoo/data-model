@@ -28,7 +28,7 @@ class MongoHighlightDaoTests
   }
 
   /*it should "(UNIT) retrieve highlights by id" in {
-    hlightsDao.retrieve(h.usrId, h.id).futureValue.value shouldEqual h
+    hlightsDao.retrieve(h.usrId, h.id).futureValue.get shouldEqual h
   }*/
 
   it should "(UNIT) retrieve highlights by markId" in {

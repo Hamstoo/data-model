@@ -2,6 +2,7 @@ package com.hamstoo.utils
 
 import java.util.UUID
 
+import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.{Mark, MarkData, ReprInfo, _}
 import com.mohiva.play.silhouette.api.LoginInfo
 
@@ -23,13 +24,14 @@ object DataInfo {
   // "val" to distinguish it from `def userId` (which has now been changed to `def constructUserId()`)
   val valUserId: UUID = constructUserId()
 
-  val msA = ReprInfo("aStateId", "aReprId", None, TIME_NOW)
-  val msB = ReprInfo("bStateId", "bReprId", None, TIME_NOW)
+  val reprInfoA = ReprInfo("aReprId", ReprType.PUBLIC, None, TIME_NOW)
+  val reprInfoPrivB = ReprInfo("bPrivReprId", ReprType.PRIVATE, None, TIME_NOW)
+  val reprInfoPubB = ReprInfo("bPubReprId", ReprType.PUBLIC, None, TIME_NOW)
 
   val mdA = MarkData("a subject", Some("http://a.com"), Some(3.0), Some(Set("atag")), Some("a comment"))
   val mdB = MarkData("b subject", Some("http://b.com"), Some(4.0), Some(Set("btag")), Some("b comment"))
-  val mA = Mark(valUserId, mark = mdA, /*pubRepr = Some("aPubRepr"),*/ reprs = Seq(msA))
-  val mB = Mark(valUserId, mark = mdB, /*pubRepr = Some("bPubRepr"),*/ reprs = Seq(msB))
+  val mA = Mark(valUserId, mark = mdA, reprs = Seq(reprInfoA))
+  val mB = Mark(valUserId, mark = mdB, reprs = Seq(reprInfoPrivB, reprInfoPubB))
 
   val loginInfoA = LoginInfo("GProviderBookMailFace", "some_provider_key_A")
   val loginInfoB = LoginInfo("GProviderBookMailFace", "some_provider_key_B")
