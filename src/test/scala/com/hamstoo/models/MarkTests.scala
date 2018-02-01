@@ -154,7 +154,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
   }
 
   it should "(UNIT) corrctly retrieve marks info" in {
-    val unrated = ReprInfo("someid", ReprType.PRIVATE, None, TIME_NOW)
+    val unrated = ReprInfo("someid", ReprType.PRIVATE, TIME_NOW)
     val rated = unrated.copy(reprId = "someId1", expRating = Some("rat"))
     val m = Mark(constructUserId(), mark = mdA, reprs = Seq(unrated))
     val mRated = m.copy(reprs = Seq(rated))

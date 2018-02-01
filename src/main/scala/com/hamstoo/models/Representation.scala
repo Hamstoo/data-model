@@ -122,11 +122,6 @@ case class Representation(
                            override val id: String = generateDbId(Representation.ID_LENGTH),
                            link: Option[String],
                            var lprefx: Option[mutable.WrappedArray[Byte]] = None, // using hashable WrappedArray here
-
-     // TODO: FWC: per discussed design `page` should no longer be part of a Representation
-     //page: Option[Page],
-
-
                            override val header: Option[String],
                            override val doctext: String,
                            othtext: Option[String],

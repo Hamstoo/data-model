@@ -21,10 +21,7 @@ class TikaInstanceTests extends FlatSpecWithMatchers {
 
   it should "(UNIT) detect MIME types via Page.apply" in {
     import com.hamstoo.utils.DataInfo._
-    val uuid = constructUserId()
-    val id = constructMarkId()
-
-    val page = Page(uuid, id, ReprType.PUBLIC, content)
+    val page = Page(constructMarkId(), ReprType.PUBLIC, content)
     page.mimeType shouldEqual "text/plain"
   }
 }

@@ -21,7 +21,8 @@ import scala.concurrent.duration._
   * then moved over to the Reprs upon Representation computation, but now we just have them in their own
   * collection with references pointing in every which direction.
   */
-class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) {
+class MongoPagesDao(db: () => Future[DefaultDB])
+                   (implicit marksDao: MongoMarksDao, ex: ExecutionContext) {
 
   import com.hamstoo.utils._
   import com.hamstoo.models.Page._
@@ -31,35 +32,37 @@ class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) 
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
-    Index(USR -> Ascending :: MARK_ID -> Ascending :: Nil) % s"bin-$USR-1-$MARK_ID-1" ::
+    Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
     Nil toMap;
   Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 203 seconds)
 
   /** Insert page to collection. */
   def insertPage(page: Page): Future[Page] = for {
     c <- dbColl()
-    _ = logger.debug(s"Inserting page for user ${page.userId} and mark ${page.markId}")
+    _ = logger.debug(s"Inserting page for mark ${page.markId}")
     wr <- c.insert(page)
     _ <- wr.failIfError
+    _ <- if (ReprType.withName(page.reprType) != ReprType.PRIVATE) Future.unit
+         else marksDao.unsetPagePending(page.markId)
+  } yield {
+    logger.debug("Page inserted")
+    page
+  }
+
+  def updateRepr(page: Page, reprId: ObjectId): Future[Page] = for {
+    c <- dbColl()
+    _ = logger.debug(s"Updating page ${page.id} with repr ID '$reprId'")
+    wr <- c.update(d :~ ID -> page.id, d :~ "$set" -> (d :~ REPR_ID -> reprId))
+    _ <- wr.failIfError
+    _ <- marksDao.insertReprInfo(page.markId, ReprInfo(reprId, page.reprType))
   } yield {
     logger.debug("Page was inserted")
     page
   }
 
    /** Process the file into a Page instance and add it to the Mark in the database. */
-  def insertFilePage(userId: UUID, id: String, file: TemporaryFile): Future[Page] =
-    insertPage(Page(userId, id, ReprType.PRIVATE, Files.readAllBytes(file)))
-
-  /** Retrieves all mark's pages. */
-  def retrieveAllPages(userId: UUID, markId: ObjectId): Future[Seq[Page]] = for {
-    c <- dbColl()
-    _ = logger.debug(s"Retrieving representations for user $userId and mark $markId")
-    sel = d :~ USR -> userId :~ MARK_ID -> markId
-    seq <- c.find(sel).coll[Page, Seq]()
-  } yield {
-    logger.debug(s"${seq.size} pages were retrieved for user $userId and mark $markId")
-    seq
-  }
+  def insertFilePage(userId: UUID, markId: String, file: TemporaryFile): Future[Page] =
+    insertPage(Page(markId, ReprType.PRIVATE, Files.readAllBytes(file)))
 
   /**
     * Merge newMarkId's private pages into those of the existing existingMarkId.  Public and user-content
@@ -69,28 +72,33 @@ class MongoPagesDao(db: () => Future[DefaultDB])(implicit ex: ExecutionContext) 
     c <- dbColl()
     _ = logger.debug(s"Merging private pages for user $userId and marks: $existingMarkId and $newMarkId")
     // this next line should be consistent w/ the behavior of Mark.merge (i.e. only merge private reprs)
-    sel = d :~ USR -> userId :~ MARK_ID -> newMarkId :~ REPR_TYPE -> ReprType.PRIVATE.toString
+    sel = d :~ MARK_ID -> newMarkId :~ REPR_TYPE -> ReprType.PRIVATE.toString
     mod = d :~ "$set" -> (d :~ MARK_ID -> existingMarkId)
     wr <- c.update(sel, mod, multi = true)
     _ <- wr.failIfError
   } yield logger.debug(s"${wr.nModified} pages were merged")
 
   /** Retrieves a mark's pages of a certain type. */
-  def retrievePages(userId: UUID, markId: ObjectId, reprType: ReprType.Value): Future[Seq[Page]] = for {
+  // TODO: FWC: is this method really necessary?
+  def retrievePages(markId: ObjectId, reprType: ReprType.Value): Future[Seq[Page]] = for {
     c <- dbColl()
-    _ = logger.debug(s"Retrieving $reprType representations for user $userId for mark $markId")
-    sel = d :~ USR -> userId :~ MARK_ID -> markId :~ REPR_TYPE -> reprType.toString
+    _ = logger.debug(s"Retrieving $reprType representations for mark $markId")
+    sel = d :~ MARK_ID -> markId :~ REPR_TYPE -> reprType.toString
     seq <- c.find(sel).coll[Page, Seq]()
   } yield {
-    logger.debug(s"${seq.size} $reprType pages were retrieved for user $userId for mark $markId")
+    logger.debug(s"${seq.size} $reprType pages were retrieved for mark $markId")
     seq
   }
 
-  /** General method to handle deletion of Pages given a unique page ID. */
-  def removePage(pageId: ObjectId): Future[Unit] = for {
-    c <- dbColl()
-    _ = logger.debug(s"Removing page $pageId")
-    wr <- c.remove(d :~ ID -> pageId)
-    _ <- wr.failIfError
-  } yield logger.debug(s"Page $pageId was deleted")
+  /** Retrieves a list of n Pages that require representations. */
+  def findMissingReprPages(n: Int): Future[Seq[Page]] = {
+    logger.debug("Finding pages with missing representations")
+    for {
+      c <- dbColl()
+      seq <- c.find(d :~ REPR_ID -> (d :~ "$exists" -> false)).coll[Page, Seq](n)
+    } yield {
+      logger.debug(s"${seq.size} pages with missing representations were retrieved")
+      seq
+    }
+  }
 }

@@ -15,15 +15,14 @@ import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
   */
 class MongoMarksDao(db: () => Future[DefaultDB])
-                   (implicit userDao: MongoUserDao, pagesDao: MongoPagesDao) {
+                   (implicit userDao: MongoUserDao, ex: ExecutionContext) {
 
   import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MongoMarksDao])
@@ -106,29 +105,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       val count = wr.totalN - wr.writeErrors.size
       logger.debug(s"$count marks were successfully inserted")
       count
-    }
-  }
-
-  /** Must be used only for private page.  Or perhaps not now that Page has a unique ID? */
-  def insertPage(page: Page): Future[Page] = {
-    logger.debug("Inserting page...")
-    for {
-      pg <- pagesDao.insertPage(page)
-      _ <- updateNumberOfPendingPrivatePages(page.userId, page.markId)
-    } yield {
-      logger.debug("Page was inserted")
-      page
-    }
-  }
-
-  /** Must be used only for private page.  Or perhaps not now that Page has a unique ID? */
-  def removePage(page: Page): Future[Unit] = {
-    logger.debug("Removing page")
-    for {
-      _ <- pagesDao.removePage(page.id)
-      _ <- updateNumberOfPendingPrivatePages(page.userId, page.markId, increment = false)
-    } yield {
-      logger.debug("Page was removed")
     }
   }
 
@@ -412,7 +388,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
         (m, updateRef)
     }
 
-    now: Long = TIME_NOW
+    now: TimeStamp = TIME_NOW
 
     // if updateRef is true then just update a mark with a MarkRef, o/w update the actual mark (with the MarkData)
     m <- if (updateRef) updateMarkRef(user.get.id, mOld, mdata) else {
@@ -588,10 +564,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       // delete the newer mark and merge it into the older/pre-existing one (will return 0 if newMark not in db yet)
       _ <- delete(newMark.userId, Seq(newMark.id), now = now, mergeId = Some(oldMark.id), ensureDeletion = false)
 
-      // merge private pages
-      // TODO: FWC: where do annotations get merged and why don't pages get merged in the same place?
-      _ <- pagesDao.mergePrivatePages(oldMark.id, newMark.userId, newMark.id)
-
       mergedMk = oldMark.merge(newMark).copy(timeFrom = now, timeThru = INF_TIME).removeStaleReprs(oldMark)
 
       // don't do anything if there wasn't a meaningful change to the old mark
@@ -609,6 +581,26 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       logger.debug(s"Marks $oldMark.id and $newMark.id were successfully merged")
       mergedMk
     }
+  }
+
+  /** Adds web page source to a mark--for "private" reprs of marks saved from the Chrome Extension. */
+  def unsetPagePending(id: ObjectId/*, ensureNoPrivRepr: Boolean = true*/): Future[Unit] = for {
+    c <- dbColl()
+    sel = d :~ ID -> id :~ curnt
+    //sel1 = if (ensureNoPrivRepr) sel0 :~ PRVREPR -> (d :~ "$exists" -> false) else sel0 // TODO: FWC: ensureNoPrivRepr
+    wr <- c.findAndUpdate(sel, d :~ "$unset" -> (d :~ PGPENDx -> 1))
+
+    _ <- if (wr.lastError.exists(_.n == 1)) Future.unit else {
+      val msg = s"Unable to findAndUpdate mark $id's page pending; wr.lastError = ${wr.lastError.get}"
+      logger.error(msg)
+      Future.failed(new NoSuchElementException(msg))
+    }
+  } yield {
+    val m = wr.result[Mark].get
+    // this log message can eventually be removed as it's now okay to have more than one private repr
+    m.privRepr.foreach(reprId =>
+      logger.info(s"Added page source for mark ${m.id} (${m.timeFrom}) that already has a private repr $reprId"))
+    ()
   }
 
   /**
@@ -726,53 +718,16 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   }
 
   /**
-    * Retrieves a list of n marks that require representations. Intentionally not filtering for `curnt` marks.
-    *
-    * The following MongoDB shell command should show that this query is using two indexes via an "OR" inputStage.
-//    *   db.entries.find({$or:[{timeThru:NumberLong("9223372036854775807"), pubRepr:{$exists:0}},
-//    *                         {timeThru:NumberLong("9223372036854775807"), privRepr:{$exists:0}, page:{$exists:1}}]}).explain()
+    * If a mark doesn't have a user-content Page then maybe the ContentRetriever (or whatever the equivalent
+    * is for generating user-content) can generate it one.
     */
-  def findMissingReprs(n: Int): Future[Seq[Mark]] = {
-    logger.debug("Finding marks with missing representations")
+  def findMissingSingletonReprMarks(n: Int, reprType: ReprType.Value): Future[Seq[Mark]] = {
+    logger.debug(s"Finding marks with missing $reprType representations")
     for {
       c <- dbColl()
-
-      // `curnt` must be part of selPub & selPriv, rather than appearing once outside the $or, to utilize the indexes
-      // TODO: FWC: need indexes for these (or defer to issue #260)?
-      selPriv = d :~ curnt :~ N_PEND_PRIV_PAGES -> (d :~ "$ne" -> 0)
-      selPub = d :~ curnt :~ REPRS -> (d :~ "$not" -> reprTypeElemMatch(ReprType.PUBLIC))
-      selUser = d :~ curnt :~ REPRS -> (d :~ "$not" -> reprTypeElemMatch(ReprType.USER_CONTENT))
-
-      sel = d :~ "$or" -> Seq(selPub, selPriv,  selUser)
-      seq <- c.find(sel).coll[Mark, Seq](n)
-    } yield {
-      logger.debug(s"${seq.size} marks with missing representations were retrieved")
-      seq
-    }
-  }
-
-  private def reprTypeElemMatch(reprType: ReprType.Value): BSONDocument =
-    d :~ "$elemMatch" -> (d :~ REPR_TYPE -> reprType.toString)
-
-  /** Change the number of private pages in need of representations. */
-  def updateNumberOfPendingPrivatePages(userId: UUID, id: String, increment: Boolean = true): Future[Unit] = {
-    logger.debug("Incrementing number of pending pages")
-    for {
-      c <- dbColl()
-      sel = d :~ USR -> userId :~ ID -> id :~ curnt
-      mod = d :~ "$inc" -> (d :~ N_PEND_PRIV_PAGES -> (if (increment) 1 else -1))
-      ur <- c.update(sel, mod)
-      _ <- ur.failIfError
-    } yield {
-      logger.debug(s"Pending page number was changed for user $userId and mark $id")
-    }
-  }
-
-  def findMissingPublicReprs(n: Int): Future[Seq[Mark]] = {
-    logger.debug("Finding marks with missing public representations")
-    for {
-      c <- dbColl()
-      sel = d :~ curnt :~ REPRS -> (d :~ "$not" -> reprTypeElemMatch(ReprType.PUBLIC))
+      sel = d :~ curnt :~
+                 REPRS -> (d :~ "$not" -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> reprType.toString))) :~
+                 PGPENDx -> (d :~ "$ne" -> true) // https://stackoverflow.com/questions/22290538/select-mongodb-documents-where-a-field-either-does-not-exist-is-null-or-is-fal
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
       logger.debug(s"${seq.size} marks with missing public representations were retrieved")
@@ -791,7 +746,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     logger.debug("Finding marks with missing expected ratings")
     for {
       c <- dbColl()
-      // TODO: FWC: why do we need to test {reprs:{$not:{$size:0}}} here?
+      // TODO: FWC: do we need to use EXP_RATINGxp here?
       sel = d :~ curnt :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0)) :~ EXP_RATINGx -> (d :~ "$exists" -> false)
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
@@ -802,15 +757,16 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
   /** Save a ReprInfo to a mark's `reprs` list. */
   // TODO: FWC: how do we ensure that the singleton ReprInfo types (PUBLIC and USER_CONTENT) remain singletons?
-  def saveReprInfo(m: Mark, reprInfo: ReprInfo): Future[Unit] = {
-    logger.debug(s"Saving ReprInfo for user ${m.userId} and mark ${m.id}")
+  def insertReprInfo(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = {
+    logger.debug(s"Saving $reprInfo for user mark $markId")
     for {
       c <- dbColl()
-      sel = d :~ USR -> m.userId :~ ID -> m.id :~ TIMEFROM -> m.timeFrom
-      ur <- c.update(sel, d :~ "$push" -> (d :~ REPRS -> reprInfo))
-      _ <- ur.failIfError
+      sel = d :~ ID -> markId
+      wr <- c.update(sel, d :~ "$push" -> (d :~ REPRS -> reprInfo))
+      _ <- wr.failIfError
+      // TODO: FWC: should we unset pagePending here also, just in case MongoPagesDao.insertPage didn't do it properly
     } yield {
-      logger.debug(s"ReprInfo inserted for user ${m.userId} and mark ${m.id}")
+      logger.debug(s"$reprInfo inserted for mark $markId")
     }
   }
 
