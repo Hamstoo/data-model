@@ -3,7 +3,7 @@ package com.hamstoo.services
 import java.nio.file.{Files, Path, Paths}
 
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.models.{Page, Representation}
+import com.hamstoo.models.Page
 import com.hamstoo.test.FlatSpecWithMatchers
 
 /**

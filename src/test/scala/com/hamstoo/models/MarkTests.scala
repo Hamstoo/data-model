@@ -2,7 +2,6 @@ package com.hamstoo.models
 
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.test.FlatSpecWithMatchers
-import com.hamstoo.utils.TIME_NOW
 import org.apache.commons.text.StringEscapeUtils
 import org.scalatest.OptionValues
 
@@ -140,7 +139,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
       merged.mark.rating shouldEqual mdB.rating // B!
       merged.mark.tags.get shouldEqual (mdA.tags.get ++ mdB.tags.get)
       merged.mark.comment.get shouldEqual (mdA.comment.get + "\n\n---\n\n" + mdB.comment.get)
-//      merged.pubRepr shouldEqual mA.pubRepr
+      merged.pubRepr shouldEqual mA.pubRepr
       merged.reprs shouldEqual mA.reprs :+ reprInfoPrivB
     }
 
@@ -154,7 +153,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
   }
 
   it should "(UNIT) corrctly retrieve marks info" in {
-    val unrated = ReprInfo("someid", ReprType.PRIVATE, TIME_NOW)
+    val unrated = ReprInfo("someid", ReprType.PRIVATE)
     val rated = unrated.copy(reprId = "someId1", expRating = Some("rat"))
     val m = Mark(constructUserId(), mark = mdA, reprs = Seq(unrated))
     val mRated = m.copy(reprs = Seq(rated))

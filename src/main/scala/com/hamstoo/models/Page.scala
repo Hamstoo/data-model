@@ -37,5 +37,5 @@ object Page extends BSONHandlers {
   val MARK_ID: String = nameOf[Page](_.markId)
   val REPR_TYPE: String = nameOf[Page](_.reprType)
   val REPR_ID: String = nameOf[Page](_.reprId)
-  implicit val pageFmt: BSONDocumentHandler[Page] = Macros.handler[Page]
+  implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
 }

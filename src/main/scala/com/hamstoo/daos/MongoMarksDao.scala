@@ -584,10 +584,10 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   }
 
   /** Adds web page source to a mark--for "private" reprs of marks saved from the Chrome Extension. */
-  def unsetPagePending(id: ObjectId/*, ensureNoPrivRepr: Boolean = true*/): Future[Unit] = for {
+  def unsetPagePending(id: ObjectId): Future[Unit] = for {
     c <- dbColl()
+    _ = logger.debug(s"Unsetting page pending for current mark $id")
     sel = d :~ ID -> id :~ curnt
-    //sel1 = if (ensureNoPrivRepr) sel0 :~ PRVREPR -> (d :~ "$exists" -> false) else sel0 // TODO: FWC: ensureNoPrivRepr
     wr <- c.findAndUpdate(sel, d :~ "$unset" -> (d :~ PGPENDx -> 1))
 
     _ <- if (wr.lastError.exists(_.n == 1)) Future.unit else {
@@ -761,10 +761,12 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     logger.debug(s"Saving $reprInfo for user mark $markId")
     for {
       c <- dbColl()
-      sel = d :~ ID -> markId
-      wr <- c.update(sel, d :~ "$push" -> (d :~ REPRS -> reprInfo))
+      sel = d :~ ID -> markId :~ curnt
+      updPush = d :~ "$push" -> (d :~ REPRS -> reprInfo)
+      // unset pagePending here also, just in case MongoPagesDao.insertPage missed it for some reason
+      updPgPend = if (reprInfo.isPrivate) d :~ "$unset" -> (d :~ PGPENDx -> 1) else d
+      wr <- c.update(sel, updPush :~ updPgPend)
       _ <- wr.failIfError
-      // TODO: FWC: should we unset pagePending here also, just in case MongoPagesDao.insertPage didn't do it properly
     } yield {
       logger.debug(s"$reprInfo inserted for mark $markId")
     }

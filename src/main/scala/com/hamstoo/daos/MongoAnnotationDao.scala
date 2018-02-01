@@ -16,13 +16,17 @@ import scala.concurrent.{ExecutionContext, Future}
 
 /**
   * This class defines base MongoDB related functionality for classes that extend the Annotation trait.
-  * @param name name of object like 'highlight' or 'inline note' for logging purpose only
-  * @param ec   execution context
+  * @param name name of annotation object like 'highlight' or 'inline note' for logging purpose only
+  * @param ec   execution context thread pool
   * @tparam A   this type param must be subtype of Annotation and have a defined BSONDocument handler
   */
 abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
-                                 (name: String, db: () => Future[DefaultDB])
-                                 (implicit marksDao: MongoMarksDao, userDao: MongoUserDao, ec: ExecutionContext)
+                                 (name: String,
+                                  db: () => Future[DefaultDB])
+                                 (implicit marksDao: MongoMarksDao,
+                                  userDao: MongoUserDao,
+                                  pagesDao: MongoPagesDao,
+                                  ec: ExecutionContext)
                 extends AnnotationInfo {
 
   val logger: Logger
@@ -49,13 +53,21 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
       c <- dbColl()
       wr <- c.insert(annotation)
       _ <- wr.failIfError
-      mbMark <- marksDao.retrieve(User(annotation.usrId), annotation.markId)
-      _ <- mbMark.fold(Future.unit)(marksDao.unsetRepr(_, Right(ReprType.USER_CONTENT)))
+      _ <- updateUserContentReprInfo(annotation)
     } yield {
       logger.debug(s"$name ${annotation.id} was successfully inserted")
       annotation
     }
   }
+
+  /** Now that user content has changed remove the mark's "user content" repr so that it will be recomputed. */
+  private def updateUserContentReprInfo(annotation: A): Future[Unit] = for {
+    mbMark <- marksDao.retrieve(User(annotation.usrId), annotation.markId)
+    _ <- if (mbMark.isEmpty) Future.unit else for {
+      _ <- marksDao.unsetRepr(mbMark.get, Right(ReprType.USER_CONTENT))
+      _ <- pagesDao.removeUserContentPage(mbMark.get.id) // this isn't completely necessary, just a little housekeeping
+    } yield ()
+  } yield ()
 
   /**
     * Retrieves annotations by mark ID, ignoring whether or not the user is authorized to view them, which
@@ -106,8 +118,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
       wr <- c.findAndUpdate(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> TIME_NOW))
       annotation <- wr.result[A].map(Future.successful).getOrElse(
         Future.failed(new Exception(s"MongoAnnotationDao.delete: unable to find $name $id")))
-      mbMark <- marksDao.retrieve(User(annotation.usrId), annotation.markId)
-      _ <- mbMark.fold(Future.unit)(marksDao.unsetRepr(_, Right(ReprType.USER_CONTENT)))
+      _ <- updateUserContentReprInfo(annotation)
     } yield logger.debug(s"$name was successfully deleted")
   }
 

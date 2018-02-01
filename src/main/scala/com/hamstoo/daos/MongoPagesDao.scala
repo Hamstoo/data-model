@@ -33,6 +33,7 @@ class MongoPagesDao(db: () => Future[DefaultDB])
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
+    Index(MARK_ID -> Ascending :: Nil) % s"bin-$MARK_ID-1-uniq" ::
     Nil toMap;
   Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 203 seconds)
 
@@ -49,16 +50,14 @@ class MongoPagesDao(db: () => Future[DefaultDB])
     page
   }
 
-  def updateRepr(page: Page, reprId: ObjectId): Future[Page] = for {
+  /** Update a Page's reprId and add a ReprInfo to the Page's respective Mark. */
+  def updateRepr(page: Page, reprId: ObjectId, reprInfoCreationTime: TimeStamp = TIME_NOW): Future[Unit] = for {
     c <- dbColl()
     _ = logger.debug(s"Updating page ${page.id} with repr ID '$reprId'")
     wr <- c.update(d :~ ID -> page.id, d :~ "$set" -> (d :~ REPR_ID -> reprId))
     _ <- wr.failIfError
-    _ <- marksDao.insertReprInfo(page.markId, ReprInfo(reprId, page.reprType))
-  } yield {
-    logger.debug("Page was inserted")
-    page
-  }
+    _ <- marksDao.insertReprInfo(page.markId, ReprInfo(reprId, page.reprType, created = reprInfoCreationTime))
+  } yield logger.debug("Page was inserted")
 
    /** Process the file into a Page instance and add it to the Mark in the database. */
   def insertFilePage(userId: UUID, markId: String, file: TemporaryFile): Future[Page] =
@@ -78,8 +77,10 @@ class MongoPagesDao(db: () => Future[DefaultDB])
     _ <- wr.failIfError
   } yield logger.debug(s"${wr.nModified} pages were merged")
 
-  /** Retrieves a mark's pages of a certain type. */
-  // TODO: FWC: is this method really necessary?
+  /**
+    * Retrieves a mark's pages of a certain type.  Primarily used by the repr-engine when it receives a message
+    * to process a private page.
+    */
   def retrievePages(markId: ObjectId, reprType: ReprType.Value): Future[Seq[Page]] = for {
     c <- dbColl()
     _ = logger.debug(s"Retrieving $reprType representations for mark $markId")
@@ -90,15 +91,28 @@ class MongoPagesDao(db: () => Future[DefaultDB])
     seq
   }
 
+  /** General method to handle deletion of user-content Pages given a mark ID. */
+  def removeUserContentPage(markId: ObjectId): Future[Unit] = for {
+    c <- dbColl()
+    _ = logger.debug(s"Removing user-content page for mark $markId")
+    wr <- c.remove(d :~ MARK_ID -> markId :~ REPR_TYPE -> ReprType.USER_CONTENT.toString)
+    _ <- wr.failIfError
+  } yield logger.debug(s"User-content page of mark $markId was deleted")
+
   /** Retrieves a list of n Pages that require representations. */
-  def findMissingReprPages(n: Int): Future[Seq[Page]] = {
+  def findMissingReprPages(n: Int): Future[Seq[Mark]] = {
     logger.debug("Finding pages with missing representations")
     for {
       c <- dbColl()
-      seq <- c.find(d :~ REPR_ID -> (d :~ "$exists" -> false)).coll[Page, Seq](n)
+      pages <- c.find(d :~ REPR_ID -> (d :~ "$exists" -> false)).coll[Page, Seq](n)
+
+      // TODO: this should eventually be changed to truly only return Pages but repr-engine isn't there yet
+      // TODO: and it might be a moot concern anyway given issue #260
+      marks <- marksDao.retrieveInsecureSeq(pages.map(_.markId))
+
     } yield {
-      logger.debug(s"${seq.size} pages with missing representations were retrieved")
-      seq
+      logger.debug(s"${pages.size} pages belonging to ${marks.size} marks with missing representations were retrieved")
+      marks
     }
   }
 }
