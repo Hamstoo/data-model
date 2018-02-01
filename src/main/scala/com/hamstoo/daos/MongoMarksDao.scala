@@ -35,7 +35,9 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
     Await.result(for {
       c <- dbColl()
-      _ = logger.info(s"Performing data migration for `$collName` collection")
+      _ <- c.update(d :~ REPRS -> (d :~ "$exists" -> 0),
+                    d :~ "$set" -> (d :~ REPRS -> BSONArray.empty), multi = true)
+      _ = logger.info(s"Performing data migration for `${c.name}` collection")
       // put actual data migration code here
     } yield (), 373 seconds)
   } else logger.info(s"Skipping data migration for `$collName` collection")
