@@ -110,13 +110,13 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
   import ContentRetriever._
 
   /** Retrieve mime type and content (e.g. HTML) given a URL. */
-  def retrieve(userId: UUID, markId: ObjectId, reprType: ReprType.Value, url: String): Future[Page] = {
+  def retrieve(markId: ObjectId, reprType: ReprType.Value, url: String): Future[Page] = {
     val mediaType = MediaType(TikaInstance.detect(url))
     logger.debug(s"Retrieving URL '$url' with MIME type '${Try(mediaType)}'")
 
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
     val futPage = digest(url).map { case(_, wsResp) =>
-      Page(userId, markId, reprType, wsResp.bodyAsBytes.toArray)
+      Page(markId, reprType, wsResp.bodyAsBytes.toArray)
     }
 
     // check if html, than try to load frame tags if they are found in body
@@ -140,7 +140,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     // takes Element instance as parameter and
     // sets loaded data into content of that Element instance of docJsoup val
     def loadFrame(frameElement: Element): Future[Element] = {
-      retrieve(page.userId, page.markId, ReprType.withName(page.reprType), url + frameElement.attr("src")).map { page =>
+      retrieve(page.markId, ReprType.withName(page.reprType), url + frameElement.attr("src")).map { page =>
         frameElement.html(ByteString(page.content.toArray).utf8String)
       }
     }

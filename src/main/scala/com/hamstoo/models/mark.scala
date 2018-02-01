@@ -30,7 +30,7 @@ import scala.util.matching.Regex
   * @param rating         - the value assigned to the mark by the user, from 0.0 to 5.0
   * @param tags           - a set of tags assigned to the mark by the user
   * @param comment        - an optional text comment assigned to the mark by the user
-  * @param pagePending    - don't let repr-engine process marks that are still waiting for their private pages
+  * @param pagePending    - don't let repr-engine process marks that are still waiting for private pages
   * @param commentEncoded - markdown converted to HTML; set by class init
   */
 case class MarkData(
@@ -40,8 +40,6 @@ case class MarkData(
                      tags: Option[Set[String]] = None,
                      comment: Option[String] = None,
                      var commentEncoded: Option[String] = None,
-
-               // TODO: FWC: how does this value being true make its way into the nPendingPrivPages count
                      pagePending: Option[Boolean] = None) {
 
   import MarkData._
@@ -192,8 +190,8 @@ object TextNodesVisitor {
   */
 case class ReprInfo(reprId: ObjectId,
                     reprType: String,
-                    expRating: Option[ObjectId] = None,
-                    created: TimeStamp) {
+                    created: TimeStamp = TIME_NOW,
+                    expRating: Option[ObjectId] = None) {
 
   /** Check if expected rating has not yet been computed for this Representation. */
   def eratablePublic: Boolean = isPublic && expRating.isEmpty
@@ -221,7 +219,6 @@ case class ReprInfo(reprId: ObjectId,
   *                   Binary prefix is used as filtering and 1st stage of urls equality estimation
   *                   https://en.wikipedia.org/wiki/Binary_prefix
   * @param reprs    - A history of different mark states/views/representations as marked by the user
-  * @param nPendingPrivPages - The number of private pages in `reprs` that do not yet have representations
   * @param timeFrom - timestamp of last edit
   * @param timeThru - the moment of time until which this version is latest
   * @param mergeId  - if this mark was merged into another, this will be the ID of that other
@@ -237,7 +234,6 @@ case class Mark(
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
                  reprs: Seq[ReprInfo] = Nil,
-                 nPendingPrivPages: Int = 0,
                  timeFrom: Long = TIME_NOW,
                  timeThru: Long = INF_TIME,
                  modifiedBy: Option[UUID] = None,
@@ -255,10 +251,10 @@ case class Mark(
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
   // TODO: FWC: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
-  def primaryRepr: String  = privRepr.orElse(pubRepr).getOrElse("")
+  def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
 
   // TODO: FWC: what if private expRating is in NON_IDS?  we should fallback to public in that case also
-  def expectedRating: Option[String] =
+  def expectedRating: Option[ObjectId] =
     reprs.filter(_.isPrivate)
       .sortBy(_.created).lastOption // .maxBy(_.created) throws an java.lang.UnsupportedOperationException if empty
       .flatMap(_.expRating) // expected rating from private representation
@@ -267,19 +263,16 @@ case class Mark(
   def representableUserContent: Boolean = !reprs.exists(_.isUserContent)
 
   /** Get a private representation without an expected rating, if it exists. */
-  def unratedPrivRepr: Option[String] = reprs.find(_.eratablePrivate).map(_.reprId)
+  def unratedPrivRepr: Option[ObjectId] = reprs.find(_.eratablePrivate).map(_.reprId)
 
   /** Return latest private representation ID, if it exists. */
-  def privRepr: Option[String] =
-    reprs.filter(_.isPrivate)
-      .sortBy(_.created).lastOption
-      .map(_.reprId)
+  def privRepr: Option[ObjectId] = reprs.filter(_.isPrivate).sortBy(_.created).lastOption.map(_.reprId)
 
   /** Return public representation ID, if it exists. */
-  def pubRepr: Option[String] = reprs.find(_.isPublic).map(_.reprId)
+  def pubRepr: Option[ObjectId] = reprs.find(_.isPublic).map(_.reprId)
 
   /** Return user-content representation ID, if it exists. */
-  def userContentRepr: Option[String] = reprs.find(_.isUserContent).map(_.reprId)
+  def userContentRepr: Option[ObjectId] = reprs.find(_.isUserContent).map(_.reprId)
 
   /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
@@ -341,8 +334,7 @@ case class Mark(
     copy(
       mark = mark.merge(oth.mark),
       aux = if (oth.aux.isDefined) aux.map(_.merge(oth.aux.get)).orElse(oth.aux) else aux,
-      reprs = reprs ++ oth.reprs.filter(_.isPrivate), // should be consistent w/ MongoPagesDao.mergePrivatePages
-      nPendingPrivPages = nPendingPrivPages + oth.nPendingPrivPages
+      reprs = reprs ++ oth.reprs.filter(_.isPrivate) // must be consistent w/ MongoPagesDao.mergePrivatePages
     )
   }
 
@@ -470,7 +462,6 @@ object Mark extends BSONHandlers {
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
   val MERGEID: String = nameOf[Mark](_.mergeId)
   val REPRS: String = nameOf[Mark](_.reprs)
-  val N_PEND_PRIV_PAGES: String = nameOf[Mark](_.nPendingPrivPages)
 
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)

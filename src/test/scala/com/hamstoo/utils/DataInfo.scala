@@ -24,9 +24,9 @@ object DataInfo {
   // "val" to distinguish it from `def userId` (which has now been changed to `def constructUserId()`)
   val valUserId: UUID = constructUserId()
 
-  val reprInfoA = ReprInfo("aReprId", ReprType.PUBLIC, None, TIME_NOW)
-  val reprInfoPrivB = ReprInfo("bPrivReprId", ReprType.PRIVATE, None, TIME_NOW)
-  val reprInfoPubB = ReprInfo("bPubReprId", ReprType.PUBLIC, None, TIME_NOW)
+  val reprInfoA = ReprInfo("aReprId", ReprType.PUBLIC, TIME_NOW)
+  val reprInfoPrivB = ReprInfo("bPrivReprId", ReprType.PRIVATE, TIME_NOW)
+  val reprInfoPubB = ReprInfo("bPubReprId", ReprType.PUBLIC, TIME_NOW)
 
   val mdA = MarkData("a subject", Some("http://a.com"), Some(3.0), Some(Set("atag")), Some("a comment"))
   val mdB = MarkData("b subject", Some("http://b.com"), Some(4.0), Some(Set("btag")), Some("b comment"))

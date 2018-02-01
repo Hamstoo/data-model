@@ -27,73 +27,69 @@ class MongoMarksDaoTests
 
   val tagSet = Some(Set("tag1, tag2"))
   val cmt = Some("Query")
-  val pubRepr = Some("PublicRepr")
   val newMarkData = MarkData("a NEW subject1", Some("https://github.com"), tags = tagSet)
-
-  val stateId = "stateId"
-
-  val newPrivReprId = "someReprID"
-  val newPrivExpRating = "NewERId"
-
-  val newPubReprId = "newPubRerpId"
-  val newPubReprExpRating = "newPubExpId"
 
   val reprInfoPub = ReprInfo("reprId1", ReprType.PUBLIC, created = TIME_NOW)
   val reprInfoUsr = ReprInfo("reprId2", ReprType.USER_CONTENT, created = TIME_NOW)
-  val states = Seq(reprInfoUsr)
+  val reprs = Seq(reprInfoUsr) // intentionally not adding reprInfoPub, which gets added in a test below
   val url = "http://hamstoo.com/as"
 
-  val m1 = Mark(uuid1, "m1id", MarkData("a subject1", Some(url), tags = tagSet, comment = cmt), reprs = states)
-  val m2 = Mark( uuid1, "m2id", MarkData("a subject2", Some("http://hamstoo.com"), tags = tagSet))
+  // set pagePending = true as if m1 came from the Chrome extension
+  val m1 = Mark(uuid1, "m1id", MarkData("a subject1", Some(url), tags = tagSet, comment = cmt,
+                                        pagePending = Some(true)), reprs = reprs)
+  val m2 = Mark(uuid1, "m2id", MarkData("a subject2", Some("http://hamstoo.com"), tags = tagSet))
   val m3 = Mark(uuid2, "m3id", MarkData("a subject3", None))
   val m4 = Mark(uuid2, m3.id, MarkData("a subject4", Some("http://hamstoo.com")), timeThru = INF_TIME - 1)
 
-  val page = Page(m1.userId, m1.id, ReprType.PUBLIC, "asdasd".toCharArray.map(_.toByte))
-  val p = Page(m1.userId, m1.id, ReprType.PUBLIC, "content".toCharArray.map(_.toByte))
-
   "MongoMarksDao" should "(UNIT) insert mark" in {
     marksDao.insert(m1).futureValue shouldEqual m1
+    marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.mark.pagePending shouldEqual Some(true)
   }
 
-  it should "(UNIT) insert page for mark and increase 'nPendingPrivPages' number" in {
-    marksDao.insertPage(p).futureValue shouldEqual p
-    pagesDao.retrievePages(m1.userId, m1.id, ReprType.PUBLIC).futureValue.head shouldEqual p
-    marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.nPendingPrivPages shouldEqual 1
+  it should "(UNIT) insert page for mark and unset pagePending" in {
+    val priv = Page(m1.id, ReprType.PRIVATE, "content".toCharArray.map(_.toByte))
+    pagesDao.insertPage(priv).futureValue shouldEqual priv
+    pagesDao.retrievePages(m1.id, ReprType.PRIVATE).futureValue.head shouldEqual priv // unnecessary call to retrievePages?
+    marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.mark.pagePending shouldEqual None
   }
 
-  it should "(UNIT) remove page for mark and increase 'nPendingPrivPages' number" in {
-    marksDao.removePage(p).futureValue shouldEqual {}
-    pagesDao.retrievePages(m1.userId, m1.id, ReprType.PUBLIC).futureValue.headOption shouldEqual None
-    marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.nPendingPrivPages shouldEqual 0
-  }
-
-  it should "(UNIT) insert stream of mark" in {
+  it should "(UNIT) insert streams of marks" in {
     val markStream = m2 #:: m3 #:: Stream.empty[Mark]
     marksDao.insertStream(markStream).futureValue shouldEqual 2
   }
 
   it should "(UNIT) find marks with missing public reprs" in {
-    val noPubReprs = marksDao.findMissingPublicReprs(-1).futureValue
+    val noPubReprs = marksDao.findMissingSingletonReprMarks(-1, ReprType.PUBLIC).futureValue
     noPubReprs.size shouldEqual 3
-    noPubReprs.exists(_.id == m1.id) shouldEqual true
+    noPubReprs.map(_.id).toSet shouldEqual Set(m1.id, m2.id, m3.id)
   }
 
-  it should "(UNIT) save representation info" in {
-    marksDao.saveReprInfo(m1, reprInfoPub).futureValue shouldEqual {}
+  it should "(UNIT) find marks with missing user-content reprs" in {
+    val noUsrReprs = marksDao.findMissingSingletonReprMarks(-1, ReprType.USER_CONTENT).futureValue
+    noUsrReprs.size shouldEqual 2
+    noUsrReprs.map(_.id).toSet shouldEqual Set(m2.id, m3.id)
+  }
+
+  it should "(UNIT) insert representation info" in {
+    marksDao.insertReprInfo(m1.id, reprInfoPub).futureValue shouldEqual {}
     val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.reprs
     reprs.size shouldEqual 2
+    reprs.map(_.reprId).toSet shouldEqual Set(reprInfoPub.reprId, reprInfoUsr.reprId)
     reprs.exists(_.isPublic) shouldEqual true
+    val noPubReprs = marksDao.findMissingSingletonReprMarks(-1, ReprType.PUBLIC).futureValue
+    noPubReprs.map(_.id).toSet shouldEqual Set(m2.id, m3.id)
   }
 
-  it should "(UNIT) find marks with missing reprs, both current and not (update: no longer finding non-current)" in {
-    val reprs = marksDao.findMissingReprs(-1).futureValue.map(_.id)
-    reprs.size shouldEqual 2
-    reprs.contains(m2.id) shouldEqual true
-    reprs.contains(m3.id) shouldEqual true
+  it should "(UNIT) find pages with missing reprs" in {
+    val pub = Page(m2.id, ReprType.PUBLIC, "content".toCharArray.map(_.toByte))
+    pagesDao.insertPage(pub).futureValue shouldEqual pub
+    val pages = pagesDao.findMissingReprPages(-1).futureValue
+    pages.size shouldEqual 2
+    pages.map(_.markId).toSet shouldEqual Set(m1.id, m2.id)
   }
 
   it should "(UNIT) find marks with missing reprs, and be able to limit the quantity returned" in {
-    marksDao.findMissingReprs(1).futureValue.map(_.id) shouldEqual Seq(m2.id)
+    pagesDao.findMissingReprPages(1).futureValue.size shouldEqual 1
   }
 
   it should "(UNIT) find marks with missing expect rating" in {
@@ -168,7 +164,7 @@ class MongoMarksDaoTests
   it should "(UNIT) update private representation rating id" in {
     val newERat = "NewRatID"
     val privRepr = ReprInfo("reprId2", ReprType.PRIVATE, created = TIME_NOW)
-    marksDao.saveReprInfo(m1, privRepr).futureValue shouldEqual {}
+    marksDao.insertReprInfo(m1.id, privRepr).futureValue shouldEqual {}
 
     val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.reprs
     reprs.size shouldEqual 3
