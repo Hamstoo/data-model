@@ -234,8 +234,8 @@ case class Mark(
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
                  reprs: Seq[ReprInfo] = Nil,
-                 timeFrom: Long = TIME_NOW,
-                 timeThru: Long = INF_TIME,
+                 timeFrom: TimeStamp = TIME_NOW,
+                 timeThru: TimeStamp = INF_TIME,
                  modifiedBy: Option[UUID] = None,
                  mergeId: Option[String] = None,
                  sharedWith: Option[SharedWith] = None,
@@ -497,7 +497,6 @@ object Mark extends BSONHandlers {
 
   implicit val shareGroupHandler: BSONDocumentHandler[ShareGroup] = Macros.handler[ShareGroup]
   implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
-//  implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
   implicit val eratingBsonHandler: BSONDocumentHandler[ExpectedRating] = Macros.handler[ExpectedRating]

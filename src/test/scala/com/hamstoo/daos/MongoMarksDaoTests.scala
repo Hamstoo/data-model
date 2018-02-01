@@ -9,7 +9,7 @@ import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils._
 import org.scalatest.OptionValues
 
-import scala.concurrent.ExecutionContext.Implicits.global // why wasn't this necessary before?
+import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
   * MongoMarksDao tests.
@@ -29,8 +29,8 @@ class MongoMarksDaoTests
   val cmt = Some("Query")
   val newMarkData = MarkData("a NEW subject1", Some("https://github.com"), tags = tagSet)
 
-  val reprInfoPub = ReprInfo("reprId1", ReprType.PUBLIC, created = TIME_NOW)
-  val reprInfoUsr = ReprInfo("reprId2", ReprType.USER_CONTENT, created = TIME_NOW)
+  val reprInfoPub = ReprInfo("reprId1", ReprType.PUBLIC)
+  val reprInfoUsr = ReprInfo("reprId2", ReprType.USER_CONTENT)
   val reprs = Seq(reprInfoUsr) // intentionally not adding reprInfoPub, which gets added in a test below
   val url = "http://hamstoo.com/as"
 
@@ -83,9 +83,9 @@ class MongoMarksDaoTests
   it should "(UNIT) find pages with missing reprs" in {
     val pub = Page(m2.id, ReprType.PUBLIC, "content".toCharArray.map(_.toByte))
     pagesDao.insertPage(pub).futureValue shouldEqual pub
-    val pages = pagesDao.findMissingReprPages(-1).futureValue
-    pages.size shouldEqual 2
-    pages.map(_.markId).toSet shouldEqual Set(m1.id, m2.id)
+    val seq = pagesDao.findMissingReprPages(-1).futureValue // not really returning pages, returning marks for now (issue #260 should correct this)
+    seq.size shouldEqual 2
+    seq.map(_.id).toSet shouldEqual Set(m1.id, m2.id)
   }
 
   it should "(UNIT) find marks with missing reprs, and be able to limit the quantity returned" in {
@@ -163,7 +163,7 @@ class MongoMarksDaoTests
 
   it should "(UNIT) update private representation rating id" in {
     val newERat = "NewRatID"
-    val privRepr = ReprInfo("reprId2", ReprType.PRIVATE, created = TIME_NOW)
+    val privRepr = ReprInfo("reprId2", ReprType.PRIVATE)
     marksDao.insertReprInfo(m1.id, privRepr).futureValue shouldEqual {}
 
     val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.reprs

@@ -1,10 +1,8 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.models.{MarkData, Page, Representation}
+import com.hamstoo.models.{MarkData, Representation}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.DataInfo._
 import com.hamstoo.utils._
 
 import scala.util.Random
@@ -26,9 +24,6 @@ class MongoRepresentationDaoTests
     val domain = randStr(10)
     MarkData("a subject", Some(s"http://$domain.com"))
   }
-
-  val uuid = constructUserId()
-  val markId = constructMarkId()
 
   val repr = Representation(
     link = None,

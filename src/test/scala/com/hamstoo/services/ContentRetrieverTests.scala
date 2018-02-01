@@ -1,7 +1,5 @@
 package com.hamstoo.services
 
-import java.util.UUID
-
 import akka.stream.ActorMaterializer
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.Page
@@ -25,7 +23,6 @@ class ContentRetrieverTests
   implicit val materializer: ActorMaterializer = ActorMaterializer()
 
   val contriever = new ContentRetriever(httpClient = AhcWSClient())
-  val uuid: UUID = constructUserId()
   val id: ObjectId = constructMarkId()
   val reprType: ReprType.Value = ReprType.PUBLIC
 
