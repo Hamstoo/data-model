@@ -33,7 +33,7 @@ class MongoPagesDao(db: () => Future[DefaultDB])
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
-    Index(MARK_ID -> Ascending :: Nil) % s"bin-$MARK_ID-1-uniq" ::
+    Index(MARK_ID -> Ascending :: Nil) % s"bin-$MARK_ID-1" ::
     Nil toMap;
   Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 203 seconds)
 
