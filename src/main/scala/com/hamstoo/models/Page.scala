@@ -1,7 +1,5 @@
 package com.hamstoo.models
 
-import java.util.UUID
-
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.services.TikaInstance
