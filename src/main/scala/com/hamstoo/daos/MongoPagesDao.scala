@@ -26,7 +26,7 @@ class MongoPagesDao(db: () => Future[DefaultDB])
 
   import com.hamstoo.utils._
   import com.hamstoo.models.Page._
-  val logger: Logger = Logger(classOf[MongoMarksDao])
+  val logger: Logger = Logger(classOf[MongoPagesDao])
 
   private val dbColl: () => Future[BSONCollection] = () => db().map(_.collection("pages"))
 
@@ -110,8 +110,14 @@ class MongoPagesDao(db: () => Future[DefaultDB])
       // TODO: and it might be a moot concern anyway given issue #260
       marks <- marksDao.retrieveInsecureSeq(pages.map(_.markId))
 
+      // if a Page refers to a non-current markId then don't bother computing a repr for it (and ensure we don't
+      // come back to it in a future findMissingReprPages iteration), having to do this here is merely a factor
+      // of not returning Pages, as we should be, but returning Marks instead (again, moot per issue #260)
+      noMarkPages = pages.filterNot(pg => marks.map(_.id).contains(pg.markId))
+      _ <- Future.sequence(noMarkPages.map(pg => updateRepr(pg, NONE_REPR_ID)))
+
     } yield {
-      logger.debug(s"${pages.size} pages belonging to ${marks.size} marks with missing representations were retrieved")
+      logger.debug(s"${pages.size} pages (first, at most, 5 mark IDs: ${pages.map(_.markId).take(5)}) belonging to ${marks.size} marks with missing representations were retrieved")
       marks
     }
   }
