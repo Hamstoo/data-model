@@ -54,9 +54,6 @@ package object utils {
     tri
   }
 
-  // see data migration code in getDbConnection
-  protected var migrateData = true
-
   /**
     * Construct database connection pool, which should only happen once (for a given URI) because it instantiates a
     * whole thread pool of connections.
@@ -83,22 +80,6 @@ package object utils {
       case Success(conn) =>
         Logger.info(s"Established connection to MongoDB via URI: $uri")
         synchronized(wait(2000))
-
-        if (migrateData) {
-          synchronized {
-            if (migrateData) {
-              // https://docs.mongodb.com/manual/tutorial/write-scripts-for-the-mongo-shell/
-              // https://stackoverflow.com/questions/36872496/can-i-run-mongo-js-scripts-from-reactivemongo
-              Logger.info(s"Migrating data...")
-              val migrateDataResult = s"mongo $uri migrate_data.js".!!
-              Logger.info(s"Done migrating data")
-              Logger.info(s"migrateDataResult = '$migrateDataResult'")
-
-              migrateData = false
-            }
-          }
-        }
-
         conn
       case Failure(e) =>
         e.printStackTrace()

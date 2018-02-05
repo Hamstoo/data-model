@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.daos.MongoMarksDao
 import com.hamstoo.models.Representation.VecEnum
-import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, generateDbId}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.similarity.LevenshteinDistance
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -129,8 +129,8 @@ case class Representation(
                            override val nWords: Option[Long] = None,
                            override val vectors: Map[String, Representation.Vec],
                            autoGenKws: Option[Seq[String]],
-                           timeFrom: Long = TIME_NOW,
-                           timeThru: Long = INF_TIME,
+                           timeFrom: TimeStamp = TIME_NOW,
+                           timeThru: TimeStamp = INF_TIME,
                            var versions: Option[Map[String, String]] = None,
                            override val score: Option[Double] = None)
     extends RSearchable(id, header, doctext, nWords, vectors, score) with ReprEngineProduct[Representation] {
