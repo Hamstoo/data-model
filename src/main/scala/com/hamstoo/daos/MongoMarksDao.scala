@@ -12,7 +12,7 @@ import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
 import com.mohiva.play.silhouette.api.exceptions.NotAuthorizedException
 import play.api.Logger
-import reactivemongo.akkastream.{State, cursorProducer}
+import reactivemongo.akkastream.cursorProducer
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
@@ -22,6 +22,10 @@ import reactivemongo.bson._
 import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
+
+object MongoMarksDao {
+  var migrateData: Boolean = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
+}
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -38,10 +42,17 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   private def reprsColl(): Future[BSONCollection] = db().map(_ collection "representations")
   private def pagesColl(): Future[BSONCollection] = db().map(_ collection "pages")
 
-  // leave this here as an example of how to perform data migration
-  if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
+  // leave this here as an example of how to perform data migration (note that this synchronization doesn't guarantee
+  // this code won't be run more than once, e.g. it might be run from backend and repr-engine)
+  if (MongoMarksDao.migrateData) { synchronized { if (MongoMarksDao.migrateData) {
+    MongoMarksDao.migrateData = false
+
+    implicit val system = ActorSystem("MongoMarksDao-data_migration")
+    implicit val materializer = ActorMaterializer()
+
     Await.result(for {
       c <- dbColl()
+      // put actual data migration code here
       _ <- c.update(d :~ "$or" -> Seq(d :~ REPRS -> (d :~ "$exists" -> 0)/*,
                                       d :~ "privRepr" -> (d :~ "$exists" -> 1)*/),
                     d :~ "$set" -> (d :~ REPRS -> BSONArray.empty), multi = true)
@@ -54,10 +65,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       cReprs <- reprsColl()
       cPages <- pagesColl()
       _ <- Future.sequence {
-
-        implicit val system = ActorSystem("MongoMarksDao-data_migration")
-        implicit val materializer = ActorMaterializer()
-
         Seq(("priv", ReprType.PRIVATE), ("pub", ReprType.PUBLIC), ("user", ReprType.USER_CONTENT)) map {
           case (pfx, rtyp) => {
 
@@ -96,9 +103,32 @@ class MongoMarksDao(db: () => Future[DefaultDB])
         }
       }
 
-      // put actual data migration code here
-    } yield (), 373 seconds)
-  } else logger.info(s"Skipping data migration for `$collName` collection")
+      // TODO: remove duplicate public & user-content representations per mark
+
+      // remove reprs from representations collection that are not referenced by pages or marks
+      _ = logger.info(s"Removing unreferenced representations...")
+      refed = "referenced"
+      _ <- cReprs.update(d, d :~ "$unset" -> (d :~ refed -> 1), multi = true)
+
+      strm0 = c.find(d :~ REPRS -> (d :~ "$exists" -> 1), d :~ REPRS -> 1).cursor[BSONDocument]().documentSource()
+      _ <- strm0.mapAsync(10) { doc =>
+        val reprIds = doc.getAs[Seq[ReprInfo]](REPRS).get.map(_.reprId)
+        cReprs.update(d :~ ID -> (d :~ "$in" -> reprIds), d :~ "$set" -> (d :~ refed -> true), multi = true)
+      }.runWith(Sink.ignore)
+
+      strm1 = cPages.find(d :~ Page.REPR_ID -> (d :~ "$exists" -> 1), d :~ Page.REPR_ID -> 1).cursor[BSONDocument]().documentSource()
+      _ <- strm1.mapAsync(10) { doc =>
+        val reprId = doc.getAs[String](Page.REPR_ID).get
+        cReprs.update(d :~ ID -> reprId, d :~ "$set" -> (d :~ refed -> true), multi = true)
+      }.runWith(Sink.ignore)
+
+      _ <- cReprs.remove(d :~ refed -> (d :~ "$exists" -> false))
+      //_ <- cReprs.update(d, d :~ "$unset" -> (d :~ refed -> 1), multi = true) // not really necessary
+
+      _ = logger.info(s"Done removing unreferenced representations")
+
+    } yield (), 973 seconds)
+  }}} else logger.info(s"Skipping data migration for `$collName` collection")
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
