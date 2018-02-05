@@ -2,6 +2,9 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
+import akka.actor.ActorSystem
+import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.Sink
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Representation.ReprType
@@ -9,12 +12,14 @@ import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
 import com.mohiva.play.silhouette.api.exceptions.NotAuthorizedException
 import play.api.Logger
+import reactivemongo.akkastream.{State, cursorProducer}
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
+import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 
@@ -30,14 +35,67 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   val collName: String = "entries"
   private val dbColl: () => Future[BSONCollection] = () => db().map(_ collection collName)
   private def dupsColl(): Future[BSONCollection] = db().map(_ collection "urldups")
+  private def reprsColl(): Future[BSONCollection] = db().map(_ collection "representations")
+  private def pagesColl(): Future[BSONCollection] = db().map(_ collection "pages")
 
   // leave this here as an example of how to perform data migration
   if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
     Await.result(for {
       c <- dbColl()
-      _ <- c.update(d :~ REPRS -> (d :~ "$exists" -> 0),
+      _ <- c.update(d :~ "$or" -> Seq(d :~ REPRS -> (d :~ "$exists" -> 0)/*,
+                                      d :~ "privRepr" -> (d :~ "$exists" -> 1)*/),
                     d :~ "$set" -> (d :~ REPRS -> BSONArray.empty), multi = true)
       _ = logger.info(s"Performing data migration for `${c.name}` collection")
+
+      // TODO: if data migration already previously occurred then might have to remove all existing pages and reprinfos
+      // TODO:   db.entries.update({}, {'$pull':{reprs:{reprType:'PUBLIC'}}}, {multi:1})
+      // TODO:   db.pages.remove({reprType:'PUBLIC'})
+
+      cReprs <- reprsColl()
+      cPages <- pagesColl()
+      _ <- Future.sequence {
+
+        implicit val system = ActorSystem("MongoMarksDao-data_migration")
+        implicit val materializer = ActorMaterializer()
+
+        Seq(("priv", ReprType.PRIVATE), ("pub", ReprType.PUBLIC), ("user", ReprType.USER_CONTENT)) map {
+          case (pfx, rtyp) => {
+
+            // stream marks with privRepr, pubRepr, or userRepr fields
+            c.find(d :~ (pfx + "Repr") -> (d :~ "$exists" -> 1)).cursor[BSONDocument]().documentSource().map { doc =>
+              val markId = doc.getAs[String](ID).get
+              val reprId = doc.getAs[String](pfx + "Repr").get // possibly one of NON_IDS
+              val docTime = doc.getAs[TimeStamp](TIMEFROM).get
+              val reprSel = d :~ ID -> reprId :~ curnt
+              logger.info(s"Performing $rtyp repr data migration for mark $markId and repr $reprId")
+              for {
+                repr <- cReprs.find(reprSel).one[BSONDocument]
+                created = repr.fold(docTime)(_.getAs[TimeStamp](TIMEFROM).get)
+                rinfo = ReprInfo(reprId, rtyp, created, doc.getAs[String](pfx + "ExpRating"))
+                _ <- c.update(d :~ ID -> markId :~ TIMEFROM -> docTime,
+                              d :~ "$push" -> (d :~ REPRS -> rinfo)
+                                :~ "$unset" -> (d :~ (pfx + "Repr") -> 1 :~ (pfx + "ExpRating") -> 1))
+
+                // move page from reprs (or entries if private repr failed) collection to pages collection
+                _ <- repr.flatMap(_.getAs[BSONDocument]("page"))
+                         .orElse(if (rinfo.isPrivate) doc.getAs[BSONDocument]("page") else None)
+                         .fold(Future.unit) { page =>
+                  val mt = page.getAs[String]("mimeType").get
+                  val content = page.getAs[mutable.WrappedArray[Byte]]("content").get
+                  val newPage = new Page(markId, rtyp, mt, content, reprId = Some(reprId), created = created)
+                  for {
+                    _ <- cPages.insert(newPage)
+                    _ <- cReprs.update(reprSel, d :~ "$unset" -> (d :~ "page" -> 1))
+                    _ <- if (!rinfo.isPrivate) Future.unit else
+                      c.update(d :~ ID -> markId :~ TIMEFROM -> docTime, d :~ "$unset" -> (d :~ "page" -> 1)).map(_ => ())
+                  } yield ()
+                }
+              } yield ()
+            }.runWith(Sink.ignore)
+          }
+        }
+      }
+
       // put actual data migration code here
     } yield (), 373 seconds)
   } else logger.info(s"Skipping data migration for `$collName` collection")

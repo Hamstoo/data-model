@@ -265,14 +265,15 @@ case class Mark(
   /** Get a private representation without an expected rating, if it exists. */
   def unratedPrivRepr: Option[ObjectId] = reprs.find(_.eratablePrivate).map(_.reprId)
 
-  /** Return latest private representation ID, if it exists. */
-  def privRepr: Option[ObjectId] = reprs.filter(_.isPrivate).sortBy(_.created).lastOption.map(_.reprId)
-
-  /** Return public representation ID, if it exists. */
-  def pubRepr: Option[ObjectId] = reprs.find(_.isPublic).map(_.reprId)
-
-  /** Return user-content representation ID, if it exists. */
-  def userContentRepr: Option[ObjectId] = reprs.find(_.isUserContent).map(_.reprId)
+  /**
+    * Return latest representation ID, if it exists.  Even though public and user-content reprs are supposed to
+    * be singletons, it doesn't hurt to be conservative and return the most recent rather than just using `find`.
+    */
+  def privRepr: Option[ObjectId] = repr(_.isPrivate)
+  def pubRepr: Option[ObjectId] = repr(_.isPublic)
+  def userContentRepr: Option[ObjectId] = repr(_.isUserContent)
+  private def repr(pred: ReprInfo => Boolean): Option[ObjectId] =
+    reprs.filter(pred).sortBy(_.created).lastOption.map(_.reprId)
 
   /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
@@ -281,7 +282,7 @@ case class Mark(
     */
   def eratablePublic: Boolean = reprs.exists(_.eratablePublic)
   def eratablePrivate: Boolean = reprs.exists(_.eratablePrivate)
-  def eratableUser: Boolean = reprs.exists(_.eratableUserContent)
+  def eratableUserContent: Boolean = reprs.exists(_.eratableUserContent)
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
