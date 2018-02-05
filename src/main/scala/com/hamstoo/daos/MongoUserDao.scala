@@ -17,6 +17,10 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 
+object MongoUserDao {
+  var migrateData = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
+}
+
 /**
   * Data access object for user accounts.
   */
@@ -35,7 +39,11 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   private def marksColl(): Future[BSONCollection] = db().map(_ collection "entries")
 
   // temporary data migration code
-  if (scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)) {
+  // leave this here as an example of how to perform data migration (note that this synchronization doesn't guarantee
+  // this code won't be run more than once, e.g. it might be run from backend and repr-engine)
+  if (MongoUserDao.migrateData) { synchronized { if (MongoUserDao.migrateData) {
+    MongoUserDao.migrateData = false
+
     Await.result(for {
       c <- dbColl()
       _ = logger.info(s"Performing data migration for `${c.name}` collection")
@@ -52,7 +60,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
       _ = logger.info(s"Successfully assigned usernames to ${updated.size} users")
     // put actual data migration code here
     } yield (), 363 seconds)
-  } else logger.info(s"Skipping data migration for `users` collection")
+  }}} else logger.info(s"Skipping data migration for `users` collection")
 
   // ensure mongo collection has proper indexes
   private val indxs: Map[String, Index] =
