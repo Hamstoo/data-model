@@ -12,6 +12,7 @@ import reactivemongo.api.commands.WriteResult
 import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
 import reactivemongo.api._
 import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
+import sys.process._
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
@@ -168,10 +169,11 @@ package object utils {
   val NONE_REPR_ID = "none"
   val CAPTCHA_REPR_ID = "captcha"
   val HTMLUNIT_REPR_ID = "htmlunit"
+  val UPLOAD_REPR_ID = "upload"
 
   // set of IDs that aren't really IDs so that we can filter them out when searching for things with "true" IDs
   val NON_IDS = Set("", FAILED_REPR_ID, TIMEOUT_REPR_ID, NONE_REPR_ID, CAPTCHA_REPR_ID, HTMLUNIT_REPR_ID,
-                    NO_REPR_ERATING_ID)
+                    UPLOAD_REPR_ID, NO_REPR_ERATING_ID)
 
   /** Use the private ID when available, o/w use the public ID. */
   def reconcilePrivPub(priv: Option[String], pub: Option[String]): Option[String] =
