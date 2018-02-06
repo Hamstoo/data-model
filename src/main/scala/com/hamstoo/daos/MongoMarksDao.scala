@@ -68,12 +68,22 @@ class MongoMarksDao(db: () => Future[DefaultDB])
         Seq(("priv", ReprType.PRIVATE), ("pub", ReprType.PUBLIC), ("user", ReprType.USER_CONTENT)) map {
           case (pfx, rtyp) => {
 
+
+// Uncaught error from thread [crawler-system-akka.actor.default-dispatcher-5]: Java heap space, shutting down
+            // JVM since 'akka.jvm-exit-on-fatal-error' is enabled for ActorSystem[crawler-system]
+// java.lang.OutOfMemoryError: Java heap space
+
             // stream marks with privRepr, pubRepr, or userRepr fields
             c.find(d :~ (pfx + "Repr") -> (d :~ "$exists" -> 1)).cursor[BSONDocument]().documentSource().map { doc =>
               val markId = doc.getAs[String](ID).get
               val reprId = doc.getAs[String](pfx + "Repr").get // possibly one of NON_IDS
               val docTime = doc.getAs[TimeStamp](TIMEFROM).get
               val reprSel = d :~ ID -> reprId :~ curnt
+
+
+// TODO: what to do with NON_IDS?  like 'timeout'?
+
+
               logger.info(s"Performing $rtyp repr data migration for mark $markId and repr $reprId")
               for {
                 repr <- cReprs.find(reprSel).one[BSONDocument]
@@ -124,6 +134,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
       _ <- cReprs.remove(d :~ refed -> (d :~ "$exists" -> false))
       //_ <- cReprs.update(d, d :~ "$unset" -> (d :~ refed -> 1), multi = true) // not really necessary
+
+      //_ <- cReprs.update(d, d :~ "$unset" -> (d :~ "page" -> 1), multi = true) // TODO: manually: db.representations.update({}, {$unset:{page:1}}, {multi:1})
 
       _ = logger.info(s"Done removing unreferenced representations")
 
