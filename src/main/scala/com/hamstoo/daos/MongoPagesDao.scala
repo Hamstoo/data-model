@@ -80,11 +80,17 @@ class MongoPagesDao(db: () => Future[DefaultDB])
   /**
     * Retrieves a mark's pages of a certain type.  Primarily used by the repr-engine when it receives a message
     * to process a private page.
+    * @param markId          The mark ID of the pages to return.
+    * @param reprType        The type (PUBLIC, PRIVATE, or USER_CONTENT) of pages to return.
+    * @param bMissingReprId  If set to true, then only pages with missing reprIds will be returned, which is important
+    *                        so that repr-engine doesn't try to re-process pages that already have their reprIds.
     */
-  def retrievePages(markId: ObjectId, reprType: ReprType.Value): Future[Seq[Page]] = for {
+  def retrievePages(markId: ObjectId, reprType: ReprType.Value, bMissingReprId: Boolean = true):
+                                                                                    Future[Seq[Page]] = for {
     c <- dbColl()
     _ = logger.debug(s"Retrieving $reprType representations for mark $markId")
-    sel = d :~ MARK_ID -> markId :~ REPR_TYPE -> reprType.toString
+    sel = d :~ MARK_ID -> markId :~ REPR_TYPE -> reprType.toString :~
+               (if (bMissingReprId) d :~ REPR_ID -> (d :~ "$exists" -> false) else d)
     seq <- c.find(sel).coll[Page, Seq]()
   } yield {
     logger.debug(s"${seq.size} $reprType pages were retrieved for mark $markId")
