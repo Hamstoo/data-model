@@ -27,7 +27,7 @@ class MongoInlineNoteDaoTests
   }
 
   /*it should "(UNIT) retrieve inline note by id" in {
-    notesDao.retrieve(c.usrId, c.id).futureValue.value shouldEqual c
+    notesDao.retrieve(c.usrId, c.id).futureValue.get shouldEqual c
   }*/
 
   it should "UNIT) retrieve inline note by markId" in {

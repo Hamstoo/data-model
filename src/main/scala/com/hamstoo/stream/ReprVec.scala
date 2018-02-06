@@ -18,7 +18,7 @@ import scala.concurrent.Future
   */
 case class ReprVec(userId: UUID)(implicit db: () => Future[DefaultDB], m: Materializer) extends DataStream[Vec] {
 
-  private val marksDao = new MongoMarksDao(db)(new MongoUserDao(db))
+  private val marksDao = new MongoMarksDao(db)(new MongoUserDao(db), implicitly)
   private val reprsDao = new MongoRepresentationDao(db)
 
   /** Map a stream of marks to their reprs' PC1 vectors. */

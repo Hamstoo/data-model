@@ -2,9 +2,9 @@ package com.hamstoo.utils
 
 import java.util.UUID
 
+import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models._
 import com.mohiva.play.silhouette.api.LoginInfo
-import com.mohiva.play.silhouette.impl.providers.OAuth2Info
 
 /**
   * Trait that contain test information
@@ -24,10 +24,14 @@ object DataInfo {
   // "val" to distinguish it from `def userId` (which has now been changed to `def constructUserId()`)
   val valUserId: UUID = constructUserId()
 
+  val reprInfoA = ReprInfo("aReprId", ReprType.PUBLIC)
+  val reprInfoPrivB = ReprInfo("bPrivReprId", ReprType.PRIVATE)
+  val reprInfoPubB = ReprInfo("bPubReprId", ReprType.PUBLIC)
+
   val mdA = MarkData("a subject", Some("http://a.com"), Some(3.0), Some(Set("atag")), Some("a comment"))
   val mdB = MarkData("b subject", Some("http://b.com"), Some(4.0), Some(Set("btag")), Some("b comment"))
-  val mA = Mark(valUserId, mark = mdA, pubRepr = Some("aPubRepr"), privRepr = Some("aPrivRepr"))
-  val mB = Mark(valUserId, mark = mdB, pubRepr = Some("bPubRepr"), privRepr = Some("bPrivRepr"))
+  val mA = Mark(valUserId, mark = mdA, reprs = Seq(reprInfoA))
+  val mB = Mark(valUserId, mark = mdB, reprs = Seq(reprInfoPrivB, reprInfoPubB))
 
   val loginInfoA = LoginInfo("GProviderBookMailFace", "some_provider_key_A")
   val loginInfoB = LoginInfo("GProviderBookMailFace", "some_provider_key_B")

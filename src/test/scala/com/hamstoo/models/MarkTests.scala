@@ -1,12 +1,14 @@
 package com.hamstoo.models
 
+import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.test.FlatSpecWithMatchers
 import org.apache.commons.text.StringEscapeUtils
+import org.scalatest.OptionValues
 
 /**
   * Mark model tests.
   */
-class MarkTests extends FlatSpecWithMatchers {
+class MarkTests extends FlatSpecWithMatchers with OptionValues {
 
   import com.hamstoo.utils.DataInfo._
 
@@ -138,17 +140,25 @@ class MarkTests extends FlatSpecWithMatchers {
       merged.mark.tags.get shouldEqual (mdA.tags.get ++ mdB.tags.get)
       merged.mark.comment.get shouldEqual (mdA.comment.get + "\n\n---\n\n" + mdB.comment.get)
       merged.pubRepr shouldEqual mA.pubRepr
-      merged.privRepr shouldEqual mA.privRepr
+      merged.reprs shouldEqual mA.reprs :+ reprInfoPrivB
     }
 
-//  it should "throw an exception when merging marks with different userIds" in {
-//    // different userIds should throw an AssertionError
-//
-//    val thrown = intercept[AssertionError] {
-//      val c = Mark(constructUserId(), mark = mdB)
-//      mA.merge(c)
-//    }
-//
-//    thrown shouldBe a [AssertionError]
-//  }
+  it should "(UNIT) throw an exception when merging marks with different userIds" in {
+    // different userIds should throw an AssertionError
+
+    intercept[AssertionError] {
+      val c = Mark(constructUserId(), mark = mdB)
+      mA.merge(c)
+    }
+  }
+
+  it should "(UNIT) corrctly retrieve marks info" in {
+    val unrated = ReprInfo("someid", ReprType.PRIVATE)
+    val rated = unrated.copy(reprId = "someId1", expRating = Some("rat"))
+    val m = Mark(constructUserId(), mark = mdA, reprs = Seq(unrated))
+    val mRated = m.copy(reprs = Seq(rated))
+
+    m.unratedPrivRepr.get shouldEqual unrated.reprId
+    mRated.unratedPrivRepr shouldEqual None
+  }
 }
