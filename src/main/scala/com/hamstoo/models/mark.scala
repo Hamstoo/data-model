@@ -31,6 +31,7 @@ import scala.util.matching.Regex
   * @param tags           - a set of tags assigned to the mark by the user
   * @param comment        - an optional text comment assigned to the mark by the user
   * @param pagePending    - don't let repr-engine process marks that are still waiting for private pages
+  * @param pubReprPending - don't let ContentRetriever retrieve pages for marks still waiting for reprs on previous pages
   * @param commentEncoded - markdown converted to HTML; set by class init
   */
 case class MarkData(
@@ -40,7 +41,9 @@ case class MarkData(
                      tags: Option[Set[String]] = None,
                      comment: Option[String] = None,
                      var commentEncoded: Option[String] = None,
-                     pagePending: Option[Boolean] = None) {
+                     pagePending: Option[Boolean] = None,
+                     pubReprPending: Option[Boolean] = None,
+                     usrReprPending: Option[Boolean] = None) {
 
   import MarkData._
 
@@ -104,8 +107,9 @@ case class MarkData(
 
   /** If the two MarkDatas are equal, as far as generating a user representation would be concerned. */
   // TODO: the interface for constructing a user repr should only be allowed to include these fields via having its own class
-  def equalsPerUserRepr(other: MarkData): Boolean = copy(url = None, rating = None, pagePending = None) ==
-                                              other.copy(url = None, rating = None, pagePending = None)
+  def equalsPerUserRepr(other: MarkData): Boolean =
+          copy(url = None, rating = None, pagePending = None, pubReprPending = None, usrReprPending = None) ==
+    other.copy(url = None, rating = None, pagePending = None, pubReprPending = None, usrReprPending = None)
 }
 
 object MarkData {
@@ -475,6 +479,8 @@ object Mark extends BSONHandlers {
   val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
   val COMNTENCx: String = MARK + "." + nameOf[MarkData](_.commentEncoded)
   val PGPENDx: String = MARK + "." + nameOf[MarkData](_.pagePending)
+  val PUBPENDx: String = MARK + "." + nameOf[MarkData](_.pubReprPending)
+  val USRPENDx: String = MARK + "." + nameOf[MarkData](_.usrReprPending)
 
   val REFIDx: String = nameOf[Mark](_.markRef) + "." + nameOf[MarkRef](_.markId)
 
