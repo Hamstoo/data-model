@@ -827,10 +827,17 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     logger.debug(s"Finding marks with missing $reprType representations")
     for {
       c <- dbColl()
+      pend = reprType match {
+        case ReprType.PUBLIC => PUBPENDx
+        case ReprType.USER_CONTENT => USRPENDx
+        case _ => throw new Exception(s"Invalid ReprType $reprType for findMissingSingletonReprMarks")
+      }
       sel = d :~ curnt :~
                  REPRS -> (d :~ "$not" -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> reprType.toString))) :~
-                 PGPENDx -> (d :~ "$ne" -> true) // https://stackoverflow.com/questions/22290538/select-mongodb-documents-where-a-field-either-does-not-exist-is-null-or-is-fal
+                 PGPENDx -> (d :~ "$ne" -> true) :~ pend -> (d :~ "$ne" -> true) // https://stackoverflow.com/questions/22290538/select-mongodb-documents-where-a-field-either-does-not-exist-is-null-or-is-fal
       seq <- c.find(sel).coll[Mark, Seq](n)
+      // TODO: this find-and-update really should be atomic, just a temporary hack/patch for branch-146
+      _ <- c.update(d :~ curnt :~ ID -> (d :~ "$in" -> seq.map(_.id)), d :~ "$set" -> (d :~ pend -> true), multi = true)
     } yield {
       logger.debug(s"${seq.size} marks with missing public representations were retrieved")
       seq
@@ -865,8 +872,15 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       c <- dbColl()
       sel = d :~ ID -> markId :~ curnt
       updPush = d :~ "$push" -> (d :~ REPRS -> reprInfo)
-      // unset pagePending here also, just in case MongoPagesDao.insertPage missed it for some reason
-      updPgPend = if (reprInfo.isPrivate) d :~ "$unset" -> (d :~ PGPENDx -> 1) else d
+      // unset (private) pagePending here also just in case MongoPagesDao.insertPage missed it for some reason
+      // unset singleton *ReprPendings here now that findMissingSingletonReprMarks won't see these marks anymore
+      pend = ReprType.withName(reprInfo.reprType) match {
+        case ReprType.PRIVATE => PGPENDx // private page pending
+        case ReprType.PUBLIC => PUBPENDx // public repr pending
+        case ReprType.USER_CONTENT => USRPENDx // user-content repr pending
+        case _ => throw new Exception(s"Invalid ReprType ${reprInfo.reprType} for insertReprInfo")
+      }
+      updPgPend = d :~ "$unset" -> (d :~ pend -> 1)
       wr <- c.update(sel, updPush :~ updPgPend)
       _ <- wr.failIfError
     } yield {
