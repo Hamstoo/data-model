@@ -16,13 +16,17 @@ import scala.concurrent.Future
   * A stream of a user's representation's vectors.
   * @param userId  The UUID of the user's marks represented by this stream.
   */
+//@Singleton // cannot be singleton b/c of `userId` but how do other types of DataStreams be made so?
 case class ReprVec(userId: UUID)(implicit db: () => Future[DefaultDB], m: Materializer) extends DataStream[Vec] {
 
   private val marksDao = new MongoMarksDao(db)(new MongoUserDao(db), implicitly)
   private val reprsDao = new MongoRepresentationDao(db)
 
+  // TODO: should ReprVec just have an apply method like Reducer and pass the UUID in through there?
+  // TODO: or should we reserve apply for the DSL?
+
   /** Map a stream of marks to their reprs' PC1 vectors. */
-  override val source: Source[Datum, NotUsed] = marksDao.stream(userId).mapAsync(4) { mark =>
+  override val source: Source[Datum[Vec], NotUsed] = marksDao.stream(userId).mapAsync(4) { mark =>
     // get the mark's primaryRepr and map its PC1 vector to a Datum
     reprsDao.retrieve(mark.primaryRepr).map { _.flatMap { repr =>
       repr.vectors.get(VecEnum.PC1.toString).map { vec =>
