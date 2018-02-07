@@ -76,8 +76,6 @@ class MongoMarksDaoTests
     reprs.size shouldEqual 2
     reprs.map(_.reprId).toSet shouldEqual Set(reprInfoPub.reprId, reprInfoUsr.reprId)
     reprs.exists(_.isPublic) shouldEqual true
-    val noPubReprs = marksDao.findMissingSingletonReprMarks(-1, ReprType.PUBLIC).futureValue
-    noPubReprs.map(_.id).toSet shouldEqual Set(m2.id, m3.id)
   }
 
   it should "(UNIT) find pages with missing reprs" in {
@@ -107,8 +105,10 @@ class MongoMarksDaoTests
   }
 
   it should "(UNIT) retrieve mark history" in {
+    // since findMissingSingletonReprMarks was called earlier on m3, it will have these values set to true
+    val md3copy = m3.mark.copy(pubReprPending = Some(true), usrReprPending = Some(true))
     marksDao.insert(m4).futureValue shouldEqual m4
-    marksDao.retrieveInsecureHist(m3.id).futureValue.map(_.mark) shouldEqual Seq(m3.mark, m4.mark)
+    marksDao.retrieveInsecureHist(m3.id).futureValue.map(_.mark) shouldEqual Seq(md3copy, m4.mark)
   }
 
   it should "(UNIT) retrieve by uuid and url" in {
