@@ -854,8 +854,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * Retrieves a list of n marks that require expected ratings. Intentionally not filtering for `curnt` marks.
     *
     * The following MongoDB shell command should show that this query is using two indexes via an "OR" inputStage.
-    *   db.entries.find({$or:[{timeThru:NumberLong("9223372036854775807"), pubExpRating:{$exists:0}, pubRepr:{$exists:1}},
-    *                         {timeThru:NumberLong("9223372036854775807"), privExpRating:{$exists:0}, privRepr:{$exists:1}}]}).explain()
+    *   [removed 2018-2-7]
     */
   def findMissingExpectedRatings(n: Int): Future[Seq[Mark]] = {
     logger.debug("Finding marks with missing expected ratings")
