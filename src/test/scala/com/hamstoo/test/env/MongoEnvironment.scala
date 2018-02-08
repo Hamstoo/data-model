@@ -38,7 +38,9 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
     dbConn = Some(getDbConnection(dbUri))
   }
 
-  override def afterAll(): Unit = {
+  override def afterAll(): Unit = shutdownMongo()
+
+  def shutdownMongo(): Unit = {
     println("Stopping MongoDB instance")
     mongoStop(fongo)
     Thread.sleep(1000) // delay to successful stop

@@ -12,7 +12,6 @@ import reactivemongo.api.commands.WriteResult
 import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
 import reactivemongo.api._
 import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
-import sys.process._
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom

@@ -6,7 +6,7 @@ package com.hamstoo.stream
   * function returns one.
   *
   * @param grouper  Tell me how to group incoming data from the stream, and I'll do it.  Note that this parameter
-  *                 is a _function_ that produces group _commands_, not the groups themselves.
+  *                 is a _function_ that produces group _commands_, not the groups themselves--nor a fish!
   * @param maxSubstreams  "upper bound on the number of sub-streams that will be open at any time"
   *                       "configures the maximum number of substreams (keys) that are supported; if more distinct
   *                       keys are encountered then the stream fails"
@@ -16,18 +16,17 @@ package com.hamstoo.stream
   */
 abstract class Reducer[T, G <: Group](grouper: () => GroupCommandFactory[G], maxSubstreams: Int) {
 
+  // support for using a Seq here:
+  //   http://blog.kunicki.org/blog/2016/07/20/implementing-a-custom-akka-streams-graph-stage/
   case class Dataset(group: Option[Group], data: Seq[Datum[T]])
 
   /** Implement me! */
   protected def reduce(data: Dataset): Datum[T]
 
   /** Group the input DataStream into at most maxSubstreams, and then aggregate and reduce each one individually. */
-  def apply(ds: DataStream[T]): DataStream[T] = {
-
-    val src = ds.source
-
-      // each datum will map to a set of groups which it belongs to
-      .statefulMapConcat { () =>
+  def apply(ds: DataStream[T]): DataStream[T] = DataStreamRef {
+    ds.source
+      .statefulMapConcat { () => // each datum will map to a set of groups which it belongs to
         val factory = grouper() // TODO: how do we ensure grouper is calling `new` each time?
         d => factory.commandsFor(d) // bind the new factory into the returned function
       }
@@ -41,9 +40,5 @@ abstract class Reducer[T, G <: Group](grouper: () => GroupCommandFactory[G], max
       }
       .map(reduce)
       .mergeSubstreams
-
-    // wrap it up in a DataStream so that it can be used in future DataStream ops
-    DataStreamRef(src)
   }
-
 }
