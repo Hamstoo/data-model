@@ -1,6 +1,5 @@
 package com.hamstoo.services
 
-import akka.stream.ActorMaterializer
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingService.WordMass
@@ -22,7 +21,6 @@ class VectorEmbeddingsServiceTests
 
   import com.hamstoo.utils.DataInfo._
 
-  implicit val materializer: ActorMaterializer = ActorMaterializer()
   implicit val ex: ExecutionContext = system.dispatcher
 
   lazy val vectorizer = new Vectorizer(AhcWSClient(), vectorsDao, vectorsLink)

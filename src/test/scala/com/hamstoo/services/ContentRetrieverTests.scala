@@ -1,6 +1,5 @@
 package com.hamstoo.services
 
-import akka.stream.ActorMaterializer
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.Page
 import com.hamstoo.test.FutureHandler
@@ -19,8 +18,6 @@ class ContentRetrieverTests
     with FutureHandler {
 
   import com.hamstoo.utils.DataInfo._
-
-  implicit val materializer: ActorMaterializer = ActorMaterializer()
 
   val contriever = new ContentRetriever(httpClient = AhcWSClient())
   val id: ObjectId = constructMarkId()

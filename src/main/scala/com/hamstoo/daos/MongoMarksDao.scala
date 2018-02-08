@@ -279,8 +279,12 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
   /**
     * Retrieves a current mark by user and URL, None if not found.  This is used in the Chrome extension via the
-    * backend's `MarksController` to quickly get the mark for an active tab.  Eventually we'll probably want to
-    * implement more complex logic based on representations similar to repr-engine's `dupSearch`.
+    * backend's `MarksController` to quickly get the mark for an active tab.
+    *
+    * TODO: Eventually we'll probably want to implement more complex logic based on representations similar to
+    * repr-engine's `dupSearch`.  To do this, we could process a (temporary--not stored in DB) representation for every
+    * new browser tab, and if it is deemed to be a duplicate of an existing mark, then show star as orange and display
+    * highlights/notes.
     */
   def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = {
     logger.debug(s"Retrieving marks by URL $url and user $user")
