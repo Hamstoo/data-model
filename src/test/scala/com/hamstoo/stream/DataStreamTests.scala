@@ -48,6 +48,30 @@ class DataStreamTests
     // value?  by hooking up to it as a stream?  probably better to not request the current time value that way.
     // is there a way for the CurrentTimeSink to propagate this time back when it pulls from upstream?
 
+    // then, eventually, this clock can be turned into a flow--or a sequence of sinks--that loops over time pulling
+    // new data for each time point
+
+    // *********
+    // the clock should be an implicit input of all DataStreams?!?!?!!?!?
+    // *********
+
+    // OR.... use BidiFlows and have clock time flow down the tree into requests for data.... and have responses
+    // to those requests flow up the tree
+    // YES - have "requests" flow down, e.g. current time along with requested frequencies?
+
+    // OR
+    // 1) assume data is stored in the database with time knowns (as well as source times, or we can compute time knowns)
+    // 2) the source clock gets mapped to data sources, which trigger them to load their data
+    // 3) the data sources somehow know to whom they've been hooked so they can know how much (and at what frequency)
+    //    of their data to retain in an inner cache (BlockManager)
+    //      No - data sources would know too much about their dependants
+    // 4) the data sources just flow their data into their cache as quickly as timeknown allows
+    // 5) dependents "pull" from the cache
+    // NO NO NO.... this is the same as the BidiFlow approach... just that dependencies get established as
+    // timeknown flows upstream and then they are satisfied as data flows downstream
+    //    in this way, it looks like there is a clock on the source end
+    // But a sink is the only way to trigger a flow and that's what we want... a sink to trigger!!!!
+
   }*/
 
   "Test" should "scratch test 0" in {
@@ -64,6 +88,7 @@ class DataStreamTests
     // the Await crashes
     val resultSink = Sink.foreach((x: Int) => println(s"Sink print ${DateTime.now}: $x"))
 
+    // "lower-level GraphDSL API" https://softwaremill.com/reactive-streams-in-scala-comparing-akka-streams-and-monix-part-3/
     val g = RunnableGraph.fromGraph(GraphDSL.create(resultSink) { implicit builder => sink =>
       import akka.stream.scaladsl.GraphDSL.Implicits._
 
