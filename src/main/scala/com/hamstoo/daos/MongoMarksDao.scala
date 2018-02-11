@@ -47,8 +47,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   if (MongoMarksDao.migrateData) { synchronized { if (MongoMarksDao.migrateData) {
     MongoMarksDao.migrateData = false
 
-    implicit val system = ActorSystem("MongoMarksDao-data_migration")
-    implicit val materializer = ActorMaterializer()
+    implicit val system: ActorSystem = ActorSystem("MongoMarksDao-data_migration")
+    implicit val materializer: ActorMaterializer = ActorMaterializer()
 
     Await.result(for {
       c <- dbColl()
@@ -422,8 +422,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * Executes a MongoDB Text Index search using text index with sorting in user's marks, constrained by tags.
     * Mark state must be current (i.e. timeThru == INF_TIME) and have all tags to qualify.
     */
-  // TODO: FWC: why was this removed?  no longer needed?
-  //def search(user: UUID, query: String): Future[Set[Mark]] = search(Set(user), query)
+  def search(user: UUID, query: String): Future[Set[Mark]] = search(Set(user), query)
 
   /**
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,
@@ -866,26 +865,91 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
   /** Save a ReprInfo to a mark's `reprs` list. */
   // TODO: FWC: how do we ensure that the singleton ReprInfo types (PUBLIC and USER_CONTENT) remain singletons?
+  // TODO: FFA
   def insertReprInfo(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = {
-    logger.debug(s"Saving $reprInfo for user mark $markId")
-    for {
-      c <- dbColl()
-      sel = d :~ ID -> markId :~ curnt
-      updPush = d :~ "$push" -> (d :~ REPRS -> reprInfo)
-      // unset (private) pagePending here also just in case MongoPagesDao.insertPage missed it for some reason
-      // unset singleton *ReprPendings here now that findMissingSingletonReprMarks won't see these marks anymore
-      pend = ReprType.withName(reprInfo.reprType) match {
-        case ReprType.PRIVATE => PGPENDx // private page pending
-        case ReprType.PUBLIC => PUBPENDx // public repr pending
-        case ReprType.USER_CONTENT => USRPENDx // user-content repr pending
-        case _ => throw new Exception(s"Invalid ReprType ${reprInfo.reprType} for insertReprInfo")
-      }
-      updPgPend = d :~ "$unset" -> (d :~ pend -> 1)
-      wr <- c.update(sel, updPush :~ updPgPend)
-      _ <- wr.failIfError
-    } yield {
-      logger.debug(s"$reprInfo inserted for mark $markId")
+
+    val pendingType = ReprType.withName(reprInfo.reprType) match {
+      case ReprType.PRIVATE => PGPENDx // private page pending
+      case ReprType.PUBLIC => PUBPENDx // public repr pending
+      case ReprType.USER_CONTENT => USRPENDx // user-content repr pending
+      case _ => throw new Exception(s"Invalid ReprType ${reprInfo.reprType} for insertReprInfo")
     }
+
+    /** Insert representation info */
+    def insertRepr(markId: ObjectId, reprInfo: ReprInfo, pendTpe: String): Future[Unit] = {
+      logger.debug(s"Inserting ${reprInfo.reprType} representation for mark: $markId...")
+
+      for {
+        c <- dbColl()
+        sel = d :~ ID -> markId :~ curnt
+        mod = d :~ "$push" -> (d :~ REPRS -> reprInfo) :~ "$unset" -> (d :~ pendTpe -> 1)
+
+        wr <- c.update(sel, mod)
+        _ <- wr.failIfError
+      } yield {
+        logger.debug(s"${reprInfo.reprType} representation for mark: $markId was inserted")
+      }
+    }
+
+    /** Update non-private representation */
+    def updateNonPrivateRepr(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = {
+      val reprType = reprInfo.reprType
+      logger.debug(s"Updating $reprType representation information for mark: $markId...")
+
+      for {
+        c <- dbColl()
+        sel = d :~ ID -> markId :~ REPR_TYPEx -> reprType :~ curnt
+        mod = d :~
+          "$set" -> (d :~ REPR_IDxp -> reprInfo.reprId :~ CREATEDxp -> reprInfo.created) :~
+          "$unset" -> (d :~ EXP_RATINGxp -> 1)
+
+        wr <- c.update(sel, mod)
+        _ <- wr.failIfError
+      } yield {
+        logger.debug(s"$reprType representation was updated")
+      }
+    }
+
+    /** Check if non-private representation info exist */
+    def nonPrivateReprExist(markId: ObjectId, reprType: String): Future[Option[Mark]] = {
+      logger.debug(s"Checking if non-private repr of type: $reprType exist...")
+
+      for {
+        c <- dbColl()
+        sel = d :~ ID -> markId :~  REPR_TYPEx -> reprType.toString :~ curnt
+
+        optRes <- c.find(sel).one[Mark]
+      } yield {
+        logger.debug(s"$optRes was retrieved")
+        optRes
+      }
+    }
+
+    if (reprInfo.isPrivate) insertRepr(markId, reprInfo, pendingType)
+    else nonPrivateReprExist(markId, reprInfo.reprType) map {
+      case Some(_) => updateNonPrivateRepr(markId, reprInfo)
+      case _ => insertRepr(markId, reprInfo, pendingType)
+    }
+
+//    logger.debug(s"Saving $reprInfo for user mark $markId")
+//    for {
+//      c <- dbColl()
+//      sel = d :~ ID -> markId :~ curnt
+//      updPush = d :~ "$push" -> (d :~ REPRS -> reprInfo)
+//      // unset (private) pagePending here also just in case MongoPagesDao.insertPage missed it for some reason
+//      // unset singleton *ReprPendings here now that findMissingSingletonReprMarks won't see these marks anymore
+//      pend = ReprType.withName(reprInfo.reprType) match {
+//        case ReprType.PRIVATE => PGPENDx // private page pending
+//        case ReprType.PUBLIC => PUBPENDx // public repr pending
+//        case ReprType.USER_CONTENT => USRPENDx // user-content repr pending
+//        case _ => throw new Exception(s"Invalid ReprType ${reprInfo.reprType} for insertReprInfo")
+//      }
+//      updPgPend = d :~ "$unset" -> (d :~ pend -> 1)
+//      wr <- c.update(sel, updPush :~ updPgPend)
+//      _ <- wr.failIfError
+//    } yield {
+//      logger.debug(s"$reprInfo inserted for mark $markId")
+//    }
   }
 
   /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */
