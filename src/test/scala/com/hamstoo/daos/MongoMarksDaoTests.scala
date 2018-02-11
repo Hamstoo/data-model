@@ -2,8 +2,8 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models._
 import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.models._
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils._
@@ -72,10 +72,22 @@ class MongoMarksDaoTests
 
   it should "(UNIT) insert representation info" in {
     marksDao.insertReprInfo(m1.id, reprInfoPub).futureValue shouldEqual {}
-    val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.reprs
-    reprs.size shouldEqual 2
-    reprs.map(_.reprId).toSet shouldEqual Set(reprInfoPub.reprId, reprInfoUsr.reprId)
-    reprs.exists(_.isPublic) shouldEqual true
+
+    val mark = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value
+    mark.mark.pubReprPending shouldEqual None
+
+    val reprs0 = mark.reprs
+    reprs0.size shouldEqual 2
+    reprs0.map(_.reprId).toSet shouldEqual Set(reprInfoPub.reprId, reprInfoUsr.reprId)
+    reprs0.exists(_.isPublic) shouldEqual true
+
+    val newReprID = "newReprId1"
+    marksDao.insertReprInfo(m1.id, reprInfoPub.copy(reprId = newReprID)).futureValue shouldEqual {}
+
+    val reprs1 = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value.reprs
+    reprs1.size shouldEqual 2
+    reprs1.map(_.reprId).toSet shouldEqual Set(newReprID, reprInfoUsr.reprId)
+    reprs1.exists(_.isPublic) shouldEqual true
   }
 
   it should "(UNIT) find pages with missing reprs" in {
@@ -128,7 +140,11 @@ class MongoMarksDaoTests
 
   it should "(UNIT) perform MongoDB Text Index marks search by user ID, query and tags" in {
     val md1Stub = MarkData(m1.mark.subj, m1.mark.url, tags = m1.mark.tags, comment = m1.mark.comment)
-    val m1Stub = m1.copy(mark = md1Stub, aux = m1.aux.map(_.cleanRanges), score = Some(1.0), reprs = Seq(reprInfoUsr, reprInfoPub))
+    val m1Stub = m1.copy(mark = md1Stub,
+      aux = m1.aux.map(_.cleanRanges),
+      score = Some(1.0),
+      reprs = Seq(reprInfoUsr, reprInfoPub.copy(reprId = "newReprId1"))
+    )
     marksDao.search(Set(uuid1), cmt.get).map(_.filter(_.hasTags(tagSet.get))).futureValue shouldEqual Set(m1Stub)
   }
 

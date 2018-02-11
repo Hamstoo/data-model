@@ -249,20 +249,38 @@ case class Mark(
   urlPrfx = mark.url map (_.binaryPrefix)
 
   import Mark._
+  import com.hamstoo.utils.NON_IDS
 
   /**
     * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
   // TODO: FWC: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
-  def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
+  // TODO: FFA
+  def primaryRepr: ObjectId  = privRepr match {
+    case Some(objId) if !NON_IDS.contains(objId) => objId
+    case _ => pubRepr.getOrElse("")
+  }
 
   // TODO: FWC: what if private expRating is in NON_IDS?  we should fallback to public in that case also
-  def expectedRating: Option[ObjectId] =
-    reprs.filter(_.isPrivate)
-      .sortBy(_.created).lastOption // .maxBy(_.created) throws an java.lang.UnsupportedOperationException if empty
-      .flatMap(_.expRating) // expected rating from private representation
-      .orElse(reprs.find(_.isPublic).flatMap(_.expRating))
+  // TODO: FFA
+  def expectedRating: Option[ObjectId] = {
+    val privatExpRating: Option[ObjectId] = reprs
+      .filter(_.isPrivate)
+      .sortBy(_.created)
+      .lastOption
+      .flatMap(_.expRating)
+
+    lazy val publicExpRating: Option[ObjectId] = reprs
+      .find(_.isPublic)
+      .flatMap(_.expRating)
+
+    privatExpRating match {
+      case Some(objId) if !NON_IDS.contains(id) => Some(objId)
+      case _ => publicExpRating
+    }
+  }
+
 
   def representableUserContent: Boolean = !reprs.exists(_.isUserContent)
 
@@ -490,13 +508,20 @@ object Mark extends BSONHandlers {
   val TOTBGx: String = AUX + "." + nameOf[MarkAux](_.totalBground)
 
   // ReprInfo constants value (note that these are not 'x'/extended as they aren't prefixed w/ "mark.")
-  val REPR_TYPE: String = nameOf[ReprInfo](_.reprType)
   val REPR_ID: String = nameOf[ReprInfo](_.reprId)
+  val REPR_TYPE: String = nameOf[ReprInfo](_.reprType)
+  val CREATED: String = nameOf[ReprInfo](_.created)
   val EXP_RATING: String = nameOf[ReprInfo](_.expRating)
 
   // the 'p' is for "position" update operator
+  val REPR_IDx: String = REPRS + "." + REPR_ID
+  val REPR_TYPEx: String = REPRS + "." + REPR_TYPE
+  val CREATEDx: String = REPRS + "." + CREATED
   val EXP_RATINGx: String = REPRS + "." + EXP_RATING
   val EXP_RATINGxp: String = REPRS + ".$." + EXP_RATING
+
+  val REPR_IDxp: String = REPRS + ".$." + REPR_ID
+  val CREATEDxp: String = REPRS + ".$." + CREATED
 
   val USRPRFX: String = nameOf[UrlDuplicate](_.userIdPrfx)
   assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
