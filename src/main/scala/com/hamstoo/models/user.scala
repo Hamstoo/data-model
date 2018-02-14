@@ -85,6 +85,22 @@ case class UserData(
   *  */
 case class UserAutosuggested(id: UUID, username: Option[String] = Option.empty[String])
 
+
+object UserAutosuggested {
+
+  import User.userDataHandler
+  implicit object UserAutoSuggestedReader extends BSONDocumentReader[UserAutosuggested] {
+    def read(bson: BSONDocument): UserAutosuggested = {
+      val optUserAutoSuggested = for {
+        userId <- bson.getAs[String]("id")
+        usernameLower <- bson.getAs[UserData]("userData").map(_.usernameLower)
+      } yield UserAutosuggested(UUID.fromString(userId), usernameLower)
+      optUserAutoSuggested.get
+    }
+  }
+}
+
+
 /**
   * Finally, the full User object that is stored in the database for each user.  Notice that this class
   * extends Silhouette's Identity trait.
