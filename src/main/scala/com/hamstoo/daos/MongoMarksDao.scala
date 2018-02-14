@@ -370,7 +370,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
       // todo: provide excluding in issue-222
       // TODO: FWC: searchExcludedFields may no longer be necessary as Pages are no longer stored on Marks
-      seq <- c.find(sel1 /*, searchExcludedFields */).coll[Mark, Seq]()
+      // TODO: FFA
+      seq <- c.find(sel1).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
       seq.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
@@ -855,6 +856,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     for {
       c <- dbColl()
       // TODO: FWC: do we need to use EXP_RATINGxp here?
+      // TODO: FFA
       sel = d :~ curnt :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0)) :~ EXP_RATINGx -> (d :~ "$exists" -> false)
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
