@@ -92,7 +92,7 @@ object ContentRetriever {
   // this exception is thrown when (re)Captcha is detected on a web page
   case class SitelockException() extends CaptchaException
 
-  // this exception is throw if Incapsula has blacklisted our IP or PC or for some other reason
+  // this exception is thrown if Incapsula has blacklisted our IP or PC or for some other reason
   case class IncapsulaIncidentException() extends CaptchaException
 
   // this exception is thrown if HtmlUnit got a network status code error (even after a few retries)

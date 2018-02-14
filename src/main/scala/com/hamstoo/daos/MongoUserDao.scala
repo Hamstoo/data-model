@@ -2,8 +2,10 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.User._
-import com.hamstoo.models.{Mark, Profile, Shareable, SharedWith, User, UserGroup}
+import com.hamstoo.models._
+import com.hamstoo.utils.d
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.api.services.IdentityService
 import play.api.Logger
@@ -11,7 +13,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.{BSONArray, BSONDocument}
+import reactivemongo.bson.{BSONArray, BSONDocument, BSONDocumentHandler, BSONRegex, BSONValue, Macros}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -225,4 +227,86 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     wr <- c.remove(d :~ ID -> groupId)
     _ <- wr.failIfError
   } yield ()
+
+
+  /** Search users by suffix for autosuggest
+    * suggests users only if:
+    * a user has public marks
+    * a user has been in the group with searching user
+    * a user has shared marks with searching user
+    * @param prefix
+    * @param hasSharedMarks, if `false` it search users all over the collection, if `true` it applies filter to get usernames with public marks
+    * @param userId required only if hasSharedMarks == true
+    * @param email required only if hasSharedMarks == true
+    * */
+  // Todo debug method
+  // Todo add user with private but shared mark and test `usersFromGroups` should return size 1
+  // Todo: add test
+  // Todo change hardCoded strings to BSONHandler vals names
+  def searchUsernamesBySuffix(prefix: String, hasSharedMarks: Boolean = false, userId: Option[UUID], email: Option[String]): Future[Seq[UserAutosuggested]] = {
+    // check if username exists to skip empty usernames if data migration wasn't successfull
+    // 'i' flag is case insensitive https://docs.moqngodb.com/manual/reference/operator/query/regex/
+    val query = BSONDocument(d :~ ( d :~ "userData.usernameLower" -> (d :~ "$exists" -> 1),
+      "userData.usernameLower" -> BSONRegex(".*"+prefix.toLowerCase + ".*", "i")))
+    for {
+      cUsers <- dbColl()
+      users <- cUsers.find(query).sort(BSONDocument("userData.username" -> 1)).coll[User, Seq]().map( users =>
+
+        if (!hasSharedMarks) {
+          // simple search by username suffix for sharing purposes, does not apply any filters or validation
+        users.map(user => UserAutosuggested(user.id, user.userData.username))
+      }
+    else {
+          import UserGroup.sharedWithFieldToString
+          import UserGroup.idFieldToString
+          // search usernames suffix in users who has public or private marks shared with groups
+          users.map(user => UserAutosuggested(user.id, user.userData.username))
+
+         /** find groups which belong to found by suffix usernames and contain share level 1, i.e. private group share
+            * with current not completed data structure task 4 step are required
+            * check 1 if found username has shared marks with requesting user via usergroups
+            * step 1 check if users has shared private marks with other users and collect group ids - privateGroupsIdsOfFoundUsers
+            * step 2 filter found groups if they contain requesting user (operator) email
+            * step 3 get marks list where sharedWith contains ids of found above groups
+            * step 4 get users whom found marks belong to and filter them by suffix sername since same groups can belong to various users
+            * check 2 check if users has shared public marks*/
+        for {
+            cMarks <- marksColl()
+            //check 1 step 1
+            privateGroupsIdsOfFoundUsers <- cMarks.find(
+              d :~ "userId" -> (d :~ "$in" -> users.map(_.id)) :~
+                "sharedWith" -> (d :~ "$exists" -> 1) :~
+                "sharedWith.readOnly" -> (d :~ "$exists" -> 1) :~
+                "sharedWith.readOnly.level" -> 1 :~ curnt) //, d :~ "sharedWith.readOnly.group" -> 1)
+              .coll[Mark, Seq]().map(_.map(_.sharedWith.get.readOnly.get.group).distinct)
+
+            // //check 1 step 2: find shareGroups of users found by usernames which are intersected with current user (checked by searching user email exists in emails)
+            cGroup <- groupColl()
+            privateGroupsIdsOfFoundUsersSharedWithRequestingUser <- cGroup.find(d :~ "id" -> (d :~ "$in" -> privateGroupsIdsOfFoundUsers) :~ (d :~ "emails" -> email),
+              d :~ "id" -> 1)
+              // and filter here found users with userIds found by privately shared users' marks with searching user
+              .coll[String, Seq]() //.map( goupIds => users.filter(user => userIds.contains(user.id) ))
+
+            // now todo only after sharedWith logics completed by Fayaz or Ivan
+            //       todo 1 step 4 filter all marks by privateGroupsIdsOfFoundUsersSharedWithRequestingUser
+            //     todo 2 step 5 filter marks owners by text
+            //       todo 5 write test for this logics
+//check 1 step 3: find all marks by privateGroupsIdsOfFoundUsersSharedWithRequestingUser
+            marksFoundThatAreSharedWithRequestiongUser <- cMarks.find(
+              d :~ "sharedWith" -> (d :~ "$exists" -> 1) :~
+                "sharedWith.readOnly" -> (d :~ "$exists" -> 1) :~
+                "sharedWith.readOnly.group" -> (d :~ "$in" -> privateGroupsIdsOfFoundUsersSharedWithRequestingUser) :~ curnt) //, d :~ "sharedWith.readOnly.group" -> 1)
+              .coll[Mark, Seq]().map(_.map(_.sharedWith.get.readOnly.get.group).distinct)
+//check 1 step 4 filter marks owners by suffix
+            usersIdFromGroups <- users.fil
+            /** check 2: find users' marks if they are shared as PUBLIC by share.level == 3
+              */
+            userWithPubMarksUsers <- cMarks.find(d :~ curnt :~ d :~ "sharedWith.readOnly.level" -> 3)
+              .coll[Mark, Seq]().map(_.map(_.userId)).map(userIdsWithPubMarks => {
+              users.filter(user => userIdsWithPubMarks.contains(user.id))
+            })
+          // concat two results and remove duplications, map to shrinked User version
+          } yield (usersIdFromGroups ++ userWithPubMarksUsers).distinct.map(user => UserAutosuggested(user.id, user.userData.username))
+    })} yield users
+  }
 }

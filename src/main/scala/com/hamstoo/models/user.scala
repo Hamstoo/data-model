@@ -7,7 +7,7 @@ import com.hamstoo.daos.MongoUserDao
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, BSONDocumentReader, BSONObjectID, BSONString, BSONValue, Macros}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Random
@@ -79,6 +79,12 @@ case class UserData(
   }
 }
 
+/** A shrinked version of User case class used for autosuggestion by username
+  *  even username: Option[String] is filtered of empty during reques, it is used here
+  *  to facilitate field mappings by avoiding of option unwrapping
+  *  */
+case class UserAutosuggested(id: UUID, username: Option[String] = Option.empty[String])
+
 /**
   * Finally, the full User object that is stored in the database for each user.  Notice that this class
   * extends Silhouette's Identity trait.
@@ -123,3 +129,7 @@ object User extends BSONHandlers {
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]
 }
+
+
+
+

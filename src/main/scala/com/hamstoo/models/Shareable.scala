@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.daos.MongoUserDao
 import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, generateDbId}
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, BSONDocumentReader, Macros}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.hashing
@@ -262,6 +262,18 @@ object UserGroup extends BSONHandlers {
   implicit val userGroupHandler: BSONDocumentHandler[UserGroup] = Macros.handler[UserGroup]
   implicit val shareGroupHandler: BSONDocumentHandler[ShareGroup] = Macros.handler[ShareGroup]
   implicit val sharedObjHandler: BSONDocumentHandler[SharedObj] = Macros.handler[SharedObj]
+
+  // todo check if this is working properly
+  // reading id from nested level value `sharedWith.readOnly.group`
+  implicit val sharedWithFieldToString = new BSONDocumentReader[Option[String]] {
+    def read(doc: BSONDocument): Option[String] =
+      doc.getAs[SharedWith]("sharedWith").map(_.readOnly.map( shg => shg.group.toString)).flatten
+  }
+  // read only id for projection
+  implicit val idFieldToString = new BSONDocumentReader[String] {
+    def read(doc: BSONDocument): String =
+      doc.getAs[String]("id").get
+  }
 
   val HASH: String = nameOf[UserGroup](_.hash)
   val SHROBJS: String = nameOf[UserGroup](_.sharedObjs)

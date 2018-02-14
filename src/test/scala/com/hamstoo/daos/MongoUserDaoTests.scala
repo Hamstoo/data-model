@@ -33,7 +33,7 @@ class MongoUserDaoTests
   val profile = Profile(loginInfo, confirmed = false, Some(email), None, None, None)
   val newProfile = Profile(newLoginInfo, confirmed = true, Some(newEmail), None, None, None)
 
-  val user = User(constructUserId(), UserData(), List(profile))
+  val user = User(constructUserId(), UserData(username = Some("namenamename")), List(profile))
 
   "MongoUserDao" should "(UNIT) create user" in {
     userDao.save(user).futureValue shouldEqual {}
@@ -78,5 +78,16 @@ class MongoUserDaoTests
   it should "(UNIT) delete user" in {
     userDao.delete(user.id).futureValue shouldEqual {}
     userDao.retrieve(user.id).futureValue shouldEqual None
+  }
+
+  it should "(UNIT) create user and find him by username" in {
+    userDao.save(user).futureValue shouldEqual {}
+    userDao.searchUsernamesBySuffix("name", false, None, None).futureValue.toList(0).username.get.contains("name") shouldEqual true
+    // Todo s for testing if hasSharedMarks = true
+    // add add users with email = shared@shared.com, fn = sharedshared, ln = sharedshared
+    // add add users marks
+    // add another user with email  test@test.com
+    // share by shared@shared.com with test@test.com
+    //userDao.searchUsernamesBySuffix("shared", true, getTest@TestUserId, "test@test.com").futureValue.distinct(0).username.contains("name") shouldEqual true
   }
 }
