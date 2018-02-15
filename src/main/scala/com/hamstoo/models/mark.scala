@@ -14,7 +14,7 @@ import org.jsoup.Jsoup
 import org.jsoup.safety.Whitelist
 import play.api.Logger
 import play.api.libs.json.{Json, OFormat}
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, BSONDocumentReader, Macros}
 
 import scala.collection.mutable
 import scala.util.matching.Regex
@@ -452,6 +452,14 @@ object Mark extends BSONHandlers {
     urlPrfx = Some(url.binaryPrefix)
   }
 
+  /** This class is used to get only projection of userId field from mark BSONDocument to optimize performance of db query
+    * look at https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data */
+  case class UserId(userId: String)
+
+  /** This class is used to get only projection of id field from mark BSONDocument to optimize performance of db query
+    * look at https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data */
+  case class Id(id: String)
+
   val ID_LENGTH: Int = 16
 
   val USR: String = nameOf[Mark](_.userId)
@@ -507,4 +515,6 @@ object Mark extends BSONHandlers {
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
   implicit val urldupBsonHandler: BSONDocumentHandler[UrlDuplicate] = Macros.handler[UrlDuplicate]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
+  implicit val idBsonHandler: BSONDocumentHandler[Id] = Macros.handler[Id]
+  implicit val userIdBsonHandler: BSONDocumentHandler[UserId] = Macros.handler[UserId]
 }

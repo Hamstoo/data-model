@@ -80,9 +80,12 @@ case class UserData(
 }
 
 /** A shrinked version of User case class used for autosuggestion by username
-  *  even username: Option[String] is filtered of empty during reques, it is used here
-  *  to facilitate field mappings by avoiding of option unwrapping
-  *  */
+  * even username: Option[String] is filtered of empty during reques, it is used here
+  * to facilitate field mappings by avoiding of option unwrapping
+  * as well
+  * This class is used to get only projection of necessary fields from mark BSONDocument to optimize performance of db query
+  * look at https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data
+  */
 case class UserAutosuggested(id: UUID, username: Option[String] = Option.empty[String])
 
 
@@ -123,6 +126,10 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
   def usernameId: String = userData.username.fold(id.toString)("@" + _)
 }
 
+
+
+
+
 object User extends BSONHandlers {
 
   val VALID_USERNAME: Regex = raw"^([a-zA-Z][a-zA-Z0-9_]+[a-zA-Z_])([0-9]*)$$".r
@@ -144,6 +151,7 @@ object User extends BSONHandlers {
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]
+
 }
 
 
