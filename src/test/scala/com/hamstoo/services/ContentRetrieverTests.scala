@@ -1,8 +1,8 @@
 package com.hamstoo.services
 
 import akka.stream.ActorMaterializer
-import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.Page
+import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
 import com.hamstoo.utils.ObjectId
@@ -50,5 +50,19 @@ class ContentRetrieverTests
                       new Page(id, reprType, "text/html", htmlWithFrames.toCharArray.map(_.toByte))).futureValue
     // should load only 3 frames total
     elems._2 shouldBe 3
+  }
+
+  it should "(UNIT clean url" in {
+    ContentRetriever
+      .cleanLink("https://www.silhouette.rocks/v3.0/docs/endpoints#local-fallback")
+      .shouldEqual("https://www.silhouette.rocks/v3.0/docs/endpoints")
+
+    ContentRetriever
+      .cleanLink("https://www.nature.com/articles/d41586-017-07522-z?utm_campaign=Data%2BElixir&utm_medium=email&utm_source=Data_Elixir_160")
+      .shouldEqual("https://www.nature.com/articles/d41586-017-07522-z")
+
+    ContentRetriever
+      .cleanLink("https://www.nature.com/articles/d41586-017-07522-z?utm_campaign=Data%2BElixir&utm_medium=email&utm_source=Data_Elixir_160#local-fallback")
+      .shouldEqual("https://www.nature.com/articles/d41586-017-07522-z")
   }
 }
