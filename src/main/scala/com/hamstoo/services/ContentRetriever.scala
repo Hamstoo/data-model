@@ -6,21 +6,22 @@ import java.nio.ByteBuffer
 
 import akka.util.ByteString
 import com.gargoylesoftware.htmlunit.html.HtmlPage
-import com.gargoylesoftware.htmlunit.{AjaxController, BrowserVersion, FailingHttpStatusCodeException, WebClient, WebRequest}
+import com.gargoylesoftware.htmlunit._
 import com.hamstoo.models.Page
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{MediaType, ObjectId}
-import play.api.libs.ws.ahc.cache.CacheableHttpResponseStatus
-import play.shaded.ahc.org.asynchttpclient.uri.Uri
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import play.api.Logger
+import play.api.libs.ws.ahc.cache.CacheableHttpResponseStatus
 import play.api.libs.ws.ahc.{AhcWSResponse, StandaloneAhcWSResponse}
 import play.api.libs.ws.{WSClient, WSResponse}
 import play.shaded.ahc.org.asynchttpclient.Response.ResponseBuilder
+import play.shaded.ahc.org.asynchttpclient.uri.Uri
 import play.shaded.ahc.org.asynchttpclient.{HttpResponseBodyPart, Response}
 
+import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.matching.Regex
@@ -54,6 +55,13 @@ object ContentRetriever {
 
   /** Moved from hamstoo repo LinkageService class.  Used to take a MarkData as input and produce one as output. */
   def fixLink(url: String): String = Try(checkLink(url)).getOrElse("http://" + url)
+
+  @tailrec
+  def cleanLink(url: String): String = {
+    if (url.contains("#")) cleanLink(url.split('#').head)
+    else if (url.contains("?")) cleanLink(url.split('?').head)
+    else url
+  }
 
   /** Implicit MimeType class implementing a method which looks up a RepresentationService and calls its `process`. */
   implicit class PageFunctions(private val page: Page) /*extends AnyVal*/ {
@@ -218,6 +226,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
   def digest(url: String): Future[(String, WSResponse)] = {
     logger.info(s"Digesting URL $url")
     val link: String = checkLink(url)
+    val cleanedLink: String = cleanLink(link)
 
     //@tailrec // not tail recursive because of the Future
     def recget(url: String, depth: Int = 1): Future[(String, WSResponse)] = {
@@ -247,7 +256,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
       }
     }
 
-    recget(link)
+    recget(cleanedLink)
   }
 
   /**
