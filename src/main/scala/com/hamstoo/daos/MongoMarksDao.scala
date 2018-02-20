@@ -361,6 +361,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       c <- dbColl()
 
       // TODO: FWC: we need an index for this query (or defer to issue #260)?
+      // TODO: FFA: I think it must be defer to issue #260, otherwise how this index must looks like?
       reprs = d :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0))
 
       // maybe we should $and instead of $or
@@ -370,7 +371,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
       // todo: provide excluding in issue-222
       // TODO: FWC: searchExcludedFields may no longer be necessary as Pages are no longer stored on Marks
-      // TODO: FFA
+      // TODO: FFA: it can be simply removed?
       seq <- c.find(sel1).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
@@ -856,7 +857,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     for {
       c <- dbColl()
       // TODO: FWC: do we need to use EXP_RATINGxp here?
-      // TODO: FFA
+      // TODO: FFA: What you mean by this questions, how we can find unrated marks without checking EXP_RATINGx?
       sel = d :~ curnt :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0)) :~ EXP_RATINGx -> (d :~ "$exists" -> false)
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
@@ -867,7 +868,10 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
   /** Save a ReprInfo to a mark's `reprs` list. */
   // TODO: FWC: how do we ensure that the singleton ReprInfo types (PUBLIC and USER_CONTENT) remain singletons?
-  // TODO: FFA
+  // TODO: FFA:
+  // In this place implemented mechanism for checking if it's non private ReprInfo, then before insert we trying to check
+  // if this mark already has repr_info of this type. If yes then we just update existed repr info,
+  // otherwise insert it. For private repr info, just inserting.
   def insertReprInfo(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = {
 
     val pendingType = ReprType.withName(reprInfo.reprType) match {

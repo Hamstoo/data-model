@@ -42,7 +42,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
     Nil toMap
 
   // TODO: FWC: Test me
-  // TODO: FFA
+  // TODO: FFA Tests added to MongoHighlightDaoTests
   /**
     * Insert annotation instance into mongodb collection
     * @param annotation - object that must be inserted
@@ -106,7 +106,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
   }
 
   // TODO: FWC: Test me
-  // TODO: FFA
+  // TODO: FFA Tests added to MongoHighlightDaoTests
   /**
     * Delete annotation object from mongodb collection by several parameters
     * @param usr - unique owner identifier
