@@ -257,6 +257,7 @@ case class Mark(
     */
   // TODO: FWC: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
   // TODO: FFA
+  // it's check if privRepr exist and it's not a part of NON_IDS return it, otherwise get pubRepr or empty string
   def primaryRepr: ObjectId  = privRepr match {
     case Some(objId) if !NON_IDS.contains(objId) => objId
     case _ => pubRepr.getOrElse("")
@@ -264,6 +265,7 @@ case class Mark(
 
   // TODO: FWC: what if private expRating is in NON_IDS?  we should fallback to public in that case also
   // TODO: FFA
+  // the same situation as described above
   def expectedRating: Option[ObjectId] = {
     val privatExpRating: Option[ObjectId] = reprs
       .filter(_.isPrivate)
