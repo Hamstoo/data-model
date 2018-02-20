@@ -47,8 +47,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   if (MongoMarksDao.migrateData) { synchronized { if (MongoMarksDao.migrateData) {
     MongoMarksDao.migrateData = false
 
-    implicit val system: ActorSystem = ActorSystem("MongoMarksDao-data_migration")
-    implicit val materializer: ActorMaterializer = ActorMaterializer()
+    implicit val system = ActorSystem("MongoMarksDao-data_migration")
+    implicit val materializer = ActorMaterializer()
 
     Await.result(for {
       c <- dbColl()
@@ -368,10 +368,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       sel0 = d :~ USR -> user :~ curnt :~ reprs // TODO: should `curnt` be moved into `reprs` to utilize indexes?
 
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
-
-      // todo: provide excluding in issue-222
-      // TODO: FWC: searchExcludedFields may no longer be necessary as Pages are no longer stored on Marks
-      // TODO: FFA: it can be simply removed?
       seq <- c.find(sel1).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
@@ -866,12 +862,13 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
-  /** Save a ReprInfo to a mark's `reprs` list. */
-  // TODO: FWC: how do we ensure that the singleton ReprInfo types (PUBLIC and USER_CONTENT) remain singletons?
-  // TODO: FFA:
-  // In this place implemented mechanism for checking if it's non private ReprInfo, then before insert we trying to check
-  // if this mark already has repr_info of this type. If yes then we just update existed repr info,
-  // otherwise insert it. For private repr info, just inserting.
+  /**
+   * Save a ReprInfo to a mark's `reprs` list.
+   *
+   * PUBLIC and USER_CONTENT type reprs are singletons, per mark, so they are updated and replaced
+   * if they already exist.  PRIVATE type reprs, on the other hand, are not, so there can be
+   * multiple of them per mark, so just insert any new one that comes along.
+   */
   def insertReprInfo(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = {
 
     val pendingType = ReprType.withName(reprInfo.reprType) match {
@@ -936,26 +933,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       case Some(_) => updateNonPrivateRepr(markId, reprInfo)
       case _ => insertRepr(markId, reprInfo, pendingType)
     }
-
-//    logger.debug(s"Saving $reprInfo for user mark $markId")
-//    for {
-//      c <- dbColl()
-//      sel = d :~ ID -> markId :~ curnt
-//      updPush = d :~ "$push" -> (d :~ REPRS -> reprInfo)
-//      // unset (private) pagePending here also just in case MongoPagesDao.insertPage missed it for some reason
-//      // unset singleton *ReprPendings here now that findMissingSingletonReprMarks won't see these marks anymore
-//      pend = ReprType.withName(reprInfo.reprType) match {
-//        case ReprType.PRIVATE => PGPENDx // private page pending
-//        case ReprType.PUBLIC => PUBPENDx // public repr pending
-//        case ReprType.USER_CONTENT => USRPENDx // user-content repr pending
-//        case _ => throw new Exception(s"Invalid ReprType ${reprInfo.reprType} for insertReprInfo")
-//      }
-//      updPgPend = d :~ "$unset" -> (d :~ pend -> 1)
-//      wr <- c.update(sel, updPush :~ updPgPend)
-//      _ <- wr.failIfError
-//    } yield {
-//      logger.debug(s"$reprInfo inserted for mark $markId")
-//    }
   }
 
   /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */

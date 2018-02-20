@@ -255,35 +255,18 @@ case class Mark(
     * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
-  // TODO: FWC: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
-  // TODO: FFA
-  // it's check if privRepr exist and it's not a part of NON_IDS return it, otherwise get pubRepr or empty string
-  def primaryRepr: ObjectId  = privRepr match {
-    case Some(objId) if !NON_IDS.contains(objId) => objId
-    case _ => pubRepr.getOrElse("")
-  }
+  def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
 
-  // TODO: FWC: what if private expRating is in NON_IDS?  we should fallback to public in that case also
-  // TODO: FFA
-  // the same situation as described above
+  /** Basically the same impl as `primaryRepr` except that it returns an expected rating ID (as an Option). */
   def expectedRating: Option[ObjectId] = {
-    val privatExpRating: Option[ObjectId] = reprs
-      .filter(_.isPrivate)
-      .sortBy(_.created)
-      .lastOption
-      .flatMap(_.expRating)
-
-    lazy val publicExpRating: Option[ObjectId] = reprs
-      .find(_.isPublic)
-      .flatMap(_.expRating)
-
-    privatExpRating match {
-      case Some(objId) if !NON_IDS.contains(id) => Some(objId)
-      case _ => publicExpRating
-    }
+    val privExpRating = reprs
+      .filter(x => x.isPrivate && !NON_IDS.contains(x.expRating.getOrElse("")))
+      .sortBy(_.created).lastOption.flatMap(_.expRating)
+    lazy val pubExpRating = reprs.find(_.isPublic).flatMap(_.expRating)
+    privExpRating.orElse(pubExpRating)
   }
 
-
+  /** A mark has representable user content if it doesn't have a USER_CONTENT repr. */
   def representableUserContent: Boolean = !reprs.exists(_.isUserContent)
 
   /** Get a private representation without an expected rating, if it exists. */
@@ -293,7 +276,7 @@ case class Mark(
     * Return latest representation ID, if it exists.  Even though public and user-content reprs are supposed to
     * be singletons, it doesn't hurt to be conservative and return the most recent rather than just using `find`.
     */
-  def privRepr: Option[ObjectId] = repr(_.isPrivate)
+  def privRepr: Option[ObjectId] = repr(x => x.isPrivate && !NON_IDS.contains(x.reprId))
   def pubRepr: Option[ObjectId] = repr(_.isPublic)
   def userContentRepr: Option[ObjectId] = repr(_.isUserContent)
   private def repr(pred: ReprInfo => Boolean): Option[ObjectId] =

@@ -259,7 +259,7 @@ object Representation extends BSONHandlers {
       = Value
   }
 
-  //TODO: check this https://github.com/lloydmeta/enumeratum
+  // TODO: check this https://github.com/lloydmeta/enumeratum
   /** Representation type enumeration. */
   object ReprType extends Enumeration {
 
@@ -280,7 +280,6 @@ object Representation extends BSONHandlers {
   // make it implicit
   implicit def reprType2String(reprType: ReprType.Value): String = reprType.toString
 
-  // why comment extending from `AnyVal`?
   /** Implicit class for converting an Either[ObjectId, ReprType.Value] into a Future[ObjectId]. */
   implicit class ExtendedEitherRepr(private val repr: Either[ObjectId, ReprType.Value]) /*extends AnyVal*/ {
 
