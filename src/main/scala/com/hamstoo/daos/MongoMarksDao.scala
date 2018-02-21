@@ -463,14 +463,15 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   }
 
   /** Akka Stream */
-  def stream(userId: UUID)(implicit m: Materializer): Source[Mark, NotUsed] = {
+  def stream(userId: UUID, begin: TimeStamp, end: TimeStamp)(implicit m: Materializer): Source[Mark, NotUsed] = {
     logger.debug(s"Streaming marks of user $userId")
 
-    // TODO: issue #146, loop through all of each mark's reprs and timestamps
+    // TODO: issue #146, loop through all of each mark's reprs/versions and timestamps
     Source.fromFuture(dbColl())
       .flatMapConcat { c =>
         import reactivemongo.akkastream.cursorProducer
-        c.find(d :~ USR -> userId).sort(d :~ TIMEFROM -> 1).cursor[Mark]().documentSource()
+        val btw = d :~ TIMEFROM -> (d :~ "$gte" -> begin :~ "$lt" -> end)
+        c.find(d :~ USR -> userId :~ curnt :~ btw).sort(d :~ TIMEFROM -> 1).cursor[Mark]().documentSource()
       }
   }
 

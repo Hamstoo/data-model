@@ -1,5 +1,8 @@
 package com.hamstoo.stream
 
+import akka.NotUsed
+import akka.stream.scaladsl.Source
+
 /**
   * A stream reducer.  Doesn't reduce the whole stream, but rather groups of elements along it and reduces each
   * group into its own datapoint.  Note that this class does not extend DataStream, but rather its `apply`
@@ -14,21 +17,23 @@ package com.hamstoo.stream
   * @tparam T  Data type
   * @tparam G  The type of group produced by the grouper's group commands.
   */
-abstract class Reducer[T, G <: Group](grouper: () => GroupCommandFactory[G], maxSubstreams: Int) {
+abstract class Reducer[T, G <: Group](grouper: () => GroupCommandFactory[G], maxSubstreams: Int)
+                                     (ds: DataStream[T])
+        extends DataStream[T] {
 
   // support for using a Seq here:
   //   http://blog.kunicki.org/blog/2016/07/20/implementing-a-custom-akka-streams-graph-stage/
   case class Dataset(group: Option[Group], data: Seq[Datum[T]])
 
   /** Implement me! */
-  protected def reduce(data: Dataset): Datum[T]
+  def reduce(data: Dataset): Datum[T]
 
   /** Group the input DataStream into at most maxSubstreams, and then aggregate and reduce each one individually. */
-  def apply(ds: DataStream[T]): DataStream[T] = DataStreamRef {
+  override val source: Source[Datum[T], NotUsed] =
     ds.source
       .statefulMapConcat { () => // each datum will map to a set of groups which it belongs to
         val factory = grouper() // TODO: how do we ensure grouper is calling `new` each time?
-        d => factory.commandsFor(d) // bind the new factory into the returned function
+        d => factory.commandsFor(d) // bind the new factory into the returned function (don't call grouper() inside here!)
       }
       .groupBy(maxSubstreams, command => command.g)
                                 // "Subsequent combinators will be applied to _each_ of the sub-streams [separately]."
@@ -40,5 +45,4 @@ abstract class Reducer[T, G <: Group](grouper: () => GroupCommandFactory[G], max
       }
       .map(reduce)
       .mergeSubstreams
-  }
 }
