@@ -106,18 +106,18 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
         }
       }
 
-      if (verbose) logger.debug(s"Looking up URI '$uri'")
+      if (verbose) logger.trace(s"Looking up URI '$uri'")
       vectorsDao.retrieve(uri) flatMap {
         case Some(ve) =>
-          if (verbose) logger.debug(s"Successful database vector lookup for URI '$uri'")
+          if (verbose) logger.trace(s"Successful database vector lookup for URI '$uri'")
           Vectorizer.dbCount += 1
           Future.successful(ve.vector.map((_, standardizedTerm)))
         case None =>
           Vectorizer.fCount += 1
-          if (verbose) logger.debug(s"Fetching URI '$uri' from service API")
+          if (verbose) logger.trace(s"Fetching URI '$uri' from service API")
           for {
             optVec <- fetch(false)
-            _ = if (verbose) logger.debug(s"Successful service API vector lookup for URI '$uri': ${optVec.map(_.take(3))}")
+            _ = if (verbose) logger.trace(s"Successful service API vector lookup for URI '$uri': ${optVec.map(_.take(3))}")
             _ <- vectorsDao.addUri(uri, optVec)
           } yield optVec.map(_ -> standardizedTerm)
       }

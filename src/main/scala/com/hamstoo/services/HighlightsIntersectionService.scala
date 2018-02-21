@@ -1,7 +1,7 @@
 package com.hamstoo.services
 
 import com.hamstoo.daos.MongoHighlightDao
-import com.hamstoo.models.{Highlight, PageCoord}
+import com.hamstoo.models.{Highlight, PageCoord, User}
 import play.api.Logger
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -18,7 +18,7 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
   def add(highlight: Highlight): Future[Highlight] = for {
 
     // get all highlights by markId
-    hls <- hlightsDao.retrieveByMarkId(highlight.usrId, highlight.markId)
+    hls <- hlightsDao.retrieve(User(highlight.usrId), highlight.markId)
 
     // merge same-element text of the new highlight (It's assumed that frontend sends xpaths sorted by their position
     // in the document. Ideally there should be a check leading to rejecting requests to add highlights with error

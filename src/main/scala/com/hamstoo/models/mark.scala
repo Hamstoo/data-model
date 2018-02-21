@@ -4,9 +4,8 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
-import com.hamstoo.services.TikaInstance
-import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId}
-import com.hamstoo.utils.{ExtendedString, INF_TIME, TIME_NOW, generateDbId, reconcilePrivPub}
+import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -31,6 +30,7 @@ import scala.util.matching.Regex
   * @param rating         - the value assigned to the mark by the user, from 0.0 to 5.0
   * @param tags           - a set of tags assigned to the mark by the user
   * @param comment        - an optional text comment assigned to the mark by the user
+  * @param pagePending    - don't let repr-engine process marks that are still waiting for private pages
   * @param commentEncoded - markdown converted to HTML; set by class init
   */
 case class MarkData(
@@ -39,10 +39,17 @@ case class MarkData(
                      override val rating: Option[Double] = None,
                      tags: Option[Set[String]] = None,
                      comment: Option[String] = None,
-                     var commentEncoded: Option[String] = None) extends MDSearchable(subj, url, rating) {
+                     var commentEncoded: Option[String] = None,
+                     pagePending: Option[Boolean] = None) {
 
   import MarkData._
 
+  // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
+  // rating value (not part of the data(base) model)
+  var bMasked: Boolean = false
+  var ownerRating: Option[Double] = None
+
+  // populate `commentEncoded` by deriving it from the value of `comment`
   commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
     // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
@@ -68,6 +75,9 @@ case class MarkData(
     Jsoup.clean(html2, htmlTagsWhitelist)
   }
 
+  /** Check for `Automarked` label. */
+  def isAutomarked: Boolean = tags.exists(_.exists(_.equalsIgnoreCase(MarkData.AUTOSAVE_TAG)))
+
   /**
     * Merge two `MarkData`s with as little data loss as possible.  Not using `copy` here to ensure that if
     * additional fields are added to the constructor they aren't forgotten here.
@@ -86,6 +96,16 @@ case class MarkData(
              comment.map(_ + oth.comment.map(commentMergeSeparator + _).getOrElse("")).orElse(oth.comment)
     )
   }
+
+  /** If the two MarkDatas are equal, as far as generating a public representation would be concerned. */
+  // TODO: the interface for constructing a public repr should only be allowed to include these fields via having its own class
+  def equalsPerPubRepr(other: MarkData): Boolean =
+    url.isDefined && url == other.url || url.isEmpty && subj == other.subj
+
+  /** If the two MarkDatas are equal, as far as generating a user representation would be concerned. */
+  // TODO: the interface for constructing a user repr should only be allowed to include these fields via having its own class
+  def equalsPerUserRepr(other: MarkData): Boolean = copy(url = None, rating = None, pagePending = None) ==
+                                              other.copy(url = None, rating = None, pagePending = None)
 }
 
 object MarkData {
@@ -110,23 +130,19 @@ object MarkData {
   val AUTOSAVE_TAG = "Automarked"
   val IMPORT_TAG = "Imported"
   val UPLOAD_TAG = "Uploaded"
+  val SHARED_WITH_ME_TAG = "SharedWithMe"
 }
 
 /**
-  * This is the data structure used to store external content, e.g. HTML files or PDFs.  It could be private content
-  * downloaded via the chrome extension, the repr-engine downloads public content given a URL, or the file upload
-  * process uploads content directly from the user's computer.
+  * Non-owners of marks may want to add their own ratings and/or labels.  This class allows them to do so.
+  * @param markId  A reference to another user's mark.
+  * @param rating  This user's rating.
+  * @param tags    This user's additional tags (in addition to those of the owner user) which could include
+  *                SHARED_WITH_ME_TAG initially (the first time this non-owner user visits the shared mark) by default.
   */
-case class Page(mimeType: String, content: mutable.WrappedArray[Byte])
-
-object Page {
-
-  /** A separate `apply` method that detects the MIME type automagically with Tika. */
-  def apply(content: mutable.WrappedArray[Byte]): Page = {
-    val mimeType = TikaInstance.detect(content.toArray[Byte])
-    Page(mimeType, content)
-  }
-}
+case class MarkRef(markId: ObjectId,
+                   rating: Option[Double] = None,
+                   tags: Option[Set[String]] = None)
 
 /**
   * This class is used to detect embedded links in text and wrap them w/ <a> anchor tags.  It visits
@@ -167,22 +183,42 @@ object TextNodesVisitor {
 }
 
 /**
+  * Object that represents different possible mark states.
+  * @param reprId     Representation ID
+  * @param reprType   Representation type, database requires a String (also see `object ReprType extends Enumeration`)
+  * @param expRating  Expected rating generated by repr-engine.ExpectedRatingActor
+  */
+case class ReprInfo(reprId: ObjectId,
+                    reprType: String,
+                    created: TimeStamp = TIME_NOW,
+                    expRating: Option[ObjectId] = None) {
+
+  /** Check if expected rating has not yet been computed for this Representation. */
+  def eratablePublic: Boolean = isPublic && expRating.isEmpty
+  def eratablePrivate: Boolean = isPrivate && expRating.isEmpty
+  def eratableUserContent: Boolean = isUserContent && expRating.isEmpty
+
+  def isPublic: Boolean = ReprType.withName(reprType) == ReprType.PUBLIC
+  def isPrivate: Boolean = ReprType.withName(reprType) == ReprType.PRIVATE
+  def isUserContent: Boolean = ReprType.withName(reprType) == ReprType.USER_CONTENT
+}
+
+/**
   * User history (list) entry data model. An `Entry` is a `Mark` that belongs to a
   * particular user along with an ID and timestamp.
   *
-  * The fields are:
-  *
-  * @param userId   - owning user's UUID
+  * @param userId   - owner's user ID
+  * @param sharedWith - defines which other users are allowed to read or write this Mark[Data]
   * @param id       - the mark's alphanumerical string, used as an identifier common with all the marks versions
   * @param mark     - user-provided content
+  * @param markRef - Content that references (and masks) another mark that is owned by a different user.
+  *                 When this field is provided, the `mark` field should be empty.
+  *                 TODO: What if this non-owner goes and marks the same URL?  Just create another mark!
   * @param aux      - additional fields holding satellite data
   * @param urlPrfx  - binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init
-  *                 Binary prefix is used as filtering and 1st stage of urls equality estimation
-  *                 https://en.wikipedia.org/wiki/Binary_prefix
-  * @param page     - temporary holder for page sources, until a representation is constructed or assigned
-  * @param pubRepr  - optional public page representation id for this mark
-  * @param privRepr - optional personal user content representation id for this mark
-  * @param pubExpRating - expected rating of the mark given pubRepr and the user's rating history
+  *                   Binary prefix is used as filtering and 1st stage of urls equality estimation
+  *                   https://en.wikipedia.org/wiki/Binary_prefix
+  * @param reprs    - A history of different mark states/views/representations as marked by the user
   * @param timeFrom - timestamp of last edit
   * @param timeThru - the moment of time until which this version is latest
   * @param mergeId  - if this mark was merged into another, this will be the ID of that other
@@ -191,22 +227,21 @@ object TextNodesVisitor {
   *                 `MongoMarksDao.search` so it is easier to have it included here.
   */
 case class Mark(
-                 override val userId: UUID,
-                 override val id: String = generateDbId(Mark.ID_LENGTH),
-                 override val mark: MarkData,
+                 userId: UUID,
+                 id: ObjectId = generateDbId(Mark.ID_LENGTH),
+                 mark: MarkData,
+                 markRef: Option[MarkRef] = None,
                  aux: Option[MarkAux] = Some(MarkAux(None, None)),
                  var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
-                 page: Option[Page] = None,
-                 override val pubRepr: Option[String] = None, // it's helpful for these fields to be (foreign key'ish)
-                 override val privRepr: Option[String] = None, // strings rather than objects so that they can be set to
-                 override val pubExpRating: Option[String] = None, // "failed" or "none" if desired (e.g. see
-                 override val privExpRating: Option[String] = None, // RepresentationActor.FAILED_REPR_ID)
-                 override val timeFrom: Long = TIME_NOW,
-                 override val timeThru: Long = INF_TIME,
+                 reprs: Seq[ReprInfo] = Nil,
+                 timeFrom: TimeStamp = TIME_NOW,
+                 timeThru: TimeStamp = INF_TIME,
+                 modifiedBy: Option[UUID] = None,
                  mergeId: Option[String] = None,
-                 override val score: Option[Double] = None)
-  extends MSearchable(userId, id, mark, pubRepr, privRepr, pubExpRating, privExpRating, timeFrom, timeThru, score) {
-
+                 sharedWith: Option[SharedWith] = None,
+                 nSharedFrom: Option[Int] = Some(0),
+                 nSharedTo: Option[Int] = Some(0),
+                 score: Option[Double] = None) extends Shareable {
   urlPrfx = mark.url map (_.binaryPrefix)
 
   import Mark._
@@ -215,21 +250,74 @@ case class Mark(
     * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
-  def primaryRepr   :        String  = reconcilePrivPub(privRepr     , pubRepr     ).getOrElse("")
-  def expectedRating: Option[String] = reconcilePrivPub(privExpRating, pubExpRating)
+  // TODO: FWC: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
+  def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
+
+  // TODO: FWC: what if private expRating is in NON_IDS?  we should fallback to public in that case also
+  def expectedRating: Option[ObjectId] =
+    reprs.filter(_.isPrivate)
+      .sortBy(_.created).lastOption // .maxBy(_.created) throws an java.lang.UnsupportedOperationException if empty
+      .flatMap(_.expRating) // expected rating from private representation
+      .orElse(reprs.find(_.isPublic).flatMap(_.expRating))
+
+  def representableUserContent: Boolean = !reprs.exists(_.isUserContent)
+
+  /** Get a private representation without an expected rating, if it exists. */
+  def unratedPrivRepr: Option[ObjectId] = reprs.find(_.eratablePrivate).map(_.reprId)
+
+  /**
+    * Return latest representation ID, if it exists.  Even though public and user-content reprs are supposed to
+    * be singletons, it doesn't hurt to be conservative and return the most recent rather than just using `find`.
+    */
+  def privRepr: Option[ObjectId] = repr(_.isPrivate)
+  def pubRepr: Option[ObjectId] = repr(_.isPublic)
+  def userContentRepr: Option[ObjectId] = repr(_.isUserContent)
+  private def repr(pred: ReprInfo => Boolean): Option[ObjectId] =
+    reprs.filter(pred).sortBy(_.created).lastOption.map(_.reprId)
 
   /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
     * representations, even if the mark doesn't have a URL, we'll still try to derive a representation from the subject
     * in case LinkageService.digest timed out when originally trying to generate a title for the mark (issue #195).
     */
-  def representablePublic: Boolean = pubRepr.isEmpty
-  def representablePrivate: Boolean = privRepr.isEmpty && page.isDefined
-  def eratablePublic: Boolean = pubExpRating.isEmpty && pubRepr.isDefined
-  def eratablePrivate: Boolean = privExpRating.isEmpty && privRepr.isDefined
+  def eratablePublic: Boolean = reprs.exists(_.eratablePublic)
+  def eratablePrivate: Boolean = reprs.exists(_.eratablePrivate)
+  def eratableUserContent: Boolean = reprs.exists(_.eratableUserContent)
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
+
+  /** Returns true if this Mark's MarkData has all of the test tags. */
+  def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.contains(t)))
+
+  /**
+    * Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a shared-with, non-owner of the Mark.
+    * Returns the mark owner's rating in the `ownerRating` field of the returned MarkData.  Note that if
+    * `callingUser` owns the mark, the supplied optRef is completely ignored.
+    */
+  def mask(optRef: Option[MarkRef], callingUser: Option[User]): Mark = {
+    if (callingUser.exists(ownedBy)) this else {
+
+      // still mask even if optRef is None to ensure that the owner's rating is moved to the `ownerRating` field
+      val ref = optRef.getOrElse(MarkRef(id)) // create an empty MarkRef (id isn't really used)
+
+      val unionedTags = mark.tags.getOrElse(Set.empty[String]) ++ ref.tags.getOrElse(Set.empty[String])
+      val mdata = mark.copy(rating = ref.rating,
+                            tags = if (unionedTags.isEmpty) None else Some(unionedTags))
+      mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
+      mdata.ownerRating = mark.rating
+      copy(mark = mdata)
+    }
+  }
+
+  /**
+    * If the mark has been masked, show the original rating in blue, o/w lookup the mark's expected rating ID in
+    * the given `eratings` map and show that in blue.  This allows us to (1) always show the current user's rating
+    * in orange, even when displaying another shared-from user's mark, and (2) hide shared-from users' rating
+    * predictions, which contain information about more than just the mark being shared, from shared-to users.
+    */
+  def blueRating(eratings: Map[ObjectId, ExpectedRating]): Option[Double] =
+    if (mark.bMasked) mark.ownerRating else expectedRating.flatMap(eratings.get).flatMap(_.value)
 
   /**
     * Merge two marks.  This method is called from the `repr-engine` when a new mark's, `oth`, representations are
@@ -239,37 +327,47 @@ case class Mark(
   def merge(oth: Mark): Mark = {
     assert(this.userId == oth.userId)
 
-    // warning messages
-    if (pubRepr.isDefined && oth.pubRepr.isDefined && pubRepr.get != oth.pubRepr.get)
-      logger.warn(s"Merging two marks, $id and ${oth.id}, with different public representations ${pubRepr.get} and ${oth.pubRepr.get}; ignoring latter")
-    if (privRepr.isDefined && oth.privRepr.isDefined && privRepr.get != oth.privRepr.get)
-      logger.warn(s"Merging two marks, $id and ${oth.id}, with different private representations ${privRepr.get} and ${oth.privRepr.get}; ignoring latter")
+    if (reprs.nonEmpty && oth.reprs.nonEmpty && reprs != oth.reprs)
+      logger.warn(s"Merging two marks, $id and ${oth.id}, with different private representations; ignoring latter")
 
     // TODO: how do we ensure that additional fields added to the constructor are accounted for here?
     // TODO: how do we ensure that other data (like highlights) that reference markIds are accounted for?
-    copy(mark = mark.merge(oth.mark),
-
-         aux = if (oth.aux.isDefined) aux.map(_.merge(oth.aux.get)).orElse(oth.aux) else aux,
-
-         // `page`s should all have been processed already if any private repr is defined, so only merge them if
-         // that is not the case; in which case it's very unlikely that both will be defined, but use newer one if so
-         // just in case the user wasn't logged in originally or something (but then `Representation.isDuplicate`
-         // would have returned false, so we wouldn't even be here in this awkward position)
-         page = if (Seq(privRepr, oth.privRepr).exists(_.isDefined)) None else oth.page.orElse(page),
-
-         // it's remotely possible that these are different, which we warn about above
-         pubRepr  = pubRepr .orElse(oth.pubRepr ),
-         privRepr = privRepr.orElse(oth.privRepr)
-
-         // intentionally skip expectedRating, let the repr-engine generate a value for the new merged mark later on
+    copy(
+      mark = mark.merge(oth.mark),
+      aux = if (oth.aux.isDefined) aux.map(_.merge(oth.aux.get)).orElse(oth.aux) else aux,
+      reprs = reprs ++ oth.reprs.filter(_.isPrivate) // must be consistent w/ MongoPagesDao.mergePrivatePages
     )
   }
 
-  /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
+  /**
+    * If a Mark's content has changed sufficiently to necessitate a recalculation of its reprs, then remove them.
+    * In other words, it can keep its reprs if whatever it has become is no different from what it was.
+    */
+  def removeStaleReprs(original: Mark): Mark = {
+
+    // if the URL has changed then discard the old public repr (only the public one though as the private one is
+    // based on private user content that was only available from the browser extension at the time the user first
+    // created it)
+    val reprs0 = if (mark equalsPerPubRepr original.mark) reprs else reprs.filterNot(_.isPublic)
+
+    // if user-generated content has changed then discard the old user repr (also see unsetUserContentReprId below)
+    val reprs1 = if (mark equalsPerUserRepr original.mark) reprs0 else reprs0.filterNot(_.isUserContent)
+
+    copy(reprs = reprs1)
+  }
+
+  /**
+    * Fairly standard equals definition.  Required b/c of the overriding of hashCode.
+    * TODO: can this be removed now that we're no longer relying on it for set-union in backend's SearchService.search?
+    */
   override def equals(other: Any): Boolean = other match {
     case other: Mark => other.canEqual(this) && this.hashCode == other.hashCode
     case _ => false
   }
+
+  /** Same as `equals` except ignoring timeFrom/timeThru. */
+  def equalsIgnoreTimeStamps(other: Mark): Boolean =
+    equals(other.copy(timeFrom = timeFrom, timeThru = timeThru, score = score))
 
   /**
     * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
@@ -352,10 +450,20 @@ object Mark extends BSONHandlers {
   // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once
   logger.info("data-model version " + Option(getClass.getPackage.getImplementationVersion).getOrElse("null"))
 
-  case class RangeMils(begin: Long, end: Long)
+  case class RangeMils(begin: TimeStamp, end: TimeStamp)
+  type DurationMils = Long
 
-  /** Auxiliary stats pertaining to a `Mark`. */
-  case class MarkAux(tabVisible: Option[Seq[RangeMils]], tabBground: Option[Seq[RangeMils]]) {
+  /**
+    * Auxiliary stats pertaining to a `Mark`.
+    *
+    * The two `cachedTotal` vars will only be computed if they are None.  These fields are specifically excluded
+    * from the MongoDB projection when searching so that they can be re-computed each time they're loaded.  At that
+    * point, the caller can choose whether or not to keep the two `tab` vals.
+    */
+  case class MarkAux(tabVisible: Option[Seq[RangeMils]],
+                     tabBground: Option[Seq[RangeMils]],
+                     var cachedTotalVisible: Option[DurationMils] = None,
+                     var cachedTotalBground: Option[DurationMils] = None) {
 
     /** Not using `copy` in this merge to ensure if new fields are added, they aren't forgotten here. */
     def merge(oth: MarkAux) =
@@ -363,10 +471,15 @@ object Mark extends BSONHandlers {
               Some(tabBground.getOrElse(Nil) ++ oth.tabBground.getOrElse(Nil)))
 
     /** These methods return the total aggregated amount of time in the respective sequences of ranges. */
-    def totalVisible: Long = total(tabVisible)
-    def totalBground: Long = total(tabBground)
-    private def total(tabSomething: Option[Seq[RangeMils]]): Long =
+    if (cachedTotalVisible.isEmpty) cachedTotalVisible = Some(total(tabVisible))
+    if (cachedTotalBground.isEmpty) cachedTotalBground = Some(total(tabBground))
+    def totalVisible: DurationMils = tabVisible.fold(cachedTotalVisible.getOrElse(0L))(_ => total(tabVisible))
+    def totalBground: DurationMils = tabBground.fold(cachedTotalBground.getOrElse(0L))(_ => total(tabBground))
+    def total(tabSomething: Option[Seq[RangeMils]]): DurationMils =
       tabSomething.map(_.foldLeft(0L)((agg, range) => agg + range.end - range.begin)).getOrElse(0L)
+
+    /** Returns a copy with the two sequences of RangeMils removed--to preserve memory. */
+    def cleanRanges: MarkAux = this.copy(tabVisible = None, tabBground = None)
   }
 
   /**
@@ -404,18 +517,14 @@ object Mark extends BSONHandlers {
   val ID_LENGTH: Int = 16
 
   val USR: String = nameOf[Mark](_.userId)
-  val ID: String = nameOf[Mark](_.id)
+  val ID: String = Shareable.ID
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)
   val URLPRFX: String = nameOf[Mark](_.urlPrfx)
-  val PAGE: String = nameOf[Mark](_.page)
-  val PUBREPR: String = nameOf[Mark](_.pubRepr)
-  val PRVREPR: String = nameOf[Mark](_.privRepr)
-  val PUBESTARS: String = nameOf[Mark](_.pubExpRating)
-  val PRIVESTARS: String = nameOf[Mark](_.privExpRating)
   val TIMEFROM: String = nameOf[Mark](_.timeFrom)
   val TIMETHRU: String = nameOf[Mark](_.timeThru)
   val MERGEID: String = nameOf[Mark](_.mergeId)
+  val REPRS: String = nameOf[Mark](_.reprs)
 
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)
@@ -427,9 +536,23 @@ object Mark extends BSONHandlers {
   val TAGSx: String = MARK + "." + nameOf[MarkData](_.tags)
   val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
   val COMNTENCx: String = MARK + "." + nameOf[MarkData](_.commentEncoded)
+  val PGPENDx: String = MARK + "." + nameOf[MarkData](_.pagePending)
+
+  val REFIDx: String = nameOf[Mark](_.markRef) + "." + nameOf[MarkRef](_.markId)
 
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
+  val TOTVISx: String = AUX + "." + nameOf[MarkAux](_.totalVisible)
+  val TOTBGx: String = AUX + "." + nameOf[MarkAux](_.totalBground)
+
+  // ReprInfo constants value (note that these are not 'x'/extended as they aren't prefixed w/ "mark.")
+  val REPR_TYPE: String = nameOf[ReprInfo](_.reprType)
+  val REPR_ID: String = nameOf[ReprInfo](_.reprId)
+  val EXP_RATING: String = nameOf[ReprInfo](_.expRating)
+
+  // the 'p' is for "position" update operator
+  val EXP_RATINGx: String = REPRS + "." + EXP_RATING
+  val EXP_RATINGxp: String = REPRS + ".$." + EXP_RATING
 
   implicit val mDSearchable: BSONDocumentHandler[MDSearchable] = Macros.handler[MDSearchable]
   implicit val mSearchable: BSONDocumentHandler[MSearchable] = Macros.handler[MSearchable]
@@ -437,11 +560,14 @@ object Mark extends BSONHandlers {
   assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
   assert(nameOf[UrlDuplicate](_.id) == com.hamstoo.models.Mark.ID)
 
-  implicit val pageBsonHandler: BSONDocumentHandler[Page] = Macros.handler[Page]
+  implicit val shareGroupHandler: BSONDocumentHandler[ShareGroup] = Macros.handler[ShareGroup]
+  implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
   implicit val rangeBsonHandler: BSONDocumentHandler[RangeMils] = Macros.handler[RangeMils]
   implicit val auxBsonHandler: BSONDocumentHandler[MarkAux] = Macros.handler[MarkAux]
   implicit val eratingBsonHandler: BSONDocumentHandler[ExpectedRating] = Macros.handler[ExpectedRating]
-  implicit val markBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
+  implicit val markRefBsonHandler: BSONDocumentHandler[MarkRef] = Macros.handler[MarkRef]
+  implicit val markDataBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
+  implicit val reprRating: BSONDocumentHandler[ReprInfo] = Macros.handler[ReprInfo]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
   implicit val urldupBsonHandler: BSONDocumentHandler[UrlDuplicate] = Macros.handler[UrlDuplicate]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]

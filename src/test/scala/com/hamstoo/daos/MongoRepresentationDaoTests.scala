@@ -1,9 +1,9 @@
 package com.hamstoo.daos
 
-import com.hamstoo.models.{MarkData, Page, Representation}
+import com.hamstoo.models.{MarkData, Representation}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.{INF_TIME, MediaType, TIME_NOW}
+import com.hamstoo.utils._
 
 import scala.util.Random
 
@@ -27,7 +27,6 @@ class MongoRepresentationDaoTests
 
   val repr = Representation(
     link = None,
-    page = None,
     header = None,
     doctext = "doctext",
     othtext = None,
@@ -44,7 +43,6 @@ class MongoRepresentationDaoTests
     val vec2: Representation.Vec = Seq(2304932.039423, 39402.3043, 2304932.039423, 39402.3043, 2304932.039423, 39402.3043)
 
     val reprOrig = Representation(link = url,
-      page = Some(Page(MediaType.TEXT_HTML.toString, "sdf".getBytes)),
       header = None,
       doctext = "sdf",
       othtext = None,
@@ -54,7 +52,6 @@ class MongoRepresentationDaoTests
     println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
     val reprCopy = reprOrig.copy(
-      page = Some(Page(MediaType.TEXT_HTML.toString, "sывфывdf".getBytes)),
       header = None,
       doctext = "sasdasdf",
       othtext = None,

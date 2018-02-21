@@ -3,7 +3,7 @@ package com.hamstoo.services
 import java.util.UUID
 
 import com.hamstoo.daos.MongoHighlightDao
-import com.hamstoo.models.{Highlight, PageCoord}
+import com.hamstoo.models.{Highlight, PageCoord, User}
 import com.hamstoo.models.Highlight.{PositionElement => PosElem}
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.DataInfo._
@@ -259,7 +259,7 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mocki
     val hl1 = Highlight(      hl0.usrId  , markId =    hl0.markId , pos = pos1, preview = prv1)
 
     // these are the only 2 methods of hlightsDao that should be invoked, a NPE will occur if others are invoked also
-    when(hlightsDao.retrieveByMarkId(any[UUID], anyString())).thenReturn(Future.successful(Seq(hl0)))
+    when(hlightsDao.retrieve(any[Option[User]], anyString())).thenReturn(Future.successful(Seq(hl0)))
     when(hlightsDao.update(any[UUID], anyString, any[Highlight.Position],
                            any[Highlight.Preview], any[Option[PageCoord]]))
       .thenAnswer { invocation: InvocationOnMock =>

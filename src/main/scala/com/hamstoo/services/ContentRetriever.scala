@@ -1,31 +1,30 @@
 package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
-import java.net.{SocketAddress, URI}
+import java.net.URI
 import java.nio.ByteBuffer
 
 import akka.util.ByteString
 import com.gargoylesoftware.htmlunit.html.HtmlPage
 import com.gargoylesoftware.htmlunit.{AjaxController, BrowserVersion, FailingHttpStatusCodeException, WebClient, WebRequest}
 import com.hamstoo.models.Page
-import com.hamstoo.utils.MediaType
+import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.utils.{MediaType, ObjectId}
 import play.api.libs.ws.ahc.cache.CacheableHttpResponseStatus
-import play.shaded.ahc.org.asynchttpclient.{AsyncHttpClientConfig, HttpResponseStatus}
 import play.shaded.ahc.org.asynchttpclient.uri.Uri
-//import net.ruippeixotog.scalascraper.browser.HtmlUnitBrowser
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import play.api.Logger
 import play.api.libs.ws.ahc.{AhcWSResponse, StandaloneAhcWSResponse}
 import play.api.libs.ws.{WSClient, WSResponse}
-import play.api.Logger
-import play.shaded.ahc.org.asynchttpclient.{HttpResponseBodyPart, Response}
 import play.shaded.ahc.org.asynchttpclient.Response.ResponseBuilder
+import play.shaded.ahc.org.asynchttpclient.{HttpResponseBodyPart, Response}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Success, Try}
 import scala.util.matching.Regex
+import scala.util.{Failure, Success, Try}
 
 /**
   * ContentRetriever companion class.
@@ -81,6 +80,13 @@ object ContentRetriever {
     }
   }
 
+  /** Used by PDFRepresentationService (repr-engine) and by MarksController (hamstoo). */
+  def getNameFromFileName(link: String): String = {
+    val i1 = link.lastIndexOf('/') + 1
+    val i2 = link.lastIndexOf('.')
+    if (i2 > i1) link.substring(i1, i2) else link.substring(i1)
+  }
+
   class CaptchaException extends Exception()
 
   // this exception is thrown when (re)Captcha is detected on a web page
@@ -102,22 +108,24 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
   import ContentRetriever._
 
   /** Retrieve mime type and content (e.g. HTML) given a URL. */
-  def retrieve(url: String): Future[Page] = {
+  def retrieve(markId: ObjectId, reprType: ReprType.Value, url: String): Future[Page] = {
     val mediaType = MediaType(TikaInstance.detect(url))
     logger.debug(s"Retrieving URL '$url' with MIME type '${Try(mediaType)}'")
 
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
-    val futPage = digest(url).map(x => Page(x._2.bodyAsBytes.toArray))
-
-    // check if html, than try to load frame tags if they are found in body
-    if (!MediaTypeSupport.isHTML(mediaType)) futPage else {
-      futPage.flatMap { page =>
+    for {
+      digested <- digest(url).map { case (_, wsResp) => Page(markId, reprType, wsResp.bodyAsBytes.toArray) }
+      frameless <- if (!MediaTypeSupport.isHTML(mediaType)) Future.successful(digested)
+      else {
         // `loadFrames` detects and loads individual frames and those in framesets
         // and puts loaded data into initial document
-        loadFrames(url, page).map { framesLoadedHtml =>
-          page.copy(content = framesLoadedHtml._1.getBytes("UTF-8"))
+        loadFrames(url, digested).map { framesLoadedHtml =>
+          digested.copy(content = framesLoadedHtml._1.getBytes("UTF-8"))
         }
       }
+    } yield {
+      logger.debug(s"Retrieved ${frameless.copy(content = Array.empty[Byte])} for URL $url")
+      frameless
     }
   }
 
@@ -129,8 +137,10 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     // simple method to retrieve data by url
     // takes Element instance as parameter and
     // sets loaded data into content of that Element instance of docJsoup val
-    def loadFrame(frameElement: Element): Future[Element] = retrieve(url + frameElement.attr("src")).map { page =>
-      frameElement.html(ByteString(page.content.toArray).utf8String)
+    def loadFrame(frameElement: Element): Future[Element] = {
+      retrieve(page.markId, ReprType.withName(page.reprType), url + frameElement.attr("src")).map { page =>
+        frameElement.html(ByteString(page.content.toArray).utf8String)
+      }
     }
 
     // find all frames in framesets and load them
@@ -168,7 +178,9 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
     // HtmlUnit throws too many non-critical exceptions so we perform a few retries.  Many Exceptions are probably
     // thrown by HtmlUnit because of HTML inconsistencies.  Incapsula has also a plugin for Wordpress engine, which
-    // is a source of plenty of errors.  This code can be tested with the following URL: http://www.arnoldkling.com/blog/does-america-over-incarcerate/
+    // is a source of plenty of errors.
+    // This code can be tested with the following URL: http://www.arnoldkling.com/blog/does-america-over-incarcerate/
+    // UPDATE - 20180220 - But can it really?  It sure is throwing a lot of exceptions?  Where did we leave this issue?
     def retryGetPage[T](fn: () => T, nRetries: Int = 3): Try[T] = Try(fn()).recoverWith {
       case e: FailingHttpStatusCodeException => {
         if (nRetries == 0) Failure(HtmlUnitFailingHttpStatusCodeException(e.getMessage, e)) else {
@@ -177,16 +189,25 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
         }
       }
     }
-    
-    val response: Try[Response] = retryGetPage[HtmlPage](() => webClient.getPage(url).asInstanceOf[HtmlPage]).map { htmlPage =>
-        val html = htmlPage.asText()
-        val contentByte = html.toCharArray.map(_.toByte)
-        new ResponseBuilder().accumulate(new HttpResponseBodyPart(true) {
-          override def getBodyPartBytes: Array[Byte] = contentByte
-          override def length(): Int = contentByte.length
-          override def getBodyByteBuffer: ByteBuffer = ByteBuffer.allocate(contentByte.length)
-          }).accumulate(new CacheableHttpResponseStatus(Uri.create(url), 200, "200", "https"))build()
-      }
+
+    val page: Try[HtmlPage] = retryGetPage[HtmlPage](() => {
+      logger.debug("*** This next call to HtmlUnit.WebClient.getPage can generate a bunch of exceptions which don't appear to be an existential problem")
+      // this URL will cause them when run from full docker-compose initiated system (i.e. repr-engine + hamstoo)
+      //   http://www.arnoldkling.com/blog/does-america-over-incarcerate/
+      val pg = webClient.getPage(url).asInstanceOf[HtmlPage]
+      logger.debug("*** Done HtmlUnit.WebClient.getPage")
+      pg
+    })
+
+    val response: Try[Response] = page.map { htmlPage =>
+      val html = htmlPage.asText()
+      val contentByte = html.toCharArray.map(_.toByte)
+      new ResponseBuilder().accumulate(new HttpResponseBodyPart(true) {
+        override def getBodyPartBytes: Array[Byte] = contentByte
+        override def length(): Int = contentByte.length
+        override def getBodyByteBuffer: ByteBuffer = ByteBuffer.allocate(contentByte.length)
+        }).accumulate(new CacheableHttpResponseStatus(Uri.create(url), 200, "200", "https"))build()
+    }
 
     Future.fromTry(response).map(r => AhcWSResponse(StandaloneAhcWSResponse(r)))
   }
@@ -195,9 +216,10 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
   /** This code was formerly part of the 'hamstoo' repo's LinkageService. */
   def digest(url: String): Future[(String, WSResponse)] = {
+    logger.info(s"Digesting URL $url")
     val link: String = checkLink(url)
 
-    //@tailrec
+    //@tailrec // not tail recursive because of the Future
     def recget(url: String, depth: Int = 1): Future[(String, WSResponse)] = {
       if (depth >= MAX_REDIRECTS)
         Future.failed(new IllegalArgumentException(s"Too many redirects for $url"))
@@ -224,6 +246,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
         }
       }
     }
+
     recget(link)
   }
 
