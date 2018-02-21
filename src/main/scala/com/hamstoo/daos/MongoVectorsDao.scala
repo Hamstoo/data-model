@@ -21,15 +21,15 @@ import scala.concurrent.duration._
 class MongoVectorsDao(db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._
-  val logger: Logger = Logger(classOf[MongoMarksDao])
+  val logger: Logger = Logger(classOf[MongoVectorsDao])
 
-  private def dbColl(): Future[BSONCollection] = db().map(_ collection "vectors")
+  private def dbColl(): Future[BSONCollection] = db().map(_.collection("vectors"))
 
   // ensure mongo collection has proper indexes
   private val indxs: Map[String, Index] =
     Index(URI -> Ascending :: Nil) % s"bin-$URI-1" ::
     Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 334 seconds)
+  Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 334 seconds)
 
   /** Saves or updates uri-vector pair. */
   def addUri(uri: String, vec: Option[Vec]): Future[Unit] = for {
@@ -37,7 +37,7 @@ class MongoVectorsDao(db: () => Future[DefaultDB]) {
     upd = d :~ "$set" -> (d :~ vec.fold(d)(d :~ VEC -> _) :~ URI -> uri)
     wr <- c.update(d :~ URI -> uri, upd, upsert = true)
     _ <- wr.failIfError
-    _ = logger.debug(s"Upserted vector URI '$uri'")
+    _ = logger.trace(s"Upserted vector URI '$uri'")
   } yield ()
 
   /** Retrieves a `VectorEntry` by conceptnet-vectors URI. */

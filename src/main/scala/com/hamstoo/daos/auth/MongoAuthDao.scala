@@ -36,7 +36,7 @@ abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](db: () => Future[D
     */
   def find(loginInfo: LoginInfo): Future[Option[A]] = for {
     c <- dbColl()
-    optUser <- c.find(d :~ PLGNF -> loginInfo).one[User]
+    optUser <- c.find(d :~ PLINFOx -> loginInfo).one[User]
   } yield for {
     user <- optUser
     prof <- user.profiles find (_.loginInfo == loginInfo)
@@ -51,7 +51,7 @@ abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](db: () => Future[D
     */
   override def add(loginInfo: LoginInfo, authInfo: A): Future[A] = for {
       c <- dbColl()
-      wr <- c update(d :~ PLGNF -> loginInfo, d :~ "$set" -> produceBson(authInfo))
+      wr <- c update(d :~ PLINFOx -> loginInfo, d :~ "$set" -> produceBson(authInfo))
       _ <- wr failIfError
     } yield authInfo
 
@@ -66,7 +66,7 @@ abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](db: () => Future[D
     */
   override def remove(loginInfo: LoginInfo): Future[Unit] = for {
     c <- dbColl()
-    wr <- c update(d :~ PLGNF -> loginInfo, d :~ "$pull" -> (d :~ PROF -> (d :~ "loginInfo" -> loginInfo)))
+    wr <- c update(d :~ PLINFOx -> loginInfo, d :~ "$pull" -> (d :~ PROFILES -> (d :~ LINFO -> loginInfo)))
     _ <- wr failIfError
   } yield ()
 
@@ -82,8 +82,8 @@ abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](db: () => Future[D
 
   // produce BSONDocument for subtype of AuthInfo
   private def produceBson(auth: AuthInfo): BSONDocument = auth match {
-    case auth1: OAuth1Info => d :~ s"$PROF.$$.$OA1NF" -> auth1
-    case auth2: OAuth2Info => d :~ s"$PROF.$$.$OA2NF" -> auth2
-    case pass: PasswordInfo => d :~ s"$PROF.$$.$PSWNF" -> pass
+    case auth1: OAuth1Info => d :~ s"$PROFILES.$$.$OA1NF" -> auth1
+    case auth2: OAuth2Info => d :~ s"$PROFILES.$$.$OA2NF" -> auth2
+    case pass: PasswordInfo => d :~ s"$PROFILES.$$.$PSWNF" -> pass
   }
 }

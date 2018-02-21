@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Highlight, PageCoord}
+import com.hamstoo.models.{Highlight, PageCoord, User}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import org.scalatest.OptionValues
@@ -27,13 +27,12 @@ class MongoHighlightDaoTests
     hlightsDao.insert(h).futureValue shouldEqual h
   }
 
-  // because of dropping "bin-usrId-1-uPref-1" index
-  it should "(UNIT) retrieve highlights by id" ignore {
-    hlightsDao.retrieve(h.usrId, h.id).futureValue.value shouldEqual h
-  }
+  /*it should "(UNIT) retrieve highlights by id" in {
+    hlightsDao.retrieve(h.usrId, h.id).futureValue.get shouldEqual h
+  }*/
 
   it should "(UNIT) retrieve highlights by markId" in {
-    hlightsDao.retrieveByMarkId(h.usrId, h.markId).futureValue shouldEqual Seq(h)
+    hlightsDao.retrieve(User(h.usrId), h.markId).futureValue shouldEqual Seq(h)
   }
 
   it should "(UNIT) update highlights" in {
@@ -43,6 +42,6 @@ class MongoHighlightDaoTests
 
   it should "(UNIT) delete highlight" in {
     hlightsDao.delete(h.usrId, h.id).futureValue shouldEqual {}
-    hlightsDao.retrieveByMarkId(h.usrId, h.markId).futureValue shouldEqual Nil
+    hlightsDao.retrieve(User(h.usrId), h.markId).futureValue shouldEqual Nil
   }
 }

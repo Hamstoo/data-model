@@ -2,10 +2,9 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{InlineNote, Mark}
+import com.hamstoo.models.{InlineNote, User}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils.generateDbId
 import org.scalatest.OptionValues
 
 /**
@@ -27,13 +26,12 @@ class MongoInlineNoteDaoTests
     notesDao.insert(c).futureValue shouldEqual c
   }
 
-  // because of dropping "bin-userId-1-uPref-1" index
-  it should "(UNIT) retrieve inline note by id" ignore {
-    notesDao.retrieve(c.usrId, c.id).futureValue.value shouldEqual c
-  }
+  /*it should "(UNIT) retrieve inline note by id" in {
+    notesDao.retrieve(c.usrId, c.id).futureValue.get shouldEqual c
+  }*/
 
   it should "UNIT) retrieve inline note by markId" in {
-    notesDao.retrieveByMarkId(c.usrId, c.markId).futureValue shouldEqual Seq(c)
+    notesDao.retrieve(User(c.usrId), c.markId).futureValue shouldEqual Seq(c)
   }
 
   it should "(UNIT) update inline note" in {
