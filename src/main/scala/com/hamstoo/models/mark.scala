@@ -5,6 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.models.User.UDATA
 import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
@@ -474,6 +475,12 @@ object Mark extends BSONHandlers {
 
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)
+
+  val UNAMELOWx: String = UDATA + "." + nameOf[UserData](_.usernameLower)
+  val SHDWITH: String = nameOf[Mark](_.sharedWith)
+  val READONLY: String = SHDWITH + "." + nameOf[SharedWith](_.readOnly)
+  val READONLYGROUP: String = SHDWITH + "." + READONLY + "." +  nameOf[ShareGroup](_.group)
+  val READONLYLEVEL: String = SHDWITH + "." + READONLY + "." +  nameOf[ShareGroup](_.level)
 
   // the 'x' is for "extended" (changing these from non-x has already identified one bug)
   val SUBJx: String = MARK + "." + nameOf[MarkData](_.subj)

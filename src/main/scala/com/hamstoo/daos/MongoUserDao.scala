@@ -2,7 +2,8 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.Mark.{Id, UserId}
+import com.hamstoo.models.Mark.{Id, READONLY, READONLYGROUP, READONLYLEVEL, SHDWITH, USR, UserId}
+import com.hamstoo.models.UserGroup.EMAILS
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.User._
 import com.hamstoo.models._
@@ -11,14 +12,17 @@ import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.api.services.IdentityService
 import play.api.Logger
 import reactivemongo.api.DefaultDB
+import reactivemongo.api.collections.bson.BSONBatchCommands.AggregationFramework
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.{BSONArray, BSONDocument, BSONDocumentHandler, BSONDocumentReader, BSONRegex, BSONValue, Macros}
+import reactivemongo.core.commands.{Match, Project}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
+import reactivemongo.core.commands._
 
 object MongoUserDao {
   var migrateData = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
@@ -238,10 +242,8 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     * @param userId is used: 1) if hasSharedMarks == true; 2) to filter own username
     * @param email required only if hasSharedMarks == true
     * */
-  //Todo s!
-  // Todo ask should the rest of hardCoded strings be extracted to `nameOf` handlers
-  // todo check if it is possible to aggregate 3 queries to different collection into 1 aggregated query
-  // todo probably later pagination implementation
+  // Todo check if it is possible to aggregate 3 queries to different collection into 1 aggregated query
+  // Todo probably later pagination implementation
   def searchUsernamesBySuffix(prefix: String, hasSharedMarks: Boolean = false, userId: UUID, email: Option[String]): Future[Seq[UserAutosuggested]] = {
     // check if username exists to skip empty usernames if data migration wasn't successfull
     // 'i' flag is case insensitive https://docs.moqngodb.com/manual/reference/operator/query/regex/
@@ -264,10 +266,52 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
             * check 1 step 2 get marks list where sharedWith contains ids of found above groups
             * check 1 step 3 get users whom found marks belong to and filter them by suffix username since same groups can belong to various users
             * check 2 check if users has shared public marks*/
+
+
         for {
             cGroup <- groupColl()
+            framework1 <- {
+
+
+
+          import cGroup.BatchCommands.AggregationFramework
+          import AggregationFramework.{Match, Project, Lookup, Sort, Ascending, GroupFunction, GroupField}
+          cGroup.aggregate(firstOperator = Match(d :~ EMAILS -> email), otherOperators = List(
+            Project((d :~ ID -> 1)),
+            Lookup("entries", ID, READONLYGROUP, "privatelysharedmarks"),
+            Project((d :~ USR -> 1)),
+            Lookup("users", USR, ID, "usershassharedmarks"),
+            Project((d :~ ID -> 1 :~ UNAME -> 1)),
+            Sort(Ascending(UNAME))
+          ))//.map(res => res.cursor.to[List[UserAutosuggested]])
+        }
+            cMarks <- marksColl()
+
+            framework2 <- {
+           import cMarks.BatchCommands.AggregationFramework
+           import AggregationFramework.{Match, Project, Lookup, Sort, Ascending}
+             cMarks.aggregate(firstOperator = Match(d :~ READONLYLEVEL -> SharedWith.Level.PUBLIC.toString.toInt :~ curnt), otherOperators = List(
+             Project((d :~ USR -> 1)),
+             Lookup("users", USR, ID, "usershassharedmarks"),
+             Project((d :~ ID -> 1 :~ UNAME -> 1)),
+             Sort(Ascending(UNAME))
+           ))//.map(res => res.cursor.to[List[UserAutosuggested]])
+         }
+
+            cGroup.aggregate(GroupField(ID,GroupFunction("users", List(
+              framework1,
+              framework2
+            ))).map(res => res.cursor.to[List[UserAutosuggested]])
+        }
+
+          /*Match(d:~ "$or" -> BSONArray(
+                  d :~ READONLYGROUP ->,
+                  d :~ READONLYLEVEL -> SharedWith.Level.PUBLIC.toString.toInt,
+              )
+            )*/
+
             // check 1 step 1: find all `usergroups` where requesting user email is present
-            privateGroupsIdsOfFoundUsersSharedWithRequestingUser <- cGroup.find(d :~ "emails" -> email,
+            privateGroupsIdsOfFoundUsersSharedWithRequestingUser <- cGroup.find(d :~ EMAILS -> email,
               d :~ ID -> 1)
               // and filter here found users with userIds found by privately shared users' marks with searching user
               .coll[Id, Seq]().map(_.map(_.id))
@@ -275,20 +319,20 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
             //check 1 step 2: find all marks by found groups in step 1
             cMarks <- marksColl()
             marksFoundThatAreSharedWithRequestingUser <- cMarks.find(
-              d :~ "sharedWith" -> (d :~ "$exists" -> 1) :~
-                "sharedWith.readOnly" -> (d :~ "$exists" -> 1) :~
-                "sharedWith.readOnly.group" -> (d :~ "$in" -> privateGroupsIdsOfFoundUsersSharedWithRequestingUser) :~ curnt,
+              d :~ SHDWITH -> (d :~ "$exists" -> 1) :~
+                READONLY -> (d :~ "$exists" -> 1) :~
+                READONLYGROUP -> (d :~ "$in" -> privateGroupsIdsOfFoundUsersSharedWithRequestingUser) :~ curnt,
                 // project to get only userId
-                d :~ "userId" -> 1)
+                d :~ USR -> 1)
               .coll[UserId, Seq]().map(_.map(_.userId))
 
             // check 2: find user ids with PUBLIC Marks level -> 3,
             // this does not impact on filtering process flow but will be used in $or when find users by ids
               usersIdsWithPubMarksUsers <- cMarks.find(
-              d :~ "sharedWith" -> (d :~ "$exists" -> 1) :~
-                "sharedWith.readOnly" -> (d :~ "$exists" -> 1) :~
-                "sharedWith.readOnly.level" -> (d :~ "$exists" -> 1) :~
-                "sharedWith.readOnly.level" -> 3 :~ curnt,
+              d :~ SHDWITH -> (d :~ "$exists" -> 1) :~
+                READONLY -> (d :~ "$exists" -> 1) :~
+                READONLYLEVEL -> (d :~ "$exists" -> 1) :~
+                READONLYLEVEL -> SharedWith.Level.PUBLIC.toString.toInt :~ curnt,
                 // project to get only userId
                 d :~ Mark.USR -> 1)
               .coll[UserId, Seq]().map(_.map(_.userId))
@@ -302,7 +346,39 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
               // 2nd looks for users taken from with public marks level 3
               d :~ ID -> (d :~ "$in" -> usersIdsWithPubMarksUsers))
               // and finally filter users by suffix
-              :~ filterUserNamesBySuffixQuery, d :~ "userData.username" -> 1 :~ "id" -> 1).sort(BSONDocument(UNAMELOWx -> 1)).coll[UserAutosuggested, Seq]()
+              :~ filterUserNamesBySuffixQuery, d :~ UNAME -> 1 :~ ID -> 1).sort(BSONDocument(UNAMELOWx -> 1)).coll[UserAutosuggested, Seq]()
+
+/*
+            $lookup: {
+        from: "items",
+        localField: "item",    // field in the orders collection
+        foreignField: "item",  // field in the items collection
+        as: "fromItems"
+        }*/
+            from: String,
+          localField: String,
+          foreignField: String,
+          as: String
+
+/*
+
+          some <-
+                  cGroup.find(d :~ EMAILS -> email :~ d ->
+                    (d :~ "$as" -> BSONArray(ID)) -> "$lookup" -> (d :~ "$from" -> "entries" :~ "$localField" -> ID :~ "$foreignField" -> READONLYGROUP :~
+                      "$as" -> BSONArray(USR)) -> (d :~ "$or" -> BSONArray(
+                    d :~ "$lookup" -> (d :~ "$from" -> "entries" :~ "$localField" -> ID :~ "$foreignField" -> READONLYGROUP :~ "$as" -> BSONArray(USR)),
+                    d :~ "$lookup" -> (d :~ "$from" -> "entries" :~ "$localField" -> ID :~ "$foreignField" -> READONLYGROUP :~ "$as" -> BSONArray(USR))) :~
+                    "$or" -> BSONArray(
+                      d :~ "$lookup" -> (d :~ "$from" -> "entries" :~ "$localField" -> ID :~ "$foreignField" -> READONLYGROUP :~ "$as" -> BSONArray(UNAME, ID)),
+                      d :~ "$lookup" -> (d :~ "$from" -> "entries" :~ "$localField" -> ID :~ "$foreignField" -> READONLYGROUP :~ "$as" -> BSONArray(UNAME, ID))))).sort(BSONDocument(UNAMELOWx -> 1)).coll[UserAutosuggested, Seq]()
+
+*/
+
+
+
+
+
+
 
         } yield usersWithPrivateMarksSharedWithAndWithPublicMarks.filterNot(_.id == userId)
     }

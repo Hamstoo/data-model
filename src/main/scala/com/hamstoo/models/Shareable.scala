@@ -265,6 +265,7 @@ object UserGroup extends BSONHandlers {
 
   val HASH: String = nameOf[UserGroup](_.hash)
   val SHROBJS: String = nameOf[UserGroup](_.sharedObjs)
+  val EMAILS: String = nameOf[UserGroup](_.emails)
 
   /** Used for `emails > other.emails` above and `union` and `intersection` below. */
   implicit class ExtendedOptionSet[T](private val self: Option[Set[T]]) extends AnyVal {
