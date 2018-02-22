@@ -20,9 +20,8 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.collection.mutable
-import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
 
 object MongoMarksDao {
   var migrateData: Boolean = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
@@ -357,7 +356,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * @param user  Only marks for this user will be returned/searched.
     * @param tags  Returned marks must have all of these tags, default to empty set.
     */
-  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
+  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[MSearchable]] = {
     logger.debug(s"Retrieving represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
@@ -372,7 +371,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       seq <- c.find(sel1).coll[MSearchable, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
-      seq.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
+      seq.map { m => m.update(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 
@@ -386,7 +385,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ REFIDx -> (d :~ "$exists" -> true) :~ curnt
-      seq <- c.find(sel, searchExcludedFields).coll[Mark, Seq]()
+      seq <- c.find(sel).coll[MSearchable, Seq]()
     } yield {
       logger.debug(s"${seq.size} referenced marks were successfully retrieved")
       seq//.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) } // no longer returning Marks, so no need to cleanRanges
@@ -414,8 +413,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   // exclude these fields from the returned results of search-related methods to conserve memory during search
   // TODO: implement a MSearchable base class so that users know they're dealing with a partially populated Mark
   // (should have looked more closely at hamstoo.SearchService when choosing these fields; see issue #222)
-  val searchExcludedFields: BSONDocument = d :~ (URLPRFX -> 0) :~ (TOTVISx -> 0) :~ (TOTBGx -> 0) :~
-    (MERGEID -> 0) :~ (COMNTENCx -> 0)
+//  val searchExcludedFields: BSONDocument = d :~ (URLPRFX -> 0) :~ (TOTVISx -> 0) :~ (TOTBGx -> 0) :~
+//    (MERGEID -> 0) :~ (COMNTENCx -> 0)
 
   /**
     * Executes a MongoDB Text Index search using text index with sorting in user's marks, constrained by tags.
@@ -428,7 +427,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,
     * and potentially filter for specific mark IDs.
     */
-  def search(users: Set[UUID], query: String, ids: Set[ObjectId] = Set.empty[ObjectId]): Future[Set[Mark]] = {
+  def search(users: Set[UUID], query: String, ids: Set[ObjectId] = Set.empty[ObjectId]): Future[Set[MSearchable]] = {
     logger.debug(s"Searching for marks for ${users.size} users (first, at most, 5: ${users.take(5)}) by text query '$query'")
 
     // this projection doesn't have any effect without this selection
@@ -448,11 +447,11 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       users.map { u =>
         val sel = d :~ USR -> u :~ curnt
         dbColl().flatMap(_.find(sel :~ searchScoreSelection :~ idsFilter,
-                                searchExcludedFields :~ searchScoreProjection).coll[Mark, Seq]())
+          searchScoreProjection).coll[MSearchable, Seq]())
       }
     }.map(_.flatten).map { set =>
       logger.debug(s"Search retrieved ${set.size} marks")
-      set.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
+      set.map { m => m.update(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 
