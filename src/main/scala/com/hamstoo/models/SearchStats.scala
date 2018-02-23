@@ -43,6 +43,14 @@ object SearchStats extends BSONHandlers {
   val URL_CLICK: ClickType = 0
   val FPV_CLICK: ClickType = 1
 
+  //todo: provide more informative descriptions
+  /** Object that contain necessary information */
+  case class ClickData(markId: ObjectId,
+                       query: String,
+                       facets: Set[FacetVal],
+                       relevance: Option[Double],
+                       index: Int)
+
   /**
     * Each click on a mark from the My Marks page will generate one of these.
     * @param clickType  If the mark's URL is clicked this will be 0.  If it's FPV is clicked, this will be 1.
