@@ -7,6 +7,7 @@ import akka.stream.scaladsl.{Flow, GraphDSL, RunnableGraph, Sink, Source, ZipWit
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
 import org.joda.time.DateTime
+import play.api.Logger
 
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
@@ -17,6 +18,8 @@ import scala.concurrent.duration._
 class DataStreamTests
   extends AkkaEnvironment("DataStreamTests-ActorSystem")
     with FutureHandler {
+
+  val logger = Logger(classOf[DataStreamTests])
 
   /*"TimeWindowReducer" should "process URLs" in {
 
@@ -151,7 +154,7 @@ class DataStreamTests
     // this sink can be defined inside also, right where it's to'ed (~>'ed), and `b => sink =>` would just become
     // `b =>`, in that case however, g.run() doesn't return a Future and so can't be Await'ed, either way though,
     // the Await crashes
-    val resultSink = Sink.foreach((x: Datum[Int]) => println(s"Sink print ${DateTime.now}: $x"))
+    val resultSink = Sink.foreach((x: Datum[Int]) => logger.info(s"Sink print ${DateTime.now}: $x"))
 
     // "lower-level GraphDSL API" https://softwaremill.com/reactive-streams-in-scala-comparing-akka-streams-and-monix-part-3/
     val g = RunnableGraph.fromGraph(GraphDSL.create(resultSink) { implicit builder => sink =>
@@ -163,7 +166,7 @@ class DataStreamTests
       val joiner/*: FanInShape2[Int, Int, String]*/ = builder.add(jw)
 
       val src0 = Source((0 until 10     ).map(i => Datum(ReprId(s"id$i"), i, i, i)))
-      val src1 = Source((0 until 10 by 2).map(i => Datum(UnitId()       , i, i, i)))
+      val src1 = Source((0 until 10 by 3).map(i => Datum(UnitId()       , i, i, i)))
 
       src0 ~> joiner.in0
       src1 ~> joiner.in1
