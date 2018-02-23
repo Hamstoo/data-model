@@ -38,11 +38,8 @@ object Join {
 /**
   * `Join` specialized for 2 inputs.
   *
-  * @param joiner
-  * @param expireAfter
-  * @tparam A1
-  * @tparam A2
-  * @tparam O
+  * @param joiner       Joiner function that takes an A1 and an A2 as input and produces an O.
+  * @param expireAfter  Unjoined elements will expire after this amount of time, and thus never be joined.
   */
 class Join2[A1, A2, O](val joiner: (A1, A2) => O,
                        expireAfter: FiniteDuration = 0 seconds)
@@ -71,15 +68,12 @@ class Join2[A1, A2, O](val joiner: (A1, A2) => O,
     var willShutDown = false
 
     /** This function implements the equivalent of this line `if (pending == 0) pushAll()` of ZipWith. */
-    private def pushOneMaybe(): Unit = /*if (isAvailable(out))*/ { // TODO: is this `if` necessary?
+    private def pushOneMaybe(): Unit = {
 
       // remove expired elements from the sets before searching for joinable ones
-      val (s0a, s1a) = (joinable0.size, joinable1.size)
       Seq(joinable0, joinable1).foreach(_.retain(_.sourceTime >= math.min(watermark0, watermark1)))
-      val (s0b, s1b) = (joinable0.size, joinable1.size)
-      logger.debug(s"  pushOneMaybe A: $s0a->$s0b $s1a->$s1b")
 
-      // find a joinable pair, if one exists
+      // find a joinable pair, if one exists (the view/headOption combo makes this operate like a lazy find)
       val tup = joinable0.view.flatMap { d0 =>
         joinable1.view.flatMap { d1 =>
           if (d0.sourceTime != d1.sourceTime) None           // source times must match
@@ -94,38 +88,16 @@ class Join2[A1, A2, O](val joiner: (A1, A2) => O,
 
         // cleanup to ensure we don't perform the same join again in the future, i.e. remove one or both of the joinees
         Seq(joinable0, joinable1).foreach(_.retain(x => !(x.id == joined && x.sourceTime == d0.sourceTime)))
-        logger.debug(s"  pushOneMaybe B: $s0b->${joinable0.size} $s1b->${joinable1.size}")
       }
-
-      if (willShutDown) completeStage()
 
       // if no data got consumed then pull from whichever data source is lagging behind, the fact that no data
       // got consumed probably means that the lagging data source has yet to produce data that is joinable to
-      // data that the leading data source has already produced
-      else if (joinable0.size == s0b && joinable1.size == s1b) {
-        //logger.debug(s"  ${joinable0.size} == $s0b && ${joinable1.size} == $s1b")
-        if (watermark1 > watermark0) { logger.debug(s"  pull(in0): $watermark1 > $watermark0"); pull(in0) }
-        else { logger.debug(s"  pull(in1): $watermark1 <= $watermark0"); pull(in1) }
-
-      // pull another from whichever source's data got consumed, which could be both
-      } /*else {
-        logger.debug(s"  ${joinable0.size} != $s0b || ${joinable1.size} != $s1b")
-        if (joinable0.size < s0b) { logger.debug(s"  pull(in0)"); pull(in0) }
-        if (joinable1.size < s1b) { logger.debug(s"  pull(in1)"); pull(in1) }
-      }*/
+      // data that the leading data source has already produced (and is waiting in its respective `joinableX` set)
+      if (willShutDown) completeStage()
+      else if (tup.isEmpty) {
+        if (watermark0 > watermark1) pull(in1) else pull(in0)
+      }
     }
-
-    /**
-      * Prime the pump: "most Sinks would need to request upstream elements as soon as they are created: this can
-      * be done by calling pull(inlet) in the preStart() callback."
-      *
-      * But this isn't a Sink, it's a Flow!  But why wouldn't the same apply to a ZipWith then?
-      */
-    /*override def preStart(): Unit = {
-      logger.debug(s"preStart")
-      pull(in0)
-      pull(in1)
-    }*/
 
     /** InHandler 0 */
     setHandler(in0, new InHandler {
@@ -138,7 +110,7 @@ class Join2[A1, A2, O](val joiner: (A1, A2) => O,
       override def onPush(): Unit = {
         val d: Datum[A1] = grab(in0)
         joinable0 += d
-        logger.debug(s"onPush0: $d -> ${joinable0.size}")
+        logger.debug(s"onPush0: $d -> ${joinable0.size} -> $watermark0")
         watermark0 = math.max(watermark0, d.sourceTime - expireAfter.toMillis) // update high watermark
         pushOneMaybe()
       }
@@ -156,7 +128,7 @@ class Join2[A1, A2, O](val joiner: (A1, A2) => O,
       override def onPush(): Unit = {
         val d: Datum[A2] = grab(in1)
         joinable1 += d
-        logger.debug(s"onPush1: $d -> ${joinable1.size}")
+        logger.debug(s"onPush1: $d -> ${joinable1.size} -> $watermark1")
         watermark1 = math.max(watermark1, d.sourceTime - expireAfter.toMillis) // update high watermark
         pushOneMaybe()
       }
@@ -168,7 +140,13 @@ class Join2[A1, A2, O](val joiner: (A1, A2) => O,
       }
     })
 
-    /** OutHandler 1 */
+    /**
+      * OutHandler
+      * The documentation says this: "most Sinks would need to request upstream elements as soon as they are
+      * created: this can be done by calling pull(inlet) in the preStart() callback."  The reason we don't have
+      * to do that in this `Join` class is because it's not a Sink, it's a Flow, so we can wait for its
+      * OutHandler to be onPulled to do so.
+      */
     setHandler(out, new OutHandler {
 
       /**
