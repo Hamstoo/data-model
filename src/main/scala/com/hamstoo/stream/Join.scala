@@ -64,46 +64,54 @@ class Join2[A1, A2, O](val joiner: (A1, A2) => O,
     val joinable0: mutable.Set[Datum[A1]] = mutable.Set.empty[Datum[A1]]
     val joinable1: mutable.Set[Datum[A2]] = mutable.Set.empty[Datum[A2]]
 
-    private var watermark = 0L
+    private var watermark0 = -1L
+    private var watermark1 = -1L
 
     // without this field the completion signalling would take one extra pull
     var willShutDown = false
 
     /** This function implements the equivalent of this line `if (pending == 0) pushAll()` of ZipWith. */
-    private def pushOneMaybe(): Unit = {
+    private def pushOneMaybe(): Unit = /*if (isAvailable(out))*/ { // TODO: is this `if` necessary?
 
       // remove expired elements from the sets before searching for joinable ones
-      // TODO: if elements are pushed faster from upstream than they can be consumed by downstream will this
-      // TODO:   cause us to drop elements before they have the chance to be joined?
-      val (s0, s1) = (joinable0.size, joinable1.size)
-      Seq(joinable0, joinable1).foreach(_.retain(_.sourceTime >= watermark))
-      logger.debug(s"  pushOneMaybe A: $s0->${joinable0.size} $s1->${joinable1.size}")
+      val (s0a, s1a) = (joinable0.size, joinable1.size)
+      Seq(joinable0, joinable1).foreach(_.retain(_.sourceTime >= math.min(watermark0, watermark1)))
+      val (s0b, s1b) = (joinable0.size, joinable1.size)
+      logger.debug(s"  pushOneMaybe A: $s0a->$s0b $s1a->$s1b")
 
       // find a joinable pair, if one exists
       val tup = joinable0.view.flatMap { d0 =>
         joinable1.view.flatMap { d1 =>
-          EntityId.join(d0.id, d1.id)                     // entity IDs must be joinable
-            .filter(_ => d0.sourceTime == d1.sourceTime)  // and source times must match
-            .map((d0, d1, _))
+          if (d0.sourceTime != d1.sourceTime) None           // source times must match
+          else EntityId.join(d0.id, d1.id).map((d0, d1, _))  // and entity IDs must be joinable
         }.headOption
       }.headOption
 
-      // TODO: why not just push all that are ready?
       tup.foreach { case (d0, d1, joined) =>
         val d = Datum(joined, d0.sourceTime, math.max(d0.knownTime, d1.knownTime), joiner(d0.value, d1.value))
-        logger.debug(s"Pushing: $d, ${d0.id}, ${d1.id}")
+        logger.debug(s"  pushing: ${d0.id} + ${d1.id} = $d")
         push(out, d)
 
-        // cleanup to ensure we don't perform the same join again in the future
-        val (s0, s1) = (joinable0.size, joinable1.size)
+        // cleanup to ensure we don't perform the same join again in the future, i.e. remove one or both of the joinees
         Seq(joinable0, joinable1).foreach(_.retain(x => !(x.id == joined && x.sourceTime == d0.sourceTime)))
-        logger.debug(s"  pushOneMaybe B: $s0->${joinable0.size} $s1->${joinable1.size}")
+        logger.debug(s"  pushOneMaybe B: $s0b->${joinable0.size} $s1b->${joinable1.size}")
       }
 
-      /*if (willShutDown) completeStage()
-      else {
-        pull(in0)
-        pull(in1)
+      if (willShutDown) completeStage()
+
+      // if no data got consumed then pull from whichever data source is lagging behind, the fact that no data
+      // got consumed probably means that the lagging data source has yet to produce data that is joinable to
+      // data that the leading data source has already produced
+      else if (joinable0.size == s0b && joinable1.size == s1b) {
+        //logger.debug(s"  ${joinable0.size} == $s0b && ${joinable1.size} == $s1b")
+        if (watermark1 > watermark0) { logger.debug(s"  pull(in0): $watermark1 > $watermark0"); pull(in0) }
+        else { logger.debug(s"  pull(in1): $watermark1 <= $watermark0"); pull(in1) }
+
+      // pull another from whichever source's data got consumed, which could be both
+      } /*else {
+        logger.debug(s"  ${joinable0.size} != $s0b || ${joinable1.size} != $s1b")
+        if (joinable0.size < s0b) { logger.debug(s"  pull(in0)"); pull(in0) }
+        if (joinable1.size < s1b) { logger.debug(s"  pull(in1)"); pull(in1) }
       }*/
     }
 
@@ -113,20 +121,25 @@ class Join2[A1, A2, O](val joiner: (A1, A2) => O,
       *
       * But this isn't a Sink, it's a Flow!  But why wouldn't the same apply to a ZipWith then?
       */
-    override def preStart(): Unit = {
+    /*override def preStart(): Unit = {
       logger.debug(s"preStart")
       pull(in0)
       pull(in1)
-    }
+    }*/
 
     /** InHandler 0 */
     setHandler(in0, new InHandler {
+
+      /**
+        * "onPush() is called when the input port has now a new element. Now it is possible to acquire this element
+        * using grab(in) and/or call pull(in) on the port to request the next element. It is not mandatory to grab
+        * the element, but if it is pulled while the element has not been grabbed it will drop the buffered element.
+        */
       override def onPush(): Unit = {
-        pull(in0)
         val d: Datum[A1] = grab(in0)
-        logger.debug(s"onPush0: $d")
         joinable0 += d
-        watermark = math.max(watermark, d.sourceTime - expireAfter.toMillis) // update high watermark
+        logger.debug(s"onPush0: $d -> ${joinable0.size}")
+        watermark0 = math.max(watermark0, d.sourceTime - expireAfter.toMillis) // update high watermark
         pushOneMaybe()
       }
 
@@ -139,12 +152,12 @@ class Join2[A1, A2, O](val joiner: (A1, A2) => O,
 
     /** InHandler 1 */
     setHandler(in1, new InHandler {
+
       override def onPush(): Unit = {
-        pull(in1)
         val d: Datum[A2] = grab(in1)
-        logger.debug(s"onPush1: $d")
         joinable1 += d
-        watermark = math.max(watermark, d.sourceTime - expireAfter.toMillis) // update high watermark
+        logger.debug(s"onPush1: $d -> ${joinable1.size}")
+        watermark1 = math.max(watermark1, d.sourceTime - expireAfter.toMillis) // update high watermark
         pushOneMaybe()
       }
 
@@ -157,6 +170,11 @@ class Join2[A1, A2, O](val joiner: (A1, A2) => O,
 
     /** OutHandler 1 */
     setHandler(out, new OutHandler {
+
+      /**
+        * "onPull() is called when the output port is ready to emit the next element, push(out, elem) is now
+        * allowed to be called on this port.
+        */
       override def onPull(): Unit = {
         logger.debug(s"onPull")
         pushOneMaybe()
