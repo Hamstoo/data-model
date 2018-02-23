@@ -20,7 +20,7 @@ import scala.concurrent.Future
   */
 //@Singleton // cannot be singleton b/c of `userId` but how do other types of DataStreams be made so?
 case class ReprVec(userId: UUID)(implicit clock: Clock, db: () => Future[DefaultDB], m: Materializer)
-                                                                                        extends DataSource[Vec] {
+    extends DataSource[Vec] {
 
   private val marksDao = new MongoMarksDao(db)(new MongoUserDao(db), implicitly)
   private val reprsDao = new MongoRepresentationDao(db)

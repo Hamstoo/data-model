@@ -19,7 +19,7 @@ import akka.stream.scaladsl.Source
   */
 abstract class Reducer[T, G <: Group](grouper: () => GroupCommandFactory[G], maxSubstreams: Int)
                                      (ds: DataStream[T])
-        extends DataStream[T] {
+    extends DataStream[T] {
 
   // support for using a Seq here:
   //   http://blog.kunicki.org/blog/2016/07/20/implementing-a-custom-akka-streams-graph-stage/
