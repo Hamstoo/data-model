@@ -3,7 +3,7 @@ package com.hamstoo.stream
 import akka.NotUsed
 import akka.actor.Cancellable
 import akka.stream._
-import akka.stream.scaladsl.{Flow, GraphDSL, RunnableGraph, Sink, Source, ZipWith}
+import akka.stream.scaladsl.{Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
 import org.joda.time.DateTime
@@ -148,35 +148,31 @@ class DataStreamTests
   }*/
 
 
-  "Test" should "scratch test 1" in {
+  "Join" should "join DataStreams" in {
     implicit val materializer: Materializer = ActorMaterializer()
 
-    // this sink can be defined inside also, right where it's to'ed (~>'ed), and `b => sink =>` would just become
-    // `b =>`, in that case however, g.run() doesn't return a Future and so can't be Await'ed, either way though,
-    // the Await crashes
-    val resultSink = Sink.foreach((x: Datum[Int]) => logger.info(s"Sink print ${DateTime.now}: $x"))
-
-    // "lower-level GraphDSL API" https://softwaremill.com/reactive-streams-in-scala-comparing-akka-streams-and-monix-part-3/
-    val g = RunnableGraph.fromGraph(GraphDSL.create(resultSink) { implicit builder => sink =>
+    val g: Source[Datum[Int], NotUsed] = Source.fromGraph(GraphDSL.create() { implicit builder =>
       import akka.stream.scaladsl.GraphDSL.Implicits._
 
       val jw = Join[Int, Int, Int]((a, b) => a * 100 + b).async
-
-      // this is the asynchronous stage in this graph (see the `.async`)
-      val joiner/*: FanInShape2[Int, Int, String]*/ = builder.add(jw)
+      val joiner = builder.add(jw)
 
       val src0 = Source((0 until 10     ).map(i => Datum(ReprId(s"id$i"), i, i, i)))
-      val src1 = Source((0 until 10 by 3).map(i => Datum(UnitId()       , i, i, i)))
+      val src1 = Source((0 until 10 by 4).map(i => Datum(UnitId()       , i, i, i)))
 
       src0 ~> joiner.in0
       src1 ~> joiner.in1
 
-      joiner.out ~> sink
-      ClosedShape
+      SourceShape(joiner.out)
     })
 
-    g.run()
-    Thread.sleep(20.seconds.toMillis)
-    //Await.result(g.run(), 15 seconds)
+    val logSink = Sink.foreach((x: Datum[Int]) => logger.info(s"Sink print ${DateTime.now}: $x"))
+    Await.result(g.runWith(logSink), 15 seconds)
+
+    val foldSink = Sink.fold[Int, Int](0)(_ + _)
+    val runnable: RunnableGraph[Future[Int]] = g.map(_.value).toMat(foldSink)(Keep.right)
+    val x: Int = Await.result(runnable.run(), 15 seconds)
+
+    x shouldEqual 1212
   }
 }
