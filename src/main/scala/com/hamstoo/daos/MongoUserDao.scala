@@ -20,7 +20,7 @@ import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.{BSONArray, BSONDocument, BSONDocumentHandler, BSONDocumentReader, BSONRegex, BSONString, BSONValue, Macros}
-import reactivemongo.core.commands.{Limit, Match, Project, _}
+import reactivemongo.core.commands.{AddToSet, Group, Limit, Match, Project, _}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -54,6 +54,8 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   val usersFoundCollUserNameLower = ("$"+usersFoundCollName+"."+UNAMELOWx)
   val exists = "$exists"
   val UNAMELOWERNOPREFIX: String = nameOf[UserData](_.usernameLower)
+  val set = "set"
+  val dollarSet = "$"+set+"."
 
 
   // get the "users" collection (in the future); the `map` is `Future.map`
@@ -291,7 +293,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
             userWithSharedToUserMarks <- {
 
               import cGroup.BatchCommands.AggregationFramework
-              import AggregationFramework.{Match, Project, Lookup, Unwind}
+              import AggregationFramework.{Match, Project, Lookup, Unwind, AddToSet, Group }
               // Match to find email of operator in usergroups
               cGroup.aggregate(firstOperator = Match(d :~ EMAILS -> email),
                 otherOperators = List(
@@ -303,21 +305,20 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
                     Unwind(usersFoundCollName, None, Some(true)),
                     // project only required fields
                     Project(d :~ User.ID -> usersFoundCollId :~ username -> usersFoundCollUserName :~ UNAMELOWx -> usersFoundCollUserNameLower ),
-                  /* TODO fix to remove duplications on DB level
-                  Group(BSONString("$id"))(("dups", AddToSet(d :~ "id" -> "set"))),
-                  Unwind("set", None, Some(true)),
-                  Project(d :~ "id" -> "$set.id" :~ "username" -> "$set.username")*/
-
-                  // filter user names by username suffix from request
-                  Match(filterUserNamesBySuffixQuery)
-
-
+                    // grouping to set by id to remove user duplications on database level
+                    Group(BSONString(User.ID))( set ->  AddToSet( d:~ User.ID -> ("$"+User.ID) :~ username -> ("$"+username) :~ usernameLower -> ("$"+UNAMELOWx))),
+                    // unwind set variable
+                    Unwind(set, None, Some(true)),
+                    // project only required fields
+                    Project(d :~ User.ID -> (dollarSet+User.ID) :~ username -> (dollarSet+username) :~ UNAMELOWx -> (dollarSet+usernameLower)),
+                    // filter user names by username suffix from request
+                    Match(filterUserNamesBySuffixQuery)
                 )).map(_.head[UserAutosuggested])
             }
             // 2) Aggregates users if users have public marks
             usersWithPublicMarks <- {
               import cMarks.BatchCommands.AggregationFramework
-              import AggregationFramework.{Match, Project, Lookup, Unwind}
+              import AggregationFramework.{Match, Project, Lookup, Unwind, Group, AddToSet}
               // get marks with Public share level
               cMarks.aggregate(firstOperator = Match(
                 d :~ SHARED_WITH -> (d :~ exists -> 1) :~
@@ -334,25 +335,27 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
                   Unwind(usersFoundCollName, None, Some(true)),
                   // project only required fields
                   Project(d :~ User.ID -> usersFoundCollId :~ username -> usersFoundCollUserName :~ UNAMELOWx -> usersFoundCollUserNameLower),
-                  /* TODO fix to remove duplications on DB level
-                  Group(BSONString("$id"))(("dups", AddToSet(d :~ "id" -> "set"))),
-                  Unwind("set", None, Some(true)),
-                  Project(d :~ "id" -> "$set.id" :~ "username" -> "$set.username")*/
-
+                  // grouping to set by id to remove user duplications on database level
+                  Group(BSONString(User.ID))( set ->  AddToSet( d:~ User.ID -> ("$"+User.ID) :~ username -> ("$"+username) :~ usernameLower -> ("$"+UNAMELOWx))),
+                  // unwind set variable
+                  Unwind(set, None, Some(true)),
+                  // project only required fields
+                  Project(d :~ User.ID -> (dollarSet+User.ID) :~ username -> (dollarSet+username) :~ UNAMELOWx -> (dollarSet+usernameLower)),
                   // filter user names by username suffix from request
                   Match(filterUserNamesBySuffixQuery)
               )).map(_.head[UserAutosuggested])
             }
 
-          /* TODO maybe join 2 different collections aggregations somehow but it seems
-             TODO it requires to rewrite aggregate functions for use of rawCommand on db not on collection
+            /*TODO maybe join 2 different collections aggregations somehow but it seems
+              TODO it requires to rewrite aggregate functions for use of rawCommand on db not on collection
               val ag1 = Aggregate("userGroup", usersWithSharedMarks)
               val ag2 = Aggregate("entries", usersWithPublicMarks)
               for {
                 dbd <- db()
+                // something like
                 users <- dbd.runCommand(Group("id", Seq(ag1,ag2)))
               } yield users
-           */
+            */
 
 
             // 3) Concats 2 results, removes duplicates and own user id
