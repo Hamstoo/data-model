@@ -81,7 +81,7 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
 object MongoEnvironment {
 
   // default mongo port, override if needed
-  val mongoPort: Int = 27017
+  val mongoPort: Int = 12345
 
   // mongodb uri and database name
   lazy val dbUri = s"mongodb://localhost:$mongoPort/hamstoo"
