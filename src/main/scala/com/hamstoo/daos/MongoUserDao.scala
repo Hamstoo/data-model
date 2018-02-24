@@ -357,7 +357,6 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
               } yield users
             */
 
-
             // 3) Concats 2 results, removes duplicates and own user id
           } yield (userWithSharedToUserMarks ++ usersWithPublicMarks).distinct.filterNot(_.id == userId).sortBy(_.username)
         }
