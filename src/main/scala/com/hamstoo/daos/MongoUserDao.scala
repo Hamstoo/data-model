@@ -2,27 +2,29 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.models.Mark.{Id, READONLY, READONLYGROUP, READONLYLEVEL, SHDWITH, USR, UserId}
 import com.hamstoo.models.UserGroup.EMAILS
 import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.models.SharedWith.Level
 import com.hamstoo.models.User._
 import com.hamstoo.models._
 import com.hamstoo.utils.d
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.api.services.IdentityService
 import play.api.Logger
+import play.api.libs.json.JsNull
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONBatchCommands.AggregationFramework
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.{BSONArray, BSONDocument, BSONDocumentHandler, BSONDocumentReader, BSONRegex, BSONValue, Macros}
-import reactivemongo.core.commands.{Match, Project}
+import reactivemongo.bson.{BSONArray, BSONDocument, BSONDocumentHandler, BSONDocumentReader, BSONRegex, BSONString, BSONValue, Macros}
+import reactivemongo.core.commands.{Limit, Match, Project, _}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
-import reactivemongo.core.commands._
 
 object MongoUserDao {
   var migrateData = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
@@ -35,9 +37,24 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
   val logger: Logger = Logger(classOf[MongoUserDao])
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}
-  import com.hamstoo.models.UserGroup.{HASH, SHROBJS, userGroupHandler, sharedObjHandler, sharedWithHandler}
+  import com.hamstoo.models.UserGroup.{HASH, SHROBJS, SHROBJSID, userGroupHandler, sharedObjHandler, sharedWithHandler}
   import com.hamstoo.models.Shareable.SHARED_WITH
   import com.hamstoo.utils._
+
+
+  // intermediate aggregated collecitons' names
+  val usersFoundCollName = "usersFound"
+  val entriesFoundCollName = "entriesFound"
+  // data field names used during aggregation
+  val usersFoundCollId = ("$"+usersFoundCollName+"."+User.ID)
+  val usersFoundCollUserName = ("$"+usersFoundCollName+"."+UNAME)
+  val entriesFoundCollUserId = entriesFoundCollName+"."+ USR
+  val username = "username"
+  val usernameLower = "usernameLower"
+  val usersFoundCollUserNameLower = ("$"+usersFoundCollName+"."+UNAMELOWx)
+  val exists = "$exists"
+  val UNAMELOWERNOPREFIX: String = nameOf[UserData](_.usernameLower)
+
 
   // get the "users" collection (in the future); the `map` is `Future.map`
   // http://reactivemongo.org/releases/0.12/api/#reactivemongo.api.DefaultDB
@@ -242,7 +259,6 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     * @param userId is used: 1) if hasSharedMarks == true; 2) to filter own username
     * @param email required only if hasSharedMarks == true
     * */
-  // Todo check if it is possible to aggregate 3 queries to different collection into 1 aggregated query
   // Todo probably later pagination implementation
   def searchUsernamesBySuffix(prefix: String, hasSharedMarks: Boolean = false, userId: UUID, email: Option[String]): Future[Seq[UserAutosuggested]] = {
     // check if username exists to skip empty usernames if data migration wasn't successfull
@@ -254,133 +270,93 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
           // simple search by username suffix for sharing purposes, does not apply any filters or validation
           for {
             cUsers <- dbColl()
-            users <- cUsers.find(filterUserNamesBySuffixQuery).sort(BSONDocument("userData.usernameLower" -> 1)).coll[User, Seq]().map( users =>
-            users.map(user => UserAutosuggested(user.id, user.userData.username)))
+            users <- cUsers.find(filterUserNamesBySuffixQuery).sort(BSONDocument(UNAMELOWx -> 1)).coll[User, Seq]().map( users =>
+            users.map(user => UserAutosuggested(user.id, user.userData.username.getOrElse(""))))
           } yield  users.filterNot(_.id == userId)
+
         } else {
 
-         /** find groups which belong to found by suffix usernames and contain share level 1, i.e. private group share
-            * with current not completed data structure task 4 step are required
-            * check 1 find if user found by suffix have shared marks with requesting user via usergroups:
-            * check 1 step 1: find all `usergroups` where requesting user email is present
-            * check 1 step 2 get marks list where sharedWith contains ids of found above groups
-            * check 1 step 3 get users whom found marks belong to and filter them by suffix username since same groups can belong to various users
-            * check 2 check if users has shared public marks*/
+          /** logic performs 3 actions
+            * 1) Aggregates users by username if they shared private marks with operator
+            * 2) Aggregates users if users have public marks
+            * 3) Concats 2 results, removes duplicates and own user id
+            * */
+          for {
 
-
-        for {
             cGroup <- groupColl()
-            framework1 <- {
-
-
-
-          import cGroup.BatchCommands.AggregationFramework
-          import AggregationFramework.{Match, Project, Lookup, Sort, Ascending, GroupFunction, GroupField}
-          cGroup.aggregate(firstOperator = Match(d :~ EMAILS -> email), otherOperators = List(
-            Project((d :~ ID -> 1)),
-            Lookup("entries", ID, READONLYGROUP, "privatelysharedmarks"),
-            Project((d :~ USR -> 1)),
-            Lookup("users", USR, ID, "usershassharedmarks"),
-            Project((d :~ ID -> 1 :~ UNAME -> 1)),
-            Sort(Ascending(UNAME))
-          ))//.map(res => res.cursor.to[List[UserAutosuggested]])
-        }
             cMarks <- marksColl()
-
-            framework2 <- {
-           import cMarks.BatchCommands.AggregationFramework
-           import AggregationFramework.{Match, Project, Lookup, Sort, Ascending}
-             cMarks.aggregate(firstOperator = Match(d :~ READONLYLEVEL -> SharedWith.Level.PUBLIC.toString.toInt :~ curnt), otherOperators = List(
-             Project((d :~ USR -> 1)),
-             Lookup("users", USR, ID, "usershassharedmarks"),
-             Project((d :~ ID -> 1 :~ UNAME -> 1)),
-             Sort(Ascending(UNAME))
-           ))//.map(res => res.cursor.to[List[UserAutosuggested]])
-         }
-
-            cGroup.aggregate(GroupField(ID,GroupFunction("users", List(
-              framework1,
-              framework2
-            ))).map(res => res.cursor.to[List[UserAutosuggested]])
-        }
-
-          /*Match(d:~ "$or" -> BSONArray(
-                  d :~ READONLYGROUP ->,
-                  d :~ READONLYLEVEL -> SharedWith.Level.PUBLIC.toString.toInt,
-              )
-            )*/
-
-            // check 1 step 1: find all `usergroups` where requesting user email is present
-            privateGroupsIdsOfFoundUsersSharedWithRequestingUser <- cGroup.find(d :~ EMAILS -> email,
-              d :~ ID -> 1)
-              // and filter here found users with userIds found by privately shared users' marks with searching user
-              .coll[Id, Seq]().map(_.map(_.id))
-
-            //check 1 step 2: find all marks by found groups in step 1
-            cMarks <- marksColl()
-            marksFoundThatAreSharedWithRequestingUser <- cMarks.find(
-              d :~ SHDWITH -> (d :~ "$exists" -> 1) :~
-                READONLY -> (d :~ "$exists" -> 1) :~
-                READONLYGROUP -> (d :~ "$in" -> privateGroupsIdsOfFoundUsersSharedWithRequestingUser) :~ curnt,
-                // project to get only userId
-                d :~ USR -> 1)
-              .coll[UserId, Seq]().map(_.map(_.userId))
-
-            // check 2: find user ids with PUBLIC Marks level -> 3,
-            // this does not impact on filtering process flow but will be used in $or when find users by ids
-              usersIdsWithPubMarksUsers <- cMarks.find(
-              d :~ SHDWITH -> (d :~ "$exists" -> 1) :~
-                READONLY -> (d :~ "$exists" -> 1) :~
-                READONLYLEVEL -> (d :~ "$exists" -> 1) :~
-                READONLYLEVEL -> SharedWith.Level.PUBLIC.toString.toInt :~ curnt,
-                // project to get only userId
-                d :~ Mark.USR -> 1)
-              .coll[UserId, Seq]().map(_.map(_.userId))
             cUsers <- dbColl()
 
-            // perform 2 conditional look ups with $or array
-            usersWithPrivateMarksSharedWithAndWithPublicMarks <- cUsers.find( d:~ "$or" -> BSONArray(
-              // 1st looks for users by shared marks with requesting user
-              // this is check 1 step 3
-              d :~ ID -> (d :~ "$in" -> marksFoundThatAreSharedWithRequestingUser),
-              // 2nd looks for users taken from with public marks level 3
-              d :~ ID -> (d :~ "$in" -> usersIdsWithPubMarksUsers))
-              // and finally filter users by suffix
-              :~ filterUserNamesBySuffixQuery, d :~ UNAME -> 1 :~ ID -> 1).sort(BSONDocument(UNAMELOWx -> 1)).coll[UserAutosuggested, Seq]()
+            // 1) Aggregates users by username if they shared private marks with operator
+            userWithSharedToUserMarks <- {
 
-/*
-            $lookup: {
-        from: "items",
-        localField: "item",    // field in the orders collection
-        foreignField: "item",  // field in the items collection
-        as: "fromItems"
-        }*/
-            from: String,
-          localField: String,
-          foreignField: String,
-          as: String
+              import cGroup.BatchCommands.AggregationFramework
+              import AggregationFramework.{Match, Project, Lookup, Unwind}
+              // Match to find email of operator in usergroups
+              cGroup.aggregate(firstOperator = Match(d :~ EMAILS -> email),
+                otherOperators = List(
+                    // get marks ids of found usergroups
+                    Lookup(cMarks.name, SHROBJSID, Mark.ID, entriesFoundCollName),
+                    // get userIds of found marks
+                    Lookup(cUsers.name, entriesFoundCollUserId, User.ID, usersFoundCollName),
+                    // unwind joined users https://docs.mongodb.com/manual/reference/operator/aggregation/unwind/
+                    Unwind(usersFoundCollName, None, Some(true)),
+                    // project only required fields
+                    Project(d :~ User.ID -> usersFoundCollId :~ username -> usersFoundCollUserName :~ UNAMELOWx -> usersFoundCollUserNameLower ),
+                  /* TODO fix to remove duplications on DB level
+                  Group(BSONString("$id"))(("dups", AddToSet(d :~ "id" -> "set"))),
+                  Unwind("set", None, Some(true)),
+                  Project(d :~ "id" -> "$set.id" :~ "username" -> "$set.username")*/
 
-/*
-
-          some <-
-                  cGroup.find(d :~ EMAILS -> email :~ d ->
-                    (d :~ "$as" -> BSONArray(ID)) -> "$lookup" -> (d :~ "$from" -> "entries" :~ "$localField" -> ID :~ "$foreignField" -> READONLYGROUP :~
-                      "$as" -> BSONArray(USR)) -> (d :~ "$or" -> BSONArray(
-                    d :~ "$lookup" -> (d :~ "$from" -> "entries" :~ "$localField" -> ID :~ "$foreignField" -> READONLYGROUP :~ "$as" -> BSONArray(USR)),
-                    d :~ "$lookup" -> (d :~ "$from" -> "entries" :~ "$localField" -> ID :~ "$foreignField" -> READONLYGROUP :~ "$as" -> BSONArray(USR))) :~
-                    "$or" -> BSONArray(
-                      d :~ "$lookup" -> (d :~ "$from" -> "entries" :~ "$localField" -> ID :~ "$foreignField" -> READONLYGROUP :~ "$as" -> BSONArray(UNAME, ID)),
-                      d :~ "$lookup" -> (d :~ "$from" -> "entries" :~ "$localField" -> ID :~ "$foreignField" -> READONLYGROUP :~ "$as" -> BSONArray(UNAME, ID))))).sort(BSONDocument(UNAMELOWx -> 1)).coll[UserAutosuggested, Seq]()
-
-*/
+                  // filter user names by username suffix from request
+                  Match(filterUserNamesBySuffixQuery)
 
 
+                )).map(_.head[UserAutosuggested])
+            }
+            // 2) Aggregates users if users have public marks
+            usersWithPublicMarks <- {
+              import cMarks.BatchCommands.AggregationFramework
+              import AggregationFramework.{Match, Project, Lookup, Unwind}
+              // get marks with Public share level
+              cMarks.aggregate(firstOperator = Match(
+                d :~ SHARED_WITH -> (d :~ exists -> 1) :~
+                  READONLY -> (d :~ exists -> 1) :~
+                  READONLYLEVEL -> (d :~ exists -> 1) :~
+                  READONLYLEVEL -> Level.PUBLIC.id :~ curnt)
+              ,
+                otherOperators = List(
+                  // project only userId field to find users
+                  Project(d :~ USR -> 1),
+                  // get users who has public marks by found marks id
+                  Lookup(cUsers.name, USR, User.ID, usersFoundCollName),
+                  // unwind joined users https://docs.mongodb.com/manual/reference/operator/aggregation/unwind/
+                  Unwind(usersFoundCollName, None, Some(true)),
+                  // project only required fields
+                  Project(d :~ User.ID -> usersFoundCollId :~ username -> usersFoundCollUserName :~ UNAMELOWx -> usersFoundCollUserNameLower),
+                  /* TODO fix to remove duplications on DB level
+                  Group(BSONString("$id"))(("dups", AddToSet(d :~ "id" -> "set"))),
+                  Unwind("set", None, Some(true)),
+                  Project(d :~ "id" -> "$set.id" :~ "username" -> "$set.username")*/
+
+                  // filter user names by username suffix from request
+                  Match(filterUserNamesBySuffixQuery)
+              )).map(_.head[UserAutosuggested])
+            }
+
+          /* TODO maybe join 2 different collections aggregations somehow but it seems
+             TODO it requires to rewrite aggregate functions for use of rawCommand on db not on collection
+              val ag1 = Aggregate("userGroup", usersWithSharedMarks)
+              val ag2 = Aggregate("entries", usersWithPublicMarks)
+              for {
+                dbd <- db()
+                users <- dbd.runCommand(Group("id", Seq(ag1,ag2)))
+              } yield users
+           */
 
 
-
-
-
-        } yield usersWithPrivateMarksSharedWithAndWithPublicMarks.filterNot(_.id == userId)
+            // 3) Concats 2 results, removes duplicates and own user id
+          } yield (userWithSharedToUserMarks ++ usersWithPublicMarks).distinct.filterNot(_.id == userId).sortBy(_.username)
+        }
     }
-  }
 }

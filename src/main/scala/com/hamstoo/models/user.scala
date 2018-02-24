@@ -86,23 +86,7 @@ case class UserData(
   * This class is used to get only projection of necessary fields from mark BSONDocument to optimize performance of db query
   * look at https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data
   */
-case class UserAutosuggested(id: UUID, username: Option[String] = Option.empty[String])
-
-
-object UserAutosuggested {
-
-  import User.userDataHandler
-  implicit object UserAutoSuggestedReader extends BSONDocumentReader[UserAutosuggested] {
-    def read(bson: BSONDocument): UserAutosuggested = {
-      val optUserAutoSuggested = for {
-        userId <- bson.getAs[String]("id")
-        usernameLower <- bson.getAs[UserData]("userData").map(_.usernameLower)
-      } yield UserAutosuggested(UUID.fromString(userId), usernameLower)
-      optUserAutoSuggested.get
-    }
-  }
-}
-
+case class UserAutosuggested(id: UUID, username: String = "")
 
 /**
   * Finally, the full User object that is stored in the database for each user.  Notice that this class
@@ -152,6 +136,7 @@ object User extends BSONHandlers {
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]
+  implicit val userAutosuggestedBsonHandler: BSONDocumentHandler[UserAutosuggested] = Macros.handler[UserAutosuggested]
 
 }
 

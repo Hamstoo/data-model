@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.daos.MongoUserDao
+import com.hamstoo.models.User.UDATA
 import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, BSONDocumentReader, Macros}
 
@@ -265,6 +266,7 @@ object UserGroup extends BSONHandlers {
 
   val HASH: String = nameOf[UserGroup](_.hash)
   val SHROBJS: String = nameOf[UserGroup](_.sharedObjs)
+  val SHROBJSID: String =  SHROBJS + "." + nameOf[UserGroup.SharedObj](_.id)
   val EMAILS: String = nameOf[UserGroup](_.emails)
 
   /** Used for `emails > other.emails` above and `union` and `intersection` below. */

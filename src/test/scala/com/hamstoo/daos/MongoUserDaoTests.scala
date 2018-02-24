@@ -83,7 +83,7 @@ class MongoUserDaoTests
 
   it should "(UNIT) create user and find him by username with `hasSharedMarks` == false condition" in {
     userDao.save(user.copy(id = constructUserId(), UserData(username = Some("dfgdfg")))).futureValue shouldEqual {}
-    userDao.searchUsernamesBySuffix("dfg", false, constructUserId(), None).futureValue.toList(0).username.get.contains("dfg") shouldEqual true
+    userDao.searchUsernamesBySuffix("dfg", false, constructUserId(), None).futureValue.toList(0).username.contains("dfg") shouldEqual true
   }
 
   it should "(UNIT) create user and shell not find him by username with `hasSharedMarks` == true condition" in {
@@ -121,7 +121,7 @@ class MongoUserDaoTests
       futureValue.id shouldEqual m1.id
 
     // use another user data to find usernames who has shared mark with him
-    userDao.searchUsernamesBySuffix("wer", true, newUser.id, Some(email)).futureValue.toList(0).username.get.contains("wer") shouldEqual true
+    userDao.searchUsernamesBySuffix("wer", true, newUser.id, Some(email)).futureValue.toList(0).username.contains("wer") shouldEqual true
     }
 
   it should "(UNIT) create users and find specific users by username with `hasSharedMarks` == true and mark being PUBLIC shared condition" in {
@@ -143,6 +143,6 @@ class MongoUserDaoTests
       futureValue.id shouldEqual m1.id
 
     // look for usernames of users who has public marks
-    userDao.searchUsernamesBySuffix("cvbr", true, constructUserId(), None).futureValue.toList(0).username.get.contains("cvbr") shouldEqual true
+    userDao.searchUsernamesBySuffix("cvbr", true, constructUserId(), None).futureValue.toList(0).username.contains("cvbr") shouldEqual true
   }
 }

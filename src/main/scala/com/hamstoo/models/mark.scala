@@ -464,7 +464,7 @@ object Mark extends BSONHandlers {
   val ID_LENGTH: Int = 16
 
   val USR: String = nameOf[Mark](_.userId)
-  val ID: String = Shareable.ID
+  val ID: String = nameOf[Mark](_.id)
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)
   val URLPRFX: String = nameOf[Mark](_.urlPrfx)
@@ -477,10 +477,12 @@ object Mark extends BSONHandlers {
   val SCORE: String = nameOf[Mark](_.score)
 
   val UNAMELOWx: String = UDATA + "." + nameOf[UserData](_.usernameLower)
+  val UNAME: String = UDATA + "." + nameOf[UserData](_.username)
   val SHDWITH: String = nameOf[Mark](_.sharedWith)
   val READONLY: String = SHDWITH + "." + nameOf[SharedWith](_.readOnly)
-  val READONLYGROUP: String = SHDWITH + "." + READONLY + "." +  nameOf[ShareGroup](_.group)
-  val READONLYLEVEL: String = SHDWITH + "." + READONLY + "." +  nameOf[ShareGroup](_.level)
+  val READONLYGROUP: String = READONLY + "." +  nameOf[ShareGroup](_.group)
+  val READONLYLEVEL: String = READONLY + "." +  nameOf[ShareGroup](_.level)
+
 
   // the 'x' is for "extended" (changing these from non-x has already identified one bug)
   val SUBJx: String = MARK + "." + nameOf[MarkData](_.subj)
