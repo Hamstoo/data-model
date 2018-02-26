@@ -4,6 +4,7 @@ import akka.NotUsed
 import akka.actor.Cancellable
 import akka.stream._
 import akka.stream.scaladsl.{Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
+import com.hamstoo.stream.GroupReduce.Dataset
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
 import org.joda.time.DateTime
@@ -89,7 +90,7 @@ class DataStreamTests
 
 
 
-  /*"Test" should "scratch test 0" in {
+  "Test" should "scratch test 0" in {
     // https://doc.akka.io/docs/akka/2.5.3/scala/stream/stream-rate.html#internal-buffers-and-their-effect
 
     implicit val materializer: Materializer = ActorMaterializer()
@@ -145,7 +146,7 @@ class DataStreamTests
     g.run()
     //Await.result(g.run(), 15 seconds)
     Thread.sleep(65.seconds.toMillis)
-  }*/
+  }
 
 
   "Join" should "join DataStreams" in {
@@ -174,5 +175,35 @@ class DataStreamTests
     val x: Int = Await.result(runnable.run(), 15 seconds)
 
     x shouldEqual 1212
+  }
+
+  "Reducer" should "reduce cross-sectionally" in {
+
+    val iter = List(Datum(ReprId("aa"), 0, 1.2),
+                    Datum(ReprId("bb"), 0, 1.5),
+                    Datum(ReprId("cc"), 0, 1.8),
+                    Datum(ReprId("bb"), 1, 2.2),
+                    Datum(ReprId("cc"), 1, 2.5),
+                    Datum(ReprId("aa"), 1, 2.8),
+                    Datum(ReprId("cc"), 0, 3.2),
+                    Datum(ReprId("aa"), 0, 3.5),
+                    Datum(ReprId("bb"), 0, 3.8))
+
+    val grouper = () => new CrossSectionCommandFactory()
+
+    val x = GroupReduce(Source(iter), grouper, 2) { (ds: Dataset[Double]) =>
+
+      import com.hamstoo.models.Representation.VecFunctions
+
+      val y: Int = ds.data.map(_.value).mean
+
+    }
+
+
+
+
+
+
+
   }
 }
