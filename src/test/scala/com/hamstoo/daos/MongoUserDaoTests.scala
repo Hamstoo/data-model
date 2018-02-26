@@ -1,12 +1,17 @@
 package com.hamstoo.daos
 
+import java.util.UUID
+
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.{UserData, _}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
+import com.hamstoo.utils
 import com.hamstoo.utils.DataInfo._
 import com.mohiva.play.silhouette.api.LoginInfo
 import org.scalatest.OptionValues
+import org.scalatest.concurrent.PatienceConfiguration.Interval
+import org.scalatest.time.{Seconds, Span}
 
 import scala.util.Random
 
@@ -88,7 +93,7 @@ class MongoUserDaoTests
     userDao.searchUsernamesBySuffix("dfg", false, constructUserId(), None).futureValue.toList(0).username.contains("dfg") shouldEqual true
   }
 
-  it should "(UNIT) create user and shell not find him by username with `hasSharedMarks` == true condition" in {
+  it should "(UNIT) create user and sheuserNameGeneratedll not find him by username with `hasSharedMarks` == true condition" in {
     val loginInfo2 = LoginInfo(constructUserId().toString, constructUserId().toString)
     val profile2 = Profile(loginInfo2, confirmed = false, Some(email), None, None, None)
     val newUser =  User(constructUserId(), UserData(username = Some("yuiyui")), List(profile2))
@@ -98,40 +103,52 @@ class MongoUserDaoTests
 
   it should "(UNIT) create users and find specific users by username with `hasSharedMarks` == true and users are LISTED condition" in {
     // create a user who is owning mark
-    val userNameGenerated = "alEalEalE"+constructUserId()
-    val loginInfo2 = LoginInfo(constructUserId().toString, constructUserId().toString)
-    val profile2 = Profile(loginInfo2, confirmed = false, None, None, None, None)
-    val sharingUser = User(constructUserId(), UserData(username = Some(userNameGenerated), usernameLower = Some(userNameGenerated)), List(profile2))
-    userDao.save(sharingUser).futureValue shouldEqual {}
+    def randomString(length: Int = 10) = utils.generateDbId(length).toString
+    val s1 = randomString()
+    val s2 = randomString()
+    s1.equals(s2) shouldBe false
+
+    val uNameSuffix = randomString()
+    val userNameGenerated = randomString()+uNameSuffix+randomString()
+    val loginInfo2 = LoginInfo(randomString(), randomString())
+    val profile2 = Profile(loginInfo2, confirmed = true, Some(randomString()+"somemail.com"), Some("Some FN"), Some("Some LN"), None )
+    val sharingUser = User(constructUserId(), UserData(username = Some(userNameGenerated), usernameLower = Some(userNameGenerated.toLowerCase())), List(profile2))
+    userDao.save(sharingUser).futureValue
 
     // add user mark
-    val reprInfoUsr = ReprInfo(constructUserId().toString, ReprType.USER_CONTENT)
+    val reprInfoUsr = ReprInfo(constructUserId().toString, ReprType.PUBLIC)
     val reprs = Seq(reprInfoUsr)
-    val m1 = Mark(sharingUser.id, constructUserId().toString, MarkData(constructUserId()+" home do sudfdabject1", Some("http://www."+constructUserId()+"somehomeurl323.com"),
-      pagePending = Some(true)), reprs = reprs)
+    val m1 = Mark(sharingUser.id, constructUserId().toString, MarkData(randomString()+" a subject", Some("http://www."+randomString(20)+".com"),
+      pagePending = Some(false)), reprs = reprs)
     marksDao.insert(m1).futureValue shouldEqual m1
 
 
     // create another user whom a mark will be shared with
-    val email = constructUserId()+"asdasd@shared.com"
-    val loginInfo3 = LoginInfo(constructUserId().toString, constructUserId().toString)
-    val profile3 = Profile(loginInfo3, confirmed = false, Some(email), None, None, None)
-    val newUser =  User(constructUserId(), UserData(username = Some(userNameGenerated+"alex"), usernameLower = Some(userNameGenerated+"alex")), List(profile3))
-    userDao.save(newUser).futureValue shouldEqual {}
+    val email = randomString()+"@gmail.com"
+    val loginInfo3 = LoginInfo(randomString(), randomString())
+    val profile3 = Profile(loginInfo3, confirmed =  true, Some(email), Some(randomString()), Some(randomString()), Some(randomString()))
+    val newUser =  User(constructUserId(), UserData(Some(randomString()),Some(email),Some(email)), List(profile3))
+    userDao.save(newUser).futureValue
+
 
     // share mark with another user (newUser)
-    val optUserGroup = Some(UserGroup(emails = Some(Set(email))))
-    marksDao.updateSharedWith(m1, 1, Some((SharedWith.Level.LISTED, optUserGroup)), None).
+    val optUserGroup = Some(UserGroup(emails = Some(Set(email)), sharedObjs = Seq(UserGroup.SharedObj(m1.id, System.currentTimeMillis()))))
+    marksDao.updateSharedWith(m1, 1, Some((SharedWith.Level.LISTED, optUserGroup)), Some((SharedWith.Level.LISTED, optUserGroup))).
       futureValue.id shouldEqual m1.id
 
     // check if mark is created and if is created "shareWith" object and contains sharee email
     val markUpdatedToShare = marksDao.retrieveInsecure(m1.id).futureValue
     markUpdatedToShare.get.sharedWith.isEmpty shouldEqual false
+
     val emails = userDao.retrieveGroup(markUpdatedToShare.get.sharedWith.get.readOnly.get.group.get).futureValue.get.emails.get
     emails.contains(email) shouldEqual true
-
+    //Thread.sleep(90000)
     // use another user data to find usernames who has shared mark with him
-    userDao.searchUsernamesBySuffix("ale", true, newUser.id, Some(email)).futureValue.toList(0).username.toLowerCase.contains("ale") shouldEqual true
+   // userDao.searchUsernamesBySuffix(uNameSuffix, true, newUser.id, Some(email)).futureValue.toList(0)
+
+    val unameLower = userDao.searchUsernamesBySuffix(uNameSuffix, true, newUser.id, Some(email)).futureValue(Interval(Span(60, Seconds))).toList(0).username.toLowerCase
+    unameLower.indexOf(uNameSuffix)  shouldEqual 10
+
     }
 
   it should "(UNIT) create users and find specific users by username with `hasSharedMarks` == true and mark being PUBLIC shared condition" in {

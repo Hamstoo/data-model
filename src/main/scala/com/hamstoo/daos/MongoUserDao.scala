@@ -265,8 +265,8 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   def searchUsernamesBySuffix(prefix: String, hasSharedMarks: Boolean = false, userId: UUID, email: Option[String]): Future[Seq[UserAutosuggested]] = {
     // check if username exists to skip empty usernames if data migration wasn't successfull
     // 'i' flag is case insensitive https://docs.moqngodb.com/manual/reference/operator/query/regex/
-    val filterUserNamesBySuffixQuery = BSONDocument(d :~ ( d :~ UNAMELOWx -> (d :~ "$exists" -> 1),
-      UNAMELOWx -> BSONRegex(".*"+prefix.toLowerCase + ".*", "i")))
+    val filterUserNamesBySuffixQuery = BSONDocument(d :~ ( d :~ UNAME -> (d :~ "$exists" -> 1),
+      UNAME -> BSONRegex(".*"+prefix.toLowerCase + ".*", "i")))
 
         if (!hasSharedMarks) {
           // simple search by username suffix for sharing purposes, does not apply any filters or validation
