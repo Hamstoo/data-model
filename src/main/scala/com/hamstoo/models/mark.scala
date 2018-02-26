@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.models.Mark.{DurationMils, MarkAux}
+import com.hamstoo.models.Mark.{DurationMils, ExpectedRating, MarkAux}
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
@@ -40,7 +40,7 @@ case class MarkData(
                      override val tags: Option[Set[String]] = None,
                      override val comment: Option[String] = None,
                      var commentEncoded: Option[String] = None,
-                     override val pagePending: Option[Boolean] = None) extends MarkDataSearchable(subj, url, rating, tags, comment, pagePending) {
+                     override val pagePending: Option[Boolean] = None) extends MDSearchable(subj, url, rating, tags, comment, pagePending) {
 
   import MarkData._
 
@@ -242,13 +242,6 @@ case class Mark(
 
   import Mark._
 
-  // TODO: FWC: what if private expRating is in NON_IDS?  we should fallback to public in that case also
-  def expectedRating: Option[ObjectId] =
-    reprs.filter(_.isPrivate)
-      .sortBy(_.created).lastOption // .maxBy(_.created) throws an java.lang.UnsupportedOperationException if empty
-      .flatMap(_.expRating) // expected rating from private representation
-      .orElse(reprs.find(_.isPublic).flatMap(_.expRating))
-
   def representableUserContent: Boolean = !reprs.exists(_.isUserContent)
 
   /** Get a private representation without an expected rating, if it exists. */
@@ -285,15 +278,6 @@ case class Mark(
       copy(mark = mdata)
     }
   }
-
-  /**
-    * If the mark has been masked, show the original rating in blue, o/w lookup the mark's expected rating ID in
-    * the given `eratings` map and show that in blue.  This allows us to (1) always show the current user's rating
-    * in orange, even when displaying another shared-from user's mark, and (2) hide shared-from users' rating
-    * predictions, which contain information about more than just the mark being shared, from shared-to users.
-    */
-  def blueRating(eratings: Map[ObjectId, ExpectedRating]): Option[Double] =
-    if (mark.bMasked) mark.ownerRating else expectedRating.flatMap(eratings.get).flatMap(_.value)
 
   /**
     * Merge two marks.  This method is called from the `repr-engine` when a new mark's, `oth`, representations are
@@ -371,7 +355,7 @@ object MarkAuxSearchable {
   }
 }
 
-class MarkDataSearchable(
+class MDSearchable(
                           val subj: String,
                           val url: Option[String],
                           val rating: Option[Double],
@@ -390,27 +374,27 @@ class MarkDataSearchable(
              tags: Option[Set[String]] = tags,
              comment: Option[String] = comment,
              pagePending: Option[Boolean] = pagePending) =
-    new MarkDataSearchable(subj, url, rating, tags, comment, pagePending)
+    new MDSearchable(subj, url, rating, tags, comment, pagePending)
 }
 
-object MarkDataSearchable {
+object MDSearchable {
   def apply(
              subj: String,
              url: Option[String],
              rating: Option[Double],
              tags: Option[Set[String]],
              comment: Option[String],
-             pagePending: Option[Boolean]): MarkDataSearchable =
-    new MarkDataSearchable(subj, url, rating, tags, comment, pagePending)
+             pagePending: Option[Boolean]): MDSearchable =
+    new MDSearchable(subj, url, rating, tags, comment, pagePending)
 
-  def unapply(obj: MarkDataSearchable): Option[(String, Option[String], Option[Double], Option[Set[String]], Option[String], Option[Boolean])] = {
+  def unapply(obj: MDSearchable): Option[(String, Option[String], Option[Double], Option[Set[String]], Option[String], Option[Boolean])] = {
     Some((obj.subj, obj.url, obj.rating, obj.tags, obj.comment, obj.pagePending))
   }
 }
 
 class MSearchable(val userId: UUID,
                   val id: String,
-                  val mark: MarkDataSearchable,
+                  val mark: MDSearchable,
                   val markRef: Option[MarkRef],
                   val aux: Option[MarkAux],
                   val reprs: Seq[ReprInfo],
@@ -423,19 +407,19 @@ class MSearchable(val userId: UUID,
                   val score: Option[Double]) extends Shareable {
   /** This method called `update` instead of copy, to avoid conflict in Mark case class that have already generated copy method */
   def update(
-            userId: UUID = userId,
-            id: String = id,
-            mark: MarkDataSearchable = mark,
-            markRef: Option[MarkRef] = markRef,
-            aux: Option[MarkAux] = aux,
-            reprs: Seq[ReprInfo] = reprs,
-            timeFrom: Long = timeFrom,
-            timeThru: Long = timeThru,
-            modifiedBy: Option[UUID] = modifiedBy,
-            sharedWith: Option[SharedWith] = sharedWith,
-            nSharedFrom: Option[Int] = nSharedFrom,
-            nSharedTo: Option[Int] = nSharedTo,
-            score: Option[Double] = score): MSearchable =
+              userId: UUID = userId,
+              id: String = id,
+              mark: MDSearchable = mark,
+              markRef: Option[MarkRef] = markRef,
+              aux: Option[MarkAux] = aux,
+              reprs: Seq[ReprInfo] = reprs,
+              timeFrom: Long = timeFrom,
+              timeThru: Long = timeThru,
+              modifiedBy: Option[UUID] = modifiedBy,
+              sharedWith: Option[SharedWith] = sharedWith,
+              nSharedFrom: Option[Int] = nSharedFrom,
+              nSharedTo: Option[Int] = nSharedTo,
+              score: Option[Double] = score): MSearchable =
     new MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru, modifiedBy, sharedWith, nSharedFrom, nSharedTo, score)
 
   /**
@@ -444,6 +428,13 @@ class MSearchable(val userId: UUID,
     */
   // TODO: FWC: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
   def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
+
+  // TODO: FWC: what if private expRating is in NON_IDS?  we should fallback to public in that case also
+  def expectedRating: Option[ObjectId] =
+    reprs.filter(_.isPrivate)
+      .sortBy(_.created).lastOption // .maxBy(_.created) throws an java.lang.UnsupportedOperationException if empty
+      .flatMap(_.expRating) // expected rating from private representation
+      .orElse(reprs.find(_.isPublic).flatMap(_.expRating))
 
   /** Returns true if this Mark's MarkData has all of the test tags. */
   def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.contains(t)))
@@ -477,12 +468,21 @@ class MSearchable(val userId: UUID,
       update(mark = mdata)
     }
   }
+
+  /**
+    * If the mark has been masked, show the original rating in blue, o/w lookup the mark's expected rating ID in
+    * the given `eratings` map and show that in blue.  This allows us to (1) always show the current user's rating
+    * in orange, even when displaying another shared-from user's mark, and (2) hide shared-from users' rating
+    * predictions, which contain information about more than just the mark being shared, from shared-to users.
+    */
+  def blueRating(eratings: Map[ObjectId, ExpectedRating]): Option[Double] =
+    if (mark.bMasked) mark.ownerRating else expectedRating.flatMap(eratings.get).flatMap(_.value)
 }
 
 object MSearchable {
   def apply(userId: UUID,
             id: String,
-            mark: MarkDataSearchable,
+            mark: MDSearchable,
             markRef: Option[MarkRef],
             aux: Option[MarkAux],
             reprs: Seq[ReprInfo],
@@ -499,7 +499,7 @@ object MSearchable {
       sharedWith, nSharedFrom, nSharedTo, score)
 
   def unapply(arg: MSearchable):
-  Option[(UUID, String, MarkDataSearchable, Option[MarkRef], Option[MarkAux], Seq[ReprInfo], Long, Long, Option[UUID], Option[SharedWith], Option[Int], Option[Int], Option[Double])] =
+  Option[(UUID, String, MDSearchable, Option[MarkRef], Option[MarkAux], Seq[ReprInfo], Long, Long, Option[UUID], Option[SharedWith], Option[Int], Option[Int], Option[Double])] =
     Some((arg.userId, arg.id, arg.mark, arg.markRef, arg.aux, arg.reprs, arg.timeFrom, arg.timeThru, arg.modifiedBy, arg.sharedWith, arg.nSharedFrom, arg.nSharedTo,arg.score))
 }
 
@@ -614,7 +614,7 @@ object Mark extends BSONHandlers {
   val EXP_RATINGxp: String = REPRS + ".$." + EXP_RATING
 
   implicit val mDataAux: BSONDocumentHandler[MarkAuxSearchable] = Macros.handler[MarkAuxSearchable]
-  implicit val mDataData: BSONDocumentHandler[MarkDataSearchable] = Macros.handler[MarkDataSearchable]
+  implicit val mDataData: BSONDocumentHandler[MDSearchable] = Macros.handler[MDSearchable]
   implicit val mSearchable: BSONDocumentHandler[MSearchable] = Macros.handler[MSearchable]
   val USRPRFX: String = nameOf[UrlDuplicate](_.userIdPrfx)
   assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
