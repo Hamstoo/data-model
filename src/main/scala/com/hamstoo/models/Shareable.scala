@@ -76,6 +76,7 @@ object Shareable {
   val READWRITEx: String = SHARED_WITH + "." + nameOf[SharedWith](_.readWrite)
   val N_SHARED_FROM: String = nameOf[Shareable](_.nSharedFrom)
   val N_SHARED_TO: String = nameOf[Shareable](_.nSharedTo)
+  val READONLYxLEVEL: String = READONLYx + "." +  nameOf[ShareGroup](_.level)
 }
 
 /**

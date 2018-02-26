@@ -2,7 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.Mark.{Id, SHDWITH, USR, UserId}
+import com.hamstoo.models.Mark.{Id, USR, UserId}
 import com.hamstoo.models.UserGroup.EMAILS
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.SharedWith.Level
@@ -19,6 +19,7 @@ import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.{BSONArray, BSONDocument, BSONDocumentHandler, BSONDocumentReader, BSONRegex, BSONString, BSONValue, Macros}
 import reactivemongo.core.commands.{AddToSet, Group, Limit, Match, Project, _}
+import com.hamstoo.models.Shareable.{READONLYx, READONLYxLEVEL, SHARED_WITH}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -45,7 +46,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
   // data field names used during aggregation
   val usersFoundCollId = "$" + usersFoundCollName + "." + User.ID
-  val usersFoundCollUserName = "$" + usersFoundCollName + "." + UNAME
+  val usersFoundCollUserName = "$" + usersFoundCollName + "." + UNAMEx
   val entriesFoundCollUserId = entriesFoundCollName + "." + USR
   val usersFoundCollUserNameLower = "$" + usersFoundCollName + "." + UNAMELOWx
   //val UNAMELOW: String = nameOf[UserData](_.usernameLower)
@@ -263,36 +264,9 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
     // check if username exists to skip empty usernames if data migration wasn't successfull,
     // 'i' flag is case insensitive https://docs.moqngodb.com/manual/reference/operator/query/regex/
-<<<<<<< Updated upstream
-    val filterUserNamesBySuffixQuery = BSONDocument(d :~ ( d :~ UNAME -> (d :~ "$exists" -> 1),
-      UNAME -> BSONRegex(".*"+prefix.toLowerCase + ".*", "i")))
 
-        if (!hasSharedMarks) {
-          // simple search by username suffix for sharing purposes, does not apply any filters or validation
-          for {
-            cUsers <- dbColl()
-            users <- cUsers.find(filterUserNamesBySuffixQuery).sort(BSONDocument(UNAMELOWx -> 1)).coll[User, Seq]().map( users =>
-            users.map(user => UserAutosuggested(user.id, user.userData.username.getOrElse(""))))
-          } yield  users.filterNot(_.id == userId)
-
-        } else {
-
-          /** logic performs 3 actions
-            * 1) Aggregates users by username if they shared private marks with operator
-            * 2) Aggregates users if users have public marks
-            * 3) Concats 2 results, removes duplicates and own user id
-            * */
-          for {
-
-            cGroup <- groupColl()
-            cMarks <- marksColl()
-            cUsers <- dbColl()
-
-            // 1) Aggregates users by username if they shared private marks with operator
-            userWithSharedToUserMarks <- {
-=======
     val sel = d :~ UNAMELOWx -> (d :~ "$exists" -> 1) :~
-                   UNAMELOWx -> BSONRegex(".*" + prefix.toLowerCase + ".*", "i"))
+                   UNAMELOWx -> BSONRegex(".*" + prefix.toLowerCase + ".*", "i")
 
     if (!hasShared) {
       // simple search by username prefix for sharing purposes, does not apply any filters or validation
@@ -318,7 +292,6 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
         userWithSharedToUserMarks <- {
 
         // TODO: fix indentation below this line
->>>>>>> Stashed changes
 
               import cGroup.BatchCommands.AggregationFramework
               import AggregationFramework.{Match, Project, Lookup, Unwind, AddToSet, Group }
@@ -332,15 +305,15 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
                     // unwind joined users https://docs.mongodb.com/manual/reference/operator/aggregation/unwind/
                     Unwind(usersFoundCollName, None, Some(true)),
                     // project only required fields
-                    Project(d :~ User.ID -> usersFoundCollId :~ username -> usersFoundCollUserName :~ UNAMELOWx -> usersFoundCollUserNameLower ),
+                    Project(d :~ User.ID -> usersFoundCollId :~ "username" -> usersFoundCollUserName :~ UNAMELOWx -> usersFoundCollUserNameLower ),
                     // grouping to set by id to remove user duplications on database level
-                    Group(BSONString(User.ID))( set ->  AddToSet( d:~ User.ID -> ("$"+User.ID) :~ username -> ("$"+username) :~ usernameLower -> ("$"+UNAMELOWx))),
+                    Group(BSONString(User.ID))( "set" ->  AddToSet( d:~ User.ID -> ("$"+User.ID) :~ "username" -> "$username" :~ "usernameLower" -> ("$"+UNAMELOWx))),
                     // unwind set variable
-                    Unwind(set, None, Some(true)),
+                    Unwind("set", None, Some(true)),
                     // project only required fields
-                    Project(d :~ User.ID -> (dollarSet+User.ID) :~ username -> (dollarSet+username) :~ UNAMELOWx -> (dollarSet+usernameLower)),
+                    Project(d :~ User.ID -> ("$set."+User.ID) :~ "username" -> ("$set.username") :~ UNAMELOWx -> "$set.usernameLower"),
                     // filter user names by username suffix from request
-                    Match(filterUserNamesBySuffixQuery)
+                    Match(sel)
                 )).map(_.head[UserAutosuggested])
             }
             // 2) Aggregates users if users have public marks
@@ -349,10 +322,10 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
               import AggregationFramework.{Match, Project, Lookup, Unwind, Group, AddToSet}
               // get marks with Public share level
               cMarks.aggregate(firstOperator = Match(
-                d :~ SHARED_WITH -> (d :~ exists -> 1) :~
-                  READONLY -> (d :~ exists -> 1) :~
-                  READONLYLEVEL -> (d :~ exists -> 1) :~
-                  READONLYLEVEL -> Level.PUBLIC.id :~ curnt)
+                d :~ SHARED_WITH -> (d :~ "$exists" -> 1) :~
+                  READONLYx -> (d :~ "$exists" -> 1) :~
+                  READONLYxLEVEL -> (d :~ "$exists" -> 1) :~
+                  READONLYxLEVEL -> Level.PUBLIC.id :~ curnt)
               ,
                 otherOperators = List(
                   // project only userId field to find users
@@ -362,15 +335,15 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
                   // unwind joined users https://docs.mongodb.com/manual/reference/operator/aggregation/unwind/
                   Unwind(usersFoundCollName, None, Some(true)),
                   // project only required fields
-                  Project(d :~ User.ID -> usersFoundCollId :~ username -> usersFoundCollUserName :~ UNAMELOWx -> usersFoundCollUserNameLower),
+                  Project(d :~ User.ID -> usersFoundCollId :~ "username" -> usersFoundCollUserName :~ UNAMELOWx -> usersFoundCollUserNameLower),
                   // grouping to set by id to remove user duplications on database level
-                  Group(BSONString(User.ID))( set ->  AddToSet( d:~ User.ID -> ("$"+User.ID) :~ username -> ("$"+username) :~ usernameLower -> ("$"+UNAMELOWx))),
+                  Group(BSONString(User.ID))( "set" ->  AddToSet( d:~ User.ID -> ("$"+User.ID) :~ "username" -> "$username" :~ "usernameLower" -> ("$"+UNAMELOWx))),
                   // unwind set variable
-                  Unwind(set, None, Some(true)),
+                  Unwind("set", None, Some(true)),
                   // project only required fields
-                  Project(d :~ User.ID -> (dollarSet+User.ID) :~ username -> (dollarSet+username) :~ UNAMELOWx -> (dollarSet+usernameLower)),
+                  Project(d :~ User.ID -> ("$set."+User.ID) :~ "username" -> "$set.username" :~ UNAMELOWx -> "$set.usernameLower"),
                   // filter user names by username suffix from request
-                  Match(filterUserNamesBySuffixQuery)
+                  Match(sel)
               )).map(_.head[UserAutosuggested])
             }
 
