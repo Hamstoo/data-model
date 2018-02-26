@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.models.User.UDATA
+import com.hamstoo.models.User.UDATA // TODO: how does UDATA come from the User class if it's a field of a mark?
 import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
@@ -15,7 +15,7 @@ import org.jsoup.Jsoup
 import org.jsoup.safety.Whitelist
 import play.api.Logger
 import play.api.libs.json.{Json, OFormat}
-import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, BSONDocumentReader, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
 import scala.util.matching.Regex
@@ -453,18 +453,22 @@ object Mark extends BSONHandlers {
     urlPrfx = Some(url.binaryPrefix)
   }
 
-  /** This class is used to get only projection of userId field from mark BSONDocument to optimize performance of db query
-    * look at https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data */
+  /**
+    * This class is only used to get a projection of userId field from mark BSONDocument to optimize performance of db query.
+    * See also: https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data
+    */
   case class UserId(userId: String)
 
-  /** This class is used to get only projection of id field from mark BSONDocument to optimize performance of db query
-    * look at https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data */
+  /**
+    * This class is only used to get a projection of id field from mark BSONDocument to optimize performance of db query
+    * look at https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data
+    */
   case class Id(id: String)
 
   val ID_LENGTH: Int = 16
 
   val USR: String = nameOf[Mark](_.userId)
-  val ID: String = nameOf[Mark](_.id)
+  val ID: String = Shareable.ID
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)
   val URLPRFX: String = nameOf[Mark](_.urlPrfx)
@@ -475,14 +479,6 @@ object Mark extends BSONHandlers {
 
   // `text` index search score <projectedFieldName>, not a field name of the collection
   val SCORE: String = nameOf[Mark](_.score)
-
-  val UNAMELOWx: String = UDATA + "." + nameOf[UserData](_.usernameLower)
-  val UNAME: String = UDATA + "." + nameOf[UserData](_.username)
-  val SHDWITH: String = nameOf[Mark](_.sharedWith)
-  val READONLY: String = SHDWITH + "." + nameOf[SharedWith](_.readOnly)
-  val READONLYGROUP: String = READONLY + "." +  nameOf[ShareGroup](_.group)
-  val READONLYLEVEL: String = READONLY + "." +  nameOf[ShareGroup](_.level)
-
 
   // the 'x' is for "extended" (changing these from non-x has already identified one bug)
   val SUBJx: String = MARK + "." + nameOf[MarkData](_.subj)
@@ -524,6 +520,6 @@ object Mark extends BSONHandlers {
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
   implicit val urldupBsonHandler: BSONDocumentHandler[UrlDuplicate] = Macros.handler[UrlDuplicate]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
-  implicit val idBsonHandler: BSONDocumentHandler[Id] = Macros.handler[Id]
-  implicit val userIdBsonHandler: BSONDocumentHandler[UserId] = Macros.handler[UserId]
+  implicit val idBsonHandler: BSONDocumentHandler[Id] = Macros.handler[Id] // TODO: neccessary?
+  implicit val userIdBsonHandler: BSONDocumentHandler[UserId] = Macros.handler[UserId] // TODO: neccessary?
 }

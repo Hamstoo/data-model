@@ -588,7 +588,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * R sharing level must be at or above RW sharing level.
     * Updating RW permissions with higher than existing R permissions will raise R permissions as well.
     * Updating R permissions with lower than existing RW permissions will reduce RW permissions as well.
-    * TODO: add parameters description, two parameters use same enumeration, so it is not clear what the logics means
     *
     * TODO: This method should be moved into a MongoShareableDao class, similar to MongoAnnotationDao.
     */

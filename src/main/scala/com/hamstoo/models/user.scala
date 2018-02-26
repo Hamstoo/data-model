@@ -7,7 +7,7 @@ import com.hamstoo.daos.MongoUserDao
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
-import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, BSONDocumentReader, BSONObjectID, BSONString, BSONValue, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Random
@@ -79,11 +79,12 @@ case class UserData(
   }
 }
 
-/** A shrinked version of User case class used for autosuggestion by username
-  * even username: Option[String] is filtered of empty during reques, it is used here
+/**
+  * A stub version of User case class used for autosuggestion by username.
+  * even username: Option[String] is filtered of empty during requests, it is used here
   * to facilitate field mappings by avoiding of option unwrapping
   * as well
-  * This class is used to get only projection of necessary fields from mark BSONDocument to optimize performance of db query
+  * This class is only used to get a projection of necessary fields from mark BSONDocument to optimize performance of db query
   * look at https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data
   */
 case class UserAutosuggested(id: UUID, username: String = "")
@@ -110,10 +111,6 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
   def usernameId: String = userData.username.fold(id.toString)("@" + _)
 }
 
-
-
-
-
 object User extends BSONHandlers {
 
   val VALID_USERNAME: Regex = raw"^([a-zA-Z][a-zA-Z0-9_]+[a-zA-Z_])([0-9]*)$$".r
@@ -123,8 +120,9 @@ object User extends BSONHandlers {
 
   val ID: String = nameOf[User](_.id)
   val UDATA: String = nameOf[User](_.userData)
-  val UNAMELOWx: String = UDATA + "." + nameOf[UserData](_.usernameLower)
-  val UNAME: String = UDATA + "." + nameOf[UserData](_.username)
+  val UNAMELOW: String = nameOf[UserData](_.usernameLower)
+  val UNAMELOWx: String = UDATA + "." + UNAMELOW
+  val UNAMEx: String = UDATA + "." + nameOf[UserData](_.username)
   val PROFILES: String = nameOf[User](_.profiles)
   val LINFO: String = nameOf[Profile](_.loginInfo)
   val CONF: String = nameOf[Profile](_.confirmed)

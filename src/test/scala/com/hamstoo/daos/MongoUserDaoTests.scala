@@ -13,12 +13,8 @@ import org.scalatest.OptionValues
 import org.scalatest.concurrent.PatienceConfiguration.Interval
 import org.scalatest.time.{Seconds, Span}
 
-import scala.util.Random
-
 /**
-  * Created by
-  * Author: fayaz.sanaulla@gmail.com
-  * Date: 10.11.17
+  * MongoUserDaoTests
   */
 class MongoUserDaoTests
   extends FlatSpecWithMatchers
@@ -90,7 +86,7 @@ class MongoUserDaoTests
 
   it should "(UNIT) create user and find him by username with `hasSharedMarks` == false condition" in {
     userDao.save(user.copy(id = constructUserId(), UserData(username = Some("dfgdfg")))).futureValue shouldEqual {}
-    userDao.searchUsernamesBySuffix("dfg", false, constructUserId(), None).futureValue.toList(0).username.contains("dfg") shouldEqual true
+    userDao.searchUsernamesByPrefix("dfg", false, constructUserId(), None).futureValue.toList(0).username.contains("dfg") shouldEqual true
   }
 
   it should "(UNIT) create user and sheuserNameGeneratedll not find him by username with `hasSharedMarks` == true condition" in {
@@ -98,7 +94,7 @@ class MongoUserDaoTests
     val profile2 = Profile(loginInfo2, confirmed = false, Some(email), None, None, None)
     val newUser =  User(constructUserId(), UserData(username = Some("yuiyui")), List(profile2))
     userDao.save(newUser).futureValue shouldEqual {}
-    userDao.searchUsernamesBySuffix("yui", true, constructUserId(), None).futureValue.size shouldEqual 0
+    userDao.searchUsernamesByPrefix("yui", true, constructUserId(), None).futureValue.size shouldEqual 0
   }
 
   it should "(UNIT) create users and find specific users by username with `hasSharedMarks` == true and users are LISTED condition" in {
@@ -144,7 +140,7 @@ class MongoUserDaoTests
     emails.contains(email) shouldEqual true
     //Thread.sleep(90000)
     // use another user data to find usernames who has shared mark with him
-   // userDao.searchUsernamesBySuffix(uNameSuffix, true, newUser.id, Some(email)).futureValue.toList(0)
+   // userDao.searchUsernamesBySuffix(uNamePrefix, true, newUser.id, Some(email)).futureValue.toList(0)
 
     val unameLower = userDao.searchUsernamesBySuffix(uNameSuffix, true, newUser.id, Some(email)).futureValue(Interval(Span(60, Seconds))).toList(0).username.toLowerCase
     unameLower.indexOf(uNameSuffix)  shouldEqual 10
@@ -170,6 +166,6 @@ class MongoUserDaoTests
       futureValue.id shouldEqual m1.id
 
     // look for usernames of users who has public marks
-    userDao.searchUsernamesBySuffix("cvbr", true, constructUserId(), None).futureValue.toList(0).username.contains("cvbr") shouldEqual true
+    userDao.searchUsernamesByPrefix("cvbr", true, constructUserId(), None).futureValue.head.username.contains("cvbr") shouldEqual true
   }
 }

@@ -4,9 +4,8 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.daos.MongoUserDao
-import com.hamstoo.models.User.UDATA
 import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, generateDbId}
-import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, BSONDocumentReader, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.hashing
@@ -73,6 +72,8 @@ trait Shareable {
 object Shareable {
   val ID: String = nameOf[Shareable](_.id)
   val SHARED_WITH: String = nameOf[Shareable](_.sharedWith)
+  val READONLYx: String = SHARED_WITH + "." + nameOf[SharedWith](_.readOnly)
+  val READWRITEx: String = SHARED_WITH + "." + nameOf[SharedWith](_.readWrite)
   val N_SHARED_FROM: String = nameOf[Shareable](_.nSharedFrom)
   val N_SHARED_TO: String = nameOf[Shareable](_.nSharedTo)
 }
@@ -184,6 +185,9 @@ case class ShareGroup(level: Int, group: Option[ObjectId]) {
 }
 
 object ShareGroup {
+
+  val GROUP: String = nameOf[ShareGroup](_.group)
+  val LEVEL: String = nameOf[ShareGroup](_.level)
 
   /** Used by MongoMarksDao.updateSharedWith. */
   def xapply(level: SharedWith.Level.Value, ug: Option[UserGroup]): Option[ShareGroup] =

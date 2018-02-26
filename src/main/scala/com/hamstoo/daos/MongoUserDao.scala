@@ -2,14 +2,12 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.models.Mark.{Id, READONLY, READONLYGROUP, READONLYLEVEL, SHDWITH, USR, UserId}
+import com.hamstoo.models.Mark.{Id, SHDWITH, USR, UserId}
 import com.hamstoo.models.UserGroup.EMAILS
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.SharedWith.Level
 import com.hamstoo.models.User._
 import com.hamstoo.models._
-import com.hamstoo.utils.d
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.api.services.IdentityService
 import play.api.Logger
@@ -41,21 +39,16 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   import com.hamstoo.models.Shareable.SHARED_WITH
   import com.hamstoo.utils._
 
-
-  // intermediate aggregated collecitons' names
+  // intermediate aggregated collection names
   val usersFoundCollName = "usersFound"
   val entriesFoundCollName = "entriesFound"
+
   // data field names used during aggregation
-  val usersFoundCollId = ("$"+usersFoundCollName+"."+User.ID)
-  val usersFoundCollUserName = ("$"+usersFoundCollName+"."+UNAME)
-  val entriesFoundCollUserId = entriesFoundCollName+"."+ USR
-  val username = "username"
-  val usernameLower = "usernameLower"
-  val usersFoundCollUserNameLower = ("$"+usersFoundCollName+"."+UNAMELOWx)
-  val exists = "$exists"
-  val UNAMELOWERNOPREFIX: String = nameOf[UserData](_.usernameLower)
-  val set = "set"
-  val dollarSet = "$"+set+"."
+  val usersFoundCollId = "$" + usersFoundCollName + "." + User.ID
+  val usersFoundCollUserName = "$" + usersFoundCollName + "." + UNAME
+  val entriesFoundCollUserId = entriesFoundCollName + "." + USR
+  val usersFoundCollUserNameLower = "$" + usersFoundCollName + "." + UNAMELOWx
+  //val UNAMELOW: String = nameOf[UserData](_.usernameLower)
 
 
   // get the "users" collection (in the future); the `map` is `Future.map`
@@ -253,18 +246,24 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   } yield ()
 
 
-  /** Search users by suffix for autosuggest for two cases:
-    * if requred to check all users - for sharing puprpose
-    * if required to check only users with public marks - for search marks puprose
-    * @param prefix
-    * @param hasSharedMarks, if `false` it search users all over the collection, if `true` it applies filter to get usernames with public marks
-    * @param userId is used: 1) if hasSharedMarks == true; 2) to filter own username
-    * @param email required only if hasSharedMarks == true
-    * */
-  // Todo probably later pagination implementation
-  def searchUsernamesBySuffix(prefix: String, hasSharedMarks: Boolean = false, userId: UUID, email: Option[String]): Future[Seq[UserAutosuggested]] = {
-    // check if username exists to skip empty usernames if data migration wasn't successfull
+  /** 
+    * Search users by prefix for autosuggest for two cases:
+    *   1. if requred to check all users - for sharing purposes
+    *   2. if required to check only users with public marks - for marks search purposes
+    *
+    * @param prefix  Username prefix to search.
+    * @param userId  If `hasShared` is true, this parameter is used to filter out marks owned by this user.
+    * @param email  Required only if `hasShared` is true, but why?
+    * @param hasShared  If true, filter to only get usernames with public marks.
+    *
+    * TODO: probably eventually need to implement pagination
+    */
+  def searchUsernamesByPrefix(prefix: String, userId: UUID, email: Option[String], hasShared: Boolean = false):
+                                                                                    Future[Seq[UserAutosuggested]] = {
+
+    // check if username exists to skip empty usernames if data migration wasn't successfull,
     // 'i' flag is case insensitive https://docs.moqngodb.com/manual/reference/operator/query/regex/
+<<<<<<< Updated upstream
     val filterUserNamesBySuffixQuery = BSONDocument(d :~ ( d :~ UNAME -> (d :~ "$exists" -> 1),
       UNAME -> BSONRegex(".*"+prefix.toLowerCase + ".*", "i")))
 
@@ -291,6 +290,35 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
             // 1) Aggregates users by username if they shared private marks with operator
             userWithSharedToUserMarks <- {
+=======
+    val sel = d :~ UNAMELOWx -> (d :~ "$exists" -> 1) :~
+                   UNAMELOWx -> BSONRegex(".*" + prefix.toLowerCase + ".*", "i"))
+
+    if (!hasShared) {
+      // simple search by username prefix for sharing purposes, does not apply any filters or validation
+      for {
+        c <- dbColl()
+        users <- c.find(sel).sort(d :~ UNAMELOWx -> 1).coll[User, Seq]().map {
+          _.map(u => UserAutosuggested(u.id, u.userData.username.getOrElse("")))
+        }
+      } yield  users.filterNot(_.id == userId)
+
+    } else {
+
+      // logic performs 3 actions
+      // 1) aggregates users by username if they shared private marks with operator
+      // 2) aggregates users if users have public marks
+      // 3) concats 2 results, removes duplicates and own user id
+      for {
+        cGroup <- groupColl()
+        cMarks <- marksColl()
+        cUsers <- dbColl()
+
+        // 1) aggregates users by username if they shared private marks with operator
+        userWithSharedToUserMarks <- {
+
+        // TODO: fix indentation below this line
+>>>>>>> Stashed changes
 
               import cGroup.BatchCommands.AggregationFramework
               import AggregationFramework.{Match, Project, Lookup, Unwind, AddToSet, Group }
