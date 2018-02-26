@@ -1,7 +1,5 @@
 package com.hamstoo.models
 
-import java.util.UUID
-
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.daos.MongoMarksDao
 import com.hamstoo.models.Representation.VecEnum

@@ -4,7 +4,7 @@ import com.hamstoo.utils.{ExtendedTimeStamp, TimeStamp}
 import play.api.Logger
 
 import scala.collection.mutable
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration._
 
 
 /**
@@ -40,6 +40,8 @@ class TimeWindowFactory(length: Duration, step: Duration) extends GroupFactory[T
       TimeWindow(firstWindowStart + i * windowStep, firstWindowStart + i * windowStep + windowLength))
   }
 }
+
+class CrossSectionFactory() extends TimeWindowFactory(0 millis, 0 millis)
 
 /**
   * Commands for when to initiate groups, when to add data to them, and when to close and reduce
@@ -119,3 +121,17 @@ class TimeWindowCommandFactory(timeWindowFactory: TimeWindowFactory, maxDelay: D
     }
   }
 }
+
+/*object TimeWindowCommandFactory {
+
+  def apply(length: Duration, step: Duration, maxDelay: Duration): TimeWindowCommandFactory = {
+    val f = new TimeWindowFactory(length, step)
+    new TimeWindowCommandFactory(f, maxDelay)
+  }
+}*/
+
+/**
+  * A 0-time-width TimeWindowCommandFactory
+  */
+class CrossSectionCommandFactory()
+  extends TimeWindowCommandFactory(new CrossSectionFactory(), 0 millis)
