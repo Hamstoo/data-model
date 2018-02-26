@@ -44,11 +44,6 @@ case class MarkData(
 
   import MarkData._
 
-  // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
-  // rating value (not part of the data(base) model)
-  var bMasked: Boolean = false
-  var ownerRating: Option[Double] = None
-
   // populate `commentEncoded` by deriving it from the value of `comment`
   commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
@@ -242,17 +237,10 @@ case class Mark(
                  override val nSharedFrom: Option[Int] = Some(0),
                  override val nSharedTo: Option[Int] = Some(0),
                  override val score: Option[Double] = None)
-  extends MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru, modifiedBy, sharedWith, nSharedFrom, nSharedTo, score) with Shareable {
+  extends MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru, modifiedBy, sharedWith, nSharedFrom, nSharedTo, score) {
   urlPrfx = mark.url map (_.binaryPrefix)
 
   import Mark._
-
-  /**
-    * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
-    * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
-    */
-  // TODO: FWC: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
-  def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
 
   // TODO: FWC: what if private expRating is in NON_IDS?  we should fallback to public in that case also
   def expectedRating: Option[ObjectId] =
@@ -267,16 +255,6 @@ case class Mark(
   def unratedPrivRepr: Option[ObjectId] = reprs.find(_.eratablePrivate).map(_.reprId)
 
   /**
-    * Return latest representation ID, if it exists.  Even though public and user-content reprs are supposed to
-    * be singletons, it doesn't hurt to be conservative and return the most recent rather than just using `find`.
-    */
-  def privRepr: Option[ObjectId] = repr(_.isPrivate)
-  def pubRepr: Option[ObjectId] = repr(_.isPublic)
-  def userContentRepr: Option[ObjectId] = repr(_.isUserContent)
-  private def repr(pred: ReprInfo => Boolean): Option[ObjectId] =
-    reprs.filter(pred).sortBy(_.created).lastOption.map(_.reprId)
-
-  /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
     * representations, even if the mark doesn't have a URL, we'll still try to derive a representation from the subject
     * in case LinkageService.digest timed out when originally trying to generate a title for the mark (issue #195).
@@ -288,15 +266,12 @@ case class Mark(
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
 
-//  /** Returns true if this Mark's MarkData has all of the test tags. */
-//  def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.contains(t)))
-
   /**
     * Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a shared-with, non-owner of the Mark.
     * Returns the mark owner's rating in the `ownerRating` field of the returned MarkData.  Note that if
     * `callingUser` owns the mark, the supplied optRef is completely ignored.
     */
-  def mask(optRef: Option[MarkRef], callingUser: Option[User]): Mark = {
+  override def mask(optRef: Option[MarkRef], callingUser: Option[User]): Mark = {
     if (callingUser.exists(ownedBy)) this else {
 
       // still mask even if optRef is None to ensure that the owner's rating is moved to the `ownerRating` field
@@ -402,7 +377,21 @@ class MarkDataSearchable(
                           val rating: Option[Double],
                           val tags: Option[Set[String]],
                           val comment: Option[String],
-                          val pagePending: Option[Boolean])
+                          val pagePending: Option[Boolean]) {
+
+  // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
+  // rating value (not part of the data(base) model)
+  var bMasked: Boolean = false
+  var ownerRating: Option[Double] = None
+
+  def update(subj: String = subj,
+             url: Option[String] = url,
+             rating: Option[Double] = rating,
+             tags: Option[Set[String]] = tags,
+             comment: Option[String] = comment,
+             pagePending: Option[Boolean] = pagePending) =
+    new MarkDataSearchable(subj, url, rating, tags, comment, pagePending)
+}
 
 object MarkDataSearchable {
   def apply(
@@ -431,7 +420,7 @@ class MSearchable(val userId: UUID,
                   val sharedWith: Option[SharedWith],
                   val nSharedFrom: Option[Int],
                   val nSharedTo: Option[Int],
-                  val score: Option[Double]) {
+                  val score: Option[Double]) extends Shareable {
   /** This method called `update` instead of copy, to avoid conflict in Mark case class that have already generated copy method */
   def update(
             userId: UUID = userId,
@@ -449,8 +438,45 @@ class MSearchable(val userId: UUID,
             score: Option[Double] = score): MSearchable =
     new MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru, modifiedBy, sharedWith, nSharedFrom, nSharedTo, score)
 
+  /**
+    * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
+    * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
+    */
+  // TODO: FWC: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
+  def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
+
   /** Returns true if this Mark's MarkData has all of the test tags. */
   def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.contains(t)))
+
+  /**
+    * Return latest representation ID, if it exists.  Even though public and user-content reprs are supposed to
+    * be singletons, it doesn't hurt to be conservative and return the most recent rather than just using `find`.
+    */
+  def privRepr: Option[ObjectId] = repr(_.isPrivate)
+  def pubRepr: Option[ObjectId] = repr(_.isPublic)
+  def userContentRepr: Option[ObjectId] = repr(_.isUserContent)
+  private def repr(pred: ReprInfo => Boolean): Option[ObjectId] =
+    reprs.filter(pred).sortBy(_.created).lastOption.map(_.reprId)
+
+  /**
+    * Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a shared-with, non-owner of the Mark.
+    * Returns the mark owner's rating in the `ownerRating` field of the returned MarkData.  Note that if
+    * `callingUser` owns the mark, the supplied optRef is completely ignored.
+    */
+  def mask(optRef: Option[MarkRef], callingUser: Option[User]): MSearchable = {
+    if (callingUser.exists(ownedBy)) this else {
+
+      // still mask even if optRef is None to ensure that the owner's rating is moved to the `ownerRating` field
+      val ref = optRef.getOrElse(MarkRef(id)) // create an empty MarkRef (id isn't really used)
+
+      val unionedTags = mark.tags.getOrElse(Set.empty[String]) ++ ref.tags.getOrElse(Set.empty[String])
+      val mdata = mark.update(rating = ref.rating,
+        tags = if (unionedTags.isEmpty) None else Some(unionedTags))
+      mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
+      mdata.ownerRating = mark.rating
+      update(mark = mdata)
+    }
+  }
 }
 
 object MSearchable {
