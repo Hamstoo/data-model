@@ -120,9 +120,10 @@ object User extends BSONHandlers {
 
   val ID: String = nameOf[User](_.id)
   val UDATA: String = nameOf[User](_.userData)
+  val UNAME: String = nameOf[UserData](_.username)
   val UNAMELOW: String = nameOf[UserData](_.usernameLower)
+  val UNAMEx: String = UDATA + "." + UNAME
   val UNAMELOWx: String = UDATA + "." + UNAMELOW
-  val UNAMEx: String = UDATA + "." + nameOf[UserData](_.username)
   val PROFILES: String = nameOf[User](_.profiles)
   val LINFO: String = nameOf[Profile](_.loginInfo)
   val CONF: String = nameOf[Profile](_.confirmed)

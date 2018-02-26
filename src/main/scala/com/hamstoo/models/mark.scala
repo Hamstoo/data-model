@@ -467,8 +467,8 @@ object Mark extends BSONHandlers {
 
   val ID_LENGTH: Int = 16
 
-  val USR: String = nameOf[Mark](_.userId)
   val ID: String = Shareable.ID
+  val USR: String = Shareable.USR
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)
   val URLPRFX: String = nameOf[Mark](_.urlPrfx)

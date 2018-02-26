@@ -71,6 +71,7 @@ trait Shareable {
 
 object Shareable {
   val ID: String = nameOf[Shareable](_.id)
+  val USR: String = nameOf[Shareable](_.userId)
   val SHARED_WITH: String = nameOf[Shareable](_.sharedWith)
   val READONLYx: String = SHARED_WITH + "." + nameOf[SharedWith](_.readOnly)
   val READWRITEx: String = SHARED_WITH + "." + nameOf[SharedWith](_.readWrite)
