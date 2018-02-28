@@ -20,13 +20,12 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.collection.mutable
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 object MongoMarksDao {
   var migrateData: Boolean = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
 }
-import scala.concurrent.{Await, Future}
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
@@ -371,7 +370,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       seq <- c.find(sel1).coll[MSearchable, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
-      seq.map { m => m.update(aux = m.aux.map(_.cleanRanges)) }
+      seq.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 
@@ -410,12 +409,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
-  // exclude these fields from the returned results of search-related methods to conserve memory during search
-  // TODO: implement a MSearchable base class so that users know they're dealing with a partially populated Mark
-  // (should have looked more closely at hamstoo.SearchService when choosing these fields; see issue #222)
-//  val searchExcludedFields: BSONDocument = d :~ (URLPRFX -> 0) :~ (TOTVISx -> 0) :~ (TOTBGx -> 0) :~
-//    (MERGEID -> 0) :~ (COMNTENCx -> 0)
-
   /**
     * Executes a MongoDB Text Index search using text index with sorting in user's marks, constrained by tags.
     * Mark state must be current (i.e. timeThru == INF_TIME) and have all tags to qualify.
@@ -451,7 +444,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       }
     }.map(_.flatten).map { set =>
       logger.debug(s"Search retrieved ${set.size} marks")
-      set.map { m => m.update(aux = m.aux.map(_.cleanRanges)) }
+      set.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 

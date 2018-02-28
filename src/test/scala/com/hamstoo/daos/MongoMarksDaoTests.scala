@@ -2,8 +2,8 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models._
+import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils._
