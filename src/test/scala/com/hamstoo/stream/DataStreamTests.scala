@@ -1,10 +1,10 @@
 package com.hamstoo.stream
 
-import akka.NotUsed
+import akka.{Done, NotUsed}
 import akka.actor.Cancellable
 import akka.stream._
-import akka.stream.scaladsl.{Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
-import com.hamstoo.stream.GroupReduce.Dataset
+import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
+import com.hamstoo.models.Representation.Vec
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
 import org.joda.time.DateTime
@@ -90,22 +90,23 @@ class DataStreamTests
 
 
 
-  "Test" should "scratch test 0" in {
+  /*"Test" should "scratch test 0" in {
     // https://doc.akka.io/docs/akka/2.5.3/scala/stream/stream-rate.html#internal-buffers-and-their-effect
 
     implicit val materializer: Materializer = ActorMaterializer()
 
-    case class Tick() {
-      println(s"Tick print ${DateTime.now}")
-    }
+    case class Tick() { logger.info(s"Tick print ${DateTime.now}") }
 
     // this sink can be defined inside also, right where it's to'ed (~>'ed), and `b => sink =>` would just become
     // `b =>`, in that case however, g.run() doesn't return a Future and so can't be Await'ed, either way though,
     // the Await crashes
-    val resultSink = Sink.foreach((x: Int) => println(s"Sink print ${DateTime.now}: $x"))
+    // "Another alternative is to pass existing graphs—of any shape—into the factory method that produces a new
+    // graph. The difference between these approaches is that importing using builder.add(...) ignores the
+    // materialized value of the imported graph while importing via the factory method allows its inclusion"
+    val resultSink = Sink.foreach((x: Int) => logger.info(s"Log sink: $x"))
 
     // "lower-level GraphDSL API" https://softwaremill.com/reactive-streams-in-scala-comparing-akka-streams-and-monix-part-3/
-    val g = RunnableGraph.fromGraph(GraphDSL.create(resultSink) { implicit builder => sink =>
+    val g = RunnableGraph.fromGraph(GraphDSL.create(resultSink) { implicit builder: GraphDSL.Builder[Future[Done]] => sink =>
       import akka.stream.scaladsl.GraphDSL.Implicits._
 
       val zw = ZipWith[Tick, Int, Int]((_tick, count) => count).async
@@ -146,20 +147,20 @@ class DataStreamTests
     g.run()
     //Await.result(g.run(), 15 seconds)
     Thread.sleep(65.seconds.toMillis)
-  }
+  }*/
 
 
   "Join" should "join DataStreams" in {
     implicit val materializer: Materializer = ActorMaterializer()
 
-    val g: Source[Datum[Int], NotUsed] = Source.fromGraph(GraphDSL.create() { implicit builder =>
+    val source: Source[Data[Int], NotUsed] = Source.fromGraph(GraphDSL.create() { implicit builder =>
       import akka.stream.scaladsl.GraphDSL.Implicits._
 
       val jw = Join[Int, Int, Int]((a, b) => a * 100 + b).async
       val joiner = builder.add(jw)
 
-      val src0 = Source((0 until 10     ).map(i => Datum(ReprId(s"id$i"), i, i, i)))
-      val src1 = Source((0 until 10 by 4).map(i => Datum(UnitId()       , i, i, i)))
+      val src0 = Source((0 until 10     ).map(i => Datum(ReprId(s"id$i"), i, i)))
+      val src1 = Source((0 until 10 by 4).map(i => Datum(UnitId()       , i, i)))
 
       src0 ~> joiner.in0
       src1 ~> joiner.in1
@@ -167,43 +168,66 @@ class DataStreamTests
       SourceShape(joiner.out)
     })
 
-    val logSink = Sink.foreach((x: Datum[Int]) => logger.info(s"Sink print ${DateTime.now}: $x"))
-    Await.result(g.runWith(logSink), 15 seconds)
-
-    val foldSink = Sink.fold[Int, Int](0)(_ + _)
-    val runnable: RunnableGraph[Future[Int]] = g.map(_.value).toMat(foldSink)(Keep.right)
+    val foldSink = Sink.fold[Int, Int](0) { (a, b) =>
+      logger.info(s"Log sink: $a + $b")
+      a + b
+    }
+    val runnable: RunnableGraph[Future[Int]] = source.map(_.oval.get.value).toMat(foldSink)(Keep.right)
     val x: Int = Await.result(runnable.run(), 15 seconds)
 
+    logger.info(s"*** Join should join DataStreams: x = $x")
     x shouldEqual 1212
   }
 
-  "Reducer" should "reduce cross-sectionally" in {
+  "GroupReduce" should "cross-sectionally reduce streams of individual Datum" in {
 
-    val iter = List(Datum(ReprId("aa"), 0, 1.2),
-                    Datum(ReprId("bb"), 0, 1.5),
-                    Datum(ReprId("cc"), 0, 1.8),
-                    Datum(ReprId("bb"), 1, 2.2),
-                    Datum(ReprId("cc"), 1, 2.5),
-                    Datum(ReprId("aa"), 1, 2.8),
-                    Datum(ReprId("cc"), 0, 3.2),
-                    Datum(ReprId("aa"), 0, 3.5),
-                    Datum(ReprId("bb"), 0, 3.8))
+    val iter = List(Datum(ReprId("a"), 0, 0.4),
+                    Datum(ReprId("b"), 0, 0.6),
+                    Datum(ReprId("b"), 1, 1.2),
+        Datum(ReprId("d"), 0, 137.9), // timestamp out of order!
+                    Datum(ReprId("c"), 1, 1.5),
+                    Datum(ReprId("a"), 1, 1.8),
+                    Datum(ReprId("c"), 2, 2.5),
+                    Datum(ReprId("b"), 3, 3.4),
+                    Datum(ReprId("b"), 3, 3.6))
 
     val grouper = () => new CrossSectionCommandFactory()
 
-    val x = GroupReduce(Source(iter), grouper, 2) { (ds: Dataset[Double]) =>
-
+    val source = GroupReduce(Source(iter), grouper) { (ds: Vec) =>
       import com.hamstoo.models.Representation.VecFunctions
-
-      val y: Int = ds.data.map(_.value).mean
-
+      ds.mean
     }
 
+    // "providing a sink as argument turns the Graph Mat type from NotUsed to Future[Done]"
+    // https://stackoverflow.com/questions/35516519/how-to-test-an-akka-stream-closed-shape-runnable-graph-with-an-encapsulated-sour
+    val foldSink = Sink.fold[Double, Double](0)(_ + _)
 
+    // "Another alternative is to pass existing graphs—of any shape—into the factory method that produces a new
+    // graph. The difference between these approaches is that importing using builder.add(...) ignores the
+    // materialized value of the imported graph while importing via the factory method allows its inclusion"
+    val g: RunnableGraph[Future[Double]] = RunnableGraph.fromGraph(GraphDSL.create(foldSink) { implicit builder => foldSink =>
+      import GraphDSL.Implicits._
 
+      // "[import] merge and broadcast junctions...into the graph using builder.add(...), an operation that will
+      // make a copy of the blueprint that is passed to it and return the inlets and outlets of the resulting copy
+      // so that they can be wired up"
+      val bcast = builder.add(Broadcast[Data[Double]](2))
 
+      val toValue = Flow[Data[Double]].map(_.oval.get.value)
+      val logSink = Sink.foreach((x: Data[Double]) => logger.info(s"Log sink: $x"))
 
+      // 2 different ways to write this
+      //source ~> bcast.in
+      //          bcast.out(0) ~> logSink
+      //          bcast.out(1) ~> toValue ~> foldSink
+      source ~> bcast ~> logSink
+                bcast ~> toValue ~> foldSink
 
+      ClosedShape
+    })
 
+    val x: Double = Await.result(g.run(), 15 seconds)
+    logger.info(s"*** GroupReduce should cross-sectionally reduce streams of individual Datum: x = $x")
+    x shouldEqual 8.0
   }
 }
