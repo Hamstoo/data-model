@@ -3,9 +3,9 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.models.Mark.{DurationMils, ExpectedRating, MarkAux}
+import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, d, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -14,7 +14,7 @@ import org.jsoup.Jsoup
 import org.jsoup.safety.Whitelist
 import play.api.Logger
 import play.api.libs.json.{Json, OFormat}
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
 import scala.util.matching.Regex
@@ -344,22 +344,6 @@ case class Mark(override val userId: UUID,
 }
 
 /**
-  * Only these "cached" fields of a MarkAux need to be visible to SearchService.
-  */
-class MarkAuxSearchable(var cachedTotalVisible: Option[DurationMils],
-                        var cachedTotalBground: Option[DurationMils])
-
-object MarkAuxSearchable {
-
-  def apply(cachedTotalVisible: Option[DurationMils],
-            cachedTotalBground: Option[DurationMils]): MarkAuxSearchable =
-    new MarkAuxSearchable(cachedTotalVisible, cachedTotalBground)
-
-  def unapply(obj: MarkAuxSearchable): Option[(Option[DurationMils], Option[DurationMils])] =
-    Some((obj.cachedTotalVisible, obj.cachedTotalBground))
-}
-
-/**
   * Searchable MarkData includes all fields excetp `commentEncoded`.
   * TODO: Would it be better to just put `commentEncoded` and the 2 MarkAux fields in MSearchable?
   */
@@ -403,7 +387,7 @@ object MDSearchable {
   * This class lists all of the fields required by the backend's `SearchService`.  `SearchService` loads and processes
   * so many marks at once that we can't load the full `Mark` data structure for every one of them, though the severity
   * of this issue is likely much lessened by the fact that we no longer place `Page`s on `Mark`s.  Also see the
-  * analogous `RSearchable`, `MDSearchable`, and `MarkAuxSearchable` classes.
+  * analogous `RSearchable` and `MDSearchable` classes.
   */
 class MSearchable(val userId: UUID,
                   val id: ObjectId,
@@ -443,10 +427,10 @@ class MSearchable(val userId: UUID,
     * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
-  // TODO: FWC: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
+  // TODO: 146: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
   def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
 
-  // TODO: FWC: what if private expRating is in NON_IDS?  we should fallback to public in that case also
+  // TODO: 146: what if private expRating is in NON_IDS?  we should fallback to public in that case also
   def expectedRating: Option[ObjectId] =
     reprs.filter(_.isPrivate)
       .sortBy(_.created).lastOption // .maxBy(_.created) throws an java.lang.UnsupportedOperationException if empty
@@ -527,19 +511,17 @@ object Mark extends BSONHandlers {
   logger.info("data-model version " + Option(getClass.getPackage.getImplementationVersion).getOrElse("null"))
 
   case class RangeMils(begin: TimeStamp, end: TimeStamp)
-  type DurationMils = Long
 
   /**
     * Auxiliary stats pertaining to a `Mark`.
     *
-    * The two `cachedTotal` vars will only be computed if they are None.  These fields are specifically excluded
-    * from the MongoDB projection when searching so that they can be re-computed each time they're loaded.  At that
-    * point, the caller can choose whether or not to keep the two `tab` vals.
+    * The two `total` vars will only be computed if their respective `tab` vals are non-None so that the latter can
+    * be removed (see `cleanRanges`) and the former preserved to reduce the memory footprint of MarkAux instances.
     */
   case class MarkAux(tabVisible: Option[Seq[RangeMils]],
                      tabBground: Option[Seq[RangeMils]],
-                     var cachedTotalVisible: Option[DurationMils] = None,
-                     var cachedTotalBground: Option[DurationMils] = None) {
+                     var totalVisible: Option[DurationMils] = None,
+                     var totalBground: Option[DurationMils] = None) {
 
     /** Not using `copy` in this merge to ensure if new fields are added, they aren't forgotten here. */
     def merge(oth: MarkAux) =
@@ -547,10 +529,8 @@ object Mark extends BSONHandlers {
               Some(tabBground.getOrElse(Nil) ++ oth.tabBground.getOrElse(Nil)))
 
     /** These methods return the total aggregated amount of time in the respective sequences of ranges. */
-    if (cachedTotalVisible.isEmpty) cachedTotalVisible = Some(total(tabVisible))
-    if (cachedTotalBground.isEmpty) cachedTotalBground = Some(total(tabBground))
-    def totalVisible: DurationMils = tabVisible.fold(cachedTotalVisible.getOrElse(0L))(_ => total(tabVisible))
-    def totalBground: DurationMils = tabBground.fold(cachedTotalBground.getOrElse(0L))(_ => total(tabBground))
+    if (tabVisible.nonEmpty) totalVisible = Some(total(tabVisible))
+    if (tabBground.nonEmpty) totalBground = Some(total(tabBground))
     def total(tabSomething: Option[Seq[RangeMils]]): DurationMils =
       tabSomething.map(_.foldLeft(0L)((agg, range) => agg + range.end - range.begin)).getOrElse(0L)
 
@@ -618,8 +598,6 @@ object Mark extends BSONHandlers {
 
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
-  val TOTVISx: String = AUX + "." + nameOf[MarkAux](_.totalVisible)
-  val TOTBGx: String = AUX + "." + nameOf[MarkAux](_.totalBground)
 
   // ReprInfo constants value (note that these are not 'x'/extended as they aren't prefixed w/ "mark.")
   val REPR_TYPE: String = nameOf[ReprInfo](_.reprType)
@@ -630,7 +608,6 @@ object Mark extends BSONHandlers {
   val EXP_RATINGx: String = REPRS + "." + EXP_RATING
   val EXP_RATINGxp: String = REPRS + ".$." + EXP_RATING
 
-  implicit val mDataAux: BSONDocumentHandler[MarkAuxSearchable] = Macros.handler[MarkAuxSearchable]
   implicit val mDataData: BSONDocumentHandler[MDSearchable] = Macros.handler[MDSearchable]
   implicit val mSearchable: BSONDocumentHandler[MSearchable] = Macros.handler[MSearchable]
   val USRPRFX: String = nameOf[UrlDuplicate](_.userIdPrfx)
