@@ -360,7 +360,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     for {
       c <- dbColl()
 
-      // TODO: FWC: we need an index for this query (or defer to issue #260)?
+      // TODO: 146: we need an index for this query (or defer to issue #260)?
       reprs = d :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0))
 
       // maybe we should $and instead of $or
@@ -408,13 +408,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       labels
     }
   }
-
-  /**
-    * Executes a MongoDB Text Index search using text index with sorting in user's marks, constrained by tags.
-    * Mark state must be current (i.e. timeThru == INF_TIME) and have all tags to qualify.
-    */
-  // TODO: FWC: why was this removed?  no longer needed?
-  //def search(user: UUID, query: String): Future[Set[Mark]] = search(Set(user), query)
 
   /**
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,
@@ -839,7 +832,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     logger.debug("Finding marks with missing expected ratings")
     for {
       c <- dbColl()
-      // TODO: FWC: do we need to use EXP_RATINGxp here?
+      // TODO: 146: do we need to use EXP_RATINGxp here?
       sel = d :~ curnt :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0)) :~ EXP_RATINGx -> (d :~ "$exists" -> false)
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
@@ -849,7 +842,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   }
 
   /** Save a ReprInfo to a mark's `reprs` list. */
-  // TODO: FWC: how do we ensure that the singleton ReprInfo types (PUBLIC and USER_CONTENT) remain singletons?
+  // TODO: 146: how do we ensure that the singleton ReprInfo types (PUBLIC and USER_CONTENT) remain singletons?
   def insertReprInfo(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = {
     logger.debug(s"Saving $reprInfo for user mark $markId")
     for {
