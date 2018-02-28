@@ -30,7 +30,7 @@ homepage := Some(url("https://github.com/Hamstoo/data-model"))
 //   "com.hamstoo" %% "data-model" % "version % "test" classifier "tests"
 publishArtifact in (Test, packageBin) := true
 
-publishTo := Some("Artifactory Realm" at "http://ec2-34-239-240-75.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
+publishTo := Some("Artifactory Realm" at "http://ec2-54-236-36-52.compute-1.amazonaws.com:8081/artifactory/sbt-release-local")
 
 credentials += Credentials(
   "Artifactory Realm",
