@@ -33,14 +33,14 @@ import scala.util.matching.Regex
   * @param pagePending    - don't let repr-engine process marks that are still waiting for private pages
   * @param commentEncoded - markdown converted to HTML; set by class init
   */
-case class MarkData(
-                     override val subj: String,
-                     override val url: Option[String],
-                     override val rating: Option[Double] = None,
-                     override val tags: Option[Set[String]] = None,
-                     override val comment: Option[String] = None,
-                     var commentEncoded: Option[String] = None,
-                     override val pagePending: Option[Boolean] = None) extends MDSearchable(subj, url, rating, tags, comment, pagePending) {
+case class MarkData(override val subj: String,
+                    override val url: Option[String],
+                    override val rating: Option[Double] = None,
+                    override val tags: Option[Set[String]] = None,
+                    override val comment: Option[String] = None,
+                    var commentEncoded: Option[String] = None,
+                    override val pagePending: Option[Boolean] = None)
+    extends MDSearchable(subj, url, rating, tags, comment, pagePending) {
 
   import MarkData._
 
@@ -221,23 +221,24 @@ case class ReprInfo(reprId: ObjectId,
   * @param score    - `score` is not part of the documents in the database, but it is returned from
   *                 `MongoMarksDao.search` so it is easier to have it included here.
   */
-case class Mark(
-                 override val userId: UUID,
-                 override val id: ObjectId = generateDbId(Mark.ID_LENGTH),
-                 override val mark: MarkData,
-                 override val markRef: Option[MarkRef] = None,
-                 override val aux: Option[MarkAux] = Some(MarkAux(None, None)),
-                 var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
-                 override val reprs: Seq[ReprInfo] = Nil,
-                 override val timeFrom: TimeStamp = TIME_NOW,
-                 override val timeThru: TimeStamp = INF_TIME,
-                 override val modifiedBy: Option[UUID] = None,
-                 mergeId: Option[String] = None,
-                 override val sharedWith: Option[SharedWith] = None,
-                 override val nSharedFrom: Option[Int] = Some(0),
-                 override val nSharedTo: Option[Int] = Some(0),
-                 override val score: Option[Double] = None)
-  extends MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru, modifiedBy, sharedWith, nSharedFrom, nSharedTo, score) {
+case class Mark(override val userId: UUID,
+                override val id: ObjectId = generateDbId(Mark.ID_LENGTH),
+                override val mark: MarkData,
+                override val markRef: Option[MarkRef] = None,
+                override val aux: Option[MarkAux] = Some(MarkAux(None, None)),
+                var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
+                override val reprs: Seq[ReprInfo] = Nil,
+                override val timeFrom: TimeStamp = TIME_NOW,
+                override val timeThru: TimeStamp = INF_TIME,
+                override val modifiedBy: Option[UUID] = None,
+                mergeId: Option[String] = None,
+                override val sharedWith: Option[SharedWith] = None,
+                override val nSharedFrom: Option[Int] = Some(0),
+                override val nSharedTo: Option[Int] = Some(0),
+                override val score: Option[Double] = None)
+    extends MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru,
+                        modifiedBy, sharedWith, nSharedFrom, nSharedTo, score) {
+
   urlPrfx = mark.url map (_.binaryPrefix)
 
   import Mark._
@@ -342,26 +343,32 @@ case class Mark(
   }
 }
 
-class MarkAuxSearchable(
-                         var cachedTotalVisible: Option[DurationMils],
-                         var cachedTotalBground: Option[DurationMils])
+/**
+  * Only these "cached" fields of a MarkAux need to be visible to SearchService.
+  */
+class MarkAuxSearchable(var cachedTotalVisible: Option[DurationMils],
+                        var cachedTotalBground: Option[DurationMils])
 
 object MarkAuxSearchable {
-  def apply(cachedTotalVisible: Option[DurationMils],
-            cachedTotalBground: Option[DurationMils]): MarkAuxSearchable = new MarkAuxSearchable(cachedTotalVisible, cachedTotalBground)
 
-  def unapply(obj: MarkAuxSearchable): Option[(Option[DurationMils], Option[DurationMils])] = {
+  def apply(cachedTotalVisible: Option[DurationMils],
+            cachedTotalBground: Option[DurationMils]): MarkAuxSearchable =
+    new MarkAuxSearchable(cachedTotalVisible, cachedTotalBground)
+
+  def unapply(obj: MarkAuxSearchable): Option[(Option[DurationMils], Option[DurationMils])] =
     Some((obj.cachedTotalVisible, obj.cachedTotalBground))
-  }
 }
 
-class MDSearchable(
-                          val subj: String,
-                          val url: Option[String],
-                          val rating: Option[Double],
-                          val tags: Option[Set[String]],
-                          val comment: Option[String],
-                          val pagePending: Option[Boolean]) {
+/**
+  * Searchable MarkData includes all fields excetp `commentEncoded`.
+  * TODO: Would it be better to just put `commentEncoded` and the 2 MarkAux fields in MSearchable?
+  */
+class MDSearchable(val subj: String,
+                   val url: Option[String],
+                   val rating: Option[Double],
+                   val tags: Option[Set[String]],
+                   val comment: Option[String],
+                   val pagePending: Option[Boolean]) {
 
   // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
   // rating value (not part of the data(base) model)
@@ -378,49 +385,59 @@ class MDSearchable(
 }
 
 object MDSearchable {
-  def apply(
-             subj: String,
-             url: Option[String],
-             rating: Option[Double],
-             tags: Option[Set[String]],
-             comment: Option[String],
-             pagePending: Option[Boolean]): MDSearchable =
+
+  def apply(subj: String,
+            url: Option[String],
+            rating: Option[Double],
+            tags: Option[Set[String]],
+            comment: Option[String],
+            pagePending: Option[Boolean]): MDSearchable =
     new MDSearchable(subj, url, rating, tags, comment, pagePending)
 
-  def unapply(obj: MDSearchable): Option[(String, Option[String], Option[Double], Option[Set[String]], Option[String], Option[Boolean])] = {
+  def unapply(obj: MDSearchable): Option[(String, Option[String], Option[Double],
+              Option[Set[String]], Option[String], Option[Boolean])] =
     Some((obj.subj, obj.url, obj.rating, obj.tags, obj.comment, obj.pagePending))
-  }
 }
 
+/**
+  * This class lists all of the fields required by the backend's `SearchService`.  `SearchService` loads and processes
+  * so many marks at once that we can't load the full `Mark` data structure for every one of them, though the severity
+  * of this issue is likely much lessened by the fact that we no longer place `Page`s on `Mark`s.  Also see the
+  * analogous `RSearchable`, `MDSearchable`, and `MarkAuxSearchable` classes.
+  */
 class MSearchable(val userId: UUID,
-                  val id: String,
+                  val id: ObjectId,
                   val mark: MDSearchable,
                   val markRef: Option[MarkRef],
                   val aux: Option[MarkAux],
                   val reprs: Seq[ReprInfo],
-                  val timeFrom: Long,
-                  val timeThru: Long,
+                  val timeFrom: TimeStamp,
+                  val timeThru: TimeStamp,
                   val modifiedBy: Option[UUID],
                   val sharedWith: Option[SharedWith],
                   val nSharedFrom: Option[Int],
                   val nSharedTo: Option[Int],
                   val score: Option[Double]) extends Shareable {
-  /** This method called `update` instead of copy, to avoid conflict in Mark case class that have already generated copy method */
-  def update(
-              userId: UUID = userId,
-              id: String = id,
-              mark: MDSearchable = mark,
-              markRef: Option[MarkRef] = markRef,
-              aux: Option[MarkAux] = aux,
-              reprs: Seq[ReprInfo] = reprs,
-              timeFrom: Long = timeFrom,
-              timeThru: Long = timeThru,
-              modifiedBy: Option[UUID] = modifiedBy,
-              sharedWith: Option[SharedWith] = sharedWith,
-              nSharedFrom: Option[Int] = nSharedFrom,
-              nSharedTo: Option[Int] = nSharedTo,
-              score: Option[Double] = score): MSearchable =
-    new MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru, modifiedBy, sharedWith, nSharedFrom, nSharedTo, score)
+
+  /**
+    * This method is called `xcopy` instead of `copy` to avoid conflict with `case class Mark` which
+    * is going to generate its own `copy` method.
+    */
+  def xcopy(userId: UUID = userId,
+            id: ObjectId = id,
+            mark: MDSearchable = mark,
+            markRef: Option[MarkRef] = markRef,
+            aux: Option[MarkAux] = aux,
+            reprs: Seq[ReprInfo] = reprs,
+            timeFrom: TimeStamp = timeFrom,
+            timeThru: TimeStamp = timeThru,
+            modifiedBy: Option[UUID] = modifiedBy,
+            sharedWith: Option[SharedWith] = sharedWith,
+            nSharedFrom: Option[Int] = nSharedFrom,
+            nSharedTo: Option[Int] = nSharedTo,
+            score: Option[Double] = score): MSearchable =
+    new MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru,
+                    modifiedBy, sharedWith, nSharedFrom, nSharedTo, score)
 
   /**
     * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
@@ -465,7 +482,7 @@ class MSearchable(val userId: UUID,
         tags = if (unionedTags.isEmpty) None else Some(unionedTags))
       mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
       mdata.ownerRating = mark.rating
-      update(mark = mdata)
+      xcopy(mark = mdata)
     }
   }
 
@@ -481,26 +498,26 @@ class MSearchable(val userId: UUID,
 
 object MSearchable {
   def apply(userId: UUID,
-            id: String,
+            id: ObjectId,
             mark: MDSearchable,
             markRef: Option[MarkRef],
             aux: Option[MarkAux],
             reprs: Seq[ReprInfo],
-            timeFrom: Long,
-            timeThru: Long,
+            timeFrom: TimeStamp,
+            timeThru: TimeStamp,
             modifiedBy: Option[UUID],
             sharedWith: Option[SharedWith],
             nSharedFrom: Option[Int],
             nSharedTo: Option[Int],
             score: Option[Double]): MSearchable =
-    new MSearchable(
-      userId, id, mark, markRef, aux,
-      reprs, timeFrom, timeThru, modifiedBy,
-      sharedWith, nSharedFrom, nSharedTo, score)
+    new MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru,
+                    modifiedBy, sharedWith, nSharedFrom, nSharedTo, score)
 
   def unapply(arg: MSearchable):
-  Option[(UUID, String, MDSearchable, Option[MarkRef], Option[MarkAux], Seq[ReprInfo], Long, Long, Option[UUID], Option[SharedWith], Option[Int], Option[Int], Option[Double])] =
-    Some((arg.userId, arg.id, arg.mark, arg.markRef, arg.aux, arg.reprs, arg.timeFrom, arg.timeThru, arg.modifiedBy, arg.sharedWith, arg.nSharedFrom, arg.nSharedTo,arg.score))
+      Option[(UUID, String, MDSearchable, Option[MarkRef], Option[MarkAux], Seq[ReprInfo], TimeStamp, TimeStamp,
+             Option[UUID], Option[SharedWith], Option[Int], Option[Int], Option[Double])] =
+    Some((arg.userId, arg.id, arg.mark, arg.markRef, arg.aux, arg.reprs, arg.timeFrom, arg.timeThru,
+          arg.modifiedBy, arg.sharedWith, arg.nSharedFrom, arg.nSharedTo,arg.score))
 }
 
 object Mark extends BSONHandlers {
@@ -522,7 +539,7 @@ object Mark extends BSONHandlers {
   case class MarkAux(tabVisible: Option[Seq[RangeMils]],
                      tabBground: Option[Seq[RangeMils]],
                      var cachedTotalVisible: Option[DurationMils] = None,
-                     var cachedTotalBground: Option[DurationMils] = None) /*extends MarkAuxSearchable(cachedTotalVisible, cachedTotalBground)*/ {
+                     var cachedTotalBground: Option[DurationMils] = None) {
 
     /** Not using `copy` in this merge to ensure if new fields are added, they aren't forgotten here. */
     def merge(oth: MarkAux) =
