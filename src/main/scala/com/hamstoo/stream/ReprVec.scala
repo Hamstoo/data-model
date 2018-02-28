@@ -25,7 +25,7 @@ case class ReprVec(userId: UUID)(implicit clock: Clock, db: () => Future[Default
   private val marksDao = new MongoMarksDao(db)(new MongoUserDao(db), implicitly)
   private val reprsDao = new MongoRepresentationDao(db)
 
-  // TODO: should ReprVec just have an apply method like Reducer and pass the UUID in through there?
+  // TODO: should ReprVec just have an apply method like GroupReduce and pass the UUID in through there?
   // TODO: or should we reserve apply for the DSL?
 
   /** Map a stream of marks to their reprs' PC1 vectors. */
@@ -37,7 +37,7 @@ case class ReprVec(userId: UUID)(implicit clock: Clock, db: () => Future[Default
       reprsDao.retrieve(mark.primaryRepr).map {
         _.flatMap { repr =>
           repr.vectors.get(VecEnum.PC1.toString).map { vec =>
-            Datum(ReprId(repr.id), mark.timeFrom, mark.timeFrom, vec)
+            Datum(ReprId(repr.id), mark.timeFrom, vec)
           }
         }
       }
