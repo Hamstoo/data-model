@@ -413,7 +413,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * Executes a MongoDB Text Index search using text index with sorting in user's marks, constrained by tags.
     * Mark state must be current (i.e. timeThru == INF_TIME) and have all tags to qualify.
     */
-  def search(user: UUID, query: String): Future[Set[Mark]] = search(Set(user), query)
+  def search(user: UUID, query: String): Future[Set[MSearchable]] = search(Set(user), query)
 
   /**
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,

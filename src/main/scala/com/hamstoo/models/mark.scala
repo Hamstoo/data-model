@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, d, generateDbId}
+import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -14,7 +14,7 @@ import org.jsoup.Jsoup
 import org.jsoup.safety.Whitelist
 import play.api.Logger
 import play.api.libs.json.{Json, OFormat}
-import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
 import scala.util.matching.Regex
@@ -39,8 +39,10 @@ case class MarkData(override val subj: String,
                     override val tags: Option[Set[String]] = None,
                     override val comment: Option[String] = None,
                     var commentEncoded: Option[String] = None,
-                    override val pagePending: Option[Boolean] = None)
-    extends MDSearchable(subj, url, rating, tags, comment, pagePending) {
+                    override val pagePending: Option[Boolean] = None,
+                    override val pubReprPending: Option[Boolean] = None,
+                    override val usrReprPending: Option[Boolean] = None)
+    extends MDSearchable(subj, url, rating, tags, comment, pagePending, pubReprPending, usrReprPending) {
 
   import MarkData._
 
@@ -100,8 +102,8 @@ case class MarkData(override val subj: String,
   /** If the two MarkDatas are equal, as far as generating a user representation would be concerned. */
   // TODO: the interface for constructing a user repr should only be allowed to include these fields via having its own class
   def equalsPerUserRepr(other: MarkData): Boolean =
-          copy(url = None, rating = None, pagePending = None) ==
-    other.copy(url = None, rating = None, pagePending = None)
+    copy(url = None, rating = None, pagePending = None, pubReprPending = None, usrReprPending = None) ==
+      other.copy(url = None, rating = None, pagePending = None, pubReprPending = None, usrReprPending = None)
 }
 
 object MarkData {
@@ -243,7 +245,6 @@ case class Mark(override val userId: UUID,
   urlPrfx = mark.url map (_.binaryPrefix)
 
   import Mark._
-  import com.hamstoo.utils.NON_IDS
 
   def representableUserContent: Boolean = !reprs.exists(_.isUserContent)
 
@@ -354,7 +355,9 @@ class MDSearchable(val subj: String,
                    val rating: Option[Double],
                    val tags: Option[Set[String]],
                    val comment: Option[String],
-                   val pagePending: Option[Boolean]) {
+                   val pagePending: Option[Boolean],
+                   val pubReprPending: Option[Boolean],
+                   val usrReprPending: Option[Boolean]) {
 
   // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
   // rating value (not part of the data(base) model)
@@ -366,8 +369,10 @@ class MDSearchable(val subj: String,
              rating: Option[Double] = rating,
              tags: Option[Set[String]] = tags,
              comment: Option[String] = comment,
-             pagePending: Option[Boolean] = pagePending) =
-    new MDSearchable(subj, url, rating, tags, comment, pagePending)
+             pagePending: Option[Boolean] = pagePending,
+             pubReprPending: Option[Boolean] = pubReprPending,
+             usrReprPending: Option[Boolean] = usrReprPending) =
+    new MDSearchable(subj, url, rating, tags, comment, pagePending, pubReprPending, usrReprPending)
 }
 
 object MDSearchable {
@@ -377,12 +382,14 @@ object MDSearchable {
             rating: Option[Double],
             tags: Option[Set[String]],
             comment: Option[String],
-            pagePending: Option[Boolean]): MDSearchable =
-    new MDSearchable(subj, url, rating, tags, comment, pagePending)
+            pagePending: Option[Boolean],
+            pubReprPending: Option[Boolean],
+            usrReprPending: Option[Boolean]): MDSearchable =
+    new MDSearchable(subj, url, rating, tags, comment, pagePending, pubReprPending, usrReprPending)
 
   def unapply(obj: MDSearchable): Option[(String, Option[String], Option[Double],
-              Option[Set[String]], Option[String], Option[Boolean])] =
-    Some((obj.subj, obj.url, obj.rating, obj.tags, obj.comment, obj.pagePending))
+              Option[Set[String]], Option[String], Option[Boolean], Option[Boolean], Option[Boolean])] =
+    Some((obj.subj, obj.url, obj.rating, obj.tags, obj.comment, obj.pagePending, obj.pubReprPending, obj.usrReprPending))
 }
 
 /**
@@ -595,6 +602,8 @@ object Mark extends BSONHandlers {
   val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
   val COMNTENCx: String = MARK + "." + nameOf[MarkData](_.commentEncoded)
   val PGPENDx: String = MARK + "." + nameOf[MarkData](_.pagePending)
+  val PUBPENDx: String = MARK + "." + nameOf[MarkData](_.pubReprPending)
+  val USRPENDx: String = MARK + "." + nameOf[MarkData](_.usrReprPending)
 
   val REFIDx: String = nameOf[Mark](_.markRef) + "." + nameOf[MarkRef](_.markId)
 
@@ -613,6 +622,9 @@ object Mark extends BSONHandlers {
   val CREATEDx: String = REPRS + "." + CREATED
   val EXP_RATINGx: String = REPRS + "." + EXP_RATING
   val EXP_RATINGxp: String = REPRS + ".$." + EXP_RATING
+
+  val REPR_IDxp: String = REPRS + ".$." + REPR_ID
+  val CREATEDxp: String = REPRS + ".$." + CREATED
 
   implicit val mDataData: BSONDocumentHandler[MDSearchable] = Macros.handler[MDSearchable]
   implicit val mSearchable: BSONDocumentHandler[MSearchable] = Macros.handler[MSearchable]
