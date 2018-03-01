@@ -2,6 +2,7 @@ package com.hamstoo.stream
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
+import com.hamstoo.utils.ExtendedTimeStamp
 import play.api.Logger
 
 /**
@@ -74,6 +75,8 @@ object GroupReduce {
       .map { g =>
         assert(g.group.nonEmpty && g.data.nonEmpty)
 
+        val knownTime = g.data.map(_.knownTime).max
+
         val values: Map[EntityId, SourceValue[T]] = g.group.get.longitudinal match {
 
           // longitudinal (across time) aggregation
@@ -88,10 +91,12 @@ object GroupReduce {
           // cross-sectional (across entities) aggregation (or both cross-sectional/longitudinal combined)
           case longitudinal =>
             val svs: Seq[SourceValue[T]] = g.data.flatMap(_.values.values)
-            Map(UnitId() -> SourceValue(reducer(svs.map(_.value)), svs.map(_.sourceTime).max))
+            val reducedVal = reducer(svs.map(_.value))
+            logger.debug(s"Cross-sectional reduce at ${knownTime.dt}: $reducedVal")
+            Map(UnitId() -> SourceValue(reducedVal, svs.map(_.sourceTime).max))
         }
 
-        Data(g.data.map(_.knownTime).max, values)
+        Data(knownTime, values)
       }
       .mergeSubstreams
 }
