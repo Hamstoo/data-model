@@ -129,7 +129,10 @@ class MongoMarksDaoTests
   it should "(UNIT) perform MongoDB Text Index marks search by user ID, query and tags" in {
     val md1Stub = MarkData(m1.mark.subj, m1.mark.url, tags = m1.mark.tags, comment = m1.mark.comment)
     val m1Stub = m1.copy(mark = md1Stub, aux = m1.aux.map(_.cleanRanges), score = Some(1.0), reprs = Seq(reprInfoUsr, reprInfoPub))
-    marksDao.search(Set(uuid1), cmt.get).map(_.filter(_.hasTags(tagSet.get))).futureValue shouldEqual Set(m1Stub)
+
+    marksDao.search(Set(uuid1), cmt.get).map(_.filter(_.hasTags(tagSet.get))).futureValue.map(_.id) shouldEqual Set(m1Stub.id)
+    marksDao.search(Set(uuid1), cmt.get).map(_.filter(_.hasTags(tagSet.get))).futureValue.head shouldBe a [MSearchable]
+
   }
 
   it should "(UNIT) find duplicate of mark data, for user, by subject" in {
@@ -138,9 +141,11 @@ class MongoMarksDaoTests
 
   it should "(UNIT) retrieve represented marks by uuid and tag set" in {
     println(marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.reprs)
-    val repred = marksDao.retrieveRepred(m1.userId, tagSet.get).futureValue.map(_.id)
+    val repred = marksDao.retrieveRepred(m1.userId, tagSet.get).futureValue
+
     repred.size shouldEqual 1
-    repred.contains(m1.id) shouldEqual true
+    repred.head shouldBe a [MSearchable]
+    repred.exists(_.id == m1.id) shouldEqual true
   }
 
   it should "(UNIT) update public representation rating id" in {
