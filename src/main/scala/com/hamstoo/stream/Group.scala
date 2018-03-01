@@ -124,21 +124,22 @@ abstract class HighWatermarkCommandFactory[G <: Group, F <: GroupFactory[G]](tim
   /** Ensure datum delays are within acceptable bounds and, if so, generate group commands. */
   override def commandsFor[T](d: Data[T]): List[GroupCommand[T]] = {
 
-    // if `maxDelayMils == 0` then we're computing a cross-sectional group and if `d.values.size > 1` then all of
-    // the data for this group should reside inside one single Data[T] (as opposed to a series of Datum[T]), so we
-    // immediately close the group; o/w wait until we see data with timestamps past the high watermark, even in the
-    // case of cross-sectional which could also be be arriving one Datum[T] at a time
-    val bCrossSecData: Boolean = maxDelayMils == 0 && d.values.size > 1
-
-    // update high watermark
-    watermark = math.max(watermark, d.knownTime - maxDelayMils + (if (bCrossSecData) 1 else 0))
-
     // if datum missed the boat for this window (and all future windows) then ignore it
     if (d.knownTime < watermark) {
       logger.warn(s"Dropping excessively delayed data: ${d.knownTime.dt} < ${(watermark + maxDelayMils).dt} - ${maxDelayMils}ms")
       Nil
 
     } else {
+
+      // if `maxDelayMils == 0` then we're computing a cross-sectional group and if `d.values.size > 1` then all of
+      // the data for this group should reside inside one single Data[T] (as opposed to a series of Datum[T]), so we
+      // immediately close the group; o/w wait until we see data with timestamps past the high watermark, even in the
+      // case of cross-sectional which could also be be arriving one Datum[T] at a time
+      val bCrossSecData: Boolean = maxDelayMils == 0 && d.values.size > 1
+
+      // update high watermark
+      watermark = math.max(watermark, d.knownTime - maxDelayMils + (if (bCrossSecData) 1 else 0))
+
       // TODO: is it a problem that the group closing isn't triggered until a tick that's `maxDelay` after `end`?
       // TODO: or is this merely "allow[ing] us to keep the memory usage bounded"
       commandsForInner(d, (g: G) => bCrossSecData || g.end < watermark)

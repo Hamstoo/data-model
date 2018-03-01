@@ -7,9 +7,11 @@ import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sin
 import com.hamstoo.models.Representation.Vec
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
+import com.hamstoo.utils.TimeStamp
 import org.joda.time.DateTime
 import play.api.Logger
 
+import scala.collection.immutable
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
@@ -33,12 +35,6 @@ class DataStreamTests
 
     //TimeDecay(ds, 1 minute)
 
-    // TODO: Source.tick..... the clock pulls the data
-    // "There are tools in Akka Streams however that enable the rates of different segments of a processing chain
-    // to be “detached” or to define the maximum throughput of the stream through external timing sources."
-    //   https://doc.akka.io/docs/akka/2.5.3/scala/stream/stream-rate.html
-
-
     // streams should throttle themselves according to the source clock
     // send snapshots (or batches of datums) at tick times
     // so streams can decide themselves when to update their internal caches
@@ -47,50 +43,24 @@ class DataStreamTests
     // that broadcasts rather than a sink that pulls -- yes, and the ticking triggers the source to load more
     // elements
 
-    // so the clock should be a sink, CurrentTimeSink, that "emits" the current time (yes, you read that right, a
-    // "sink that emits") or maybe rather a singleton that holds the current time, and every DataStream reads this
-    // value?  by hooking up to it as a stream?  probably better to not request the current time value that way.
-    // is there a way for the CurrentTimeSink to propagate this time back when it pulls from upstream?
 
-    // then, eventually, this clock can be turned into a flow--or a sequence of sinks--that loops over time pulling
-    // new data for each time point
+    // what happens when you zip a stream of natural numbers with even numbers?
+    // the process of zipping is what we want to abstractify away first (functional style)
+    // then create another abstraction to combine binary ops into zip ops for the dsl
+    // perhaps using reflection
 
-    // *********
-    // the clock should be an implicit input of all DataStreams?!?!?!!?!?
-    // *********
+    // this is the same mechanism that should report data requirement lags down the dependency chain
 
-    // OR.... use BidiFlows and have clock time flow down the tree into requests for data.... and have responses
-    // to those requests flow up the tree
-    // YES - have "requests" flow down, e.g. current time along with requested frequencies?
+    // so there are 2 clocks, both sources, a timeKnown clock and a sourceTime clock (or multiple sourceTime clocks?).
+    // the timeKnown clock starts streaming first and the sourceTime clock (or clocks, one for each data source)
+    // get pulled from based on the timeKnown, so every source has its own clock?
 
-    // OR
-    // 1) assume data is stored in the database with time knowns (as well as source times, or we can compute time knowns)
-    // 2) the source clock gets mapped to data sources, which trigger them to load their data
-    // 3) the data sources somehow know to whom they've been hooked so they can know how much (and at what frequency)
-    //    of their data to retain in an inner cache (BlockManager)
-    //      No - data sources would know too much about their dependants
-    // 4) the data sources just flow their data into their cache as quickly as timeknown allows
-    // 5) dependents "pull" from the cache
-    // NO NO NO.... this is the same as the BidiFlow approach... just that dependencies get established as
-    // timeknown flows upstream and then they are satisfied as data flows downstream
-    //    in this way, it looks like there is a clock on the source end
-    // But a sink is the only way to trigger a flow and that's what we want... a sink to trigger!!!!
-
+    // or even better, each source has its own clock that gets "inherited" from the source above (so Lag data stream
+    // will change the clock it passes down to its dependants, each clock then "listens" to the clock it was
+    // inherited from and then when a real DataSource finally gets passed a clock, it "listens" to it as well
   }*/
 
-
-
-
-  /*what happens when you zip a stream of natural numbers with even numbers?
-  the process of zipping is what we want to abstractify away first (functional style)
-  then create another abstraction to combine binary ops into zip ops for the dsl
-  perhaps using reflection
-
-  this is the same mechanism that should report data requirement lags down the dependency chain*/
-
-
-
-  /*"Test" should "scratch test 0" in {
+  "Test" should "scratch test 0" in {
     // https://doc.akka.io/docs/akka/2.5.3/scala/stream/stream-rate.html#internal-buffers-and-their-effect
 
     implicit val materializer: Materializer = ActorMaterializer()
@@ -146,8 +116,8 @@ class DataStreamTests
     //g.addAttributes(Attributes.inputBuffer(initial = 1, max = 1)).run() // this works!
     g.run()
     //Await.result(g.run(), 15 seconds)
-    Thread.sleep(65.seconds.toMillis)
-  }*/
+    Thread.sleep(20.seconds.toMillis)
+  }
 
 
   "Join" should "join DataStreams" in {
@@ -175,21 +145,40 @@ class DataStreamTests
     val runnable: RunnableGraph[Future[Int]] = source.map(_.oval.get.value).toMat(foldSink)(Keep.right)
     val x: Int = Await.result(runnable.run(), 15 seconds)
 
-    logger.info(s"*** Join should join DataStreams: x = $x")
+    logger.info(s"****** Join should join DataStreams: x = $x")
     x shouldEqual 1212
   }
 
-  "GroupReduce" should "cross-sectionally reduce streams of individual Datum" in {
+  "GroupReduce" should "cross-sectionally reduce streams of (singular) Datum" in {
 
     val iter = List(Datum(ReprId("a"), 0, 0.4),
                     Datum(ReprId("b"), 0, 0.6),
                     Datum(ReprId("b"), 1, 1.2),
-        Datum(ReprId("d"), 0, 137.9), // timestamp out of order!
+        Datum(ReprId("d"), 0, 300.0), // timestamp out of order!
                     Datum(ReprId("c"), 1, 1.5),
                     Datum(ReprId("a"), 1, 1.8),
                     Datum(ReprId("c"), 2, 2.5),
-                    Datum(ReprId("b"), 3, 3.4),
-                    Datum(ReprId("b"), 3, 3.6))
+        Datum(ReprId("b"), 3, 3.4), // entity IDs can be duplicated per timestamp w/ singular Datum
+        Datum(ReprId("b"), 3, 3.6))
+
+    testGroupReduce(iter, "(singular) Datum")
+  }
+
+  "GroupReduce" should "cross-sectionally reduce streams of (plural) Data" in {
+
+    def SV(v: Double, ts: TimeStamp) = SourceValue(v, ts)
+
+    val iter = List(Data(0, Map(ReprId("a") -> SV(0.4, 0), ReprId("b") -> SV(0.6, 0))),
+                    Data(1, Map(ReprId("b") -> SV(1.2, 1), ReprId("c") -> SV(1.5, 1), ReprId("a") -> SV(1.8, 1))),
+        Datum(ReprId("d"), 0, 300.0), // timestamp out of order!
+                    Datum(ReprId("c"), 2, 2.5),
+        Data(3, Map(ReprId("b") -> SV(3.5, 3), ReprId("b") -> SV(3.5, 3)))) // duplicate entity IDs get merged in a Map
+
+    testGroupReduce(iter, "(plural) Data")
+  }
+
+  /** Used by both of the 2 tests above. */
+  def testGroupReduce(iter: immutable.Iterable[Data[Double]], what: String) {
 
     val grouper = () => new CrossSectionCommandFactory()
 
@@ -227,7 +216,7 @@ class DataStreamTests
     })
 
     val x: Double = Await.result(g.run(), 15 seconds)
-    logger.info(s"*** GroupReduce should cross-sectionally reduce streams of individual Datum: x = $x")
+    logger.info(s"****** GroupReduce should cross-sectionally reduce streams of $what: x = $x")
     x shouldEqual 8.0
   }
 }
