@@ -196,6 +196,7 @@ package object utils {
     * For reference, Long.MaxValue is equal to 9223372036854775807 or MongoDB's `NumberLong("9223372036854775807")`.
     */
   type TimeStamp = Long
+  type DurationMils = Long
   val INF_TIME: TimeStamp = Long.MaxValue
   def TIME_NOW: TimeStamp = DateTime.now.getMillis
 
