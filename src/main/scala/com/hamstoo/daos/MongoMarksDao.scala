@@ -892,16 +892,16 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * Update the expected rating ID of a ReprInfo of a mark given either one of the singleton ReprTypes (PUBLIC or
     * USER_CONTENT) or repr ID (which can correspond to a ReprInfo of any ReprType).
     */
-  def updateExpectedRating(m: Mark, repr: Either[ObjectId, ReprType.Value], expRatingId: ObjectId): Future[Unit] = for {
+  def updateExpectedRating(m: Mark, reprId: ObjectId, expRatingId: ObjectId): Future[Unit] = for {
     c <- dbColl()
-    _ = logger.debug(s"Updating $repr expected rating to $expRatingId for mark ${m.id}")
-    reprId <- repr.toReprId(m)(this, implicitly)
+    _ = logger.debug(s"Updating $reprId expected rating to $expRatingId for mark ${m.id}")
+    //reprId <- repr.toReprId(m)(this, implicitly)
     sel = d :~ USR -> m.userId :~ ID -> m.id :~ TIMEFROM -> m.timeFrom :~
                REPRS -> (d :~ "$elemMatch" -> (d :~ REPR_ID -> reprId))
     mod = d :~ "$set" -> (d :~ EXP_RATINGxp -> expRatingId)
     wr <- c.update(sel, mod)
     _ <- wr.failIfError
-  } yield logger.debug(s"${wr.nModified} $repr expected ratings were updated for mark ${m.id}")
+  } yield logger.debug(s"${wr.nModified} $reprId expected ratings were updated for mark ${m.id}")
 
   /**
     * Remove a ReprInfo from a mark given either a singleton ReprType or a repr ID.  Used by MongoAnnotationDao

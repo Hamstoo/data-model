@@ -189,9 +189,7 @@ case class ReprInfo(reprId: ObjectId,
                     expRating: Option[ObjectId] = None) {
 
   /** Check if expected rating has not yet been computed for this Representation. */
-  def eratablePublic: Boolean = isPublic && expRating.isEmpty
-  def eratablePrivate: Boolean = isPrivate && expRating.isEmpty
-  def eratableUserContent: Boolean = isUserContent && expRating.isEmpty
+  def eratable: Boolean = expRating.isEmpty
 
   def isPublic: Boolean = ReprType.withName(reprType) == ReprType.PUBLIC
   def isPrivate: Boolean = ReprType.withName(reprType) == ReprType.PRIVATE
@@ -246,16 +244,16 @@ case class Mark(override val userId: UUID,
   def representableUserContent: Boolean = !reprs.exists(_.isUserContent)
 
   /** Get a private representation without an expected rating, if it exists. */
-  def unratedPrivRepr: Option[ObjectId] = reprs.find(_.eratablePrivate).map(_.reprId)
+  def unratedPrivRepr: Option[ObjectId] = reprs.find(ri => ri.eratable && ri.isPrivate).map(_.reprId)
 
   /**
     * Return true if the mark is (potentially) representable but not yet represented.  In the case of public
     * representations, even if the mark doesn't have a URL, we'll still try to derive a representation from the subject
     * in case LinkageService.digest timed out when originally trying to generate a title for the mark (issue #195).
     */
-  def eratablePublic: Boolean = reprs.exists(_.eratablePublic)
-  def eratablePrivate: Boolean = reprs.exists(_.eratablePrivate)
-  def eratableUserContent: Boolean = reprs.exists(_.eratableUserContent)
+  def eratablePublic: Boolean = reprs.exists(ri => ri.eratable && ri.isPublic)
+  def eratablePrivate: Boolean = unratedPrivRepr.nonEmpty
+  def eratableUserContent: Boolean = reprs.exists(ri => ri.eratable && ri.isUserContent)
 
   /** Return true if the mark is current (i.e. hasn't been updated or deleted). */
   def isCurrent: Boolean = timeThru == INF_TIME
