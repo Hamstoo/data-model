@@ -41,6 +41,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
       s"bin-$USR-1-$ID-1-$TIMETHRU-1-uniq" ::
     Nil toMap
 
+  // TODO: 146: Test me
   /**
     * Insert annotation instance into mongodb collection
     * @param annotation - object that must be inserted
@@ -103,6 +104,7 @@ abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
     }
   }
 
+  // TODO: 146: Test me
   /**
     * Delete annotation object from mongodb collection by several parameters
     * @param usr - unique owner identifier
