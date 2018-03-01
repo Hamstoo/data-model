@@ -355,25 +355,22 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * @param user  Only marks for this user will be returned/searched.
     * @param tags  Returned marks must have all of these tags, default to empty set.
     */
-  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[Mark]] = {
+  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[MSearchable]] = {
     logger.debug(s"Retrieving represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
 
-      // TODO: FWC: we need an index for this query (or defer to issue #260)?
+      // TODO: 146: we need an index for this query (or defer to issue #260)?
       reprs = d :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0))
 
       // maybe we should $and instead of $or
       sel0 = d :~ USR -> user :~ curnt :~ reprs // TODO: should `curnt` be moved into `reprs` to utilize indexes?
 
       sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
-
-      // todo: provide excluding in issue-222
-      // TODO: FWC: searchExcludedFields may no longer be necessary as Pages are no longer stored on Marks
-      seq <- c.find(sel1 /*, searchExcludedFields */).coll[Mark, Seq]()
+      seq <- c.find(sel1).coll[MSearchable, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
-      seq.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
+      seq.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 
@@ -387,7 +384,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ REFIDx -> (d :~ "$exists" -> true) :~ curnt
-      seq <- c.find(sel, searchExcludedFields).coll[Mark, Seq]()
+      seq <- c.find(sel).coll[MSearchable, Seq]()
     } yield {
       logger.debug(s"${seq.size} referenced marks were successfully retrieved")
       seq//.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) } // no longer returning Marks, so no need to cleanRanges
@@ -412,24 +409,11 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
-  // exclude these fields from the returned results of search-related methods to conserve memory during search
-  // TODO: implement a MSearchable base class so that users know they're dealing with a partially populated Mark
-  // (should have looked more closely at hamstoo.SearchService when choosing these fields; see issue #222)
-  val searchExcludedFields: BSONDocument = d :~ (URLPRFX -> 0) :~ (TOTVISx -> 0) :~ (TOTBGx -> 0) :~
-    (MERGEID -> 0) :~ (COMNTENCx -> 0)
-
-  /**
-    * Executes a MongoDB Text Index search using text index with sorting in user's marks, constrained by tags.
-    * Mark state must be current (i.e. timeThru == INF_TIME) and have all tags to qualify.
-    */
-  // TODO: FWC: why was this removed?  no longer needed?
-  //def search(user: UUID, query: String): Future[Set[Mark]] = search(Set(user), query)
-
   /**
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,
     * and potentially filter for specific mark IDs.
     */
-  def search(users: Set[UUID], query: String, ids: Set[ObjectId] = Set.empty[ObjectId]): Future[Set[Mark]] = {
+  def search(users: Set[UUID], query: String, ids: Set[ObjectId] = Set.empty[ObjectId]): Future[Set[MSearchable]] = {
     logger.debug(s"Searching for marks for ${users.size} users (first, at most, 5: ${users.take(5)}) by text query '$query'")
 
     // this projection doesn't have any effect without this selection
@@ -449,11 +433,11 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       users.map { u =>
         val sel = d :~ USR -> u :~ curnt
         dbColl().flatMap(_.find(sel :~ searchScoreSelection :~ idsFilter,
-                                searchExcludedFields :~ searchScoreProjection).coll[Mark, Seq]())
+          searchScoreProjection).coll[MSearchable, Seq]())
       }
     }.map(_.flatten).map { set =>
       logger.debug(s"Search retrieved ${set.size} marks")
-      set.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
+      set.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 
@@ -848,7 +832,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     logger.debug("Finding marks with missing expected ratings")
     for {
       c <- dbColl()
-      // TODO: FWC: do we need to use EXP_RATINGxp here?
+      // TODO: 146: do we need to use EXP_RATINGxp here?
       sel = d :~ curnt :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0)) :~ EXP_RATINGx -> (d :~ "$exists" -> false)
       seq <- c.find(sel).coll[Mark, Seq](n)
     } yield {
@@ -858,7 +842,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   }
 
   /** Save a ReprInfo to a mark's `reprs` list. */
-  // TODO: FWC: how do we ensure that the singleton ReprInfo types (PUBLIC and USER_CONTENT) remain singletons?
+  // TODO: 146: how do we ensure that the singleton ReprInfo types (PUBLIC and USER_CONTENT) remain singletons?
   def insertReprInfo(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = {
     logger.debug(s"Saving $reprInfo for user mark $markId")
     for {
