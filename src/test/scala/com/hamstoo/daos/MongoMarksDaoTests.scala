@@ -162,7 +162,8 @@ class MongoMarksDaoTests
 
   it should "(UNIT) update public representation rating id" in {
     val newERat = "NewRatID"
-    marksDao.updateExpectedRating(m1, Right(ReprType.PUBLIC), "NewRatID").futureValue shouldEqual {}
+    Right(ReprType.PUBLIC).toReprId(m1)
+      .flatMap(marksDao.updateExpectedRating(m1, _, "NewRatID")).futureValue shouldEqual {}
     val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.reprs
     val pubRepr = reprs.find(_.isPublic)
     pubRepr should not equal None
@@ -171,7 +172,8 @@ class MongoMarksDaoTests
 
   it should "(UNIT) update users representation rating id" in {
     val newERat = "NewRatID"
-    marksDao.updateExpectedRating(m1, Right(ReprType.USER_CONTENT), "NewRatID").futureValue shouldEqual {}
+    Right(ReprType.USER_CONTENT).toReprId(m1)
+      .flatMap(marksDao.updateExpectedRating(m1, _, "NewRatID")).futureValue shouldEqual {}
     val reprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.reprs
     val pubRepr = reprs.find(_.isUserContent)
     pubRepr should not equal None
@@ -187,7 +189,7 @@ class MongoMarksDaoTests
     reprs.size shouldEqual 3
     reprs.exists(_.isPrivate) shouldEqual true
 
-    marksDao.updateExpectedRating(m1, Left(privRepr.reprId), newERat).futureValue shouldEqual {}
+    marksDao.updateExpectedRating(m1, privRepr.reprId, newERat).futureValue shouldEqual {}
     val updatedReprs = marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.reprs
     val updatedPrivRepr = updatedReprs.find(_.reprId == privRepr.reprId)
     updatedPrivRepr should not equal None
