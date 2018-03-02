@@ -148,16 +148,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     // the following two indexes are set to unique to prevent messing up timelines of mark/entry states
     Index(ID -> Ascending :: TIMEFROM -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMEFROM-1-uniq" ::
     Index(ID -> Ascending :: TIMETHRU -> Ascending :: Nil, unique = true) % s"bin-$ID-1-$TIMETHRU-1-uniq" ::
-    // findMissingReprs indexes
-//    Index(PUBREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt)) % s"bin-$PUBREPR-1-partial-$TIMETHRU" ::
-//    Index(PRVREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PAGE -> (d :~ "$exists" -> true))) %
-//      s"bin-$PRVREPR-1-partial-$TIMETHRU-$PAGE" ::
-//    Index(USRREPR -> Ascending :: Nil, partialFilter = Some(d :~ curnt)) % s"bin-$USRREPR-1-partial-$TIMETHRU" ::
-    // findMissingExpectedRatings (partial) indexes
-//    Index(PUBESTARS -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PUBREPR -> (d :~ "$exists" -> true))) %
-//      s"bin-$PUBESTARS-1-partial-$TIMETHRU-$PUBREPR" ::
-//    Index(PRIVESTARS -> Ascending :: Nil, partialFilter = Some(d :~ curnt :~ PRVREPR -> (d :~ "$exists" -> true))) %
-//      s"bin-$PRIVESTARS-1-partial-$TIMETHRU-$PRVREPR" ::
     // text index (there can be only one per collection)
     Index(USR -> Ascending :: TIMETHRU -> Ascending :: SUBJx -> Text :: TAGSx -> Text :: COMNTx -> Text :: Nil) %
       s"bin-$USR-1-$TIMETHRU-1--txt-$SUBJx-$TAGSx-$COMNTx" ::
@@ -361,6 +351,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       c <- dbColl()
 
       // TODO: 146: we need an index for this query (or defer to issue #260)?
+      // TODO: FFA: I think it must be defer to issue #260, otherwise how this index must looks like?
       reprs = d :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0))
 
       // maybe we should $and instead of $or
@@ -439,7 +430,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       users.map { u =>
         val sel = d :~ USR -> u :~ curnt
         dbColl().flatMap(_.find(sel :~ searchScoreSelection :~ idsFilter,
-          searchScoreProjection).coll[MSearchable, Seq]())
+                                       searchScoreProjection).coll[MSearchable, Seq]())
       }
     }.map(_.flatten).map { set =>
       logger.debug(s"Search retrieved ${set.size} marks")
@@ -675,26 +666,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
-  /** Adds web page source to a mark--for "private" reprs of marks saved from the Chrome Extension. */
-  def unsetPagePending(id: ObjectId): Future[Unit] = for {
-    c <- dbColl()
-    _ = logger.debug(s"Unsetting page pending for current mark $id")
-    sel = d :~ ID -> id :~ curnt
-    wr <- c.findAndUpdate(sel, d :~ "$unset" -> (d :~ PGPENDx -> 1))
-
-    _ <- if (wr.lastError.exists(_.n == 1)) Future.unit else {
-      val msg = s"Unable to findAndUpdate mark $id's page pending; wr.lastError = ${wr.lastError.get}"
-      logger.error(msg)
-      Future.failed(new NoSuchElementException(msg))
-    }
-  } yield {
-    val m = wr.result[Mark].get
-    // this log message can eventually be removed as it's now okay to have more than one private repr
-    m.privRepr.foreach(reprId =>
-      logger.info(s"Added page source for mark ${m.id} (${m.timeFrom}) that already has a private repr $reprId"))
-    ()
-  }
-
   /**
     * Renames one tag in all user's marks that have it.
     * Returns updated mark states number.
@@ -809,52 +780,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
-  /**
-    * If a mark doesn't have a user-content Page then maybe the ContentRetriever (or whatever the equivalent
-    * is for generating user-content) can generate it one.
-    */
-  def findMissingSingletonReprMarks(n: Int, reprType: ReprType.Value): Future[Seq[Mark]] = {
-    logger.debug(s"Finding marks with missing $reprType representations")
-    for {
-      c <- dbColl()
-      pend = reprType match {
-        case ReprType.PUBLIC => PUBPENDx
-        case ReprType.USER_CONTENT => USRPENDx
-        case _ => throw new Exception(s"Invalid ReprType $reprType for findMissingSingletonReprMarks")
-      }
-      sel = d :~ curnt :~
-                 REPRS -> (d :~ "$not" -> (d :~ "$elemMatch" -> (d :~ REPR_TYPE -> reprType.toString))) :~
-                 PGPENDx -> (d :~ "$ne" -> true) :~ pend -> (d :~ "$ne" -> true) // https://stackoverflow.com/questions/22290538/select-mongodb-documents-where-a-field-either-does-not-exist-is-null-or-is-fal
-      seq <- c.find(sel).coll[Mark, Seq](n)
-      // TODO: this find-and-update really should be atomic, just a temporary hack/patch for branch-146
-      _ <- c.update(d :~ curnt :~ ID -> (d :~ "$in" -> seq.map(_.id)), d :~ "$set" -> (d :~ pend -> true), multi = true)
-    } yield {
-      logger.debug(s"${seq.size} marks with missing public representations were retrieved")
-      seq
-    }
-  }
-
-  /**
-    * Retrieves a list of n marks that require expected ratings. Intentionally not filtering for `curnt` marks.
-    *
-    * The following MongoDB shell command should show that this query is using two indexes via an "OR" inputStage.
-    *   db.entries.find({$or:[{timeThru:NumberLong("9223372036854775807"), pubExpRating:{$exists:0}, pubRepr:{$exists:1}},
-    *                         {timeThru:NumberLong("9223372036854775807"), privExpRating:{$exists:0}, privRepr:{$exists:1}}]}).explain()
-    */
-  def findMissingExpectedRatings(n: Int): Future[Seq[Mark]] = {
-    logger.debug("Finding marks with missing expected ratings")
-    for {
-      c <- dbColl()
-      // TODO: 146: do we need to use EXP_RATINGxp here?
-      // TODO: FFA: What you mean by this questions, how we can find unrated marks without checking EXP_RATINGx?
-      sel = d :~ curnt :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0)) :~ EXP_RATINGx -> (d :~ "$exists" -> false)
-      seq <- c.find(sel).coll[Mark, Seq](n)
-    } yield {
-      logger.debug(s"${seq.size} marks with missing E[rating]s were retrieved")
-      seq
-    }
-  }
-
   // TODO: 146: how do we ensure that the singleton ReprInfo types (PUBLIC and USER_CONTENT) remain singletons?
   /**
    * Save a ReprInfo to a mark's `reprs` list.
@@ -865,67 +790,46 @@ class MongoMarksDao(db: () => Future[DefaultDB])
    */
   def insertReprInfo(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = {
 
-    val pendingType = ReprType.withName(reprInfo.reprType) match {
-      case ReprType.PRIVATE => PGPENDx // private page pending
-      case ReprType.PUBLIC => PUBPENDx // public repr pending
-      case ReprType.USER_CONTENT => USRPENDx // user-content repr pending
-      case _ => throw new Exception(s"Invalid ReprType ${reprInfo.reprType} for insertReprInfo")
-    }
-
     /** Insert representation info */
-    def insertRepr(markId: ObjectId, reprInfo: ReprInfo, pendTpe: String): Future[Unit] = {
-      logger.debug(s"Inserting ${reprInfo.reprType} representation for mark: $markId...")
+    def insertRepr(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = for {
+      c <- dbColl()
+      _ = logger.debug(s"Inserting ${reprInfo.reprType} representation for mark: $markId...")
+      sel = d :~ ID -> markId :~ curnt
+      mod = d :~ "$push" -> (d :~ REPRS -> reprInfo)
 
-      for {
-        c <- dbColl()
-        sel = d :~ ID -> markId :~ curnt
-        mod = d :~ "$push" -> (d :~ REPRS -> reprInfo) :~ "$unset" -> (d :~ pendTpe -> 1)
-
-        wr <- c.update(sel, mod)
-        _ <- wr.failIfError
-      } yield {
-        logger.debug(s"${reprInfo.reprType} representation for mark: $markId was inserted")
-      }
-    }
+      wr <- c.update(sel, mod)
+      _ <- wr.failIfError
+    } yield logger.debug(s"${reprInfo.reprType} representation for mark: $markId was inserted")
 
     /** Update non-private representation */
-    def updateNonPrivateRepr(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = {
-      val reprType = reprInfo.reprType
-      logger.debug(s"Updating $reprType representation information for mark: $markId...")
+    def updateNonPrivateRepr(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = for {
+      c <- dbColl()
+      reprType = reprInfo.reprType
+      _ = logger.debug(s"Updating $reprType representation information for mark: $markId...")
+      sel = d :~ ID -> markId :~ REPR_TYPEx -> reprType :~ curnt
+      mod = d :~
+        "$set" -> (d :~ REPR_IDxp -> reprInfo.reprId :~ CREATEDxp -> reprInfo.created) :~
+        "$unset" -> (d :~ EXP_RATINGxp -> 1)
 
-      for {
-        c <- dbColl()
-        sel = d :~ ID -> markId :~ REPR_TYPEx -> reprType :~ curnt
-        mod = d :~
-          "$set" -> (d :~ REPR_IDxp -> reprInfo.reprId :~ CREATEDxp -> reprInfo.created) :~
-          "$unset" -> (d :~ EXP_RATINGxp -> 1)
-
-        wr <- c.update(sel, mod)
-        _ <- wr.failIfError
-      } yield {
-        logger.debug(s"$reprType representation was updated")
-      }
-    }
+      wr <- c.update(sel, mod)
+      _ <- wr.failIfError
+    } yield logger.debug(s"$reprType representation was updated")
 
     /** Check if non-private representation info exist */
-    def nonPrivateReprExist(markId: ObjectId, reprType: String): Future[Option[Mark]] = {
-      logger.debug(s"Checking if non-private repr of type: $reprType exist...")
-
-      for {
-        c <- dbColl()
-        sel = d :~ ID -> markId :~  REPR_TYPEx -> reprType.toString :~ curnt
-
-        optRes <- c.find(sel).one[Mark]
-      } yield {
-        logger.debug(s"$optRes was retrieved")
-        optRes
-      }
+    def nonPrivateReprExists(markId: ObjectId, reprType: String): Future[Boolean] = for {
+      c <- dbColl()
+      _ = logger.debug(s"Checking if non-private repr of type: $reprType exist...")
+      sel = d :~ ID -> markId :~  REPR_TYPEx -> reprType.toString :~ curnt
+      opt <- c.find(sel).one[Mark]
+    } yield {
+      logger.debug(s"$opt was retrieved")
+      opt.nonEmpty
     }
 
-    if (reprInfo.isPrivate) insertRepr(markId, reprInfo, pendingType)
-    else nonPrivateReprExist(markId, reprInfo.reprType) map {
-      case Some(_) => updateNonPrivateRepr(markId, reprInfo)
-      case _ => insertRepr(markId, reprInfo, pendingType)
+    if (reprInfo.isPrivate) insertRepr(markId, reprInfo)
+    else nonPrivateReprExists(markId, reprInfo.reprType) map { exists =>
+      if (exists) updateNonPrivateRepr(markId, reprInfo)
+      else insertRepr(markId, reprInfo)
     }
   }
 
