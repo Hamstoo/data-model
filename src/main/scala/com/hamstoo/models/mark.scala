@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -30,7 +30,6 @@ import scala.util.matching.Regex
   * @param rating         - the value assigned to the mark by the user, from 0.0 to 5.0
   * @param tags           - a set of tags assigned to the mark by the user
   * @param comment        - an optional text comment assigned to the mark by the user
-  * @param pagePending    - don't let repr-engine process marks that are still waiting for private pages
   * @param commentEncoded - markdown converted to HTML; set by class init
   */
 case class MarkData(override val subj: String,
@@ -38,11 +37,8 @@ case class MarkData(override val subj: String,
                     override val rating: Option[Double] = None,
                     override val tags: Option[Set[String]] = None,
                     override val comment: Option[String] = None,
-                    var commentEncoded: Option[String] = None,
-                    override val pagePending: Option[Boolean] = None,
-                    override val pubReprPending: Option[Boolean] = None,
-                    override val usrReprPending: Option[Boolean] = None)
-    extends MDSearchable(subj, url, rating, tags, comment, pagePending, pubReprPending, usrReprPending) {
+                    var commentEncoded: Option[String] = None)
+    extends MDSearchable(subj, url, rating, tags, comment) {
 
   import MarkData._
 
@@ -102,8 +98,7 @@ case class MarkData(override val subj: String,
   /** If the two MarkDatas are equal, as far as generating a user representation would be concerned. */
   // TODO: the interface for constructing a user repr should only be allowed to include these fields via having its own class
   def equalsPerUserRepr(other: MarkData): Boolean =
-    copy(url = None, rating = None, pagePending = None, pubReprPending = None, usrReprPending = None) ==
-      other.copy(url = None, rating = None, pagePending = None, pubReprPending = None, usrReprPending = None)
+    copy(url = None, rating = None) == other.copy(url = None, rating = None)
 }
 
 object MarkData {
@@ -244,6 +239,7 @@ case class Mark(override val userId: UUID,
 
   import Mark._
 
+  /** A mark has representable user content if it doesn't have a USER_CONTENT repr. */
   def representableUserContent: Boolean = !reprs.exists(_.isUserContent)
 
   /** Get a private representation without an expected rating, if it exists. */
@@ -352,10 +348,7 @@ class MDSearchable(val subj: String,
                    val url: Option[String],
                    val rating: Option[Double],
                    val tags: Option[Set[String]],
-                   val comment: Option[String],
-                   val pagePending: Option[Boolean],
-                   val pubReprPending: Option[Boolean],
-                   val usrReprPending: Option[Boolean]) {
+                   val comment: Option[String]) {
 
   // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
   // rating value (not part of the data(base) model)
@@ -366,11 +359,15 @@ class MDSearchable(val subj: String,
              url: Option[String] = url,
              rating: Option[Double] = rating,
              tags: Option[Set[String]] = tags,
-             comment: Option[String] = comment,
-             pagePending: Option[Boolean] = pagePending,
-             pubReprPending: Option[Boolean] = pubReprPending,
-             usrReprPending: Option[Boolean] = usrReprPending) =
-    new MDSearchable(subj, url, rating, tags, comment, pagePending, pubReprPending, usrReprPending)
+             comment: Option[String] = comment) =
+    new MDSearchable(subj, url, rating, tags, comment)
+
+  /**
+    * This method is called `xtoString` instead of `toString` to avoid conflict with `case class Mark` which
+    * is going to generate its own `toString` method.  Also see `xcopy`.
+    */
+  def xtoString: String =
+    s"${classOf[MDSearchable].getSimpleName}($subj,$url,$rating,$tags,$comment)"
 }
 
 object MDSearchable {
@@ -379,15 +376,12 @@ object MDSearchable {
             url: Option[String],
             rating: Option[Double],
             tags: Option[Set[String]],
-            comment: Option[String],
-            pagePending: Option[Boolean],
-            pubReprPending: Option[Boolean],
-            usrReprPending: Option[Boolean]): MDSearchable =
-    new MDSearchable(subj, url, rating, tags, comment, pagePending, pubReprPending, usrReprPending)
+            comment: Option[String]): MDSearchable =
+    new MDSearchable(subj, url, rating, tags, comment)
 
-  def unapply(obj: MDSearchable): Option[(String, Option[String], Option[Double],
-              Option[Set[String]], Option[String], Option[Boolean], Option[Boolean], Option[Boolean])] =
-    Some((obj.subj, obj.url, obj.rating, obj.tags, obj.comment, obj.pagePending, obj.pubReprPending, obj.usrReprPending))
+  def unapply(obj: MDSearchable):
+      Option[(String, Option[String], Option[Double], Option[Set[String]], Option[String])] =
+    Some((obj.subj, obj.url, obj.rating, obj.tags, obj.comment))
 }
 
 /**
@@ -412,7 +406,7 @@ class MSearchable(val userId: UUID,
 
   /**
     * This method is called `xcopy` instead of `copy` to avoid conflict with `case class Mark` which
-    * is going to generate its own `copy` method.
+    * is going to generate its own `copy` method.  Also see `xtoString`.
     */
   def xcopy(userId: UUID = userId,
             id: ObjectId = id,
@@ -434,15 +428,16 @@ class MSearchable(val userId: UUID,
     * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
-  // TODO: 146: what if privRepr is in NON_IDS?  we should fallback to pubRepr in that case also
   def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
 
-  // TODO: 146: what if private expRating is in NON_IDS?  we should fallback to public in that case also
-  def expectedRating: Option[ObjectId] =
-    reprs.filter(_.isPrivate)
-      .sortBy(_.created).lastOption // .maxBy(_.created) throws an java.lang.UnsupportedOperationException if empty
-      .flatMap(_.expRating) // expected rating from private representation
-      .orElse(reprs.find(_.isPublic).flatMap(_.expRating))
+  /** Basically the same impl as `primaryRepr` except that it returns an expected rating ID (as an Option). */
+  def expectedRating: Option[ObjectId] = {
+    val privExpRating = reprs
+      .filter(x => x.isPrivate && !NON_IDS.contains(x.expRating.getOrElse("")))
+      .sortBy(_.created).lastOption.flatMap(_.expRating)
+    lazy val pubExpRating = reprs.find(_.isPublic).flatMap(_.expRating)
+    privExpRating.orElse(pubExpRating)
+  }
 
   /** Returns true if this Mark's MarkData has all of the test tags. */
   def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.contains(t)))
@@ -451,7 +446,7 @@ class MSearchable(val userId: UUID,
     * Return latest representation ID, if it exists.  Even though public and user-content reprs are supposed to
     * be singletons, it doesn't hurt to be conservative and return the most recent rather than just using `find`.
     */
-  def privRepr: Option[ObjectId] = repr(_.isPrivate)
+  def privRepr: Option[ObjectId] = repr(x => x.isPrivate && !NON_IDS.contains(x.reprId))
   def pubRepr: Option[ObjectId] = repr(_.isPublic)
   def userContentRepr: Option[ObjectId] = repr(_.isUserContent)
   private def repr(pred: ReprInfo => Boolean): Option[ObjectId] =
@@ -485,6 +480,13 @@ class MSearchable(val userId: UUID,
     */
   def blueRating(eratings: Map[ObjectId, ExpectedRating]): Option[Double] =
     if (mark.bMasked) mark.ownerRating else expectedRating.flatMap(eratings.get).flatMap(_.value)
+
+  /**
+    * This method is called `xtoString` instead of `toString` to avoid conflict with `case class Mark` which
+    * is going to generate its own `toString` method.  Also see `xcopy`.
+    */
+  def xtoString: String =
+    s"${classOf[MSearchable].getSimpleName}($userId,$id,${mark.xtoString},$markRef,$aux,$reprs,$timeFrom,$timeThru,$modifiedBy,$sharedWith,$nSharedFrom,$nSharedTo,$score)"
 }
 
 object MSearchable {
@@ -599,9 +601,6 @@ object Mark extends BSONHandlers {
   val TAGSx: String = MARK + "." + nameOf[MarkData](_.tags)
   val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
   val COMNTENCx: String = MARK + "." + nameOf[MarkData](_.commentEncoded)
-  val PGPENDx: String = MARK + "." + nameOf[MarkData](_.pagePending)
-  val PUBPENDx: String = MARK + "." + nameOf[MarkData](_.pubReprPending)
-  val USRPENDx: String = MARK + "." + nameOf[MarkData](_.usrReprPending)
 
   val REFIDx: String = nameOf[Mark](_.markRef) + "." + nameOf[MarkRef](_.markId)
 

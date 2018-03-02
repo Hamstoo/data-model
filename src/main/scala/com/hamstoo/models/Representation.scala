@@ -259,7 +259,6 @@ object Representation extends BSONHandlers {
       = Value
   }
 
-  // TODO: check this https://github.com/lloydmeta/enumeratum
   /** Representation type enumeration. */
   object ReprType extends Enumeration {
 
