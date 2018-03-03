@@ -43,8 +43,6 @@ class MongoPagesDao(db: () => Future[DefaultDB])
     _ = logger.debug(s"Inserting page for mark ${page.markId}")
     wr <- c.insert(page)
     _ <- wr.failIfError
-    _ <- if (ReprType.withName(page.reprType) != ReprType.PRIVATE) Future.unit
-         else marksDao.unsetPagePending(page.markId)
   } yield {
     logger.debug("Page inserted")
     page
@@ -104,27 +102,4 @@ class MongoPagesDao(db: () => Future[DefaultDB])
     wr <- c.remove(d :~ MARK_ID -> markId :~ REPR_TYPE -> ReprType.USER_CONTENT.toString)
     _ <- wr.failIfError
   } yield logger.debug(s"User-content page of mark $markId was deleted")
-
-  /** Retrieves a list of n Pages that require representations. */
-  def findMissingReprPages(n: Int): Future[Seq[Mark]] = {
-    logger.debug("Finding pages with missing representations")
-    for {
-      c <- dbColl()
-      pages <- c.find(d :~ REPR_ID -> (d :~ "$exists" -> false)).coll[Page, Seq](n)
-
-      // TODO: this should eventually be changed to truly only return Pages but repr-engine isn't there yet
-      // TODO: and it might be a moot concern anyway given issue #260
-      marks <- marksDao.retrieveInsecureSeq(pages.map(_.markId))
-
-      // if a Page refers to a non-current markId then don't bother computing a repr for it (and ensure we don't
-      // come back to it in a future findMissingReprPages iteration), having to do this here is merely a factor
-      // of not returning Pages, as we should be, but returning Marks instead (again, moot per issue #260)
-      noMarkPages = pages.filterNot(pg => marks.map(_.id).contains(pg.markId))
-      _ <- Future.sequence(noMarkPages.map(pg => updateRepr(pg, NONE_REPR_ID)))
-
-    } yield {
-      logger.debug(s"${pages.size} pages (first, at most, 5 mark IDs: ${pages.map(_.markId).take(5)}) belonging to ${marks.size} marks with missing representations were retrieved")
-      marks
-    }
-  }
 }

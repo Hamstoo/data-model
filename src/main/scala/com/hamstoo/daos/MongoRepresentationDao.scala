@@ -1,15 +1,13 @@
 package com.hamstoo.daos
 
 import com.hamstoo.models.Representation._
-import com.hamstoo.models.{Page, Representation, RSearchable}
+import com.hamstoo.models.{Representation, RSearchable}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, Macros}
 
-import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
