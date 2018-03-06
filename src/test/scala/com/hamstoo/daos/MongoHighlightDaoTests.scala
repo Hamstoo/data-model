@@ -2,7 +2,8 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{Highlight, PageCoord, User}
+import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.models._
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import org.scalatest.OptionValues
@@ -22,9 +23,16 @@ class MongoHighlightDaoTests
   val markId: String = constructMarkId()
   val h = Highlight(usrId = userId, markId = markId, pos = Highlight.Position(Nil),
                     pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("first", "", ""))
+  val usrRepr: ReprInfo = ReprInfo("reprId", ReprType.USER_CONTENT)
+  val m = Mark(userId, markId, mark = MarkData("some subj", None), reprs = Seq(usrRepr))
 
-  "MongoHighlightDao" should "(UNIT) insert highlights" in {
+  "MongoHighlightDao" should "(UNIT) insert highlights, unset user content repr" in {
+    marksDao.insert(m).futureValue shouldEqual m
+    marksDao.retrieve(User(userId), markId).futureValue.value.userContentRepr should not equal None
+
     hlightsDao.insert(h).futureValue shouldEqual h
+
+    marksDao.retrieve(User(userId), markId).futureValue.value.userContentRepr shouldEqual None
   }
 
   /*it should "(UNIT) retrieve highlights by id" in {
@@ -41,7 +49,12 @@ class MongoHighlightDaoTests
   }
 
   it should "(UNIT) delete highlight" in {
+    marksDao.insertReprInfo(m.id, usrRepr).futureValue shouldEqual {}
+    marksDao.retrieve(User(m.userId), m.id).futureValue.value.userContentRepr should not equal None
+
     hlightsDao.delete(h.usrId, h.id).futureValue shouldEqual {}
     hlightsDao.retrieve(User(h.usrId), h.markId).futureValue shouldEqual Nil
+
+    marksDao.retrieve(User(m.userId), m.id).futureValue.value.userContentRepr shouldEqual None
   }
 }
