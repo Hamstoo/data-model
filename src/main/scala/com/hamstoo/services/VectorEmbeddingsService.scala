@@ -1,5 +1,7 @@
 package com.hamstoo.services
 
+import java.util.Locale
+
 import breeze.linalg.{DenseMatrix, DenseVector, svd}
 import com.hamstoo.daos.MongoRepresentationDao.{CONTENT_WGT, KWORDS_WGT}
 import com.hamstoo.models.Representation
@@ -346,7 +348,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
       val str =
         "inevitable stagnation despotic rage providing species absorbs conventional serious youthful rate nonetheless"
       str.split(" ").foreach { w =>
-        vectorizer.dbCachedLookup(vectorizer.ENGLISH, w)
+        vectorizer.dbCachedLookup(Locale.ENGLISH, w)
           .foreach { case (v, _) =>
             val cosines = clusters.map(_.vecSum cosine v).map(cos => f"$cos%.2f")
             println(s"WORD: $w -> COSINES: $cosines")
@@ -387,7 +389,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
         // call dbCachedLookupFuture for each non-standardized/raw word in `grouped`
         // TODO: it would be nice if we could standardize the word first before calling `dbCachedLookup`
         // TODO: this would cut down on re-querying vectors for words that have already been found
-        vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, grouped.head._1)
+        vectorizer.dbCachedLookupFuture(Locale.ENGLISH, grouped.head._1)
           .map { optWordVec =>
             optWordVec.collect { case (vec, standardizedWord) =>
               val updt = wordCounts.getOrElse(standardizedWord, (0, vec))
@@ -406,7 +408,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
 
       // TODO: it would be nice if we could standardize the word first before calling `dbCachedLookup`
       // TODO: this would cut down on re-querying vectors for words that have already been found
-      vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, w).map {
+      vectorizer.dbCachedLookupFuture(Locale.ENGLISH, w).map {
         _.map { case (vec, standardizedWord) =>
           wCount += 1 // not threadsafe, but just for testing, so who cares
           (standardizedWord, (n, vec))

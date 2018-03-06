@@ -1,5 +1,7 @@
 package com.hamstoo.services
 
+import java.util.Locale
+
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingService.WordMass
@@ -23,8 +25,8 @@ class VectorEmbeddingsServiceTests
 
   implicit val ex: ExecutionContext = system.dispatcher
 
-  lazy val vectorizer = new Vectorizer(AhcWSClient(), vectorsDao, vectorsLink)
-  lazy val idfModel = new IDFModel(idfsResource)
+  lazy val vectorizer = new Vectorizer_Impl(AhcWSClient(), vectorsDao, vectorsLink)
+  lazy val idfModel = new IDFModel_Impl(idfsResource)
   lazy val vecSvc = new VectorEmbeddingsService(vectorizer, idfModel)
 
   // skip all of these tests because CircleCI doesn't have access to the conceptnet-vectors container
@@ -126,7 +128,6 @@ class VectorEmbeddingsServiceTests
     cosines(3) shouldEqual 0.977 +- 1e-3 // 0.905
     cosines(4) shouldEqual 0.346 +- 1e-3 // 0.522
     cosines(5) shouldEqual 0.563 +- 1e-3 // 0.516
-
   }
 
   it should "select top words" ignore {
@@ -147,7 +148,7 @@ class VectorEmbeddingsServiceTests
         ("ford"  , -0.626,  0.630),
         ("toyota", -0.482,  0.846)).foreach { case (w, s0, s1) =>
 
-      val wordVec = vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, w).futureValue.get._1
+      val wordVec = vectorizer.dbCachedLookupFuture(Locale.ENGLISH, w).futureValue.get._1
       vecs.head.cosine(wordVec) shouldEqual s0 +- 1e-3
       vecs(1).cosine(wordVec) shouldEqual s1 +- 1e-3
     }

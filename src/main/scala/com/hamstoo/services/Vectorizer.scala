@@ -2,6 +2,8 @@ package com.hamstoo.services
 
 import java.util.Locale
 
+import com.google.inject.name.Named
+import com.google.inject.{ImplementedBy, Inject, Singleton}
 import com.hamstoo.daos.MongoVectorsDao
 import com.hamstoo.models.Representation.Vec
 import play.api.Logger
@@ -21,22 +23,27 @@ object Vectorizer {
   val logger: Logger = Logger(classOf[Vectorizer])
 }
 
+@ImplementedBy(classOf[Vectorizer_Impl])
+trait Vectorizer {
+  def dbCachedLookupFuture(locale: Locale, term: String): Future[Option[(Vec, String)]]
+}
+
 /**
   * This class is a wrapper around the MongoVectorsDao and the conceptnet-vectors service.  It's primary function
   * is to abstract away the difference between the two so that the user doesn't have to know where the vectors
   * are coming from.
   */
-class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink: String) {
+@Singleton
+class Vectorizer_Impl @Inject() (httpClient: WSClient,
+                                 vectorsDao: MongoVectorsDao,
+                                 @Named("vectors.link") vectorsLink: String)
+    extends Vectorizer {
 
   import Vectorizer._
 
   // reinitialize these so that we can use them in Akka systems when actors get restarted
   dbCount = 0
   fCount = 0
-
-  // should be a 2-letter language code, e.g. "en"
-  // TODO: https://github.com/Hamstoo/hamstoo/issues/68
-  val ENGLISH: String = Locale.ENGLISH.getLanguage
 
   // define caches for calls out to the vector service
   val MAX_CAPACITY: Int = 2048
@@ -48,11 +55,11 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
   /**
     * Lookup a single term or word.
     */
-  @deprecated("Deprecated in favor of DB mirrored lookup.", "0.9.0")
+  /*@deprecated("Deprecated in favor of DB mirrored lookup.", "0.9.0")
   def lookup(term: String): Future[Option[Vec]] = {
-    val link = s"$vectorsLink/$ENGLISH/$term"
+    val link = s"$vectorsLink/${Locale.ENGLISH.getLanguage}/$term"
     httpClient.url(link).get map handleResponse(_.json.as[Vec])
-  }
+  }*/
 
   /**
     * Post out to Python's conceptnet5.vectors.standardize_uri so as to avoid re-implementing it in Scala.
@@ -85,16 +92,19 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
     * Vector lookup with caching in database. This method looks up the term first, then the URI, and
     * only queries the vectors service if no cached entry found.
     */
-  def dbCachedLookupFuture(language: String, term: String): Future[Option[(Vec, String)]] = {
+  override def dbCachedLookupFuture(locale: Locale, term: String): Future[Option[(Vec, String)]] = {
 
     val verbose: Boolean = Vectorizer.dbCount < 100 || Vectorizer.dbCount % 100 == 0
 
     // `mtch` appears to have trailing punctuation removed (was that the intent?)
-    termRgx.findFirstMatchIn(term.toLowerCase(Locale.ENGLISH)).map { mtch =>
+    termRgx.findFirstMatchIn(term.toLowerCase(locale)).map { mtch =>
 
       // `standardizedTerm` appears to have leading punctuation removed (was that the intent?)
       val standardizedTerm = mtch.group(1).replaceAll("’", "'").replaceAll(s"($spcrRgx)+", "_")
-      val uri = s"/$language/$standardizedTerm"
+
+      // `locale.getLanguage` should be a 2-letter language code, e.g. "en"
+      // TODO: https://github.com/Hamstoo/hamstoo/issues/68
+      val uri = s"/${locale.getLanguage}/$standardizedTerm"
       //println(s"Match [$standardizedTerm] for term [$term]")
 
       /** If a word vec isn't in the DB, then attempt to fetch it from the conceptnet-vectors service. */
@@ -126,8 +136,8 @@ class Vectorizer(httpClient: WSClient, vectorsDao: MongoVectorsDao, vectorsLink:
 
   /** Preserves original `dbCachedLookup` behavior: what does the future hold? */
   @deprecated("Deprecated in favor of dbCachedLookupFuture.", "0.9.11")
-  def dbCachedLookup(language: String, term: String): Option[(Vec, String)] =
-    Await.result(dbCachedLookupFuture(language, term), 7 seconds)
+  def dbCachedLookup(locale: Locale, term: String): Option[(Vec, String)] =
+    Await.result(dbCachedLookupFuture(locale, term), 7 seconds)
 
   /** Handle vector response from APIs that return vectors. */
   private def handleResponse[T](f: WSResponse => T)(response: WSResponse): Option[T] = {

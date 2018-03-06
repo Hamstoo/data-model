@@ -4,12 +4,23 @@ import java.io._
 import java.util.zip.{ZipEntry, ZipInputStream, ZipOutputStream}
 import java.util.{Locale, Scanner}
 
+import com.google.inject.{ImplementedBy, Inject, Singleton}
+import com.google.inject.name.Named
 import play.api.Logger
 import play.api.libs.json.{JsValue, Json}
 import com.hamstoo.utils.cleanly
 
 import scala.collection.mutable
 import scala.util.matching.UnanchoredRegex
+
+/**
+  * Use @ImplementedBy annotation so that we don't have to implement a @Provides method.  Guice will use
+  * this implementation by default, unless another is explicitly bound.
+  */
+@ImplementedBy(classOf[IDFModel_Impl])
+trait IDFModel {
+  def transform(word: String): Double
+}
 
 /**
   * IDF calculator.
@@ -31,7 +42,9 @@ import scala.util.matching.UnanchoredRegex
   * http://opensourceconnections.com/blog/2015/10/16/bm25-the-next-generation-of-lucene-relevation/
   * http://www.benfrederickson.com/distance-metrics/
   */
-class IDFModel(zipfileResource: String, opzipfilepath: Option[String] = None) {
+@Singleton
+class IDFModel_Impl @Inject() (@Named("idfs.resource") zipfileResource: String, opzipfilepath: Option[String] = None)
+    extends IDFModel {
 
   val logger: Logger = Logger(classOf[IDFModel])
 
@@ -61,7 +74,7 @@ class IDFModel(zipfileResource: String, opzipfilepath: Option[String] = None) {
   val rgxAlpha: UnanchoredRegex = "[^a-zA-Z]".r.unanchored
 
   /** Returns the IDF of the given word. */
-  def transform(word: String): Double = {
+  override def transform(word: String): Double = {
     math.max(MIN_IDF, idfs.getOrElse(word, {
       // try to ignore words containing punctuation or digits by assigning them MIN_IDF, note however that this
       // will include multiple-word terms, like european_otter, which *are* processed correctly by word vec code

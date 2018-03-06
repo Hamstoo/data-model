@@ -89,7 +89,7 @@ object GroupReduce {
             }.toMap.seq
 
           // cross-sectional (across entities) aggregation (or both cross-sectional/longitudinal combined)
-          case longitudinal =>
+          case _ =>
             val svs: Seq[SourceValue[T]] = g.data.flatMap(_.values.values)
             val reducedVal = reducer(svs.map(_.value))
             logger.debug(s"Cross-sectional reduce at ${knownTime.dt}: $reducedVal")
