@@ -77,6 +77,10 @@ object Datum {
 
   /** Shortcut if the two timestamps are the same. */
   def apply[T](id: EntityId, ts: TimeStamp, value: T): Datum[T] = new Datum(id, ts, ts, value)
+
+  // TODO: switch around the order of constructor parameters for consistency's sake
+  def apply[T](id: EntityId, sourceTime: TimeStamp, knownTime: TimeStamp, value: T): Datum[T] =
+    new Datum(id, sourceTime, knownTime, value)
 }
 
 object Data {

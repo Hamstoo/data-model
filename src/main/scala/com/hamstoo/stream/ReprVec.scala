@@ -4,6 +4,8 @@ import java.util.UUID
 
 import akka.stream.Materializer
 import akka.stream.scaladsl.Sink
+import com.google.inject.name.Named
+import com.google.inject.{ImplementedBy, Inject, Singleton}
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
 import com.hamstoo.models.Representation.{Vec, VecEnum}
 import com.hamstoo.stream.Clock.Clock
@@ -14,13 +16,17 @@ import scala.collection.immutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
+@ImplementedBy(classOf[ReprVec_Impl])
+trait ReprVec extends DataSource[Vec]
+
 /**
   * A stream of a user's representation's vectors.
   * @param userId  The UUID of the user's marks represented by this stream.
   */
-//@Singleton // cannot be singleton b/c of `userId` but how do other types of DataStreams be made so?
-case class ReprVec(userId: UUID)(implicit clock: Clock, db: () => Future[DefaultDB], m: Materializer)
-    extends DataSource[Vec] {
+@Singleton
+case class ReprVec_Impl @Inject() (@Named("user.id") userId: UUID)
+                                  (implicit clock: Clock, db: () => Future[DefaultDB], m: Materializer)
+    extends ReprVec {
 
   private val marksDao = new MongoMarksDao(db)(new MongoUserDao(db), implicitly)
   private val reprsDao = new MongoRepresentationDao(db)

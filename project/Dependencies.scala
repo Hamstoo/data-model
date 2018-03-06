@@ -34,5 +34,7 @@ object Dependencies {
     "org.scalatest" %% "scalatest" % "3.0.4",
     "com.github.simplyscala" %% "scalatest-embedmongo" % "0.2.4",
     "org.mockito" % "mockito-core" % "2.10.0" % "test",
-    "net.sourceforge.htmlunit" % "htmlunit" % "2.28")
+    "net.sourceforge.htmlunit" % "htmlunit" % "2.28",
+    "net.codingwell" %% "scala-guice" % "4.1.0"
+  )
 }

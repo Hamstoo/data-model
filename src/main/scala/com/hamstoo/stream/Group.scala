@@ -142,7 +142,8 @@ abstract class HighWatermarkCommandFactory[G <: Group, F <: GroupFactory[G]](tim
 
       // TODO: is it a problem that the group closing isn't triggered until a tick that's `maxDelay` after `end`?
       // TODO: or is this merely "allow[ing] us to keep the memory usage bounded"
-      commandsForInner(d, (g: G) => bCrossSecData || g.end < watermark)
+      val triggerClose = (g: G) => bCrossSecData || g.end < watermark
+      commandsForInner(d, triggerClose)
     }
   }
 }
