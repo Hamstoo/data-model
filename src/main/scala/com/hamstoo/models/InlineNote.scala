@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.{generateDbId, INF_TIME, TIME_NOW}
+import com.hamstoo.utils.{INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import play.api.libs.json.{JsObject, Json}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -20,18 +20,17 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * @param timeFrom timestamp
   * @param timeThru version validity time
   */
-case class InlineNote(
-                       usrId: UUID,
-                       sharedWith: Option[SharedWith] = None,
-                       nSharedFrom: Option[Int] = Some(0),
-                       nSharedTo: Option[Int] = Some(0),
-                       id: String = generateDbId(InlineNote.ID_LENGTH),
-                       markId: String,
-                       pos: InlineNote.Position,
-                       pageCoord: Option[PageCoord] = None,
-                       memeId: Option[String] = None,
-                       timeFrom: Long = TIME_NOW,
-                       timeThru: Long = INF_TIME) extends Annotation with HasJsonPreview {
+case class InlineNote(usrId: UUID,
+                      sharedWith: Option[SharedWith] = None,
+                      nSharedFrom: Option[Int] = Some(0),
+                      nSharedTo: Option[Int] = Some(0),
+                      id: ObjectId = generateDbId(InlineNote.ID_LENGTH),
+                      markId: ObjectId,
+                      pos: InlineNote.Position,
+                      pageCoord: Option[PageCoord] = None,
+                      memeId: Option[String] = None,
+                      timeFrom: TimeStamp = TIME_NOW,
+                      timeThru: TimeStamp = INF_TIME) extends Annotation with HasJsonPreview {
 
   override def jsonPreview: JsObject = Json.obj(
     "id" -> id,
@@ -53,7 +52,11 @@ object InlineNote extends BSONHandlers with AnnotationInfo {
   case class Position(path: String,
                       text: String,
                       offsetX: Double,
-                      offsetY: Double) extends Positions
+                      offsetY: Double) extends Positions {
+
+    /** Coordinates (offset) of an inline note in a node.  Useful for sorting. */
+    def nodeCoord = PageCoord(offsetX, offsetY)
+  }
 
   val ID_LENGTH: Int = 16
 
