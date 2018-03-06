@@ -3,6 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
+import com.hamstoo.utils.{ObjectId, TimeStamp}
 
 /**
   * An Annotation is user content that is created right on top of the web pages themselves (e.g. highlights
@@ -14,13 +15,13 @@ import com.github.dwickern.macros.NameOf.nameOf
   */
 trait Annotation extends Shareable { // (backend implementation of Shareable *Annotations* doesn't exist yet)
   val usrId: UUID
-  val id: String
-  val markId: String
+  val id: ObjectId
+  val markId: ObjectId
   val pos: Positions
   val pageCoord: Option[PageCoord]
   val memeId: Option[String]
-  val timeFrom: Long
-  val timeThru: Long
+  val timeFrom: TimeStamp
+  val timeThru: TimeStamp
 
   /** We unfortunately used different variable names for this one in different model classes. */
   def userId: UUID = usrId
@@ -32,12 +33,8 @@ object Annotation {
     * Function-predicate that sorts 2 PageCoords in decreasing order.
     * First sort by `y`, then if they are equal, trying to make comparision by `x`.
     */
-  def sort(a: Annotation, b: Annotation): Boolean = (a.pageCoord, b.pageCoord) match {
-    case (Some(_), None) => false
-    case (Some(a1), Some(b1)) if a1.y > b1.y => false
-    case (Some(a1), Some(b1)) if a1.y == b1.y && a1.x > b1.x => false
-    case _ => true
-  }
+  def sort(a: Annotation, b: Annotation): Boolean =
+    PageCoord.sort(a.pageCoord, b.pageCoord).getOrElse(Positions.sort(a.pos, b.pos))
 }
 
 trait AnnotationInfo extends BSONHandlers {
