@@ -4,12 +4,14 @@ import akka.{Done, NotUsed}
 import akka.actor.Cancellable
 import akka.stream._
 import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
+import com.google.inject.Guice
 import com.hamstoo.models.Representation.Vec
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaEnvironment
-import com.hamstoo.utils.TimeStamp
+import com.hamstoo.utils.{DataInfo, TimeStamp}
+import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import org.joda.time.DateTime
-import play.api.Logger
+import play.api.{Configuration, Logger}
 
 import scala.collection.immutable
 import scala.concurrent.{Await, Future}
@@ -218,5 +220,18 @@ class DataStreamTests
     val x: Double = Await.result(g.run(), 15 seconds)
     logger.info(s"****** GroupReduce should cross-sectionally reduce streams of $what: x = $x")
     x shouldEqual 8.0
+  }
+
+  "Facet values" should "be generated" in {
+
+    def confval(v: AnyRef) = ConfigValueFactory.fromAnyRef(v)
+
+    val config = DataInfo.config
+      .withValue("query", confval("some query"))
+      .withValue("user.id", confval(DataInfo.constructUserId()))
+
+    val injector = Guice.createInjector(new StreamModule(config))
+
+
   }
 }

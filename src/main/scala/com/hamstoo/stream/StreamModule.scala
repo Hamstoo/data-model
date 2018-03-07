@@ -4,17 +4,19 @@ import java.util.UUID
 
 import com.google.inject.name.Names
 import com.google.inject.name.Named
-import com.google.inject.{AbstractModule, Injector, Provides}
-import com.hamstoo.models.Representation.Vec
-import com.hamstoo.services.{IDFModel, Vectorizer}
-import net.codingwell.scalaguice.ScalaModule
-import play.api.Configuration
+import com.google.inject.{Injector, Provides}
+import com.hamstoo.models.Representation.{Vec, VecFunctions}
+import com.hamstoo.services.VectorEmbeddingsService
+import com.hamstoo.utils.ConfigModule
+import com.typesafe.config.Config
+
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
   * "A module is a collection of bindings"
   * "The modules are the building blocks of an injector, which is Guice's object-graph builder."
   */
-class StreamModule(config: Configuration) extends AbstractModule with ScalaModule {
+class StreamModule(config: Config) extends ConfigModule(config) {
 
   /**
     * "To create bindings, extend AbstractModule and override its configure method. In the method body, call
@@ -22,19 +24,14 @@ class StreamModule(config: Configuration) extends AbstractModule with ScalaModul
     */
   override def configure(): Unit = {
 
-    // bind string configuration parameter values
-    // see: https://github.com/google/guice/wiki/FrequentlyAskedQuestions
-    // "To enable [multiple bindings for the same type], bindings support an optional binding annotation"
-    // "The annotation and type together uniquely identify a binding."
-    // TODO: is there anything similar to `Names.bindProperties()` that would just bind all of them?
-    val params = Seq("idfs.resource", "vectors.link", "query")
-    params.foreach { key =>
-      //bindConstant().annotatedWith(Names.named(key)).to(config.get[String](key))
-      bind[String].annotatedWith(Names.named(key)).toInstance(config.get[String](key))
-    }
+    // bind typical config parameters like `idfs.resource` and `vectors.link`
+    super.configure()
+
+    // which query string are we computing stats/facet values for?
+    bind[String].annotatedWith(Names.named("query")).toInstance(config.getString("query"))
 
     // which user are we computing stats/facet values for?
-    bind[UUID].annotatedWith(Names.named("user.id")).toInstance(UUID.fromString(config.get[String]("user.id")))
+    bind[UUID].annotatedWith(Names.named("user.id")).toInstance(UUID.fromString(config.getString("user.id")))
 
     //bind[ControllerComponents].to[DefaultControllerComponents]
     //bind[Clock].to[DefaultClock]
@@ -44,21 +41,19 @@ class StreamModule(config: Configuration) extends AbstractModule with ScalaModul
             // then, once constructed, bind Model to a consumer sink
   }
 
+  /** A word vector for the query string, for computing stats in reference to. */
   @Provides @Named("query.vec")
-  def provideQueryVec(@Named("query") query: String, idfModel: IDFModel, vectorizer: Vectorizer): Vec = {
-
-
-
-
-    Seq.empty[Double]
-
-
-
-
+  def provideQueryVec(@Named("query") query: String, vecSvc: VectorEmbeddingsService)
+                     (implicit ec: ExecutionContext): Future[Vec] = for {
+    wordMasses: Seq[VectorEmbeddingsService.WordMass] <- vecSvc.query2Vecs(query)._2
+  } yield {
+    wordMasses.foldLeft(Vec.empty) { case (agg, e) =>
+      if (agg.isEmpty) e.scaledVec else agg + e.scaledVec
+    }.l2Normalize
   }
 
   @Provides
-  def provideModel(injector: Injector): StreamModel = new StreamModel(injector) {
+  def buildModel(injector: Injector): StreamModel = new StreamModel(injector) {
 
     //import net.codingwell.scalaguice.InjectorExtensions._
     //val qc: QueryCorrelation = injector.instance[QueryCorrelation]

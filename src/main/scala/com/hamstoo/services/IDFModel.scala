@@ -6,6 +6,7 @@ import java.util.{Locale, Scanner}
 
 import com.google.inject.{ImplementedBy, Inject, Singleton}
 import com.google.inject.name.Named
+import com.hamstoo.services.IDFModel.ResourcePathHolder
 import play.api.Logger
 import play.api.libs.json.{JsValue, Json}
 import com.hamstoo.utils.cleanly
@@ -13,13 +14,13 @@ import com.hamstoo.utils.cleanly
 import scala.collection.mutable
 import scala.util.matching.UnanchoredRegex
 
-/**
-  * Use @ImplementedBy annotation so that we don't have to implement a @Provides method.  Guice will use
-  * this implementation by default, unless another is explicitly bound.
-  */
-@ImplementedBy(classOf[IDFModel_Impl])
-trait IDFModel {
-  def transform(word: String): Double
+object IDFModel {
+
+  // https://github.com/google/guice/wiki/FrequentlyAskedQuestions#how-can-i-inject-optional-parameters-into-a-constructor
+  class ResourcePathHolder {
+    @Inject(optional = true) @Named("idfs.resource.path")
+    val value: Option[String] = None
+  }
 }
 
 /**
@@ -43,8 +44,7 @@ trait IDFModel {
   * http://www.benfrederickson.com/distance-metrics/
   */
 @Singleton
-class IDFModel_Impl @Inject() (@Named("idfs.resource") zipfileResource: String, opzipfilepath: Option[String] = None)
-    extends IDFModel {
+class IDFModel @Inject() (@Named("idfs.resource") zipfileResource: String, opzipfilepath: ResourcePathHolder) {
 
   val logger: Logger = Logger(classOf[IDFModel])
 
@@ -60,13 +60,13 @@ class IDFModel_Impl @Inject() (@Named("idfs.resource") zipfileResource: String, 
 
   // Load IDFs in from a zipped JSON file.
   // get resource file off the classpath if not explicitly provided
-  val zipfilepath: String = opzipfilepath.getOrElse('/' + zipfileResource)
-  val inputStream: InputStream = opzipfilepath.fold(getClass.getResourceAsStream(zipfilepath))(new FileInputStream(_))
+  val zipfilepath: String = opzipfilepath.value.getOrElse('/' + zipfileResource)
+  val inputStream: InputStream = opzipfilepath.value.fold(getClass.getResourceAsStream(zipfilepath))(new FileInputStream(_))
   val infilepath: String = zipfilepath.substring(0, zipfilepath.length - 4) // remove ".zip"
   logger.info(s"Loading IDFs from $zipfilepath")
   cleanly(new ZipInputStream(inputStream))(_.close) { in =>
     in.getNextEntry // move to the first/only compressed file in the zip archive
-  val js: JsValue = Json.parse(in)
+    val js: JsValue = Json.parse(in)
     idfs = js.as[MapType]
     maxIdf = idfs.maxBy(_._2)._2
   }
@@ -74,7 +74,7 @@ class IDFModel_Impl @Inject() (@Named("idfs.resource") zipfileResource: String, 
   val rgxAlpha: UnanchoredRegex = "[^a-zA-Z]".r.unanchored
 
   /** Returns the IDF of the given word. */
-  override def transform(word: String): Double = {
+  def transform(word: String): Double = {
     math.max(MIN_IDF, idfs.getOrElse(word, {
       // try to ignore words containing punctuation or digits by assigning them MIN_IDF, note however that this
       // will include multiple-word terms, like european_otter, which *are* processed correctly by word vec code
