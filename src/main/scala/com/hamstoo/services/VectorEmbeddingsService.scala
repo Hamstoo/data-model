@@ -3,6 +3,7 @@ package com.hamstoo.services
 import java.util.Locale
 
 import breeze.linalg.{DenseMatrix, DenseVector, svd}
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.MongoRepresentationDao.{CONTENT_WGT, KWORDS_WGT}
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation.{Vec, VecEnum, _}
@@ -13,9 +14,10 @@ import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.Random
+import scala.util.matching.Regex
 
 
-object VectorEmbeddingService {
+object VectorEmbeddingsService {
 
   /**
     * A word's `mass` can be thought of as its TF-IDF or BM25 score.  `tf` is a function of `count` such as
@@ -33,9 +35,10 @@ object VectorEmbeddingService {
   * The goal of each algorithm is to identify clusters of a document's words containing high TF-IDF words
   * and from each cluster compute an average of its words' vectors as a representation of the document.
   */
-class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
+@Singleton // Guice Singleton, not Java Singleton, so there is one per Injector instance, not one per process
+class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFModel) {
 
-  import VectorEmbeddingService._
+  import VectorEmbeddingsService._
 
   val logger = Logger(classOf[VectorEmbeddingsService])
 
@@ -439,6 +442,34 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     nDesired
   }
 
+  // regex that matches all possible valid word delimiters, this includes various punctuation possibly followed or
+  // prepended by spaces, it's used in the following word-matching regex and for these spacers replacement later
+  val spcrRgx: String = """[-\/_\+—]|(\.\s+)|([\s,:;?!…]\s*)|(\.\.\.\s*)|(\s*["“”\(\)]\s*)"""
+
+  // regex that matches all latin alphabet words, separated by all kinds of spacers.
+  val termRgx: Regex = s"[^a-z]*([a-z]+(($spcrRgx|[\\.'’])[a-z]+)*+)".r.unanchored
+
+  /**
+    * For a given query string, compute WordMasses, which include weighted word vectors, for each de-duplicated
+    * word in the string.
+    */
+  def query2Vecs(query: String): (Seq[(String, Int)], Future[Seq[WordMass]]) = {
+
+    // don't use a Set here, allow words to be specified more than once as a potential way for users to tailor queries
+    val cleanedQuery: Seq[(String, Int)] = utils.tokenize(utils.parse(query))
+      .filter(_.nonEmpty)
+      .flatMap(termRgx.findFirstMatchIn)
+      .map(_.group(1).replaceAll("’", "'").replaceAll(s"($spcrRgx)+", ""))
+      .groupBy(identity).mapValues(_.size) // count occurrences of each word
+      .toSeq // must be converted from a map to a seq b/c it gets zipped with other parallel seqs down below
+
+    // cleaned query words with the same number of original occurrences joined back into a single string
+    val rejoinedQuery = cleanedQuery.map { case (w, n) => (w + " ") * n }.mkString(" ")
+
+    // get vectors for all terms (per `identity`) in search query
+    (cleanedQuery, text2TopWords(rejoinedQuery, identity).map(_._1))
+  }
+
   /**
     * Choose top words (based on BM25 score) to be used in the various clustering and word vector aggregation
     * algorithms.  Generally speaking, we're trying to select those words that are indicative of the essence
@@ -471,7 +502,8 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
       // scale the TFs by their IDFs (i.e. "mass") and the word vectors by the resulting product
       val withIdfs = counts.toSeq.map { case (w, (n, v)) =>
         val tf = bm25Tf(n, docLength) // "true" docLength
-      val mass = tf * idfModel.transform(w)
+        val mass = tf * idfModel.transform(w)
+        logger.debug(s"text2TopWords.withIdfs: WordMass($w, $n, $tf * ${mass / tf} = $mass")
         WordMass(w, n, tf, mass, v * mass)
       }
 

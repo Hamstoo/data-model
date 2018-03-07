@@ -23,21 +23,18 @@ object Vectorizer {
   val logger: Logger = Logger(classOf[Vectorizer])
 }
 
-@ImplementedBy(classOf[Vectorizer_Impl])
-trait Vectorizer {
-  def dbCachedLookupFuture(locale: Locale, term: String): Future[Option[(Vec, String)]]
-}
-
 /**
   * This class is a wrapper around the MongoVectorsDao and the conceptnet-vectors service.  It's primary function
   * is to abstract away the difference between the two so that the user doesn't have to know where the vectors
   * are coming from.
+  *
+  * "Guice can create bindings for concrete types by using the type's injectable constructor."
+  *   [https://github.com/google/guice/wiki/JustInTimeBindings]
   */
 @Singleton
-class Vectorizer_Impl @Inject() (httpClient: WSClient,
-                                 vectorsDao: MongoVectorsDao,
-                                 @Named("vectors.link") vectorsLink: String)
-    extends Vectorizer {
+class Vectorizer @Inject() (httpClient: WSClient,
+                            vectorsDao: MongoVectorsDao,
+                            @Named("vectors.link") vectorsLink: String) {
 
   import Vectorizer._
 
@@ -92,7 +89,7 @@ class Vectorizer_Impl @Inject() (httpClient: WSClient,
     * Vector lookup with caching in database. This method looks up the term first, then the URI, and
     * only queries the vectors service if no cached entry found.
     */
-  override def dbCachedLookupFuture(locale: Locale, term: String): Future[Option[(Vec, String)]] = {
+  def dbCachedLookupFuture(locale: Locale, term: String): Future[Option[(Vec, String)]] = {
 
     val verbose: Boolean = Vectorizer.dbCount < 100 || Vectorizer.dbCount % 100 == 0
 

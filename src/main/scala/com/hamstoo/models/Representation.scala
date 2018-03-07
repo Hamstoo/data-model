@@ -161,7 +161,9 @@ case class Representation(
 }
 
 object Representation extends BSONHandlers {
+
   type Vec = Seq[Double]
+  object Vec { def empty = Seq.empty[Double] }
 
   val DUPLICATE_VEC_SIMILARITY_THRESHOLD = 0.95
   val DUPLICATE_EDIT_SIMILARITY_THRESHOLD = 0.85
