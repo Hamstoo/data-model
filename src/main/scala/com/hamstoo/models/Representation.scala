@@ -1,7 +1,5 @@
 package com.hamstoo.models
 
-import java.util.UUID
-
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.daos.MongoMarksDao
 import com.hamstoo.models.Representation.VecEnum
@@ -57,7 +55,7 @@ class RSearchable(val id: String,
   def isDuplicate(oth: RSearchable): Boolean = {
 
     // quickly test for identical doctexts first and otherwise use header as a filter on top of vec/edit similarities
-    !doctext.isEmpty && doctext == oth.doctext || header == oth.header && (
+    doctext.nonEmpty && doctext == oth.doctext || header == oth.header && (
 
       // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
       // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is

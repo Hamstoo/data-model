@@ -61,8 +61,9 @@ object MediaTypeSupport {
   def isHTML(mt: MediaType): Boolean = isMimeType(HTMLMimeTypes)(mt)
   def isPDF(mt: MediaType): Boolean = isMimeType(PDFMimeTypes)(mt)
 
+  /** Text types are supported by PDFRepresentationService so be sure to explicitly exclude `isHTML`/"text/html". */
   def isText(mt: MediaType): Boolean =
-    mt.getPrimaryType == "text" || isMimeType(TextMimeTypes)(mt)
+    !isHTML(mt) && (mt.getPrimaryType == "text" || isMimeType(TextMimeTypes)(mt))
 
   // TODO: this was changed from _.contains(mt.getPrimaryType) to mt.getPrimaryType.contains(_), please confirm correct
   // TODO: it was also changed from a long complicated !.map.filter.isEmpty expression to `exists`, also please confirm
