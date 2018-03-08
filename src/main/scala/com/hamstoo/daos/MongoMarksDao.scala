@@ -445,7 +445,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
   /** Akka Stream */
   def stream(userId: UUID, begin: TimeStamp, end: TimeStamp)(implicit m: Materializer): Source[Mark, NotUsed] = {
-    logger.debug(s"Streaming marks of user $userId")
+    logger.debug(s"Streaming user $userId's marks between ${begin.dt} and ${end.dt}")
 
     // TODO: issue #146, loop through all of each mark's reprs/versions and timestamps
     Source.fromFuture(dbColl())
