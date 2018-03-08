@@ -5,31 +5,26 @@ import java.util.UUID
 import akka.stream.Materializer
 import akka.stream.scaladsl.Sink
 import com.google.inject.name.Named
-import com.google.inject.{ImplementedBy, Inject, Singleton}
-import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
+import com.google.inject.{Inject, Singleton}
+import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao}
+import com.hamstoo.utils.{DurationMils, TimeStamp}
 import com.hamstoo.models.Representation.{Vec, VecEnum}
-import com.hamstoo.stream.Clock.Clock
-import com.hamstoo.utils.TimeStamp
-import reactivemongo.api.DefaultDB
 
 import scala.collection.immutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-@ImplementedBy(classOf[ReprVec_Impl])
-trait ReprVec extends DataSource[Vec]
-
 /**
-  * A stream of a user's representation's vectors.
+  * A stream of a user's mark's representation vectors.
   * @param userId  The UUID of the user's marks represented by this stream.
   */
 @Singleton
-case class ReprVec_Impl @Inject() (@Named("user.id") userId: UUID)
-                                  (implicit clock: Clock, db: () => Future[DefaultDB], m: Materializer)
-    extends ReprVec {
-
-  private val marksDao = new MongoMarksDao(db)(new MongoUserDao(db), implicitly)
-  private val reprsDao = new MongoRepresentationDao(db)
+case class ReprVec @Inject() (@Named("user.id") userId: UUID,
+                              marksDao: MongoMarksDao,
+                              reprsDao: MongoRepresentationDao)
+                             (implicit clock: Clock,
+                              m: Materializer) // implicits don't really do much when using Guice/DI, do they?
+    extends DataSource[Vec] {
 
   // TODO: should ReprVec just have an apply method like GroupReduce and pass the UUID in through there?
   // TODO: or should we reserve apply for the DSL?
@@ -43,7 +38,7 @@ case class ReprVec_Impl @Inject() (@Named("user.id") userId: UUID)
       reprsDao.retrieve(mark.primaryRepr).map {
         _.flatMap { repr =>
           repr.vectors.get(VecEnum.PC1.toString).map { vec =>
-            Datum(ReprId(repr.id), mark.timeFrom, vec)
+            Datum(MarkId(mark.id), mark.timeFrom, vec)
           }
         }
       }

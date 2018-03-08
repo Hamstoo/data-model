@@ -11,6 +11,7 @@ import spire.tailrec
   */
 trait EntityId
 case class UnitId() extends EntityId
+case class MarkId(id: ObjectId) extends EntityId
 case class ReprId(id: ObjectId) extends EntityId
 case class CompoundId(ids: Set[EntityId]) extends EntityId
 

@@ -19,7 +19,6 @@ class StreamModel(injector: Injector) {
   val facets = mutable.Map.empty[String, DataStream[Double]]
 
 
-  // TODO: switch Manifest to TypeTag or ClassTag (https://docs.scala-lang.org/overviews/reflection/typetags-manifests.html)
   def add[T <:DataStream[Double] :TypeTag :ClassTag](/*name: String*/): Unit = {
 
     // def add[T : TypeTag](): Unit = println(typeTag[T].tpe.erasure.toString)
@@ -28,6 +27,7 @@ class StreamModel(injector: Injector) {
     val name: String = typeTag[T].tpe.erasure.toString
     logger.info(s"Adding data stream: $name")
 
+    // note that scalaguice still uses old Scala version implicit Manifests
     import net.codingwell.scalaguice.InjectorExtensions._
     val t: T = injector.instance[T]
 

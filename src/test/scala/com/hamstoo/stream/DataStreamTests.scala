@@ -5,62 +5,30 @@ import akka.actor.Cancellable
 import akka.stream._
 import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
 import com.google.inject.Guice
+import com.google.inject.name.Names
+import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoVectorsDao}
 import com.hamstoo.models.Representation.Vec
 import com.hamstoo.test.FutureHandler
-import com.hamstoo.test.env.AkkaEnvironment
-import com.hamstoo.utils.{DataInfo, TimeStamp}
-import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
+import com.hamstoo.test.env.AkkaMongoEnvironment
+import com.hamstoo.utils.{DataInfo, DurationMils, TimeStamp}
+import com.typesafe.config.ConfigValueFactory
 import org.joda.time.DateTime
-import play.api.{Configuration, Logger}
+import play.api.libs.ws.WSClient
+import play.api.libs.ws.ahc.AhcWSClient
+import play.api.Logger
 
 import scala.collection.immutable
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
 
 /**
   * DataStreamTests
   */
 class DataStreamTests
-  extends AkkaEnvironment("DataStreamTests-ActorSystem")
+  extends AkkaMongoEnvironment("DataStreamTests-ActorSystem")
     with FutureHandler {
 
   val logger = Logger(classOf[DataStreamTests])
-
-  /*"TimeWindowReducer" should "process URLs" in {
-
-    case class IntId(id: Int) extends EntityId
-
-    val dt = new DateTime(2018, 2, 7)
-
-    val src = Source((0 until 10).map(i => Datum(IntId(i), dt.plusMinutes(i).getMillis, i)))
-    val ds = DataStreamRef(src)
-
-    //TimeDecay(ds, 1 minute)
-
-    // streams should throttle themselves according to the source clock
-    // send snapshots (or batches of datums) at tick times
-    // so streams can decide themselves when to update their internal caches
-
-    // really we need producers to emit elements only when the clock ticks, so perhaps the clock is a source
-    // that broadcasts rather than a sink that pulls -- yes, and the ticking triggers the source to load more
-    // elements
-
-
-    // what happens when you zip a stream of natural numbers with even numbers?
-    // the process of zipping is what we want to abstractify away first (functional style)
-    // then create another abstraction to combine binary ops into zip ops for the dsl
-    // perhaps using reflection
-
-    // this is the same mechanism that should report data requirement lags down the dependency chain
-
-    // so there are 2 clocks, both sources, a timeKnown clock and a sourceTime clock (or multiple sourceTime clocks?).
-    // the timeKnown clock starts streaming first and the sourceTime clock (or clocks, one for each data source)
-    // get pulled from based on the timeKnown, so every source has its own clock?
-
-    // or even better, each source has its own clock that gets "inherited" from the source above (so Lag data stream
-    // will change the clock it passes down to its dependants, each clock then "listens" to the clock it was
-    // inherited from and then when a real DataSource finally gets passed a clock, it "listens" to it as well
-  }*/
 
   "Test" should "scratch test 0" in {
     // https://doc.akka.io/docs/akka/2.5.3/scala/stream/stream-rate.html#internal-buffers-and-their-effect
@@ -120,7 +88,6 @@ class DataStreamTests
     //Await.result(g.run(), 15 seconds)
     Thread.sleep(20.seconds.toMillis)
   }
-
 
   "Join" should "join DataStreams" in {
     implicit val materializer: Materializer = ActorMaterializer()
@@ -228,10 +195,35 @@ class DataStreamTests
 
     val config = DataInfo.config
       .withValue("query", confval("some query"))
-      .withValue("user.id", confval(DataInfo.constructUserId()))
+      .withValue("user.id", confval(DataInfo.constructUserId().toString))
 
-    val injector = Guice.createInjector(new StreamModule(config))
+    val injector = Guice.createInjector(new StreamModule(config) {
+      override def configure(): Unit = {
+        super.configure()
+        bind[WSClient].toInstance(AhcWSClient())
+        bind[MongoVectorsDao].toInstance(vectorsDao)
+        bind[ExecutionContext].toInstance(system.dispatcher)
+        bind[Materializer].toInstance(materializer)
 
+        // TODO: these dates should be determined via the injector
+        val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0).getMillis
+        val stop: TimeStamp = new DateTime(2018, 2, 1, 0, 0).getMillis
+        val interval: DurationMils = (1 day).toMillis
+        val clock = Clock(start, stop, interval)
+        bind[Clock]/*.annotatedWith(Names.named("clock"))*/.toInstance(clock)
 
+        bind[MongoMarksDao].toInstance(marksDao)
+        bind[MongoRepresentationDao].toInstance(reprsDao)
+
+      }
+    })
+
+    import net.codingwell.scalaguice.InjectorExtensions._
+    val streamModel: StreamModel = injector.instance[StreamModel]
+
+    val headStream: DataStream[Double] = streamModel.facets.head._2
+
+    val fut: Future[Done] = headStream.source.runWith(Sink.foreach[Data[Double]](d => println(s"$d")))
+    Await.result(fut, 15 seconds)
   }
 }

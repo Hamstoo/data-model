@@ -11,6 +11,8 @@ import scala.concurrent.duration._
   * Combine the elements of multiple streams into a stream of combined elements using a combiner function.
   * This `Join` class was modeled after `akka.stream.scaladsl.ZipWith`.
   *
+  * TODO: similar to the `zipWith` transformer method we should have an (monkey patched) `join` (or `joinWith`) method
+  *
   * Similar to the idea behind RESTful interfaces, we limit the number of ways (methods) of joining two
   * DataStreams to this single approach.  To achieve custom join behavior, EntityIds can be modified
   * to fit this method.  For most applications, however, this behavior is intended to be sufficient to
