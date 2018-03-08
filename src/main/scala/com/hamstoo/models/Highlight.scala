@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.{generateDbId, INF_TIME, TIME_NOW}
+import com.hamstoo.utils.{INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import play.api.libs.json.{JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -22,19 +22,19 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * @param timeFrom timestamp
   * @param timeThru version validity time
   */
-case class Highlight(
-                      usrId: UUID,
-                      sharedWith: Option[SharedWith] = None,
-                      nSharedFrom: Option[Int] = Some(0),
-                      nSharedTo: Option[Int] = Some(0),
-                      id: String = generateDbId(Highlight.ID_LENGTH),
-                      markId: String,
-                      pos: Highlight.Position,
-                      pageCoord: Option[PageCoord] = None,
-                      preview: Highlight.Preview,
-                      memeId: Option[String] = None,
-                      timeFrom: Long = TIME_NOW,
-                      timeThru: Long = INF_TIME) extends Annotation with HasJsonPreview {
+case class Highlight(usrId: UUID,
+                     sharedWith: Option[SharedWith] = None,
+                     nSharedFrom: Option[Int] = Some(0),
+                     nSharedTo: Option[Int] = Some(0),
+                     id: ObjectId = generateDbId(Highlight.ID_LENGTH),
+                     markId: ObjectId,
+                     pos: Highlight.Position,
+                     pageCoord: Option[PageCoord] = None,
+                     preview: Highlight.Preview,
+                     memeId: Option[String] = None,
+                     timeFrom: TimeStamp = TIME_NOW,
+                     timeThru: TimeStamp = INF_TIME) extends Annotation with HasJsonPreview {
+
   import Highlight.fmt
 
   override def jsonPreview: JsObject = Json.obj(
