@@ -18,6 +18,7 @@ import play.api.Logger
 import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
+import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.util.matching.Regex
@@ -69,6 +70,11 @@ case class MarkData(override val subj: String,
 
     // example: <p><img></p>
     Jsoup.clean(html2, htmlTagsWhitelist)
+  }
+
+  override def cleanUrl: MarkData = this.url match {
+    case Some(u) => this.copy(url = Some(cleanUrl(u)))
+    case _ => this
   }
 
   /** Check for `Automarked` label. */
@@ -358,12 +364,26 @@ class MDSearchable(val subj: String,
   var bMasked: Boolean = false
   var ownerRating: Option[Double] = None
 
-  def update(subj: String = subj,
-             url: Option[String] = url,
-             rating: Option[Double] = rating,
-             tags: Option[Set[String]] = tags,
-             comment: Option[String] = comment) =
+  def xcopy(subj: String = subj,
+            url: Option[String] = url,
+            rating: Option[Double] = rating,
+            tags: Option[Set[String]] = tags,
+            comment: Option[String] = comment) =
     new MDSearchable(subj, url, rating, tags, comment)
+
+  /** Method for cleaning urls */
+  @tailrec
+  final def cleanUrl(url: String): String = {
+    if (url.contains("#")) cleanUrl(url.split('#').head)
+    else if (url.contains("?")) cleanUrl(url.split('?').head)
+    else url
+  }
+
+  /** Clean url from query parameters and fragment identifier */
+  def cleanUrl: MDSearchable = this.url match {
+    case Some(u) => this.xcopy(url = Some(cleanUrl(u)))
+    case _ => this
+  }
 
   /**
     * This method is called `xtoString` instead of `toString` to avoid conflict with `case class Mark` which
@@ -407,25 +427,27 @@ class MSearchable(val userId: UUID,
                   val nSharedTo: Option[Int],
                   val score: Option[Double]) extends Shareable {
 
+  def isDuplicate(oth: MSearchable): Boolean = isDuplicate(oth.mark)
+
   /** Return true if `oth`er mark is a likely duplicate of this one.  False positives possible.
     * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
     */
-  def isDuplicate(oth: MSearchable): Boolean = {
+  def isDuplicate(oth: MDSearchable): Boolean = {
 
     // quickly test for identical doctexts first and otherwise use header as a filter on top of vec/edit similarities
-    if (mark.url.isDefined && oth.mark.url.get == mark.url.get) true
-    else if (mark.url.isDefined && oth.mark.url.isDefined) {
+    if (mark.url.isDefined && oth.url.get == mark.url.get) true
+    else if (mark.url.isDefined && oth.url.isDefined) {
       // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
       // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
       // because it has too many false positives, like, e.g., when a site has very few English words.
       vecSimilarity(oth) > Mark.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
         editSimilarity(oth) > Mark.DUPLICATE_EDIT_SIMILARITY_THRESHOLD &&
-        compareUrl(mark.url.get, oth.mark.url.get)
+        compareUrl(mark.url.get, oth.url.get)
     } else false
   }
 
   // Define similarity in one place so that it can be used in multiple. */
-  def vecSimilarity(oth: MSearchable): Double = {
+  def vecSimilarity(oth: MDSearchable): Double = {
 
     /** Transform to java primitive types, for compatibility with Java method*/
     def toJavaPrimitives(pair: (Char, Int)): (CharSequence, Integer) =
@@ -444,16 +466,16 @@ class MSearchable(val userId: UUID,
     val cosSim = new CosineSimilarity()
 
     val url = toVectors(mark.url.get)
-    val othUrl = toVectors(oth.mark.url.get)
+    val othUrl = toVectors(oth.url.get)
 
 
     cosSim.cosineSimilarity(url, othUrl)
   }
 
   /** Another kind of similarity, the opposite of (relative) edit distance. */
-  def editSimilarity(oth: MSearchable): Double = {
-    val editDist = LevenshteinDistance.getDefaultInstance.apply(mark.url.get, oth.mark.url.get)
-    val relDist = editDist / math.max(mark.url.get.length, oth.mark.url.get.length).toDouble // toDouble is important here
+  def editSimilarity(oth: MDSearchable): Double = {
+    val editDist = LevenshteinDistance.getDefaultInstance.apply(mark.url.get, oth.url.get)
+    val relDist = editDist / math.max(mark.url.get.length, oth.url.get.length).toDouble // toDouble is important here
     1.0 - relDist
   }
 
@@ -525,7 +547,7 @@ class MSearchable(val userId: UUID,
       val ref = optRef.getOrElse(MarkRef(id)) // create an empty MarkRef (id isn't really used)
 
       val unionedTags = mark.tags.getOrElse(Set.empty[String]) ++ ref.tags.getOrElse(Set.empty[String])
-      val mdata = mark.update(rating = ref.rating,
+      val mdata = mark.xcopy(rating = ref.rating,
         tags = if (unionedTags.isEmpty) None else Some(unionedTags))
       mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
       mdata.ownerRating = mark.rating
