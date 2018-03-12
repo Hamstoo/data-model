@@ -1,6 +1,8 @@
 package com.hamstoo.stream
 
 import com.hamstoo.utils.{ObjectId, TimeStamp}
+import org.joda.time.DateTime
+import play.api.libs.json.Json
 import spire.tailrec
 
 /**
@@ -82,6 +84,19 @@ object Datum {
   // TODO: switch around the order of constructor parameters for consistency's sake
   def apply[T](id: EntityId, sourceTime: TimeStamp, knownTime: TimeStamp, value: T): Datum[T] =
     new Datum(id, sourceTime, knownTime, value)
+}
+
+//class Tick(val time: TimeStamp) extends Datum[TimeStamp](UnitId(), time, time, time)
+
+object Tick {
+  type Tick = Data[TimeStamp]
+
+  //import com.hamstoo.stream.Datum.Tick
+  def apply(time: TimeStamp): Tick = Datum[TimeStamp](UnitId(), time, time, time)
+
+  implicit class ExtendedTick(private val tick: Tick) extends AnyVal {
+    def time: TimeStamp = tick.oval.get.value
+  }
 }
 
 object Data {

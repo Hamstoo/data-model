@@ -3,9 +3,8 @@ package com.hamstoo.stream
 import akka.{Done, NotUsed}
 import akka.actor.Cancellable
 import akka.stream._
-import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
+import akka.stream.scaladsl.{Broadcast, BroadcastHub, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
 import com.google.inject.Guice
-import com.google.inject.name.Names
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoVectorsDao}
 import com.hamstoo.models.Representation.Vec
 import com.hamstoo.test.FutureHandler
@@ -30,7 +29,7 @@ class DataStreamTests
 
   val logger = Logger(classOf[DataStreamTests])
 
-  "Test" should "scratch test 0" in {
+  /*"Test" should "scratch test 0" in {
     // https://doc.akka.io/docs/akka/2.5.3/scala/stream/stream-rate.html#internal-buffers-and-their-effect
 
     implicit val materializer: Materializer = ActorMaterializer()
@@ -225,5 +224,72 @@ class DataStreamTests
 
     val fut: Future[Done] = headStream.source.runWith(Sink.foreach[Data[Double]](d => println(s"$d")))
     Await.result(fut, 15 seconds)
+  }*/
+
+  "ClockThrottle" should "throttle a DataStream" in {
+
+
+   /* val producer = Source.tick(1.second, 1.second, "New message")
+
+    // Attach a BroadcastHub Sink to the producer. This will materialize to a
+    // corresponding Source.
+    // (We need to use toMat and Keep.right since by default the materialized
+    // value to the left is used)
+    val runnableGraph: RunnableGraph[Source[String, NotUsed]] =
+    producer.toMat(BroadcastHub.sink(bufferSize = 256))(Keep.right)
+
+    // By running/materializing the producer, we get back a Source, which
+    // gives us access to the elements published by the producer.
+    val fromProducer: Source[String, NotUsed] = runnableGraph.run()
+
+    // Print out messages from the producer in two independent consumers
+    fromProducer.runForeach(msg ⇒ println("consumer1: " + msg))
+    fromProducer.runForeach(msg ⇒ println("consumer2: " + msg))*/
+
+
+
+    implicit val ec: ExecutionContext = system.dispatcher
+
+    val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0).getMillis
+    val stop: TimeStamp = new DateTime(2018, 2, 1, 0, 0).getMillis
+    val interval: DurationMils = (1 day).toMillis
+    implicit val clock = Clock(start, stop, interval)
+
+
+    // this doesn't print anything
+    /*val source = Source(0 to 20)
+      //.addAttributes(Attributes.inputBuffer(initial = 1, max = 1))
+      .buffer(1, OverflowStrategy.backpressure)
+      .runWith(BroadcastHub.sink[Int])
+    Thread.sleep(3000)
+    source.runForeach(n => println(s"------------- source1: $n"))
+    Thread.sleep(3000)
+    source.runForeach(n => println(s"------------- source2: $n"))*/
+
+
+
+
+    class TestSource extends DataSource[TimeStamp](interval: DurationMils) {
+      def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[TimeStamp]]] = Future {
+        import com.hamstoo.utils.ExtendedTimeStamp
+        logger.debug(s"PRELOAD BEGIN: ${begin.dt} [${begin/1000}] to [${end/1000}]")
+        val x = (begin until end by 1000*60*60*8).map(t => Datum[TimeStamp](MarkId("ClockThrottleTestId"), t, t))
+        logger.debug(s"PRELOAD END: ${begin.dt} ${end.dt} ${x.length}")
+        x
+      }
+    }
+
+    val testSource = new TestSource
+
+    val fut: Future[Done] = testSource.source
+      .map { e => println(s"&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& $e"); e }
+      .runWith(Sink.foreach[Data[TimeStamp]](d => println(s"$d")))
+
+    clock.start()
+
+    Await.result(fut, 15 seconds)
+
+    Thread.sleep(3000)
+
   }
 }

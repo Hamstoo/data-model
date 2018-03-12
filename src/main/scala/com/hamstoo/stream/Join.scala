@@ -51,9 +51,9 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
   
   override def initialAttributes = Attributes.name("Join2")
   override val shape = new FanInShape2[Data[A0], Data[A1], Data[O]]("Join2")
-  def out: Outlet[Data[O]] = shape.out
   val in0: Inlet[Data[A0]] = shape.in0
   val in1: Inlet[Data[A1]] = shape.in1
+  def out: Outlet[Data[O]] = shape.out
 
   /** Define the GraphStageLogic. */
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
@@ -88,6 +88,8 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         // convert each value from "joined" A0-A1 pair to "joiner" O
         val dJer = Data(dJed.knownTime,
                         dJed.values.mapValues(v => SourceValue(joiner(v.value._1, v.value._2), v.sourceTime)))
+
+        // push to consumer, which should pull again from this materialized Join instance, if ready
         logger.debug(s"  pushing: $d0 + $d1 = $dJer")
         push(out, dJer)
 
@@ -155,10 +157,16 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
     /**
       * OutHandler
+      *
       * The documentation says this: "most Sinks would need to request upstream elements as soon as they are
       * created: this can be done by calling pull(inlet) in the preStart() callback."  The reason we don't have
       * to do that in this `Join` class is because it's not a Sink, it's a Flow, so we can wait for its
       * OutHandler to be onPulled to do so.
+      *
+      * Other documentation says this: "The first difference we can notice is that our Buffer stage is
+      * automatically pulling its upstream on initialization.  The buffer has demand for up to two elements without
+      * any downstream demand."  So perhaps we only need to signal demand in preStart() when a buffer has demand
+      * before downstream does.
       */
     setHandler(out, new OutHandler {
 

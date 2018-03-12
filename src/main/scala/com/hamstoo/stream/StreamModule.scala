@@ -60,10 +60,17 @@ class StreamModule(config: Config) extends ConfigModule(config) {
 
     add[QueryCorrelation]() // "semanticRelevance"
 
-    //add[QuerySearchScore]() // "syntacticRelevance"
+    // * so a stream can only be reused (singleton) if its defined inside a type
+    //   * but eventually we can make this work to automatically generate new types (perhaps)
+    //   * add[classOf[QueryCorrelation] + 2]()
+    //   * https://www.google.com/search?q=dynamically+create+type+scala&oq=dynamically+create+type+scala&aqs=chrome..69i57.5239j1j4&sourceid=chrome&ie=UTF-8
+    // * the (source) clock won't know what time its starting with until the data streams have
+    //   all been wired together (via the Injector)
 
-    //add(AvailablityBias)
+    //add(AvailablityBias / Recency) -- see How to Think screenshot
     //add(ConfirmationBias)
+    //add(TimeSpent)
+    //add(Rating)
   }
 
 }
