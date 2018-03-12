@@ -121,15 +121,17 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       refed = "referenced"
       _ <- cReprs.update(d, d :~ "$unset" -> (d :~ refed -> 1), multi = true)
 
+      //sel0 = d :~ REPRS -> (d :~ "$exists" -> 1)
       strm0 = c.find(d :~ REPRS -> (d :~ "$exists" -> 1), d :~ REPRS -> 1).cursor[BSONDocument]().documentSource()
       _ <- strm0.mapAsync(10) { doc =>
-        val reprIds = doc.getAs[Seq[ReprInfo]](REPRS).get.map(_.reprId)
-        cReprs.update(d :~ ID -> (d :~ "$in" -> reprIds), d :~ "$set" -> (d :~ refed -> true), multi = true)
+        Future(doc.getAs[Seq[ReprInfo]](REPRS).get.map(_.reprId)).flatMap { reprIds => // non-blocking `get`: https://blog.softwaremill.com/akka-streams-pitfalls-to-avoid-part-1-75ef6403c6e6
+          cReprs.update(d :~ ID -> (d :~ "$in" -> reprIds), d :~ "$set" -> (d :~ refed -> true), multi = true) }
       }.runWith(Sink.ignore)
 
+      //sel1 = d :~ Page.REPR_ID -> (d :~ "$exists" -> 1)
       strm1 = cPages.find(d :~ Page.REPR_ID -> (d :~ "$exists" -> 1), d :~ Page.REPR_ID -> 1).cursor[BSONDocument]().documentSource()
       _ <- strm1.mapAsync(10) { doc =>
-        val reprId = doc.getAs[String](Page.REPR_ID).get
+        val reprId = doc.getAs[String](Page.REPR_ID).get // blocking `get`
         cReprs.update(d :~ ID -> reprId, d :~ "$set" -> (d :~ refed -> true), multi = true)
       }.runWith(Sink.ignore)
 

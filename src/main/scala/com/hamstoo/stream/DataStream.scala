@@ -1,46 +1,106 @@
 package com.hamstoo.stream
 
 import akka.NotUsed
-import akka.stream.scaladsl.Source
-import com.hamstoo.utils.{DurationMils, TimeStamp}
+import akka.stream.{Attributes, Materializer, OverflowStrategy}
+import akka.stream.scaladsl.{BroadcastHub, Keep, Source}
+import com.hamstoo.stream.Tick.{ExtendedTick, Tick}
+import com.hamstoo.utils.{DurationMils, ExtendedTimeStamp, TimeStamp}
+import play.api.Logger
 
 import scala.collection.immutable
 import scala.concurrent.Future
 
 /**
-  * A wrapper around an Akka Stream.
+  * A dynamic BroadcastHub wrapper around an Akka Stream.
   */
-trait DataStream[T] {
+abstract class DataStream[T](implicit materializer: Materializer) {
 
-  // TODO: A Singleton DataStream will need a broadcast hub, which will need to be created upon construction
-  // TODO:  as triggered by Guice
-  //val hubSource = // TODO: materialize hubSource into a hub
+  val logger = Logger(classOf[DataStream[T]])
 
   /** Pure virtual Akka Source to be defined by implementation. */
-  // TODO: rename -> `stream`
-  def source: Source[Data[T], NotUsed]
+  protected def hubSource: Source[Data[T], NotUsed]
 
+  /**
+    * This `lazy val` materializes `hubSource` into a dynamic BroadcastHub, which can be wired into as many
+    * Flows or Sinks as desired at runtime.
+    * See also: https://doc.akka.io/docs/akka/2.5/stream/stream-dynamic.html
+    */
+  final lazy val source: Source[Data[T], NotUsed] = {
+    assert(hubSource != null) // this assertion will fail if `source` is not `lazy`
+    logger.debug(s"Materializing BroadcastHub...")
+    val x = hubSource//.runWith(BroadcastHub.sink(bufferSize = 256))
+    logger.debug(s"Done materializing BroadcastHub")
+    x
+  }
 }
 
 /**
   * A DataSource is merely a DataStream that can listen to a Clock so that it knows when to load
   * data from its abstract source.  It throttles its stream emissions to 1/`period` frequency.
   */
-abstract class DataSource[T](implicit clock: Clock) extends DataStream[T] {
+abstract class DataSource[T](interval: DurationMils)
+                            (implicit clock: Clock, materializer: Materializer) extends DataStream[T] {
 
-  /** Load a chunk or a block of data from the data source.  `begin` should be inclusive and `end`, exclusive. */
-  def load(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[T]]]
+  /** Pre-load a *future* block of data from the data source.  `begin` should be inclusive and `end`, exclusive. */
+  def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[T]]]
 
-  // TODO: change to be a clock-throttled stream rather than calling `load` between consecutive ticks
-  // TODO:   this will allow a source to load at its own rate and merely be emitted at whatever rate is desired
-  //def period: DurationMils = 1
+  /** Determines when to call `load` based on DataSource's periodicity. */
+  case class PreloadTimer(var lastRangeEnd: TimeStamp = -1) {
+
+    /** Return time ranges over which to perform next calls to `preload` up to, but not including, next clock tick. */
+    def rangesFor(tick: Tick, clockInterval: DurationMils): List[(TimeStamp, Option[(TimeStamp, TimeStamp)]] = {
+
+      // if this is the first load, then snap tick.time to an interval boundary, o/w use the end of the last range
+      val rangeBegin = if (lastRangeEnd == -1) tick.time / interval * interval else lastRangeEnd
+
+      val nextClockTick = tick.time + clockInterval
+
+      // if `interval` is bigger than `clockInterval` we might have already loaded past current `tick.time`
+      val nIntervals = (nextClockTick - rangeBegin) / interval
+
+      // return ranges up to, but not including, nextClockTick
+      val ranges = (0 until nIntervals.toInt).map { i =>
+        val begin_i = rangeBegin + i * interval
+        (tick.time, Some((begin_i, begin_i + interval)))
+      }
+
+      // it's important that the ranges are ordered correctly
+      assert(ranges.isEmpty || ranges.last._2.get._2 < nextClockTick && nextClockTick <= ranges.last._2.get._2 + interval)
+
+      // send back a None range so that we
+      if (ranges.isEmpty) List((tick.time, None)) else ranges.toList
+    }
+  }
 
   /** Calls abstract `load` for each consecutive pair of clock ticks. */
-  override val source: Source[Data[T], NotUsed] =
-    clock.source.sliding(2, 1) // pairwise
-      //.map(_.toList) // convert from Vector to List for the following case statement [https://stackoverflow.com/questions/11503033/what-is-the-idiomatic-way-to-pattern-match-sequence-comprehensions/11503173#11503173]
-      .mapAsync(1) { case Seq(b, e/*, _rest @ _ * */) /*b :: e :: Nil*/ => load(b.oval.get.value, e.oval.get.value) }
+  override protected val hubSource: Source[Data[T], NotUsed] = {
+
+    logger.warn(s"Wiring ${this.getClass.getSimpleName}...")
+
+    val preloadSource = clock.source
+      .addAttributes(Attributes.inputBuffer(initial = 1, max = 1))
+      //.alsoTo(ClockThrottle())
+      .map { elem => logger.warn(s"ggggggggggggggggggggggggggggggggggggggg got clock: ${elem.oval.get.value.dt}"); elem }
+      .statefulMapConcat { () => // each materialization calls this function (so there's one PreloadTimer each mat too)
+        val timer = PreloadTimer()
+        tick => timer.rangesFor(tick, clock.interval) // this function is called for each tick
+      }
+      .map { e => logger.warn("statefulMapConcat clock"); e }
+      .mapAsync(8) { rg => (preload _).tupled } // mapAsync preserves ordering, unlike mapAsyncUnordered, which is essential
+      .map { e => logger.warn("mapAsync clock"); e }
       .mapConcat(identity) // https://www.beyondthelines.net/computing/akka-streams-patterns/
+      .addAttributes(Attributes.inputBuffer(initial = 1, max = 1))
+      .buffer(1, OverflowStrategy.backpressure)
+
+    //preloadSource.throttle
+    //ZipWith
+
+    logger.warn(s"Done wiring ${this.getClass.getSimpleName}")
+
+    //preloadSource -> ClockThrottle()
+    preloadSource.via(ClockThrottle()(clock))
+    //preloadSource
+  }
 }
 
 

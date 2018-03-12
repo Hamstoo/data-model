@@ -208,6 +208,10 @@ package object utils {
       s"${dt.year.getAsString}-${dt.monthOfYear.getAsString}-${dt.dayOfMonth.getAsString}"
   }
 
+  implicit class ExtendedDurationMils(private val dur: DurationMils) extends AnyVal {
+    def toDays: Double = dur.toDouble / 1000 / 60 / 60 / 24
+  }
+
   /** A couple of handy ReactiveMongo shortcuts that were formerly being defined in every DAO class. */
   val d = BSONDocument.empty
   val curnt: Producer[BSONElement] = com.hamstoo.models.Mark.TIMETHRU -> INF_TIME

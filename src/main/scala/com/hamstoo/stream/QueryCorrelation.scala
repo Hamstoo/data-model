@@ -1,6 +1,7 @@
 package com.hamstoo.stream
 
 import akka.NotUsed
+import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import com.google.inject.{Inject, Singleton}
 import com.google.inject.name.Named
@@ -16,11 +17,17 @@ import scala.concurrent.{ExecutionContext, Future}
 @Singleton
 class QueryCorrelation @Inject() (@Named("query.vec") queryVec: Future[Vec],
                                   reprVecs: ReprVec)
-                                 (implicit ec: ExecutionContext)
+                                 (implicit materializer: Materializer, ec: ExecutionContext)
     extends DataStream[Double] {
 
-  override val source: Source[Data[Double], NotUsed] = reprVecs.source.mapAsync(1) { d =>
+  // can only obtain an EC from an ActorMaterializer via `.system`, not from a plain old Materializer
+  //implicit val ec: ExecutionContext = materializer.system.dispatcher
+
+  override val hubSource: Source[Data[Double], NotUsed] = reprVecs.source.mapAsync(1) { d =>
+
+    // queryVec is probably an already-completed Future at this point, and will stay that way
     queryVec.map { qvec: Vec =>
+
       val reprVec: Vec = d.oval.get.value
 
       // maybe should use actual corr here rather than cosine similarity?
