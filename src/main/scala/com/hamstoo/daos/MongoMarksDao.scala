@@ -31,14 +31,15 @@ object MongoMarksDao {
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
   */
 class MongoMarksDao(db: () => Future[DefaultDB])
-                   (implicit userDao: MongoUserDao, ex: ExecutionContext) {
+                   (implicit userDao: MongoUserDao,
+                    urlDupDao: MongoUrlDuplicationDao,
+                    ex: ExecutionContext) {
 
   import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MongoMarksDao])
 
   val collName: String = "entries"
   private val dbColl: () => Future[BSONCollection] = () => db().map(_ collection collName)
-  private def dupsColl(): Future[BSONCollection] = db().map(_ collection "urldups")
   private def reprsColl(): Future[BSONCollection] = db().map(_ collection "representations")
   private def pagesColl(): Future[BSONCollection] = db().map(_ collection "pages")
 
@@ -157,12 +158,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     Nil toMap;
   Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 389 seconds)
 
-  private val dupsIndxs: Map[String, Index] =
-    Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
-    Index(USRPRFX -> Ascending :: URLPRFX -> Ascending :: Nil) % s"bin-$USRPRFX-1-$URLPRFX-1" ::
-    Nil toMap;
-  Await.result(dupsColl().map(_.indexesManager.ensure(dupsIndxs)), 289 seconds)
-
   /** Saves a mark to the database. */
   def insert(mark: Mark): Future[Mark] = {
     logger.debug(s"Inserting mark ${mark.id}")
@@ -275,8 +270,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     logger.debug(s"Retrieving marks by URL $url and user $user")
     for {
       // find set of URLs that contain duplicate content to the one requested
-      cDups <- dupsColl()
-      setDups <- cDups.find(d :~ USRPRFX -> user.toString.binPrfxComplement :~ URLPRFX -> url.binaryPrefix).coll[UrlDuplicate, Set]()
+      setDups <- urlDupDao.retrieve(user, url)
       urls = Set(url).union(setDups.filter(ud => ud.userId == user && ud.url == url).flatMap(_.dups))
 
       // find all marks with those URL prefixes
@@ -299,14 +293,11 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     */
   def insertUrlDup(user: UUID, url0: String, url1: String): Future[String] = {
     logger.debug(s"Inserting URL duplicates for $url0 and $url1")
-    for {
-      c <- dupsColl()
 
+    for {
       // database lookup to find candidate dups via indexed prefixes
-      candidates = (url: String) =>
-        c.find(d :~ USRPRFX -> user.toString.binPrfxComplement :~ URLPRFX -> url.binaryPrefix).coll[UrlDuplicate, Set]()
-      candidates0 <- candidates(url0)
-      candidates1 <- candidates(url1)
+      candidates0 <- urlDupDao.retrieve(user, url0)
+      candidates1 <- urlDupDao.retrieve(user, url1)
 
       // narrow down candidates sets to non-indexed (non-prefix) values
       optDups = (url: String, candidates: Set[UrlDuplicate]) =>
@@ -321,8 +312,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       newUD1 = newUD(url1, url0, optDups1)
 
       // update or insert if not already there
-      _ <- c.update(d :~ ID -> newUD0.id, newUD0, upsert = true)
-      _ <- c.update(d :~ ID -> newUD1.id, newUD1, upsert = true)
+      _ <- urlDupDao.update(newUD0.id, newUD0, upsert = true)
+      _ <- urlDupDao.update(newUD1.id, newUD1, upsert = true)
     } yield ""
   }
 
