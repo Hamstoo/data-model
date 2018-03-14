@@ -16,7 +16,10 @@ case class Clock @Inject() (begin: TimeStamp, end: TimeStamp, interval: Duration
                            (implicit materializer: Materializer) extends DataStream[TimeStamp] {
 
   override val logger = Logger(classOf[Clock])
-  logger.info(s"Constructing a Clock from ${begin.dt} [${begin/1000}] until ${end.dt} [${end/1000}] by ${interval.toDays} days [${interval/1000}]")
+  logger.info(s"Constructing a Clock from ${begin.tfmt} until ${end.tfmt} by ${interval.dfmt}")
+
+  // TODO: make interval private so that users cannot increment/decrement on their own but must instead use
+  // TODO: increment/decrement-named methods (to handle irregular intervals involving weekends and months and such)
 
   /**
     * Since a DataStream employs an Akka BroadcastHub under the covers, the clock ticks will begin progressing as soon
@@ -28,7 +31,7 @@ case class Clock @Inject() (begin: TimeStamp, end: TimeStamp, interval: Duration
     */
   var started = false
   def start(): Unit = {
-    logger.info(s"Starting Clock(${begin/1000}, ${end/1000}, ${interval/1000})")
+    logger.info(s"Starting Clock(${begin.Gs}, ${end.Gs}, ${interval.Gs})")
     started = true
   }
 
@@ -37,11 +40,12 @@ case class Clock @Inject() (begin: TimeStamp, end: TimeStamp, interval: Duration
     new Iterator[Tick] {
       var currentTime: TimeStamp = begin
 
+      /** Iterator protocol. */
       override def hasNext : Boolean = currentTime < end
 
+      /** Iterator protocol. */
       override def next(): Tick = {
-
-        logger.debug(s"Tick: ${currentTime.dt} [${currentTime/1000}]")
+        logger.debug(s"*** TICK: ${currentTime.tfmt}")
 
         val r = currentTime
 
@@ -52,6 +56,6 @@ case class Clock @Inject() (begin: TimeStamp, end: TimeStamp, interval: Duration
         Tick(r)
       }
     }
-  }.addAttributes(Attributes.inputBuffer(initial = 1, max = 1))
-    .buffer(1, OverflowStrategy.backpressure)
+  }/*.addAttributes(Attributes.inputBuffer(initial = 1, max = 1))
+    .buffer(1, OverflowStrategy.backpressure)*/
 }

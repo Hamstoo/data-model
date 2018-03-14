@@ -114,5 +114,15 @@ object Data {
 
     if (joinedValues.isEmpty) None else Some(Data(math.max(d0.knownTime, d1.knownTime), joinedValues.toMap))
   }
+
+  /**
+    * Group data by knownTime--especially useful if D type is Datum.  But note that behavior is unpredictable if
+    * there are duplicate values for entityId-knownTime-sourceTime triples, which would be a pretty odd data source.
+    */
+  def groupByKnownTime[T/*, D <: Data[T]*/](data: Traversable[Data[T]]): Traversable[Data[T]] = {
+    data.groupBy(_.knownTime).map { case (knownTime, iter) =>
+      Data(knownTime, iter.flatMap(_.values.toSeq).toMap)
+    }
+  }
 }
 

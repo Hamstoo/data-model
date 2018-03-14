@@ -2,7 +2,7 @@ package com.hamstoo
 
 import java.util.Locale
 
-import org.joda.time.DateTime
+import org.joda.time.{DateTime, DateTimeZone}
 import play.api.Logger
 import play.api.libs.json.Json
 import play.api.mvc.{Call, Request}
@@ -202,7 +202,11 @@ package object utils {
 
   implicit class ExtendedTimeStamp(private val ms: TimeStamp) extends AnyVal {
     /** Converts from time in milliseconds to a Joda DateTime. */
-    def dt: DateTime = new DateTime(ms)
+    def dt: DateTime = new DateTime(ms, DateTimeZone.UTC)
+    /** Giga-seconds make for an easily readable display. */
+    def Gs: Double = ms.toDouble / 1000000000
+    /** Time format. */
+    def tfmt: String = s"${ms.dt} [${ms.Gs}]".replaceAll("T00:00:00.000", "").replaceAll(":00:00.000", "")
     /** Converts from time in milliseconds to a JsValueWrapper. */
     def toJson: Json.JsValueWrapper =
       s"${dt.year.getAsString}-${dt.monthOfYear.getAsString}-${dt.dayOfMonth.getAsString}"
@@ -210,6 +214,9 @@ package object utils {
 
   implicit class ExtendedDurationMils(private val dur: DurationMils) extends AnyVal {
     def toDays: Double = dur.toDouble / 1000 / 60 / 60 / 24
+    def toDuration: Duration = dur.millis
+    /** Duration format. */
+    def dfmt: String = s"${dur.toDays} days [${dur.Gs}]"
   }
 
   /** A couple of handy ReactiveMongo shortcuts that were formerly being defined in every DAO class. */
