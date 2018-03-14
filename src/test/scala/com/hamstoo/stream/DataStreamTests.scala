@@ -282,10 +282,10 @@ class DataStreamTests
         val snapBegin = ((begin - 1) / dataInterval + 1) * dataInterval
 
         val x = (snapBegin until end by dataInterval).map { t =>
-          logger.debug(s"preload: ${t.tfmt}")
+          logger.debug(s"preload i: ${t.tfmt}")
           Datum[TimeStamp](MarkId("je"), t, t)
         }
-        logger.debug(s"preload: n=${x.length}")
+        logger.debug(s"preload end: n=${x.length}")
         x
       }
     }
