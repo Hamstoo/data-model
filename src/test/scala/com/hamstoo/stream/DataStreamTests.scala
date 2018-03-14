@@ -9,9 +9,9 @@ import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoVectorsDao}
 import com.hamstoo.models.Representation.Vec
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
-import com.hamstoo.utils.{DataInfo, DurationMils, TimeStamp}
+import com.hamstoo.utils.{DataInfo, DurationMils, ExtendedTimeStamp, TimeStamp}
 import com.typesafe.config.ConfigValueFactory
-import org.joda.time.DateTime
+import org.joda.time.{DateTime, DateTimeZone}
 import play.api.libs.ws.WSClient
 import play.api.libs.ws.ahc.AhcWSClient
 import play.api.Logger
@@ -29,7 +29,7 @@ class DataStreamTests
 
   val logger = Logger(classOf[DataStreamTests])
 
-  /*"Test" should "scratch test 0" in {
+  "Test" should "scratch test 0" in {
     // https://doc.akka.io/docs/akka/2.5.3/scala/stream/stream-rate.html#internal-buffers-and-their-effect
 
     implicit val materializer: Materializer = ActorMaterializer()
@@ -221,12 +221,15 @@ class DataStreamTests
     val streamModel: StreamModel = injector.instance[StreamModel]
 
     val headStream: DataStream[Double] = streamModel.facets.head._2
-
     val fut: Future[Done] = headStream.source.runWith(Sink.foreach[Data[Double]](d => println(s"$d")))
-    Await.result(fut, 15 seconds)
-  }*/
 
-  "ClockThrottle" should "throttle a DataStream" in {
+    // look, can even start this after runWith! (but still haven't determined if it's actually necessary yet)
+    injector.instance[Clock].start()
+
+    Await.result(fut, 15 seconds)
+  }
+
+  "Clock" should "throttle a DataStream" in {
 
 
    /* val producer = Source.tick(1.second, 1.second, "New message")
@@ -246,16 +249,17 @@ class DataStreamTests
     fromProducer.runForeach(msg ⇒ println("consumer1: " + msg))
     fromProducer.runForeach(msg ⇒ println("consumer2: " + msg))*/
 
-
-
     implicit val ec: ExecutionContext = system.dispatcher
 
-    val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0).getMillis
-    val stop: TimeStamp = new DateTime(2018, 2, 1, 0, 0).getMillis
-    val interval: DurationMils = (1 day).toMillis
-    implicit val clock = Clock(start, stop, interval)
+    // changing these (including interval) will affect results b/c it changes the effective time range the clock covers
+    val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
+    val stop: TimeStamp = new DateTime(2018, 1, 10, 0, 0, DateTimeZone.UTC).getMillis
+    val interval: DurationMils = (2 days).toMillis
+    implicit val clock: Clock = Clock(start, stop, interval)
 
+    //clock.start() // TODO: get rid of this?  or try BroadcastHub again
 
+    // TODO: ask about this on stackoverflow
     // this doesn't print anything
     /*val source = Source(0 to 20)
       //.addAttributes(Attributes.inputBuffer(initial = 1, max = 1))
@@ -266,30 +270,40 @@ class DataStreamTests
     Thread.sleep(3000)
     source.runForeach(n => println(s"------------- source2: $n"))*/
 
+    // changing this interval should not affect the results (even if it's fractional)
+    val preloadInterval = 3 days
 
+    class TestSource extends DataSource[TimeStamp](preloadInterval.toMillis) {
+      //override val logger = Logger(classOf[TestSource]) // this line causes a NPE for some reason
+      override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[TimeStamp]]] = Future {
 
+        // must snapBegin, o/w DataSource's preloadInterval can affect the results, which it should not
+        val dataInterval = (12 hours).toMillis
+        val snapBegin = ((begin - 1) / dataInterval + 1) * dataInterval
 
-    class TestSource extends DataSource[TimeStamp](interval: DurationMils) {
-      def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[TimeStamp]]] = Future {
-        import com.hamstoo.utils.ExtendedTimeStamp
-        logger.debug(s"PRELOAD BEGIN: ${begin.dt} [${begin/1000}] to [${end/1000}]")
-        val x = (begin until end by 1000*60*60*8).map(t => Datum[TimeStamp](MarkId("ClockThrottleTestId"), t, t))
-        logger.debug(s"PRELOAD END: ${begin.dt} ${end.dt} ${x.length}")
+        val x = (snapBegin until end by dataInterval).map { t =>
+          logger.debug(s"preload: ${t.tfmt}")
+          Datum[TimeStamp](MarkId("je"), t, t)
+        }
+        logger.debug(s"preload: n=${x.length}")
         x
       }
     }
 
-    val testSource = new TestSource
+    val testSource = new TestSource()
 
-    val fut: Future[Done] = testSource.source
-      .map { e => println(s"&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& $e"); e }
-      .runWith(Sink.foreach[Data[TimeStamp]](d => println(s"$d")))
-
-    clock.start()
-
-    Await.result(fut, 15 seconds)
+    val fut: Future[Int] = testSource.source
+      .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.oval.get.sourceTime.tfmt} / ${e.oval.get.value.dt.getDayOfMonth}"); e }
+      .runWith(
+        Sink.fold[Int, Data[TimeStamp]](0) { case (agg, d) =>
+          agg + d.oval.get.value.dt.getDayOfMonth
+        }
+      )
 
     Thread.sleep(3000)
+    clock.start()
 
+    val x = Await.result(fut, 15 seconds)
+    x shouldEqual 173
   }
 }

@@ -61,7 +61,7 @@ object GroupReduce {
           agg.copy(group = Some(g))
         case (agg, CloseGroup(_)) =>
           logger.debug(s"CloseGroup(_)")
-          agg // always filtered out by takeWhile, only here to prevent compiler error
+          agg // always filtered out by takeWhile, only here to prevent "sealed" compiler error
         case (agg, AddToGroup(d, g)) =>
           assert(agg.group.nonEmpty)
           logger.debug(s"AddToGroup(${d.knownTime}, $g)")
@@ -85,15 +85,17 @@ object GroupReduce {
             val entityIds = g.data.flatMap(_.values.keys).toSet
             entityIds.par.map { id =>
               val svs: Seq[SourceValue[T]] = g.data.flatMap(_.values.get(id))
-              id -> SourceValue(reducer(svs.map(_.value)), svs.map(_.sourceTime).max)
+              val reducedVal = SourceValue(reducer(svs.map(_.value)), svs.map(_.sourceTime).max)
+              logger.debug(s"Longitudinal reduce at ${knownTime.dt}: $reducedVal")
+              id -> reducedVal
             }.toMap.seq
 
           // cross-sectional (across entities) aggregation (or both cross-sectional/longitudinal combined)
           case _ =>
             val svs: Seq[SourceValue[T]] = g.data.flatMap(_.values.values)
-            val reducedVal = reducer(svs.map(_.value))
+            val reducedVal = SourceValue(reducer(svs.map(_.value)), svs.map(_.sourceTime).max)
             logger.debug(s"Cross-sectional reduce at ${knownTime.dt}: $reducedVal")
-            Map(UnitId() -> SourceValue(reducedVal, svs.map(_.sourceTime).max))
+            Map(UnitId() -> reducedVal)
         }
 
         Data(knownTime, values)

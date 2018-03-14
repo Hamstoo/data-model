@@ -14,7 +14,10 @@ import scala.concurrent.duration._
   *   https://gist.github.com/adamw/3803e2361daae5bdc0ba097a60f2d554
   */
 sealed abstract class Group(val end: TimeStamp) { def longitudinal: Option[Boolean] = None }
-case class TimeWindow(begin: TimeStamp, end1: TimeStamp) extends Group(end1) { override val longitudinal = Some(true) }
+case class TimeWindow(begin: TimeStamp, end1: TimeStamp) extends Group(end1) {
+  override val longitudinal = Some(true)
+  override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.tfmt})"
+}
 case class CrossSection(ts: TimeStamp) extends Group(ts) { override val longitudinal = Some(false) }
 case class TimeWinCrossSec(begin: TimeStamp, end1: TimeStamp) extends Group(end1)
 
