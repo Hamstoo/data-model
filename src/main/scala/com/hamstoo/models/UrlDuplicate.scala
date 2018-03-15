@@ -27,5 +27,4 @@ case class UrlDuplicate(userId: UUID,
 
 object UrlDuplicate extends BSONHandlers {
   implicit val urldupBsonHandler: BSONDocumentHandler[UrlDuplicate] = Macros.handler[UrlDuplicate]
-
 }

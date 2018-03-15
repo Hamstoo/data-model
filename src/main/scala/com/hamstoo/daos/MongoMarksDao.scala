@@ -32,7 +32,7 @@ object MongoMarksDao {
   */
 class MongoMarksDao(db: () => Future[DefaultDB])
                    (implicit userDao: MongoUserDao,
-                    urlDupDao: MongoUrlDuplicationDao,
+                    urlDupDao: MongoUrlDuplicatesDao,
                     ex: ExecutionContext) {
 
   import com.hamstoo.utils._
@@ -271,7 +271,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     for {
       // find set of URLs that contain duplicate content to the one requested
       setDups <- urlDupDao.retrieve(user, url)
-      urls = Set(url).union(setDups.filter(ud => ud.userId == user && ud.url == url).flatMap(_.dups))
+      urls = Set(url).union(setDups.flatMap(_.dups))
 
       // find all marks with those URL prefixes
       c <- dbColl()
@@ -285,36 +285,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       logger.debug(s"$optMark mark was successfully retrieved")
       optMark
     }
-  }
-
-  /**
-    * Map each URL to the other in the `urldups` collection.  The only reason this method (currently) returns a
-    * Future[String] rather than a Future[Unit] is because of where it's used in repr-engine.
-    */
-  def insertUrlDup(user: UUID, url0: String, url1: String): Future[String] = {
-    logger.debug(s"Inserting URL duplicates for $url0 and $url1")
-
-    for {
-      // database lookup to find candidate dups via indexed prefixes
-      candidates0 <- urlDupDao.retrieve(user, url0)
-      candidates1 <- urlDupDao.retrieve(user, url1)
-
-      // narrow down candidates sets to non-indexed (non-prefix) values
-      optDups = (url: String, candidates: Set[UrlDuplicate]) =>
-        candidates.find(ud => ud.userId == user && ud.url == url)
-      optDups0 = optDups(url0, candidates0)
-      optDups1 = optDups(url1, candidates1)
-
-      // construct a new UrlDuplicate or an update to the existing one
-      newUD = (urlKey: String, urlVal: String, optDups: Option[UrlDuplicate]) =>
-        optDups.fold(UrlDuplicate(user, urlKey, Set(urlVal)))(ud => ud.copy(dups = ud.dups + urlVal))
-      newUD0 = newUD(url0, url1, optDups0)
-      newUD1 = newUD(url1, url0, optDups1)
-
-      // update or insert if not already there
-      _ <- urlDupDao.update(newUD0.id, newUD0, upsert = true)
-      _ <- urlDupDao.update(newUD1.id, newUD1, upsert = true)
-    } yield ""
   }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
