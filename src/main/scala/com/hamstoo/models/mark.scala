@@ -1,6 +1,5 @@
 package com.hamstoo.models
 
-import java.net.URL
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
@@ -8,7 +7,6 @@ import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
-import org.apache.commons.text.similarity.{CosineSimilarity, LevenshteinDistance}
 import org.commonmark.node._
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
@@ -19,7 +17,6 @@ import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.annotation.tailrec
-import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.util.matching.Regex
 
