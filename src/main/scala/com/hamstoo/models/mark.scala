@@ -374,8 +374,8 @@ class MDSearchable(val subj: String,
   /** Method for cleaning urls */
   @tailrec
   final def cleanUrl(url: String): String = {
-    if (url.contains("#")) cleanUrl(url.split('#').head)
-    else if (url.contains("?")) cleanUrl(url.split('?').head)
+    if (url.contains("#")) cleanUrl(url.split('#').head) // TODO: is this reasonable?
+    //else if (url.contains("?")) cleanUrl(url.split('?').head) // TODO: is this reasonable?
     else url
   }
 
@@ -426,66 +426,6 @@ class MSearchable(val userId: UUID,
                   val nSharedFrom: Option[Int],
                   val nSharedTo: Option[Int],
                   val score: Option[Double]) extends Shareable {
-
-  def isDuplicate(oth: MSearchable): Boolean = isDuplicate(oth.mark)
-
-  /** Return true if `oth`er mark is a likely duplicate of this one.  False positives possible.
-    * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
-    */
-  def isDuplicate(oth: MDSearchable): Boolean = {
-
-    // quickly test for identical doctexts first and otherwise use header as a filter on top of vec/edit similarities
-    if (mark.url.isDefined && oth.url.get == mark.url.get) true
-    else if (mark.url.isDefined && oth.url.isDefined) {
-      // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
-      // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
-      // because it has too many false positives, like, e.g., when a site has very few English words.
-      vecSimilarity(oth) > Mark.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
-        editSimilarity(oth) > Mark.DUPLICATE_EDIT_SIMILARITY_THRESHOLD &&
-        compareUrl(mark.url.get, oth.url.get)
-    } else false
-  }
-
-  // Define similarity in one place so that it can be used in multiple. */
-  def vecSimilarity(oth: MDSearchable): Double = {
-
-    /** Transform to java primitive types, for compatibility with Java method*/
-    def toJavaPrimitives(pair: (Char, Int)): (CharSequence, Integer) =
-      pair._1.toString -> new Integer(pair._2)
-
-
-    /** Preparing before use of cosineSimilarity from apache commons */
-    def toVectors(str: String): java.util.Map[CharSequence, Integer] = {
-      str
-        .groupBy(identity)
-        .mapValues(_.length)
-        .map(toJavaPrimitives)
-        .asJava
-    }
-
-    val cosSim = new CosineSimilarity()
-
-    val url = toVectors(mark.url.get)
-    val othUrl = toVectors(oth.url.get)
-
-
-    cosSim.cosineSimilarity(url, othUrl)
-  }
-
-  /** Another kind of similarity, the opposite of (relative) edit distance. */
-  def editSimilarity(oth: MDSearchable): Double = {
-    val editDist = LevenshteinDistance.getDefaultInstance.apply(mark.url.get, oth.url.get)
-    val relDist = editDist / math.max(mark.url.get.length, oth.url.get.length).toDouble // toDouble is important here
-    1.0 - relDist
-  }
-
-  /** Compare url protocol and authority parts for equality */
-  def compareUrl(url1: String, url2: String): Boolean = {
-    val u1 = new URL(url1)
-    val u2 = new URL(url2)
-
-    u1.getProtocol == u2.getProtocol && u1.getAuthority == u2.getAuthority
-  }
 
   /**
     * This method is called `xcopy` instead of `copy` to avoid conflict with `case class Mark` which
@@ -598,9 +538,6 @@ object MSearchable {
 
 object Mark extends BSONHandlers {
   val logger: Logger = Logger(classOf[Mark])
-
-  val DUPLICATE_VEC_SIMILARITY_THRESHOLD = 0.95
-  val DUPLICATE_EDIT_SIMILARITY_THRESHOLD = 0.85
 
   // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once
   logger.info("data-model version " + Option(getClass.getPackage.getImplementationVersion).getOrElse("null"))
