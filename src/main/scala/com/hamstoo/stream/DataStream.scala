@@ -2,7 +2,7 @@ package com.hamstoo.stream
 
 import akka.NotUsed
 import akka.stream.Materializer
-import akka.stream.scaladsl.Source
+import akka.stream.scaladsl.{BroadcastHub, Sink, Source}
 import com.hamstoo.stream.Tick.{ExtendedTick, Tick}
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
 import play.api.Logger
@@ -10,10 +10,25 @@ import play.api.Logger
 import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
 
+object DataStream {
+
+  // we use a default of 1 because there appears to be a bug in BroadcastHub where if the buffer consumes
+  // the producer before any flows/sinks are attached to the materialized hub the producer will stop
+  // and the dependent flows/sinks won't ever have a chance to backpressure
+  //   [https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely]
+  val DEFAULT_BUFFER_SIZE = 1
+}
+
 /**
-  * A dynamic BroadcastHub (TODO) wrapper around an Akka Stream.
+  * A dynamic BroadcastHub wrapper around an Akka Stream.
+  *
+  * @param bufferSize "Buffer size used by the producer. Gives an upper bound on how "far" from each other two
+  *                   concurrent consumers can be in terms of element. If this buffer is full, the producer
+  *                   is backpressured. Must be a power of two and less than 4096."
+  *                     [https://doc.akka.io/japi/akka/current/akka/stream/scaladsl/BroadcastHub.html]
   */
-abstract class DataStream[T](implicit materializer: Materializer) {
+abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
+                            (implicit materializer: Materializer) {
 
   val logger = Logger(classOf[DataStream[T]])
 
@@ -28,9 +43,13 @@ abstract class DataStream[T](implicit materializer: Materializer) {
   final lazy val source: Source[Data[T], NotUsed] = {
     assert(hubSource != null) // this assertion will fail if `source` is not `lazy`
     logger.debug(s"Materializing ${getClass.getSimpleName} BroadcastHub...")
-    val x = hubSource//.runWith(BroadcastHub.sink(bufferSize = 256)) // TODO
+
+    // "This Source [src] can be materialized an arbitrary number of times, where each of the new materializations
+    // will receive their elements from the original [hubSource]."
+    val src = hubSource.runWith(BroadcastHub.sink(bufferSize = bufferSize))
+
     logger.debug(s"Done materializing ${getClass.getSimpleName} BroadcastHub")
-    x
+    src
   }
 }
 
@@ -38,9 +57,9 @@ abstract class DataStream[T](implicit materializer: Materializer) {
   * A DataSource is merely a DataStream that can listen to a Clock so that it knows when to load
   * data from its abstract source.  It throttles its stream emissions to 1/`period` frequency.
   */
-abstract class DataSource[T](loadInterval: DurationMils)
+abstract class DataSource[T](loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
                             (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
-    extends DataStream[T] {
+    extends DataStream[T](bufferSize) {
 
   override val logger = Logger(classOf[DataSource[T]])
   logger.info(s"Constructing ${getClass.getSimpleName} (loadInterval=${loadInterval.toDays})")
@@ -88,7 +107,7 @@ abstract class DataSource[T](loadInterval: DurationMils)
         buffer = buffer :+ preload(end_i - loadInterval, end_i)
       }
 
-      // map elements of the buffer to their respective clock tick time windows
+      // partition the buffer into data that is inside/outside the tick window (exclusive begin, inclusive end]
       val fpartitionedBuffer = Future.sequence(buffer).map { iter =>
 
         // note exclusive-begin/inclusive-end here, perhaps this should be handled earlier by, e.g., changing the
@@ -114,7 +133,7 @@ abstract class DataSource[T](loadInterval: DurationMils)
   /** Groups preloaded data into clock tick intervals and throttles it to the pace of the ticks. */
   override protected val hubSource: Source[Data[T], NotUsed] = {
 
-    val preloadSource: Source[Data[T], NotUsed] = clock.source
+    clock.source
 
       // flow ticks through the PreloadFactory which preloads (probably) big chucks of future data but then
       // only allows (probably) smaller chunks of known data to pass at each tick
@@ -131,9 +150,5 @@ abstract class DataSource[T](loadInterval: DurationMils)
         }
       }
       .mapConcat(immutable.Iterable(_: _*))
-
-    logger.info(s"Done wiring ${getClass.getSimpleName}")
-
-    preloadSource
   }
 }

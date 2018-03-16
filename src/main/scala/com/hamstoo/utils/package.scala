@@ -219,6 +219,11 @@ package object utils {
     def dfmt: String = s"${dur.toDays} days [${dur.Gs}]"
   }
 
+  /** It seems unnecessary to muck up the type inheritance hierarchy for silly stuff like this. */
+  implicit class IdAndTimeFromable(private val duck: { def id: ObjectId; def timeFrom: TimeStamp }) {
+    def idt: String = s"${duck.id} [${duck.timeFrom}]"
+  }
+
   /** A couple of handy ReactiveMongo shortcuts that were formerly being defined in every DAO class. */
   val d = BSONDocument.empty
   val curnt: Producer[BSONElement] = com.hamstoo.models.Mark.TIMETHRU -> INF_TIME
