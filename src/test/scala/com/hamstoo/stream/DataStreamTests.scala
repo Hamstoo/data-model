@@ -3,7 +3,7 @@ package com.hamstoo.stream
 import akka.{Done, NotUsed}
 import akka.actor.Cancellable
 import akka.stream._
-import akka.stream.scaladsl.{Broadcast, BroadcastHub, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
+import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
 import com.google.inject.Guice
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoVectorsDao}
 import com.hamstoo.models.Representation.Vec
@@ -231,25 +231,13 @@ class DataStreamTests
 
   "Clock" should "throttle a DataStream" in {
 
-
-   /* val producer = Source.tick(1.second, 1.second, "New message")
-
-    // Attach a BroadcastHub Sink to the producer. This will materialize to a
-    // corresponding Source.
-    // (We need to use toMat and Keep.right since by default the materialized
-    // value to the left is used)
-    val runnableGraph: RunnableGraph[Source[String, NotUsed]] =
-    producer.toMat(BroadcastHub.sink(bufferSize = 256))(Keep.right)
-
-    // By running/materializing the producer, we get back a Source, which
-    // gives us access to the elements published by the producer.
-    val fromProducer: Source[String, NotUsed] = runnableGraph.run()
-
-    // Print out messages from the producer in two independent consumers
-    fromProducer.runForeach(msg ⇒ println("consumer1: " + msg))
-    fromProducer.runForeach(msg ⇒ println("consumer2: " + msg))*/
-
-    implicit val ec: ExecutionContext = system.dispatcher
+    // https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely
+    // this doesn't print anything when lower than 255 (due to bufferSize!)
+    /*val source = Source(0 to 255)
+      .map { n => if (n % 10 == 0) println(s"*** tick $n"); n }
+      .runWith(BroadcastHub.sink[Int](bufferSize = 256))
+    source.runForeach { n => Thread.sleep(1); if (n % 10 == 0) println(s"------------- source1: $n") }
+    source.runForeach(n => if (n % 10 == 0) println(s"------------- source2: $n"))*/
 
     // changing these (including interval) will affect results b/c it changes the effective time range the clock covers
     val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
@@ -257,23 +245,11 @@ class DataStreamTests
     val interval: DurationMils = (2 days).toMillis
     implicit val clock: Clock = Clock(start, stop, interval)
 
-    //clock.start() // TODO: get rid of this?  or try BroadcastHub again
-
-    // TODO: ask about this on stackoverflow
-    // this doesn't print anything
-    /*val source = Source(0 to 20)
-      //.addAttributes(Attributes.inputBuffer(initial = 1, max = 1))
-      .buffer(1, OverflowStrategy.backpressure)
-      .runWith(BroadcastHub.sink[Int])
-    Thread.sleep(3000)
-    source.runForeach(n => println(s"------------- source1: $n"))
-    Thread.sleep(3000)
-    source.runForeach(n => println(s"------------- source2: $n"))*/
-
     // changing this interval should not affect the results (even if it's fractional)
     val preloadInterval = 3 days
 
-    class TestSource extends DataSource[TimeStamp](preloadInterval.toMillis) {
+    implicit val ec: ExecutionContext = system.dispatcher
+    case class TestSource() extends DataSource[TimeStamp](preloadInterval.toMillis) {
       //override val logger = Logger(classOf[TestSource]) // this line causes a NPE for some reason
       override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[TimeStamp]]] = Future {
 
@@ -290,17 +266,12 @@ class DataStreamTests
       }
     }
 
-    val testSource = new TestSource()
-
-    val fut: Future[Int] = testSource.source
+    val fut: Future[Int] = TestSource().source
       .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.oval.get.sourceTime.tfmt} / ${e.oval.get.value.dt.getDayOfMonth}"); e }
       .runWith(
-        Sink.fold[Int, Data[TimeStamp]](0) { case (agg, d) =>
-          agg + d.oval.get.value.dt.getDayOfMonth
-        }
+        Sink.fold[Int, Data[TimeStamp]](0) { case (agg, d) => agg + d.oval.get.value.dt.getDayOfMonth }
       )
 
-    Thread.sleep(3000)
     clock.start()
 
     val x = Await.result(fut, 15 seconds)
