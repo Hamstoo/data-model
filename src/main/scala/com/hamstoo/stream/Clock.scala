@@ -1,8 +1,9 @@
 package com.hamstoo.stream
 
 import akka.NotUsed
-import akka.stream.{Attributes, Materializer, OverflowStrategy}
+import akka.stream.Materializer
 import akka.stream.scaladsl.Source
+import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.stream.Tick.Tick
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
@@ -18,7 +19,9 @@ import scala.concurrent.{Await, Promise}
   * TODO:   increment/decrement-named methods (to handle irregular intervals involving weekends and months and such)
   */
 @Singleton
-case class Clock @Inject() (begin: TimeStamp, end: TimeStamp, interval: DurationMils)
+case class Clock @Inject() (@Named("clock.begin") begin: TimeStamp,
+                            @Named("clock.end") end: TimeStamp,
+                            @Named("clock.interval") interval: DurationMils)
                            (implicit materializer: Materializer) extends DataStream[TimeStamp] {
 
   override val logger = Logger(classOf[Clock])
@@ -31,6 +34,8 @@ case class Clock @Inject() (begin: TimeStamp, end: TimeStamp, interval: Duration
     * as the first consumer is attached.  Indeed it seems the ticks begin processing immediately, to be saved into
     * the BroadcastHub's buffer, even before any consumers are attached.  So we need to wait until the entire graph
     * is constructed and all the consumers are hooked up before ticks start incrementing.
+    *
+    * Using a Promise here has the extra benefit that `start` can only be called once.
     */
   val started: Promise[Unit] = Promise()
   def start(): Unit = {

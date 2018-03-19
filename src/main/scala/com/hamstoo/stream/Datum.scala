@@ -15,11 +15,15 @@ trait EntityId
 case class UnitId() extends EntityId
 case class MarkId(id: ObjectId) extends EntityId
 case class ReprId(id: ObjectId) extends EntityId
+case class FacetName(name: String) extends EntityId
 case class CompoundId(ids: Set[EntityId]) extends EntityId
 
 object EntityId {
 
-  /** If two (compound) entity IDs match on all of the dimensions that they both share, then they are joinable. */
+  /**
+    * If two (compound) entity IDs match on all of the dimensions that they both share, then they are joinable.
+    * Returns the EntityId with higher cardinality because this is what the joined data should be labeled with.
+    */
   @tailrec
   def join(eid0: EntityId, eid1: EntityId): Option[EntityId] = (eid0, eid1) match {
     case (a: CompoundId, b: CompoundId) =>
@@ -30,6 +34,19 @@ object EntityId {
         case _ => Some(CompoundId(larger))
       }
     case (a, b) => join(CompoundId(a), CompoundId(b))
+  }
+
+  /** Merge two entity IDs together, de-duplicating any dimensions that they share. */
+  @tailrec
+  def merge(eid0: EntityId, eid1: EntityId): EntityId = (eid0, eid1) match {
+    case (a: CompoundId, b: CompoundId) =>
+      val union = a.ids.union(b.ids)
+      union.size match {
+        case 0 => UnitId()
+        case 1 => union.head
+        case _ => CompoundId(union)
+      }
+    case (a, b) => merge(CompoundId(a), CompoundId(b))
   }
 }
 

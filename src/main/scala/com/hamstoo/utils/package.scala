@@ -221,6 +221,7 @@ package object utils {
 
   /** It seems unnecessary to muck up the type inheritance hierarchy for silly stuff like this. */
   implicit class IdAndTimeFromable(private val duck: { def id: ObjectId; def timeFrom: TimeStamp }) {
+    import scala.language.reflectiveCalls
     def idt: String = s"${duck.id} [${duck.timeFrom}]"
   }
 

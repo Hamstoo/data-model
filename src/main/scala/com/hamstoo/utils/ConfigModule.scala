@@ -22,10 +22,14 @@ class ConfigModule(config: Config) extends AbstractModule with ScalaModule {
     // "To enable [multiple bindings for the same type], bindings support an optional binding annotation"
     // "The annotation and type together uniquely identify a binding."
     // TODO: is there anything similar to `Names.bindProperties()` that would just bind all of these?
+    // TODO:   once `Conf` is moved from repr-engine to data-model we can use that class
     val params = Seq("idfs.resource", "vectors.link")
     params.foreach { key =>
       //bindConstant().annotatedWith(Names.named(key)).to(config.get[String](key))
       bind[String].annotatedWith(Names.named(key)).toInstance(config.getString(key))
     }
+
+    val lparams = Seq("clock.begin", "clock.end", "clock.interval")
+    lparams.foreach { key => bind[Long].annotatedWith(Names.named(key)).toInstance(config.getLong(key)) }
   }
 }
