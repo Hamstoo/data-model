@@ -1,12 +1,16 @@
 package com.hamstoo.stream
 
+import java.util.UUID
+
 import akka.{Done, NotUsed}
 import akka.actor.Cancellable
 import akka.stream._
 import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
-import com.google.inject.Guice
+import com.google.inject.{Guice, Provides}
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoVectorsDao}
-import com.hamstoo.models.Representation.Vec
+import com.hamstoo.models.{Mark, MarkData, ReprInfo, Representation}
+import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
+import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
 import com.hamstoo.utils.{DataInfo, DurationMils, ExtendedTimeStamp, TimeStamp}
@@ -25,6 +29,7 @@ import scala.concurrent.duration._
   */
 class DataStreamTests
   extends AkkaMongoEnvironment("DataStreamTests-ActorSystem")
+    with org.scalatest.mockito.MockitoSugar
     with FutureHandler {
 
   val logger = Logger(classOf[DataStreamTests])
@@ -190,13 +195,34 @@ class DataStreamTests
 
   "Facet values" should "be generated" in {
 
-    def confval(v: AnyRef) = ConfigValueFactory.fromAnyRef(v)
-
+    def confval[T](v: T) = ConfigValueFactory.fromAnyRef(v)
     val config = DataInfo.config
+      .withValue("clock.begin", confval(new DateTime(2018, 1,  1, 0, 0).getMillis))
+      .withValue("clock.end",   confval(new DateTime(2018, 1, 15, 0, 0).getMillis))
+      .withValue("clock.interval", confval((1 day).toMillis))
       .withValue("query", confval("some query"))
       .withValue("user.id", confval(DataInfo.constructUserId().toString))
 
+    val userId = UUID.fromString(config.getString("user.id"))
+    val baseVec = Seq(1.0, 2.0, 3.0)
+    val baseVs = Map(VecEnum.PC1.toString -> baseVec)
+    val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
+
+    // insert some marks with reprs into the database
+    val b :: e :: Nil = Seq("clock.begin", "clock.end").map(config.getLong)
+    (b to e by (e - b) / 4).foreach { ts =>
+      val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
+      val r = baseRepr.copy(id = s"r_${ts.Gs}", vectors = vs)
+      val ri = ReprInfo(r.id, ReprType.PUBLIC)
+      val m = Mark(userId, s"m_${ts.Gs}", MarkData("", None), reprs = Seq(ri), timeFrom = ts)
+      logger.error(s"$m")
+      Await.result(marksDao.insert(m), 5 seconds)
+      Await.result(reprsDao.insert(r), 5 seconds)
+    }
+
     val injector = Guice.createInjector(new StreamModule(config) {
+
+      /** Override configure in a way that we would only do for this test. */
       override def configure(): Unit = {
         super.configure()
         bind[WSClient].toInstance(AhcWSClient())
@@ -204,29 +230,36 @@ class DataStreamTests
         bind[ExecutionContext].toInstance(system.dispatcher)
         bind[Materializer].toInstance(materializer)
 
-        // TODO: these dates should be determined via the injector
-        val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0).getMillis
-        val stop: TimeStamp = new DateTime(2018, 2, 1, 0, 0).getMillis
-        val interval: DurationMils = (1 day).toMillis
-        val clock = Clock(start, stop, interval)
-        bind[Clock]/*.annotatedWith(Names.named("clock"))*/.toInstance(clock)
-
         bind[MongoMarksDao].toInstance(marksDao)
         bind[MongoRepresentationDao].toInstance(reprsDao)
 
+        //bind[VectorEmbeddingsService].toProvider()
+      }
+
+      /** Provide a VectorEmbeddingsService for QueryCorrelation to use via StreamModule.provideQueryVec. */
+      @Provides
+      def provideVecSvc(idfModel: IDFModel): VectorEmbeddingsService = new VectorEmbeddingsService(null, idfModel) {
+        // StreamModule.provideQueryVec doesn't care if "asdf" isn't a query word
+        override def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] =
+          Future.successful(Map("asdf" -> (1, baseVec)))
       }
     })
 
     import net.codingwell.scalaguice.InjectorExtensions._
     val streamModel: StreamModel = injector.instance[StreamModel]
 
-    val headStream: DataStream[Double] = streamModel.facets.head._2
-    val fut: Future[Done] = headStream.source.runWith(Sink.foreach[Data[Double]](d => println(s"$d")))
+    val sink: Sink[Data[Double], Future[IndexedSeq[Data[Double]]]] = Flow[Data[Double]]
+      .map { d => println(s"$d"); d }
+      .toMat(Sink.collection)(Keep.right)
 
-    // look, can even start this after runWith! (but still haven't determined if it's actually necessary yet)
-    injector.instance[Clock].start()
+    val fut = streamModel.run(sink)
 
-    Await.result(fut, 15 seconds)
+    //val headStream: DataStream[Double] = streamModel.run(sink)
+    //val fut: Future[Done] = headStream.source.runWith(Sink.foreach[Data[Double]](d => println(s"$d")))
+
+    val seq = Await.result(fut, 15 seconds)
+
+    seq.foreach(println)
   }
 
   "Clock" should "throttle a DataStream" in {

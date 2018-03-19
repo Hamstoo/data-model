@@ -567,7 +567,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       refOld.copy(tags = if (netLabels.isEmpty) None else Some(netLabels))
     }
 
-    now: Long = TIME_NOW
+    now: TimeStamp = TIME_NOW
 
     // if no change to MarkRef then there's nothing to do
     m <- if (refOld == refNew) Future.successful(mOld) else for {
