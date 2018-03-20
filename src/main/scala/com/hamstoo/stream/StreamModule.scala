@@ -42,6 +42,8 @@ class StreamModule(config: Config) extends ConfigModule(config) {
   @Provides @Named("query.vec")
   def provideQueryVec(@Named("query") query: String, vecSvc: VectorEmbeddingsService)
                      (implicit ec: ExecutionContext): Future[Vec] = for {
+
+    // TODO: how is this getting a real vector during testing?
     wordMasses <- vecSvc.query2Vecs(query)._2
   } yield {
     val qvec = wordMasses.foldLeft(Vec.empty) { case (agg, e) =>
@@ -52,8 +54,8 @@ class StreamModule(config: Config) extends ConfigModule(config) {
   }
 
   @Provides
-  def buildModel(injector: Injector, clock: Clock, materializer: Materializer): StreamModel =
-                                                              new StreamModel(injector)(clock, materializer) {
+  def buildModel(injector: Injector, clock: Clock, materializer: Materializer): FacetsModel =
+                                                              new FacetsModel(injector)(clock, materializer) {
 
     //import net.codingwell.scalaguice.InjectorExtensions._
     //val qc: QueryCorrelation = injector.instance[QueryCorrelation]
