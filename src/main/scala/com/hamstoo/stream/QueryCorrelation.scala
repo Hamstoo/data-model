@@ -34,9 +34,7 @@ class QueryCorrelation @Inject() (@Named("query.vec") queryVec: Future[Vec],
       import com.hamstoo.models.Representation.VecFunctions
       val corr = VecFunctions(reprVec) cosine qvec
 
-      val datum = Datum[Double](d.oid.get, d.oval.get.sourceTime, d.knownTime, corr)
-      logger.error(s"d = $datum") // debug
-      datum
+      Datum[Double](d.oid.get, d.oval.get.sourceTime, d.knownTime, corr)
     }
   }
 }

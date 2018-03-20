@@ -50,7 +50,11 @@ case class Clock @Inject() (@Named("clock.begin") begin: TimeStamp,
       var currentTime: TimeStamp = begin
 
       /** Iterator protocol. */
-      override def hasNext : Boolean = currentTime < end
+      override def hasNext: Boolean = {
+        val b = currentTime < end
+        if (!b) logger.error(s"****** Clock complete") // debug
+        b
+      }
 
       /** Iterator protocol. */
       override def next(): Tick = {
@@ -65,5 +69,5 @@ case class Clock @Inject() (@Named("clock.begin") begin: TimeStamp,
         Tick(r)
       }
     }
-  }
+  }.named("Clock")
 }

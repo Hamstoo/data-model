@@ -4,6 +4,7 @@ import java.util.UUID
 
 import akka.{Done, NotUsed}
 import akka.actor.Cancellable
+import akka.event.Logging
 import akka.stream._
 import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
 import com.google.inject.{Guice, Provides}
@@ -34,7 +35,7 @@ class DataStreamTests
 
   val logger = Logger(classOf[DataStreamTests])
 
-  "Test" should "scratch test 0" in {
+  /*"Test" should "scratch test 0" in {
     // https://doc.akka.io/docs/akka/2.5.3/scala/stream/stream-rate.html#internal-buffers-and-their-effect
 
     implicit val materializer: Materializer = ActorMaterializer()
@@ -151,7 +152,7 @@ class DataStreamTests
   }
 
   /** Used by both of the 2 tests above. */
-  def testGroupReduce(iter: immutable.Iterable[Data[Double]], what: String) {
+  def testGroupReduce(iter: immutable.Iterable[DataD], what: String) {
 
     val grouper = () => new CrossSectionCommandFactory()
 
@@ -191,7 +192,7 @@ class DataStreamTests
     val x: Double = Await.result(g.run(), 15 seconds)
     logger.info(s"****** GroupReduce should cross-sectionally reduce streams of $what: x = $x")
     x shouldEqual 8.0
-  }
+  }*/
 
   "Facet values" should "be generated" in {
 
@@ -232,8 +233,6 @@ class DataStreamTests
 
         bind[MongoMarksDao].toInstance(marksDao)
         bind[MongoRepresentationDao].toInstance(reprsDao)
-
-        //bind[VectorEmbeddingsService].toProvider()
       }
 
       /** Provide a VectorEmbeddingsService for QueryCorrelation to use via StreamModule.provideQueryVec. */
@@ -246,10 +245,10 @@ class DataStreamTests
     })
 
     import net.codingwell.scalaguice.InjectorExtensions._
-    val streamModel: StreamModel = injector.instance[StreamModel]
+    val streamModel: FacetsModel = injector.instance[FacetsModel]
 
-    val sink: Sink[Data[Double], Future[IndexedSeq[Data[Double]]]] = Flow[Data[Double]]
-      .map { d => println(s"$d"); d }
+    val sink: Sink[Data[Double], Future[Seq[Data[Double]]]] = Flow[Data[Double]]
+      .map { d => logger.error(s"------------------ $d"); d }
       .toMat(Sink.collection)(Keep.right)
 
     val fut = streamModel.run(sink)
@@ -257,12 +256,11 @@ class DataStreamTests
     //val headStream: DataStream[Double] = streamModel.run(sink)
     //val fut: Future[Done] = headStream.source.runWith(Sink.foreach[Data[Double]](d => println(s"$d")))
 
-    val seq = Await.result(fut, 15 seconds)
-
-    seq.foreach(println)
+    //logger.error(s"${fut.futureValue}") // waits indefinitely
+    Await.result(fut, 15 seconds).foreach(println)
   }
 
-  "Clock" should "throttle a DataStream" in {
+  /*"Clock" should "throttle a DataStream" in {
 
     // https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely
     // this doesn't print anything when lower than 255 (due to bufferSize!)
@@ -309,5 +307,5 @@ class DataStreamTests
 
     val x = Await.result(fut, 15 seconds)
     x shouldEqual 173
-  }
+  }*/
 }
