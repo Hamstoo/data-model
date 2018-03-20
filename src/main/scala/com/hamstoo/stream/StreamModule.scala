@@ -39,21 +39,20 @@ class StreamModule(config: Config) extends ConfigModule(config) {
   }
 
 
-  @Provides @Named("query.vec")
+  @Provides /*@Singleton*/ @Named("query.vec")
   def provideQueryVec(@Named("query") query: String, vecSvc: VectorEmbeddingsService)
                      (implicit ec: ExecutionContext): Future[Vec] = for {
 
-    // TODO: how is this getting a real vector during testing?
     wordMasses <- vecSvc.query2Vecs(query)._2
   } yield {
     val qvec = wordMasses.foldLeft(Vec.empty) { case (agg, e) =>
       if (agg.isEmpty) e.scaledVec else agg + e.scaledVec
     }.l2Normalize
-    logger.warn(s"Query vector for '$query' (first 10 dimensions): ${qvec.take(10)}")
+    logger.warn(s"Query vector (normalized) for '$query' (first 10 dimensions): ${qvec.take(10)}")
     qvec
   }
 
-  @Provides
+  @Provides /*@Singleton*/
   def buildModel(injector: Injector, clock: Clock, materializer: Materializer): FacetsModel =
                                                               new FacetsModel(injector)(clock, materializer) {
 

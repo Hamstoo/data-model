@@ -503,7 +503,7 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
       val withIdfs = counts.toSeq.map { case (w, (n, v)) =>
         val tf = bm25Tf(n, docLength) // "true" docLength
         val mass = tf * idfModel.transform(w)
-        logger.debug(s"text2TopWords.withIdfs: WordMass($w, $n, $tf * ${mass / tf} = $mass")
+        logger.debug(f"text2TopWords.withIdfs: WordMass($w, $n, $tf%.2f * ${mass / tf}%.2f = $mass%.2f)")
         WordMass(w, n, tf, mass, v * mass)
       }
 

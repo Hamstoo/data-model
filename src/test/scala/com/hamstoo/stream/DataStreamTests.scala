@@ -35,7 +35,7 @@ class DataStreamTests
 
   val logger = Logger(classOf[DataStreamTests])
 
-  /*"Test" should "scratch test 0" in {
+  "Test" should "scratch test 0" in {
     // https://doc.akka.io/docs/akka/2.5.3/scala/stream/stream-rate.html#internal-buffers-and-their-effect
 
     implicit val materializer: Materializer = ActorMaterializer()
@@ -152,7 +152,7 @@ class DataStreamTests
   }
 
   /** Used by both of the 2 tests above. */
-  def testGroupReduce(iter: immutable.Iterable[DataD], what: String) {
+  def testGroupReduce(iter: immutable.Iterable[Data[Double]], what: String) {
 
     val grouper = () => new CrossSectionCommandFactory()
 
@@ -192,10 +192,11 @@ class DataStreamTests
     val x: Double = Await.result(g.run(), 15 seconds)
     logger.info(s"****** GroupReduce should cross-sectionally reduce streams of $what: x = $x")
     x shouldEqual 8.0
-  }*/
+  }
 
   "Facet values" should "be generated" in {
 
+    // config values that stream.ConfigModule will bind for DI
     def confval[T](v: T) = ConfigValueFactory.fromAnyRef(v)
     val config = DataInfo.config
       .withValue("clock.begin", confval(new DateTime(2018, 1,  1, 0, 0).getMillis))
@@ -204,23 +205,24 @@ class DataStreamTests
       .withValue("query", confval("some query"))
       .withValue("user.id", confval(DataInfo.constructUserId().toString))
 
+    // insert some marks with reprs into the database
     val userId = UUID.fromString(config.getString("user.id"))
     val baseVec = Seq(1.0, 2.0, 3.0)
     val baseVs = Map(VecEnum.PC1.toString -> baseVec)
     val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
-
-    // insert some marks with reprs into the database
     val b :: e :: Nil = Seq("clock.begin", "clock.end").map(config.getLong)
     (b to e by (e - b) / 4).foreach { ts =>
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
       val r = baseRepr.copy(id = s"r_${ts.Gs}", vectors = vs)
       val ri = ReprInfo(r.id, ReprType.PUBLIC)
       val m = Mark(userId, s"m_${ts.Gs}", MarkData("", None), reprs = Seq(ri), timeFrom = ts)
-      logger.error(s"$m")
+      logger.info(s"------------------ $m")
       Await.result(marksDao.insert(m), 5 seconds)
       Await.result(reprsDao.insert(r), 5 seconds)
     }
 
+    // bind some stuff in addition to what's required by StreamModule
+    // TODO: make these things support DI as well so that these extra bindings can be removed
     val injector = Guice.createInjector(new StreamModule(config) {
 
       /** Override configure in a way that we would only do for this test. */
@@ -230,7 +232,6 @@ class DataStreamTests
         bind[MongoVectorsDao].toInstance(vectorsDao)
         bind[ExecutionContext].toInstance(system.dispatcher)
         bind[Materializer].toInstance(materializer)
-
         bind[MongoMarksDao].toInstance(marksDao)
         bind[MongoRepresentationDao].toInstance(reprsDao)
       }
@@ -247,20 +248,20 @@ class DataStreamTests
     import net.codingwell.scalaguice.InjectorExtensions._
     val streamModel: FacetsModel = injector.instance[FacetsModel]
 
-    val sink: Sink[Data[Double], Future[Seq[Data[Double]]]] = Flow[Data[Double]]
-      .map { d => logger.error(s"------------------ $d"); d }
-      .toMat(Sink.collection)(Keep.right)
+    val sink: Sink[Data[Double], Future[Double]] = Flow[Data[Double]]
+      .map { d => logger.info(s"------------------ $d"); d }
+      // so the test doesn't break as more facets are added to FacetsModel
+      .filter(_.values.keys.exists(_.asInstanceOf[CompoundId].ids.contains(FacetName("QueryCorrelation"))))
+      .toMat(Sink.fold[Double, Data[Double]](0.0) { case (agg, d) => agg + d.oval.get.value })(Keep.right)
 
-    val fut = streamModel.run(sink)
+    // causes "[error] a.a.OneForOneStrategy - CommandError[code=11600, errmsg=interrupted at shutdown" for some reason
+    //val x = streamModel.run(sink).futureValue
 
-    //val headStream: DataStream[Double] = streamModel.run(sink)
-    //val fut: Future[Done] = headStream.source.runWith(Sink.foreach[Data[Double]](d => println(s"$d")))
-
-    //logger.error(s"${fut.futureValue}") // waits indefinitely
-    Await.result(fut, 15 seconds).foreach(println)
+    val x = Await.result(streamModel.run(sink), 15 seconds)
+    x shouldBe (2.86 +- 0.01)
   }
 
-  /*"Clock" should "throttle a DataStream" in {
+  "Clock" should "throttle a DataStream" in {
 
     // https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely
     // this doesn't print anything when lower than 255 (due to bufferSize!)
@@ -307,5 +308,5 @@ class DataStreamTests
 
     val x = Await.result(fut, 15 seconds)
     x shouldEqual 173
-  }*/
+  }
 }

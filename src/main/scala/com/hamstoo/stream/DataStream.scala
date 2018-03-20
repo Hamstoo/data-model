@@ -150,5 +150,6 @@ abstract class DataSource[T](loadInterval: DurationMils, bufferSize: Int = DataS
         }
       }
       .mapConcat(immutable.Iterable(_: _*))
+      .named(getClass.getSimpleName)
   }
 }
