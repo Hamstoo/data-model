@@ -5,7 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, NON_IDS, ObjectId, TIME_NOW, TimeStamp, URIHandler, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -38,7 +38,7 @@ case class MarkData(override val subj: String,
                     override val tags: Option[Set[String]] = None,
                     override val comment: Option[String] = None,
                     var commentEncoded: Option[String] = None)
-    extends MDSearchable(subj, url, rating, tags, comment) {
+    extends MDSearchable(subj, url, rating, tags, comment) with SafeContent {
 
   import MarkData._
 
@@ -99,6 +99,24 @@ case class MarkData(override val subj: String,
   // TODO: the interface for constructing a user repr should only be allowed to include these fields via having its own class
   def equalsPerUserRepr(other: MarkData): Boolean =
     copy(url = None, rating = None) == other.copy(url = None, rating = None)
+
+  override def isSafe: Boolean = {
+    val urlDanger = url match {
+      case Some(u) => URIHandler.isDangerous(u)
+      case _ => true
+    }
+    val cmtDanger = comment match {
+      case Some(c) => URIHandler.isDangerous(c)
+      case _ => true
+    }
+
+    val tagsDanger = tags match {
+      case Some(set) => set.forall(URIHandler.isDangerous)
+      case _ => true
+    }
+
+    !URIHandler.isDangerous(subj) || urlDanger || cmtDanger || tagsDanger
+  }
 }
 
 object MarkData {
