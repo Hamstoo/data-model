@@ -160,16 +160,4 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
     m.unratedPrivRepr.get shouldEqual unrated.reprId
     mRated.unratedPrivRepr shouldEqual None
   }
-
-  it should "clean url" in {
-    val md = MarkData("subj", Some("https://www.silhouette.rocks/v3.0/docs/endpoints#local-fallback"))
-
-    md.cleanUrl.url.value shouldEqual "https://www.silhouette.rocks/v3.0/docs/endpoints"
-
-    /*md.copy(url = Some("https://www.nature.com/articles/d41586-017-07522-z?utm_campaign=Data%2BElixir&utm_medium=email&utm_source=Data_Elixir_160"))
-      .cleanUrl.url.value shouldEqual "https://www.nature.com/articles/d41586-017-07522-z"
-
-    md.copy(url = Some("https://www.nature.com/articles/d41586-017-07522-z?utm_campaign=Data%2BElixir&utm_medium=email&utm_source=Data_Elixir_160#local-fallback"))
-      .cleanUrl.url.value shouldEqual "https://www.nature.com/articles/d41586-017-07522-z"*/
-  }
 }
