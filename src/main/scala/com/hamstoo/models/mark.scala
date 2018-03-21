@@ -16,7 +16,6 @@ import play.api.Logger
 import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
-import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.util.matching.Regex
 
@@ -67,11 +66,6 @@ case class MarkData(override val subj: String,
 
     // example: <p><img></p>
     Jsoup.clean(html2, htmlTagsWhitelist)
-  }
-
-  override def cleanUrl: MarkData = this.url match {
-    case Some(u) => this.copy(url = Some(cleanUrl(u)))
-    case _ => this
   }
 
   /** Check for `Automarked` label. */
@@ -367,20 +361,6 @@ class MDSearchable(val subj: String,
             tags: Option[Set[String]] = tags,
             comment: Option[String] = comment) =
     new MDSearchable(subj, url, rating, tags, comment)
-
-  /** Method for cleaning urls */
-  @tailrec
-  final def cleanUrl(url: String): String = {
-    if (url.contains("#")) cleanUrl(url.split('#').head) // TODO: is this reasonable?
-    //else if (url.contains("?")) cleanUrl(url.split('?').head) // TODO: is this reasonable?
-    else url
-  }
-
-  /** Clean url from query parameters and fragment identifier */
-  def cleanUrl: MDSearchable = this.url match {
-    case Some(u) => this.xcopy(url = Some(cleanUrl(u)))
-    case _ => this
-  }
 
   /**
     * This method is called `xtoString` instead of `toString` to avoid conflict with `case class Mark` which
