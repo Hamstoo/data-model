@@ -4,7 +4,6 @@ import java.util.UUID
 
 import akka.{Done, NotUsed}
 import akka.actor.Cancellable
-import akka.event.Logging
 import akka.stream._
 import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
 import com.google.inject.{Guice, Provides}
@@ -12,6 +11,7 @@ import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoVectorsDao}
 import com.hamstoo.models.{Mark, MarkData, ReprInfo, Representation}
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
+import com.hamstoo.stream.Join.JoinWithable
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
 import com.hamstoo.utils.{DataInfo, DurationMils, ExtendedTimeStamp, TimeStamp}
@@ -97,20 +97,12 @@ class DataStreamTests
   "Join" should "join DataStreams" in {
     implicit val materializer: Materializer = ActorMaterializer()
 
-    val source: Source[Data[Int], NotUsed] = Source.fromGraph(GraphDSL.create() { implicit builder =>
-      import akka.stream.scaladsl.GraphDSL.Implicits._
+    val src0 = Source((0 until 10     ).map(i => Datum(ReprId(s"id$i"), i, i)))
+    val src1 = Source((0 until 10 by 4).map(i => Datum(UnitId()       , i, i)))
 
-      val jw = Join[Int, Int, Int]((a, b) => a * 100 + b).async
-      val joiner = builder.add(jw)
-
-      val src0 = Source((0 until 10     ).map(i => Datum(ReprId(s"id$i"), i, i)))
-      val src1 = Source((0 until 10 by 4).map(i => Datum(UnitId()       , i, i)))
-
-      src0 ~> joiner.in0
-      src1 ~> joiner.in1
-
-      SourceShape(joiner.out)
-    })
+    // see comment on JoinWithable as to why the cast is necessary here
+    val source: Source[Data[Int], NotUsed] =
+      src0.joinWith(src1)((a, b) => a * 100 + b).asInstanceOf[src0.Repr[Data[Int]]]
 
     val foldSink = Sink.fold[Int, Int](0) { (a, b) =>
       logger.info(s"Log sink: $a + $b")
