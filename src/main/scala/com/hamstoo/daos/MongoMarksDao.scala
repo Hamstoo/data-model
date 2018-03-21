@@ -32,7 +32,7 @@ object MongoMarksDao {
   */
 class MongoMarksDao(db: () => Future[DefaultDB])
                    (implicit userDao: MongoUserDao,
-                    urlDupDao: MongoUrlDuplicatesDao,
+                    urlDuplicatesDao: MongoUrlDuplicatesDao,
                     ex: ExecutionContext) {
 
   import com.hamstoo.utils._
@@ -270,7 +270,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     logger.debug(s"Retrieving marks by URL $url and user $user")
     for {
       // find set of URLs that contain duplicate content to the one requested
-      setDups <- urlDupDao.retrieve(user, url)
+      setDups <- urlDuplicatesDao.retrieve(user, url)
       urls = Set(url).union(setDups.flatMap(_.dups))
 
       // find all marks with those URL prefixes

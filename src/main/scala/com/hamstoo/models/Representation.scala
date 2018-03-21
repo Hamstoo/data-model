@@ -55,13 +55,13 @@ class RSearchable(val id: String,
     * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
     * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
     */
-  def isDuplicate(oth: RSearchable, thisUrl: String, othUrl: String): Boolean = {( // parens fix multi-line ||
-
+  def isDuplicate(oth: RSearchable, thisUrl: Option[String], othUrl: Option[String]): Boolean = {(
+                                                                                          // parens fix multi-line ||
     // quickly test for identical doctexts first...
     doctext.nonEmpty && doctext == oth.doctext ||
 
     // ...or allow a lower vector similarity if the URLs have a high edit similarity...
-    Representation.editSimilarity(thisUrl, othUrl) > 0.9 &&
+    (for(u_t <- thisUrl; u_o <- othUrl) yield Representation.editSimilarity(u_t, u_o)).exists(_ > 0.9) &&
       vecSimilarity(oth) > DUPLICATE_VEC_SIMILARITY_THRESHOLD * 0.8 ||
 
     // ...and otherwise use header as a filter on top of vec/edit similarities
