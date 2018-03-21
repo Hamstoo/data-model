@@ -1,14 +1,17 @@
 package com.hamstoo.stream
 
-import akka.stream.{Attributes, FanInShape2, Inlet, Outlet}
+import akka.stream.scaladsl.{FlowOps, GraphDSL}
+import akka.stream.{Attributes, FanInShape2, FlowShape, Graph, Inlet, SourceShape, Outlet}
 import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
+import com.hamstoo.utils.TimeStamp
 import play.api.Logger
 
+import scala.annotation.unchecked.uncheckedVariance
 import scala.collection.mutable
 import scala.concurrent.duration._
 
 /**
-  * Combine the elements of multiple streams into a stream of combined elements using a combiner function.
+  * Combine the elements of multiple streams into a stream of joinerd elements using a joinerr function.
   * This `Join` class was modeled after `akka.stream.scaladsl.ZipWith`.
   *
   * TODO: similar to the `zipWith` transformer method we should have an (monkey patched) `join` (or `joinWith`) method
@@ -35,13 +38,51 @@ object Join {
   def apply[A0, A1, O](joiner: (A0, A1) => O): Join2[A0, A1, O] =
     new Join2(joiner)
 
+  /**
+    * This class allows two streams a and b to be joined by calling `a.joinWith(b)` as opposed to manually wiring
+    * them up with a `Source.fromGraph(GraphDSL.create() ... )`.
+    *
+    * The implementations here were mostly copied from FlowOps.zipWith and zipWithGraph in
+    * akka/stream/scaladsl/Flow.scala.
+    *
+    * `val imp` cannot be `private` because of `imp.Repr` being returned from `joinWith` which causes the following
+    * compiler error: "private value imp escapes its defining scope as part of type
+    * JoinWithable.this.imp.Repr[com.hamstoo.stream.Data[O]]"
+    *
+    * Neither A0 nor O can be covariant types (e.g. +A0) as they are in FlowOps because they both "occur in invariant
+    * positions."
+    */
+  implicit class JoinWithable[-In, A0, +Mat](/*private*/ val imp: FlowOps[Data[A0], Mat]) {
+
+    /**
+      * Callers of this function will have to cast the returned instance to either a `Source[Data[O], Mat]` (if `imp`
+      * is itself a `Source[Data[A0], Mat]`) or to a `Flow[In, Data[A0], Mat]` (if `imp` is itself a `Flow`).  Since
+      * `imp` is a FlowOps here, `imp.Repr` is the FlowOps version of Repr which gets overridden in both Source
+      * and Flow.  I can't think of a better way to do this other than implementing duplicated implicit classes
+      * for Source and Flow separately.
+      *
+      * Notice the `joiner` function's signature matches that of `Join2` below.
+      */
+    def joinWith[A1, O](that: Graph[SourceShape[Data[A1]], _])(joiner: (A0, A1) => O): imp.Repr[Data[O]] =
+      imp.via(joinWithGraph(that)(joiner))
+
+    /** Employ the GraphDSL to construct the joined flow. */
+    protected def joinWithGraph[A1, O, M](that: Graph[SourceShape[Data[A1]], M])(joiner: (A0, A1) => O):
+                                                Graph[  FlowShape[Data[A0] @uncheckedVariance, Data[O]], M] =
+      GraphDSL.create(that) { implicit b => that_ =>
+        import akka.stream.scaladsl.GraphDSL.Implicits._
+        val join = b.add(new Join2[A0, A1, O](joiner))
+        that_ ~> join.in1
+        FlowShape(join.in0, join.out)
+      }
+  }
 }
 
 /**
-  * `Join` specialized for 2 inputs.
+  * `Join` specialized for 2 inputs.  Note the input streams must both emit `Data[A]`s.
   *
   * @param joiner       Joiner function that takes an A0 and an A1 as input and produces an O.
-  * @param expireAfter  Unjoined elements will expire after this amount of time, and thus never be joined.
+  * @param expireAfter  Unjoined elements will expire after this amount of time and thus never be joined.
   */
 class Join2[A0, A1, O](val joiner: (A0, A1) => O,
                        expireAfter: FiniteDuration = 0 seconds)
@@ -60,14 +101,19 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
     // "It is very important to keep the GraphStage object itself immutable and reusable. All mutable state needs
     // to be confined to the GraphStageLogic that is created for every materialization."
+
+    // buffers of joinable (i.e. not yet fully joined nor expired) data for each input
     val joinable0: mutable.Set[Data[A0]] = mutable.Set.empty[Data[A0]]
     val joinable1: mutable.Set[Data[A1]] = mutable.Set.empty[Data[A1]]
 
-    private var watermark0 = -1L
-    private var watermark1 = -1L
+    // high watermark timestamps for each input
+    private var watermark0: TimeStamp = -1L
+    private var watermark1: TimeStamp = -1L
 
-    // without this field the completion signalling would take one extra pull
-    var willShutDown = false
+    // "without this field the completion signalling would take one extra pull" and with it, if isAvailable(in) is
+    // true, we can signal to the next call to pushOneMaybe to complete/stop, regardless of where that call originates
+    var willShutDown0 = false
+    var willShutDown1 = false
 
     /** This function implements the equivalent of this line `if (pending == 0) pushAll()` of ZipWith. */
     private def pushOneMaybe(): Unit = {
@@ -76,14 +122,14 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
       Seq(joinable0, joinable1).foreach(_.retain(_.knownTime >= math.min(watermark0, watermark1)))
 
       // find a joinable pair, if one exists (the view/headOption combo makes this operate like a lazy find)
-      val tup = joinable0.view.flatMap { d0 =>
+      val pushable = joinable0.view.flatMap { d0 =>
         joinable1.view.flatMap { d1 =>
           if (d0.knownTime != d1.knownTime) None   // known times must match
           else Data.join(d0, d1).map((d0, d1, _))  // and at least one entity ID must be joinable
         }.headOption
       }.headOption
 
-      tup.foreach { case (d0, d1, dJed) =>
+      pushable.foreach { case (d0, d1, dJed) =>
 
         // convert each value from "joined" A0-A1 pair to "joiner" O
         val dJer = Data(dJed.knownTime,
@@ -108,10 +154,19 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
       // if no data got consumed then pull from whichever data source is lagging behind, the fact that no data
       // got consumed probably means that the lagging data source has yet to produce data that is joinable to
       // data that the leading data source has already produced (and is waiting in its respective `joinableX` set)
-      if (willShutDown) completeStage()
+      /*if (willShutDown) completeStage()
       else if (tup.isEmpty) {
         if (watermark0 > watermark1) pull(in1) else pull(in0)
+      }*/
+
+      // update: switched from a single willShutDown to two so that if in1 finishes we can still pull from in0
+      // if it's behind giving it a chance to catch up to whatever's already in the joinable1 buffer (and vice versa)
+      if (watermark0 > watermark1) {
+        if (willShutDown1) completeStage() else if (pushable.isEmpty) pull(in1) // else wait for next onPull
+      } else {
+        if (willShutDown0) completeStage() else if (pushable.isEmpty) pull(in0) // else wait for next onPull
       }
+
     }
 
     /** InHandler 0 */
@@ -132,8 +187,8 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
       override def onUpstreamFinish(): Unit = {
         logger.debug(s"onUpstreamFinish0")
-        if (!isAvailable(in0)) completeStage()
-        willShutDown = true
+        if (!isAvailable(in0) && watermark1 > watermark0) completeStage()
+        willShutDown0 = true
       }
     })
 
@@ -150,8 +205,8 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
       override def onUpstreamFinish(): Unit = {
         logger.debug(s"onUpstreamFinish1")
-        if (!isAvailable(in1)) completeStage()
-        willShutDown = true
+        if (!isAvailable(in1) && watermark0 > watermark1) completeStage()
+        willShutDown1 = true
       }
     })
 
