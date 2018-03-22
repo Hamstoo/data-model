@@ -1,14 +1,15 @@
 package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
+import java.net.URI
 import java.nio.ByteBuffer
 
 import akka.util.ByteString
-import com.gargoylesoftware.htmlunit.html.HtmlPage
 import com.gargoylesoftware.htmlunit._
+import com.gargoylesoftware.htmlunit.html.HtmlPage
 import com.hamstoo.models.Page
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.utils.{MediaType, ObjectId, URIHandler}
+import com.hamstoo.utils.{ExtendedString, MediaType, ObjectId}
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
@@ -23,7 +24,7 @@ import play.shaded.ahc.org.asynchttpclient.{HttpResponseBodyPart, Response}
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.matching.Regex
-import scala.util.{Failure, Try}
+import scala.util.{Failure, Success, Try}
 
 /**
   * ContentRetriever companion class.
@@ -43,6 +44,16 @@ object ContentRetriever {
   // not sure but it seems Sitelock is using Google's reCAPTCHA
   val sitelockCaptchaRgx: Regex = REGEX_FIND_WORD.format("Sitelock").r.unanchored
   val incapsulaWAFRgx: Regex = REGEX_FIND_WORD.format(raw"content\.incapsula\.com").r.unanchored
+
+  /** Make sure the provided String is an absolute link. */
+  def checkLink(s: String): String = if (s.isEmpty) s else Try(new URI(s.sanitize)) match {
+    case Success(uri) if uri.isAbsolute => uri.toASCIIString
+    case Success(uri) => "http://" + uri.toASCIIString
+    case Failure(t) => logger.info(s"String '$s' is probably not a URL; ${t.getMessage}"); s
+  }
+
+  /** Moved from hamstoo repo LinkageService class.  Used to take a MarkData as input and produce one as output. */
+  def fixLink(url: String): String = Try(checkLink(url)).getOrElse("http://" + url)
 
   /** Implicit MimeType class implementing a method which looks up a RepresentationService and calls its `process`. */
   implicit class PageFunctions(private val page: Page) /*extends AnyVal*/ {
@@ -206,7 +217,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
   /** This code was formerly part of the 'hamstoo' repo's LinkageService. */
   def digest(url: String): Future[(String, WSResponse)] = {
     logger.info(s"Digesting URL $url")
-    val link: String = URIHandler.checkLink(url)
+    val link: String = checkLink(url)
 
     //@tailrec // not tail recursive because of the Future
     def recget(url: String, depth: Int = 1): Future[(String, WSResponse)] = {

@@ -3,16 +3,17 @@ package com.hamstoo
 import java.util.Locale
 
 import org.joda.time.DateTime
+import org.jsoup.Jsoup
+import org.jsoup.safety.Whitelist
 import play.api.Logger
 import play.api.libs.json.Json
 import play.api.mvc.{Call, Request}
 import reactivemongo.api.BSONSerializationPack.Reader
+import reactivemongo.api._
 import reactivemongo.api.collections.GenericQueryBuilder
 import reactivemongo.api.commands.WriteResult
 import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
-import reactivemongo.api._
 import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
-import sys.process._
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
@@ -183,6 +184,9 @@ package object utils {
     def binaryPrefix: mutable.WrappedArray[Byte] = s.getBytes.take(URL_PREFIX_LENGTH)
 
     def binPrfxComplement: String = s.substring(0, URL_PREFIX_COMPLEMENT_LENGTH)
+
+    /** Sanitize from XSS content */
+    def sanitize: String = Jsoup.clean(s, Whitelist.basic())
   }
 
   /**
