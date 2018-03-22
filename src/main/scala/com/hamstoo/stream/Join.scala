@@ -1,7 +1,7 @@
 package com.hamstoo.stream
 
 import akka.stream.scaladsl.{FlowOps, GraphDSL}
-import akka.stream.{Attributes, FanInShape2, FlowShape, Graph, Inlet, SourceShape, Outlet}
+import akka.stream.{Attributes, FanInShape2, FlowShape, Graph, Inlet, Outlet, SourceShape}
 import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
 import com.hamstoo.utils.TimeStamp
 import play.api.Logger
@@ -35,8 +35,10 @@ object Join {
     * Create a new `Join` specialized for 2 inputs.    *
     * @param joiner  joining-function from the input values to the output value
     */
-  def apply[A0, A1, O](joiner: (A0, A1) => O): Join2[A0, A1, O] =
-    new Join2(joiner)
+  def apply[A0, A1, O](joiner: (A0, A1) => O,
+                       pairwise: Join.Pairwiser[A0, A1] = DEFAULT_PAIRWISE[A0, A1] _,
+                       expireAfter: Duration = DEFAULT_EXPIRE_AFTER): Join2[A0, A1, O] =
+    new Join2(joiner, pairwise, expireAfter)
 
   /**
     * This class allows two streams a and b to be joined by calling `a.joinWith(b)` as opposed to manually wiring
@@ -63,18 +65,57 @@ object Join {
       *
       * Notice the `joiner` function's signature matches that of `Join2` below.
       */
-    def joinWith[A1, O](that: Graph[SourceShape[Data[A1]], _])(joiner: (A0, A1) => O): imp.Repr[Data[O]] =
-      imp.via(joinWithGraph(that)(joiner))
+    def joinWith[A1, O](that: Graph[SourceShape[Data[A1]], _])
+                       (joiner: (A0, A1) => O,
+                        pairwise: Pairwiser[A0, A1] = DEFAULT_PAIRWISE[A0, A1] _,
+                        expireAfter: Duration = DEFAULT_EXPIRE_AFTER): imp.Repr[Data[O]] =
+      imp.via(joinWithGraph(that)(joiner, pairwise, expireAfter))
 
     /** Employ the GraphDSL to construct the joined flow. */
-    protected def joinWithGraph[A1, O, M](that: Graph[SourceShape[Data[A1]], M])(joiner: (A0, A1) => O):
-                                                Graph[  FlowShape[Data[A0] @uncheckedVariance, Data[O]], M] =
+    protected def joinWithGraph[A1, O, M]
+                          (that: Graph[SourceShape[Data[A1]], M])
+                          (joiner: (A0, A1) => O,
+                           pairwise: Pairwiser[A0, A1] = DEFAULT_PAIRWISE[A0, A1] _,
+                           expireAfter: Duration = DEFAULT_EXPIRE_AFTER):
+                                 Graph[  FlowShape[Data[A0] @uncheckedVariance, Data[O]], M] =
       GraphDSL.create(that) { implicit b => that_ =>
         import akka.stream.scaladsl.GraphDSL.Implicits._
-        val join = b.add(new Join2[A0, A1, O](joiner))
+        val join = b.add(new Join2[A0, A1, O](joiner, pairwise, expireAfter))
         that_ ~> join.in1
         FlowShape(join.in0, join.out)
       }
+  }
+
+  /** Default `expireAfter` duration. */
+  val DEFAULT_EXPIRE_AFTER: Duration = 0 seconds
+
+  /** Like Budweiser, but more pairy. */
+  type Pairwiser[A0, A1] = (Data[A0], Data[A1]) => Option[Pairwised[A0, A1]]
+
+  /** Type returned by a Join's `pairwise` function. */
+  case class Pairwised[A0, A1](paired: Data[(A0, A1)], consumed0: Boolean = false, consumed1: Boolean = false)
+
+  /** Default `pairwise` function.  The two returned Booleans indicate which of the two Data were fully consumed. */
+  def DEFAULT_PAIRWISE[A0, A1](d0: Data[A0], d1: Data[A1]): Option[Pairwised[A0, A1]] = {
+    if (d0.knownTime != d1.knownTime) None       // known times must match
+    else Data.pairwise(d0, d1).map { dPaired =>  // and at least one entity ID must be joinable
+      dPaired.values.size match {
+
+        case 0 => assert(false)
+          Pairwised(dPaired)
+
+        // either joining single-element, non-UnitId Datum w/ UnitId or w/ multi-element Data
+        case 1 =>
+          val idPaired = dPaired.oid.get
+          def consumed[T](x: Data[T]): Boolean = x.oid.contains(idPaired) // and we already know the knownTimes match
+          assert(consumed(d0) || consumed(d1))
+          Pairwised(dPaired, consumed(d0), consumed(d1))
+
+        // either joining multi-element Data with another multi-element or a UnitId (assume this knownTime is complete)
+        case _ =>
+          Pairwised(dPaired, consumed0 = true, consumed1 = true)
+      }
+    }
   }
 }
 
@@ -82,10 +123,14 @@ object Join {
   * `Join` specialized for 2 inputs.  Note the input streams must both emit `Data[A]`s.
   *
   * @param joiner       Joiner function that takes an A0 and an A1 as input and produces an O.
+  * @param pairwise     Pairs up the values in Data[A0] with their respective values in Data[A1] into an
+  *                     (optional) Data[(A0, A1)] (if they can indeed be joined) in preparation for joining by
+  *                     the `joiner` function.
   * @param expireAfter  Unjoined elements will expire after this amount of time and thus never be joined.
   */
 class Join2[A0, A1, O](val joiner: (A0, A1) => O,
-                       expireAfter: FiniteDuration = 0 seconds)
+                       val pairwise: Join.Pairwiser[A0, A1] = Join.DEFAULT_PAIRWISE[A0, A1] _,
+                       expireAfter: Duration = Join.DEFAULT_EXPIRE_AFTER)
     extends GraphStage[FanInShape2[Data[A0], Data[A1], Data[O]]] {
 
   val logger = Logger(classOf[Join2[A0, A1, O]])
@@ -102,9 +147,10 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
     // "It is very important to keep the GraphStage object itself immutable and reusable. All mutable state needs
     // to be confined to the GraphStageLogic that is created for every materialization."
 
-    // buffers of joinable (i.e. not yet fully joined nor expired) data for each input
-    val joinable0: mutable.Set[Data[A0]] = mutable.Set.empty[Data[A0]]
-    val joinable1: mutable.Set[Data[A1]] = mutable.Set.empty[Data[A1]]
+    // buffers of joinable (i.e. not yet fully joined nor expired) data for each input (the Orderings are merely
+    // prudent, not required)
+    val joinable0: mutable.Set[Data[A0]] = mutable.SortedSet.empty[Data[A0]](Ordering.by(_.knownTime))
+    val joinable1: mutable.Set[Data[A1]] = mutable.SortedSet.empty[Data[A1]](Ordering.by(_.knownTime))
 
     // high watermark timestamps for each input
     private var watermark0: TimeStamp = -1L
@@ -121,41 +167,36 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
       // remove expired elements from the sets before searching for joinable ones
       Seq(joinable0, joinable1).foreach(_.retain(_.knownTime >= math.min(watermark0, watermark1)))
 
-      // find a joinable pair, if one exists (the view/headOption combo makes this operate like a lazy find)
+      // find a single joinable pair, if one exists (the view/headOption combo makes this operate like a lazy find)
       val pushable = joinable0.view.flatMap { d0 =>
-        joinable1.view.flatMap { d1 =>
-          if (d0.knownTime != d1.knownTime) None   // known times must match
-          else Data.join(d0, d1).map((d0, d1, _))  // and at least one entity ID must be joinable
-        }.headOption
+        joinable1.view.flatMap { d1 => pairwise(d0, d1).map((d0, d1, _)) }.headOption
       }.headOption
 
-      pushable.foreach { case (d0, d1, dJed) =>
+      // perhaps this has the same effect as the above; is it easier to read?
+      //val pushable = (for(d0 <- joinable0.view; d1 <- joinable1.view)
+        //yield pairwise(d0, d1).map((d0, d1, _))).headOption
 
-        // convert each value from "joined" A0-A1 pair to "joiner" O
-        val dJer = Data(dJed.knownTime,
-                        dJed.values.mapValues(v => SourceValue(joiner(v.value._1, v.value._2), v.sourceTime)))
+      pushable.foreach { case (d0, d1, Join.Pairwised(dPaired, consumed0, consumed1)) =>
+
+        // convert each value from an (A0, A1) pair to an O
+        val dJoined = Data(dPaired.knownTime,
+                           dPaired.values.mapValues(v => SourceValue(joiner(v.value._1, v.value._2), v.sourceTime)))
 
         // push to consumer, which should pull again from this materialized Join instance, if ready
-        logger.debug(s"  pushing: $d0 + $d1 = $dJer")
-        push(out, dJer)
+        logger.debug(s"  pushing: $d0 + $d1 = $dJoined")
+        push(out, dJoined)
 
-        // cleanup to ensure we don't perform the same join again in the future, i.e. remove one or both of the joinees
-        dJer.values.size match {
-          case 0 => assert(false)
-          case 1 => // either joining single-element, non-UnitId Datum w/ UnitId or w/ multi-element Data
-            val idJer = dJer.oid.get
-            Seq(joinable0, joinable1).foreach(_.retain(x => !(x.oid.contains(idJer) && x.knownTime == d0.knownTime)))
-          case _ =>
-            joinable0 -= d0
-            joinable1 -= d1
-        }
+        // cleanup to ensure we don't perform the same join again in the future (i.e. remove one or both of the joinees)
+        assert(consumed0 || consumed1)
+        if (consumed0) joinable0.remove(d0)
+        if (consumed1) joinable1.remove(d1)
       }
 
       // if no data got consumed then pull from whichever data source is lagging behind, the fact that no data
       // got consumed probably means that the lagging data source has yet to produce data that is joinable to
       // data that the leading data source has already produced (and is waiting in its respective `joinableX` set)
       /*if (willShutDown) completeStage()
-      else if (tup.isEmpty) {
+      else if (pushable.isEmpty) {
         if (watermark0 > watermark1) pull(in1) else pull(in0)
       }*/
 

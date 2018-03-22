@@ -4,6 +4,7 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.{BroadcastHub, Sink, Source}
 import com.hamstoo.stream.Tick.{ExtendedTick, Tick}
+import com.hamstoo.stream.Join.{JoinWithable, Pairwised}
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
 import play.api.Logger
 
@@ -32,15 +33,17 @@ abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
 
   val logger = Logger(classOf[DataStream[T]])
 
+  type SourceType = Source[Data[T], NotUsed]
+
   /** Pure virtual Akka Source to be defined by implementation. */
-  protected def hubSource: Source[Data[T], NotUsed]
+  protected def hubSource: SourceType
 
   /**
     * This `lazy val` materializes `hubSource` into a dynamic BroadcastHub, which can be wired into as many
     * Flows or Sinks as desired at runtime.
     * See also: https://doc.akka.io/docs/akka/2.5/stream/stream-dynamic.html
     */
-  final lazy val source: Source[Data[T], NotUsed] = {
+  final lazy val source: SourceType = {
     assert(hubSource != null) // this assertion will fail if `source` is not `lazy`
     logger.debug(s"Materializing ${getClass.getSimpleName} BroadcastHub...")
 
@@ -49,19 +52,19 @@ abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
     val src = hubSource.runWith(BroadcastHub.sink(bufferSize = bufferSize))
 
     logger.debug(s"Done materializing ${getClass.getSimpleName} BroadcastHub")
-    src
+    src.named(getClass.getSimpleName)
   }
 }
 
 /**
-  * A DataSource is merely a DataStream that can listen to a Clock so that it knows when to load
+  * A PreloadSource is merely a DataStream that can listen to a Clock so that it knows when to load
   * data from its abstract source.  It throttles its stream emissions to 1/`period` frequency.
   */
-abstract class DataSource[T](loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
-                            (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
+abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
+                               (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
     extends DataStream[T](bufferSize) {
 
-  override val logger = Logger(classOf[DataSource[T]])
+  override val logger = Logger(classOf[PreloadSource[T]])
   logger.info(s"Constructing ${getClass.getSimpleName} (loadInterval=${loadInterval.toDays})")
 
   /** Pre-load a *future* block of data from the data source.  `begin` should be inclusive and `end`, exclusive. */
@@ -131,7 +134,7 @@ abstract class DataSource[T](loadInterval: DurationMils, bufferSize: Int = DataS
   }
 
   /** Groups preloaded data into clock tick intervals and throttles it to the pace of the ticks. */
-  override protected val hubSource: Source[Data[T], NotUsed] = {
+  override protected val hubSource: SourceType = {
 
     clock.source
 
@@ -150,6 +153,41 @@ abstract class DataSource[T](loadInterval: DurationMils, bufferSize: Int = DataS
         }
       }
       .mapConcat(immutable.Iterable(_: _*))
-      .named(getClass.getSimpleName)
+  }
+}
+
+/**
+  * A ThrottledSource is a DataStream that loads into its internal Stream's buffer--as opposed to a special
+  * chunked "preload buffer"--at whatever rate Akka's backpressure mechanism will allow, but then it throttles
+  * the doling out of its data such that it never gets ahead of a Clock.
+  */
+abstract class ThrottledSource[T](loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
+                                 (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
+  extends DataStream[T](bufferSize) {
+
+  override val logger = Logger(classOf[ThrottledSource[T]])
+  logger.info(s"Constructing ${getClass.getSimpleName} (loadInterval=${loadInterval.toDays})")
+
+  /** The Source to throttle. */
+  def throttlee: SourceType
+
+  /** Throttles data by joining it with the clock and then mapping back to itself. */
+  override protected val hubSource: SourceType = {
+
+    // the Join that this function uses should only have a single clock tick in its joinable1 buffer at a time, every
+    // call to pushOneMaybe will either push or result in a pull from the throttlee, as soon as the throttlee's
+    // watermark0 gets ahead of the clock's watermark1
+
+    /** Move `d.knownTime`s up to the end of the clock window that they fall inside, just like PreloadSource. */
+    def pairwise(d: Data[T], t: Tick): Option[Join.Pairwised[T, TimeStamp]] =
+      if (d.knownTime > t.time) None
+      else Some(Pairwised(Data(t.time, d.values.mapValues(sv => SourceValue((sv.value, 0L), sv.sourceTime))),
+                          consumed0 = true))
+
+    /** Simply ignore the 0L "value" that was paired up with each `sv.value` in `pairwise`. */
+    def joiner(v: T, t: TimeStamp): T = v
+
+    // throttle the `throttlee` with the clock (see comment on JoinWithable as to why the cast is necessary here)
+    JoinWithable(throttlee).joinWith(clock.source)(joiner, pairwise).asInstanceOf[SourceType]
   }
 }
