@@ -1,6 +1,6 @@
 package com.hamstoo.stream
 
-import com.hamstoo.utils.{ObjectId, TimeStamp}
+import com.hamstoo.utils.{ExtendedTimeStamp, ObjectId, TimeStamp}
 import org.joda.time.DateTime
 import play.api.libs.json.Json
 import spire.tailrec
@@ -72,8 +72,14 @@ case class Data[T](knownTime: TimeStamp, values: Map[EntityId, SourceValue[T]]) 
   def oval: Option[SourceValue[T]] = if (values.size == 1) values.headOption.map(_._2) else None
 
   override def toString: String = {
-    val vstr = s"$values"
-    s"${getClass.getSimpleName}($knownTime, ${vstr.take(150)}${if (vstr.length > 150) "...." else ""})"
+    val h = values.head
+    if (values.size == 1 && h._1 == UnitId() && knownTime == h._2.sourceTime &&
+        h._2.value.isInstanceOf[TimeStamp] && knownTime == h._2.value.asInstanceOf[TimeStamp]) {
+      s"Tick(${knownTime.tfmt})"
+    } else {
+      val vstr = s"$values"
+      s"${getClass.getSimpleName}($knownTime, ${vstr.take(150)}${if (vstr.length > 150) "...." else ""})"
+    }
   }
 }
 

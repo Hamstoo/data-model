@@ -161,14 +161,22 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
   * chunked "preload buffer"--at whatever rate Akka's backpressure mechanism will allow, but then it throttles
   * the doling out of its data such that it never gets ahead of a Clock.
   */
-abstract class ThrottledSource[T](loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
+abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
                                  (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
   extends DataStream[T](bufferSize) {
 
   override val logger = Logger(classOf[ThrottledSource[T]])
-  logger.info(s"Constructing ${getClass.getSimpleName} (loadInterval=${loadInterval.toDays})")
+  logger.info(s"Constructing ${getClass.getSimpleName}")
 
-  /** The Source to throttle. */
+  /**
+    * The Source to throttle.
+    *
+    * Overridden `throttlee`s may want to tweak their buffer sizes with one of the two following approaches.
+    *   1. Akka internal, async buffer: set `bufferSize` field which the BroadcastHub imposes on its producer, i.e.
+    *      do not use `addAttributes(Attributes.inputBuffer(initial = 8, max = 8))` which will have no effect.
+    *   2. User-defined, domain logic buffer: throttlee.buffer(500, OverflowStrategy.backpressure)
+    * [https://doc.akka.io/docs/akka/current/stream/stream-rate.html]
+    */
   def throttlee: SourceType
 
   /** Throttles data by joining it with the clock and then mapping back to itself. */

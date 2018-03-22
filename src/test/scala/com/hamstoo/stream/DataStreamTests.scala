@@ -253,7 +253,7 @@ class DataStreamTests
     x shouldBe (2.86 +- 0.01)
   }
 
-  "Clock" should "throttle a DataStream" in {
+  "Clock" should "throttle a PreloadSource" in {
 
     // https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely
     // this doesn't print anything when lower than 255 (due to bufferSize!)
@@ -298,7 +298,45 @@ class DataStreamTests
 
     clock.start()
 
-    val x = Await.result(fut, 15 seconds)
+    val x = Await.result(fut, 10 seconds)
+    x shouldEqual 173
+  }
+
+  "Clock" should "throttle a ThrottledSource" in {
+
+    // changing these (including interval) will affect results b/c it changes the effective time range the clock covers
+    val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
+    val stop: TimeStamp = new DateTime(2018, 1, 10, 0, 0, DateTimeZone.UTC).getMillis
+    val interval: DurationMils = (2 days).toMillis
+    implicit val clock: Clock = Clock(start, stop, interval)
+
+    implicit val ec: ExecutionContext = system.dispatcher
+    case class TestSource() extends ThrottledSource[TimeStamp]() {
+
+      // this doesn't work with a `val` (NPE) for some reason, but it works with `lazy val` or `def`
+      override lazy val throttlee: SourceType = Source {
+
+        // no need to snapBegin like with PreloadSource test b/c peeking outside of the class for when to start
+        val dataInterval = (12 hours).toMillis
+
+        // a preload source would backup the data until the (exclusive) beginning of the tick interval before `start`,
+        // so that's what we do here with `start - interval + dataInterval` to make the two test results match up
+        (start - interval + dataInterval until stop by dataInterval).map { t =>
+          Datum[TimeStamp](MarkId("kf"), t, t)
+        }
+      }
+    }
+
+    val fut: Future[Int] = TestSource().source
+      .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.oval.get.sourceTime.tfmt} / ${e.oval.get.value.dt.getDayOfMonth}"); e }
+      .runWith(
+        Sink.fold[Int, Data[TimeStamp]](0) { case (agg, d) => agg + d.oval.get.value.dt.getDayOfMonth }
+      )
+
+    Thread.sleep(5000)
+    clock.start()
+
+    val x = Await.result(fut, 10 seconds)
     x shouldEqual 173
   }
 }
