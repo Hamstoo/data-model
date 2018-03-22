@@ -364,11 +364,11 @@ class MDSearchable(val subj: String,
   var bMasked: Boolean = false
   var ownerRating: Option[Double] = None
 
-  def update(subj: String = subj,
-             url: Option[String] = url,
-             rating: Option[Double] = rating,
-             tags: Option[Set[String]] = tags,
-             comment: Option[String] = comment) =
+  def xcopy(subj: String = subj,
+            url: Option[String] = url,
+            rating: Option[Double] = rating,
+            tags: Option[Set[String]] = tags,
+            comment: Option[String] = comment) =
     new MDSearchable(subj, url, rating, tags, comment)
 
   /**
@@ -473,7 +473,7 @@ class MSearchable(val userId: UUID,
       val ref = optRef.getOrElse(MarkRef(id)) // create an empty MarkRef (id isn't really used)
 
       val unionedTags = mark.tags.getOrElse(Set.empty[String]) ++ ref.tags.getOrElse(Set.empty[String])
-      val mdata = mark.update(rating = ref.rating,
+      val mdata = mark.xcopy(rating = ref.rating,
         tags = if (unionedTags.isEmpty) None else Some(unionedTags))
       mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
       mdata.ownerRating = mark.rating
@@ -570,24 +570,6 @@ object Mark extends BSONHandlers {
     override def withTimeFrom(timeFrom: Long): ExpectedRating = this.copy(timeFrom = timeFrom)
   }
 
-  /**
-    * Keep track of which URLs have identical content to other URLs, per user.  For example, the following 2 URLs:
-    *  https://www.nature.com/articles/d41586-017-07522-z?utm_campaign=Data%2BElixir&utm_medium=email&utm_source=Data_Elixir_160
-    *  https://www.nature.com/articles/d41586-017-07522-z
-    *
-    * The two `var`s are used for database lookup and index.  Their respective non-`var`s are the true values.  `dups`
-    * is the thing being looked up--a list of other URLs that are duplicated content of `url`.
-    */
-  case class UrlDuplicate(userId: UUID,
-                          url: String,
-                          dups: Set[String],
-                          var userIdPrfx: String = "", // why can't a simple string be used for urlPrfx also?
-                          var urlPrfx: Option[mutable.WrappedArray[Byte]] = None,
-                          id: String = generateDbId(Mark.ID_LENGTH)) {
-    userIdPrfx = userId.toString.binPrfxComplement
-    urlPrfx = Some(url.binaryPrefix)
-  }
-
   val ID_LENGTH: Int = 16
 
   val USR: String = nameOf[Mark](_.userId)
@@ -647,6 +629,5 @@ object Mark extends BSONHandlers {
   implicit val markDataBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
   implicit val reprRating: BSONDocumentHandler[ReprInfo] = Macros.handler[ReprInfo]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
-  implicit val urldupBsonHandler: BSONDocumentHandler[UrlDuplicate] = Macros.handler[UrlDuplicate]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
 }
