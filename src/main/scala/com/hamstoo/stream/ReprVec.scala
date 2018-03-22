@@ -24,7 +24,7 @@ case class ReprVec @Inject() (@Named("user.id") userId: UUID,
                               marksDao: MongoMarksDao,
                               reprsDao: MongoRepresentationDao)
                              (implicit clock: Clock, m: Materializer)
-    extends DataSource[Vec]((10 days).toMillis) {
+    extends PreloadSource[Vec]((10 days).toMillis) {
 
   /** Map a stream of marks to their reprs' PC1 vectors. */
   override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[Vec]]] = {

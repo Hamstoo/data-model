@@ -273,7 +273,7 @@ class DataStreamTests
     val preloadInterval = 3 days
 
     implicit val ec: ExecutionContext = system.dispatcher
-    case class TestSource() extends DataSource[TimeStamp](preloadInterval.toMillis) {
+    case class TestSource() extends PreloadSource[TimeStamp](preloadInterval.toMillis) {
       //override val logger = Logger(classOf[TestSource]) // this line causes a NPE for some reason
       override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[TimeStamp]]] = Future {
 

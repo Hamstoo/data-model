@@ -119,7 +119,7 @@ object Tick {
 object Data {
 
   /** Join two `Data`s.  They should probably have the same `knownTime`s, but that is not enforced. */
-  def join[A0, A1](d0: Data[A0], d1: Data[A1]): Option[Data[(A0, A1)]] = {
+  def pairwise[A0, A1](d0: Data[A0], d1: Data[A1]): Option[Data[(A0, A1)]] = {
 
     val joinedValues = (for {
       (id0, v0) <- d0.values
