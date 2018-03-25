@@ -10,7 +10,6 @@ import com.gargoylesoftware.htmlunit.html.HtmlPage
 import com.hamstoo.models.Page
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{ExtendedString, MediaType, ObjectId}
-import com.hamstoo.utils.{MediaType, ObjectId}
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element

@@ -11,14 +11,14 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * Data model of an inline note.  We refer to this as a "note" rather than a "comment" to help differentiate
   * between the two concepts, the latter being complementary user content.
   *
-  * @param usrId    user UUID
+  * @param usrId       user UUID
   * @param sharedWith  defines which other users are allowed to read or write this InlineNote
-  * @param id       inline note id, common for all versions through time
-  * @param markId   markId of the web page where highlighting was done; URL can be obtained from there
-  * @param pos      frontend comment data, including positioning and comment text
-  * @param memeId   'comment representation' id, to be implemented
-  * @param timeFrom timestamp
-  * @param timeThru version validity time
+  * @param id          inline note id, common for all versions through time
+  * @param markId      markId of the web page where highlighting was done; URL can be obtained from there
+  * @param pos         frontend comment data, including positioning and comment text
+  * @param memeId      'comment representation' id, to be implemented
+  * @param timeFrom    timestamp
+  * @param timeThru    version validity time
   */
 case class InlineNote(usrId: UUID,
                       sharedWith: Option[SharedWith] = None,
