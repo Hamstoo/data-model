@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.daos.MongoUserDao
+import com.hamstoo.utils.ExtendedString
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
@@ -32,7 +33,14 @@ case class Profile(
                     passwordInfo: Option[PasswordInfo] = None,
                     oAuth1Info: Option[OAuth1Info] = None,
                     oAuth2Info: Option[OAuth2Info] = None,
-                    avatarUrl: Option[String] = None)
+                    avatarUrl: Option[String] = None) extends Protectable[Profile] {
+  override def protect: Profile = {
+    copy(firstName = firstName.map(_.sanitize),
+      lastName = lastName.map(_.sanitize),
+      fullName = fullName.map(_.sanitize),
+      avatarUrl = avatarUrl.map(_.sanitize))
+  }
+}
 
 object Profile {
   implicit val loginInfHandler: BSONDocumentHandler[LoginInfo] = Macros.handler[LoginInfo]

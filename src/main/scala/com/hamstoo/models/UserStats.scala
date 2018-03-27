@@ -16,7 +16,7 @@ case class UserStats(nMarks: Int,
                      imported: Int,
                      marksLatest: Seq[UserStatsDay],
                      marksLatestSum: Int,
-                     mostProductive: UserStatsDay) extends Protected[UserStats] {
+                     mostProductive: UserStatsDay) extends Protectable[UserStats] {
 
   override def protect: UserStats = {
     copy(marksLatest = marksLatest.map(_.protect))
@@ -24,7 +24,7 @@ case class UserStats(nMarks: Int,
 }
 
 /** A count of the number of marks that were created on a particular date. */
-case class UserStatsDay(date: String, nMarks: Int) extends Protected[UserStatsDay] {
+case class UserStatsDay(date: String, nMarks: Int) extends Protectable[UserStatsDay] {
   override def protect: UserStatsDay = {
     copy(date = date.sanitize)
   }

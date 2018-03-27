@@ -240,7 +240,7 @@ class MDSearchable(val subj: String,
                    val url: Option[String],
                    val rating: Option[Double],
                    val tags: Option[Set[String]],
-                   val comment: Option[String]) extends Protected[MDSearchable] {
+                   val comment: Option[String]) extends Protectable[MDSearchable] {
 
   // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
   // rating value (not part of the data(base) model)
@@ -303,7 +303,7 @@ class MSearchable(val userId: UUID,
                   val sharedWith: Option[SharedWith],
                   val nSharedFrom: Option[Int],
                   val nSharedTo: Option[Int],
-                  val score: Option[Double]) extends Shareable with Protected[MSearchable] {
+                  val score: Option[Double]) extends Shareable with Protectable[MSearchable] {
 
   /**
     * This method is called `xcopy` instead of `copy` to avoid conflict with `case class Mark` which

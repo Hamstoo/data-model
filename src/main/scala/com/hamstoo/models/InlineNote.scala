@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.{INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import play.api.libs.json.{JsObject, Json}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -30,13 +30,15 @@ case class InlineNote(usrId: UUID,
                       pageCoord: Option[PageCoord] = None,
                       memeId: Option[String] = None,
                       timeFrom: TimeStamp = TIME_NOW,
-                      timeThru: TimeStamp = INF_TIME) extends Annotation with HasJsonPreview {
+                      timeThru: TimeStamp = INF_TIME) extends Annotation {
 
   override def jsonPreview: JsObject = Json.obj(
     "id" -> id,
-    "preview" -> pos.text,
+    "preview" -> pos.protect.text,
     "type" -> "comment"
   )
+
+  override def protect: InlineNote = copy(pos = pos.protect)
 }
 
 object InlineNote extends BSONHandlers with AnnotationInfo {
@@ -52,10 +54,14 @@ object InlineNote extends BSONHandlers with AnnotationInfo {
   case class Position(path: String,
                       text: String,
                       offsetX: Double,
-                      offsetY: Double) extends Positions {
+                      offsetY: Double) extends Positions with Protectable[Position] {
 
     /** Coordinates (offset) of an inline note in a node.  Useful for sorting. */
     def nodeCoord = PageCoord(offsetX, offsetY)
+
+    override def protect: Position = {
+      copy(text = text.sanitize)
+    }
   }
 
   val ID_LENGTH: Int = 16

@@ -212,7 +212,7 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
                      userIds: Option[Set[UUID]] = None,
                      emails: Option[Set[String]] = None,
                      sharedObjs: Seq[UserGroup.SharedObj] = Seq.empty[UserGroup.SharedObj],
-                     var hash: Int = 0) extends Protected[UserGroup] {
+                     var hash: Int = 0) extends Protectable[UserGroup] {
 
   // if `id` is None then let `hash` be None also
   hash = if (id.isEmpty) 0 else UserGroup.hash(this)

@@ -146,7 +146,7 @@ case class MarkDataPatch(subj: Option[String],
                          url: Option[String],
                          rating: Option[Double],
                          tags: Option[Set[String]],
-                         comment: Option[String]) extends Protected[MarkDataPatch] {
+                         comment: Option[String]) extends Protectable[MarkDataPatch] {
 
   override def protect: MarkDataPatch = {
     copy(subj = subj.map(_.sanitize),

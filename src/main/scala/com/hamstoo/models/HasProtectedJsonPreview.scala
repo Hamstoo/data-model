@@ -4,8 +4,9 @@ import play.api.libs.json.JsObject
 
 /**
   * A trait define functionality that's required by the frontend.
+  * Mixed with Protectable trait, to return protected preview
   */
-trait HasJsonPreview {
+trait HasProtectedJsonPreview[A] extends Protectable[A] {
 
   /**
     * @return - Json object that contain data object preview information,

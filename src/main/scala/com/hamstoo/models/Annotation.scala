@@ -13,7 +13,7 @@ import com.hamstoo.utils.{ObjectId, TimeStamp}
   * Currently this trait defines base information with sort-by-page-coordinates functionality, which is used by the full-page
   * view in order to sort the annotations in the same order in which they appear on the page.
   */
-trait Annotation extends Shareable { // (backend implementation of Shareable *Annotations* doesn't exist yet)
+trait Annotation extends Shareable with HasProtectedJsonPreview[Annotation] { // (backend implementation of Shareable *Annotations* doesn't exist yet)
   val usrId: UUID
   val id: ObjectId
   val markId: ObjectId
