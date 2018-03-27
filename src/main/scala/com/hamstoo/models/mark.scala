@@ -226,6 +226,10 @@ case class Mark(override val userId: UUID,
     case None => scala.runtime.ScalaRunTime._hashCode(this)
     case Some(_) => this.copy(score = None).hashCode
   }
+
+  override def protect: Mark = {
+    copy(mark = mark.protect)
+  }
 }
 
 /**
@@ -236,7 +240,7 @@ class MDSearchable(val subj: String,
                    val url: Option[String],
                    val rating: Option[Double],
                    val tags: Option[Set[String]],
-                   val comment: Option[String]) {
+                   val comment: Option[String]) extends Protected[MDSearchable] {
 
   // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
   // rating value (not part of the data(base) model)
@@ -256,6 +260,15 @@ class MDSearchable(val subj: String,
     */
   def xtoString: String =
     s"${classOf[MDSearchable].getSimpleName}($subj,$url,$rating,$tags,$comment)"
+
+  override def protect: MDSearchable = {
+    xcopy(
+      subj = subj.sanitize,
+      url = url.map(_.sanitize),
+      comment = comment.map(_.sanitize),
+      tags = tags.map(_.map(_.sanitize))
+    )
+  }
 }
 
 object MDSearchable {
@@ -290,7 +303,7 @@ class MSearchable(val userId: UUID,
                   val sharedWith: Option[SharedWith],
                   val nSharedFrom: Option[Int],
                   val nSharedTo: Option[Int],
-                  val score: Option[Double]) extends Shareable {
+                  val score: Option[Double]) extends Shareable with Protected[MSearchable] {
 
   /**
     * This method is called `xcopy` instead of `copy` to avoid conflict with `case class Mark` which
@@ -375,6 +388,10 @@ class MSearchable(val userId: UUID,
     */
   def xtoString: String =
     s"${classOf[MSearchable].getSimpleName}($userId,$id,${mark.xtoString},$markRef,$aux,$reprs,$timeFrom,$timeThru,$modifiedBy,$sharedWith,$nSharedFrom,$nSharedTo,$score)"
+
+  override def protect: MSearchable = {
+    xcopy(mark = mark.protect)
+  }
 }
 
 object MSearchable {

@@ -28,7 +28,7 @@ case class MarkData(override val subj: String,
                     override val tags: Option[Set[String]] = None,
                     override val comment: Option[String] = None,
                     var commentEncoded: Option[String] = None)
-  extends MDSearchable(subj, url, rating, tags, comment) with Protected[MarkData] {
+  extends MDSearchable(subj, url, rating, tags, comment) {
 
   import MarkData._
 
