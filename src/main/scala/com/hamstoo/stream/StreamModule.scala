@@ -8,6 +8,7 @@ import com.google.inject.name.Named
 import com.google.inject.{Injector, Provides}
 import com.hamstoo.models.Representation.{Vec, VecFunctions}
 import com.hamstoo.services.VectorEmbeddingsService
+import com.hamstoo.services.VectorEmbeddingsService.{Query2VecsType, WordMass}
 import com.hamstoo.utils.ConfigModule
 import com.typesafe.config.Config
 import play.api.Logger
@@ -38,19 +39,19 @@ class StreamModule(config: Config) extends ConfigModule(config) {
     bind[UUID].annotatedWith(Names.named("user.id")).toInstance(UUID.fromString(config.getString("user.id")))
   }
 
+  @Provides /*@Singleton*/ @Named("query2Vecs")
+  def provideQuery2Vecs(@Named("query") query: String, vecSvc: VectorEmbeddingsService)
+                       (implicit ec: ExecutionContext): Query2VecsType =
+    vecSvc.query2Vecs(query)
 
   @Provides /*@Singleton*/ @Named("query.vec")
-  def provideQueryVec(@Named("query") query: String, vecSvc: VectorEmbeddingsService)
-                     (implicit ec: ExecutionContext): Future[Vec] = for {
-
-    wordMasses <- vecSvc.query2Vecs(query)._2
-  } yield {
-    val qvec = wordMasses.foldLeft(Vec.empty) { case (agg, e) =>
-      if (agg.isEmpty) e.scaledVec else agg + e.scaledVec
-    }.l2Normalize
-    logger.warn(s"Query vector (normalized) for '$query' (first 10 dimensions): ${qvec.take(10)}")
-    qvec
-  }
+  def provideQueryVec(@Named("query2Vecs") query2Vecs: Query2VecsType)
+                     (implicit ec: ExecutionContext): Future[Vec] =
+    query2Vecs._2.map { wordMasses =>
+      wordMasses.foldLeft(Vec.empty) { case (agg, e) =>
+        if (agg.isEmpty) e.scaledVec else agg + e.scaledVec
+      }.l2Normalize
+    }
 
   @Provides /*@Singleton*/
   def buildModel(injector: Injector, clock: Clock, materializer: Materializer): FacetsModel =

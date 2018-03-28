@@ -25,6 +25,11 @@ object VectorEmbeddingsService {
     */
   case class WordMass(word: String, count: Double, tf: Double, mass: Double, scaledVec: Vec)
 
+  // first of the pair is a map from query word to count, second is just what it says
+  type WordCountsType = Seq[(String, Int)]
+  type WordMassesType = Future[Seq[WordMass]]
+  type Query2VecsType = (WordCountsType, WordMassesType)
+
   // avg(5000, 7200, 2200, 5300, 1077, 3400) see second HTMLRepresentationServiceSpec test
   val MEDIAN_DOC_LENGTH = 4000
 }
@@ -68,9 +73,9 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
     // word count is used to normalize $search scores obtained from queries against MongoDB Text Index
     var nWords: Long = 0
 
-    lazy val defaultSeqWM: Future[Seq[WordMass]] = Future.successful(Seq.empty[WordMass])
+    lazy val defaultSeqWM: WordMassesType = Future.successful(Seq.empty[WordMass])
 
-    val seq: Future[Seq[WordMass]] = if (maxLen == 0) defaultSeqWM else {
+    val seq: WordMassesType = if (maxLen == 0) defaultSeqWM else {
       Future.sequence(strreprs.map { case (str, wgt) =>
         // normalize w.r.t. cubrt(char count ratio) b/c `doctext` can be many, many times longer than the others
         if (str.isEmpty) defaultSeqWM else {
@@ -375,7 +380,7 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
     logger.debug(s"Counting words ($wCount, ${Vectorizer.dbCount}, ${Vectorizer.fCount})")
 
     // count number of occurrences of each (non-standardized) word so that we only have to lookup a vec for each once
-    val grouped0: Seq[(String, Int)] = words.groupBy(identity).mapValues(_.length).toSeq
+    val grouped0: WordCountsType = words.groupBy(identity).mapValues(_.length).toSeq
 
     /**
       * This is an older implementation of countWords that doesn't make use of ReactiveMongo's asynchronicity
@@ -384,7 +389,7 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
       * so I'm leaving it commented-out here for that purpose.
       */
     //@tailrec
-    def rec(grouped: Seq[(String, Int)], wordCounts: Map[String, (Int, Vec)] = Map.empty[String, (Int, Vec)]):
+    def rec(grouped: WordCountsType, wordCounts: Map[String, (Int, Vec)] = Map.empty[String, (Int, Vec)]):
                                               Future[Map[String, (Int, Vec)]] = {
 
       if (grouped.isEmpty) Future.successful(wordCounts) else {
@@ -453,10 +458,10 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
     * For a given query string, compute WordMasses, which include weighted word vectors, for each de-duplicated
     * word in the string.
     */
-  def query2Vecs(query: String): (Seq[(String, Int)], Future[Seq[WordMass]]) = {
+  def query2Vecs(query: String): Query2VecsType = {
 
     // don't use a Set here, allow words to be specified more than once as a potential way for users to tailor queries
-    val cleanedQuery: Seq[(String, Int)] = utils.tokenize(utils.parse(query))
+    val cleanedQuery: WordCountsType = utils.tokenize(utils.parse(query))
       .filter(_.nonEmpty)
       .flatMap(termRgx.findFirstMatchIn)
       .map(_.group(1).replaceAll("’", "'").replaceAll(s"($spcrRgx)+", ""))

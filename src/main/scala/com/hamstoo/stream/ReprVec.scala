@@ -20,7 +20,7 @@ import scala.concurrent.duration._
   * @param userId  The UUID of the user's marks represented by this stream.
   */
 @Singleton
-case class ReprVec @Inject() (@Named("user.id") userId: UUID,
+/*case*/ class ReprVec @Inject() (@Named("user.id") userId: UUID,
                               marksDao: MongoMarksDao,
                               reprsDao: MongoRepresentationDao)
                              (implicit clock: Clock, m: Materializer)

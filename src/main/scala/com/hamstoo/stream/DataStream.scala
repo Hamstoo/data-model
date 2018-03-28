@@ -59,6 +59,16 @@ abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
 /**
   * A PreloadSource is merely a DataStream that can listen to a Clock so that it knows when to load
   * data from its abstract source.  It throttles its stream emissions to 1/`period` frequency.
+  *
+  * @param loadInterval The interval between consecutive "preloads" which will probably be much larger than
+  *                     the clock's tick interval so that we can stay ahead of the clock.  The idea is that
+  *                     this is likely an expensive (IO) operation that can be performed asynchronously in
+  *                     advance of when the data is needed and then be throttled by the clock.
+  * @param bufferSize "Buffer size used by the producer. Gives an upper bound on how "far" from each other two
+  *                   concurrent consumers can be in terms of element. If this buffer is full, the producer
+  *                   is backpressured. Must be a power of two and less than 4096."
+  *                     [https://doc.akka.io/japi/akka/current/akka/stream/scaladsl/BroadcastHub.html]
+  * @tparam T The type of data being streamed.
   */
 abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
                                (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
@@ -163,7 +173,7 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
   */
 abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
                                  (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
-  extends DataStream[T](bufferSize) {
+    extends DataStream[T](bufferSize) {
 
   override val logger = Logger(classOf[ThrottledSource[T]])
   logger.info(s"Constructing ${getClass.getSimpleName}")
