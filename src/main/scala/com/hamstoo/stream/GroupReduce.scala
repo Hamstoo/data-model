@@ -11,7 +11,7 @@ import play.api.Logger
   */
 object GroupReduce {
 
-  val logger = Logger(GroupReduce.getClass.getName)
+  val logger = Logger(GroupReduce.getClass/*.getName*/)
 
   // support for using a Seq here:
   //   http://blog.kunicki.org/blog/2016/07/20/implementing-a-custom-akka-streams-graph-stage/

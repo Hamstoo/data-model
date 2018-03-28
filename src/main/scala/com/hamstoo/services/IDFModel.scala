@@ -4,9 +4,9 @@ import java.io._
 import java.util.zip.{ZipEntry, ZipInputStream, ZipOutputStream}
 import java.util.{Locale, Scanner}
 
-import com.google.inject.{ImplementedBy, Inject, Singleton}
+import com.google.inject.{Inject, Singleton}
 import com.google.inject.name.Named
-import com.hamstoo.services.IDFModel.ResourcePathHolder
+import com.hamstoo.services.IDFModel.ResourcePathOptional
 import play.api.Logger
 import play.api.libs.json.{JsValue, Json}
 import com.hamstoo.utils.cleanly
@@ -17,7 +17,7 @@ import scala.util.matching.UnanchoredRegex
 object IDFModel {
 
   // https://github.com/google/guice/wiki/FrequentlyAskedQuestions#how-can-i-inject-optional-parameters-into-a-constructor
-  class ResourcePathHolder {
+  class ResourcePathOptional {
     @Inject(optional = true) @Named("idfs.resource.path")
     val value: Option[String] = None
   }
@@ -44,7 +44,7 @@ object IDFModel {
   * http://www.benfrederickson.com/distance-metrics/
   */
 @Singleton
-class IDFModel @Inject() (@Named("idfs.resource") zipfileResource: String, opzipfilepath: ResourcePathHolder) {
+class IDFModel @Inject() (@Named("idfs.resource") zipfileResource: String, opzipfilepath: ResourcePathOptional) {
 
   val logger: Logger = Logger(classOf[IDFModel])
 
