@@ -5,20 +5,20 @@ import java.net.URI
 import java.nio.ByteBuffer
 
 import akka.util.ByteString
+import com.gargoylesoftware.htmlunit._
 import com.gargoylesoftware.htmlunit.html.HtmlPage
-import com.gargoylesoftware.htmlunit.{AjaxController, BrowserVersion, FailingHttpStatusCodeException, WebClient, WebRequest}
 import com.hamstoo.models.Page
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{MediaType, ObjectId}
-import play.api.libs.ws.ahc.cache.CacheableHttpResponseStatus
-import play.shaded.ahc.org.asynchttpclient.uri.Uri
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import play.api.Logger
+import play.api.libs.ws.ahc.cache.CacheableHttpResponseStatus
 import play.api.libs.ws.ahc.{AhcWSResponse, StandaloneAhcWSResponse}
 import play.api.libs.ws.{WSClient, WSResponse}
 import play.shaded.ahc.org.asynchttpclient.Response.ResponseBuilder
+import play.shaded.ahc.org.asynchttpclient.uri.Uri
 import play.shaded.ahc.org.asynchttpclient.{HttpResponseBodyPart, Response}
 
 import scala.collection.JavaConverters._
