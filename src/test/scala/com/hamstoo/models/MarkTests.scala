@@ -164,6 +164,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
   it should "(UNIT) sanitize content" in {
     val md = MarkData("some subj", Some("http://bobssite.org?q=<script%20type='text/javascript'>alert('xss');</script>"))
 
-    md.protect.url.value should not equal md.url.value
+    import MarkData.mdProtector
+    mdProtector.protect(md).url.value should not equal md.url.value
   }
 }

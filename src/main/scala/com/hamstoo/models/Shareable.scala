@@ -205,14 +205,14 @@ object ShareGroup {
   * @param userIds     Authorized user IDs.  This implementation is incomplete.  It is currently only used for
   *                    public and "logged in" authorization.  Implementation to be completed along with issue #139.
   * @param emails      Authorized email addresses.  Owners of such email addresses will be required to create accounts.
-  * @param sharedObjs  Object IDs (e.g. mark or highlight IDs) that have been shared with this UserGroup in the past.
+  * @param sharedObjs  Object IDs (e.g. mark or highlight IDs) that have been shared with this UsGroup in the past.
   * @param hash        A hash of this UserGroup to use as a MongoDB index key.
   */
 case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
                      userIds: Option[Set[UUID]] = None,
                      emails: Option[Set[String]] = None,
                      sharedObjs: Seq[UserGroup.SharedObj] = Seq.empty[UserGroup.SharedObj],
-                     var hash: Int = 0) extends Protectable[UserGroup] {
+                     var hash: Int = 0) {
 
   // if `id` is None then let `hash` be None also
   hash = if (id.isEmpty) 0 else UserGroup.hash(this)
@@ -239,13 +239,12 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
       }
     }
   }
-
-  override def protect: UserGroup = {
-    copy(emails = emails.map(_.map(_.sanitize)))
-  }
 }
 
 object UserGroup extends BSONHandlers {
+  implicit val ugPr: Protectable[UserGroup] = (o: UserGroup) => {
+    o.copy(emails = o.emails.map(_.map(_.sanitize)))
+  }
 
   /** Special hashing function for UserGroups to use as their MongoDB index key. */
   private final class Hashing extends hashing.Hashing[UserGroup] {

@@ -3,6 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
+import com.hamstoo.models.Highlight.Preview
 import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import play.api.libs.json._
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
@@ -35,23 +36,30 @@ case class Highlight(usrId: UUID,
                      timeFrom: TimeStamp = TIME_NOW,
                      timeThru: TimeStamp = INF_TIME) extends Annotation {
 
-  import Highlight.wr
-
-  override def jsonPreview: JsObject = Json.obj(
-    "id" -> id,
-    "preview" -> Json.toJson(preview)(wr),
-    "type" -> "highlight"
-  )
-
-  /** Sanitize all text based content */
-  override def protect: Highlight = {
-    copy(pos = pos.protect, preview = preview.protect)
+  override def jsonPreview: JsObject = {
+    val prPrev = Preview.prvPr.protect(preview)
+    Json.obj(
+      "id" -> id,
+      "preview" -> Json.obj(
+        "lead" -> prPrev.lead,
+        "text" -> prPrev.text,
+        "tail" -> prPrev.tail
+      ),
+      "type" -> "highlight"
+    )
   }
 }
 
 object Highlight extends BSONHandlers with AnnotationInfo {
+  import Position.posPr
+  import Preview.prvPr
 
-  implicit val wr: SanitizedWrites[Preview] = SanitizedJson.writes[Preview](Json.writes[Preview])
+  implicit val hlProtector: Protectable[Highlight] = hgProtector()
+
+  private def hgProtector()(implicit posPr: Protectable[Highlight.Position],
+                            prvPr: Protectable[Highlight.Preview]): Protectable[Highlight] = (o: Highlight) => {
+    o.copy(pos = posPr.protect(o.pos), preview = prvPr.protect(o.preview))
+  }
 
   /**
     * XML XPath and text located at that path.  `index` is the character index where the highlighted text
@@ -62,27 +70,34 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     *   {"path": "body/p"     , "text": "fin", "index": 11
     * ]
     */
-  case class PositionElement(path: String, text: String, index: Int) extends Protectable[PositionElement] {
-    override def protect: PositionElement = {
-      copy(text = text.sanitize)
-    }
+  case class PositionElement(path: String, text: String, index: Int)
+
+  object PositionElement {
+    implicit val pePr: Protectable[PositionElement] = (o: PositionElement) => o.copy(text = o.text.sanitize)
   }
 
   /** A highlight can stretch over a series of XPaths. */
-  case class Position(elements: Seq[PositionElement]) extends Positions with Protectable[Position] {
+  case class Position(elements: Seq[PositionElement]) extends Positions {
     def nonEmpty: Boolean = elements.nonEmpty
+  }
 
-    override def protect: Position = {
-      copy(elements = elements.map(_.protect))
+  object Position {
+    import Highlight.PositionElement.pePr
+
+    implicit val posPr: Protectable[Position] = (o: Position) => {
+      o.copy(elements = o.elements.map(pePr.protect))
     }
   }
 
   /** Text that occurs before and after the highlighted text, along with the highlighted `text` itself. */
-  case class Preview(lead: String, text: String, tail: String) extends Protectable[Preview] {
-    override def protect: Preview = {
-      copy(lead = lead.sanitize,
-        text = text.sanitize,
-        tail = tail.sanitize)
+  case class Preview(lead: String, text: String, tail: String)
+  object Preview {
+    implicit val prvPr: Protectable[Preview] = (o: Preview) => {
+      o.copy(
+        lead = o.lead.sanitize,
+        text = o.text.sanitize,
+        tail = o.tail.sanitize
+      )
     }
   }
 

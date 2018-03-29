@@ -226,63 +226,6 @@ case class Mark(override val userId: UUID,
     case None => scala.runtime.ScalaRunTime._hashCode(this)
     case Some(_) => this.copy(score = None).hashCode
   }
-
-  override def protect: Mark = {
-    copy(mark = mark.protect)
-  }
-}
-
-/**
-  * Searchable MarkData includes all fields excetp `commentEncoded`.
-  * TODO: Would it be better to just put `commentEncoded` and the 2 MarkAux fields in MSearchable?
-  */
-class MDSearchable(val subj: String,
-                   val url: Option[String],
-                   val rating: Option[Double],
-                   val tags: Option[Set[String]],
-                   val comment: Option[String]) extends Protectable[MDSearchable] {
-
-  // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
-  // rating value (not part of the data(base) model)
-  var bMasked: Boolean = false
-  var ownerRating: Option[Double] = None
-
-  def xcopy(subj: String = subj,
-            url: Option[String] = url,
-            rating: Option[Double] = rating,
-            tags: Option[Set[String]] = tags,
-            comment: Option[String] = comment) =
-    new MDSearchable(subj, url, rating, tags, comment)
-
-  /**
-    * This method is called `xtoString` instead of `toString` to avoid conflict with `case class Mark` which
-    * is going to generate its own `toString` method.  Also see `xcopy`.
-    */
-  def xtoString: String =
-    s"${classOf[MDSearchable].getSimpleName}($subj,$url,$rating,$tags,$comment)"
-
-  override def protect: MDSearchable = {
-    xcopy(
-      subj = subj.sanitize,
-      url = url.map(_.sanitize),
-      comment = comment.map(_.sanitize),
-      tags = tags.map(_.map(_.sanitize))
-    )
-  }
-}
-
-object MDSearchable {
-
-  def apply(subj: String,
-            url: Option[String],
-            rating: Option[Double],
-            tags: Option[Set[String]],
-            comment: Option[String]): MDSearchable =
-    new MDSearchable(subj, url, rating, tags, comment)
-
-  def unapply(obj: MDSearchable):
-      Option[(String, Option[String], Option[Double], Option[Set[String]], Option[String])] =
-    Some((obj.subj, obj.url, obj.rating, obj.tags, obj.comment))
 }
 
 /**
@@ -303,7 +246,7 @@ class MSearchable(val userId: UUID,
                   val sharedWith: Option[SharedWith],
                   val nSharedFrom: Option[Int],
                   val nSharedTo: Option[Int],
-                  val score: Option[Double]) extends Shareable with Protectable[MSearchable] {
+                  val score: Option[Double]) extends Shareable {
 
   /**
     * This method is called `xcopy` instead of `copy` to avoid conflict with `case class Mark` which
@@ -389,12 +332,15 @@ class MSearchable(val userId: UUID,
   def xtoString: String =
     s"${classOf[MSearchable].getSimpleName}($userId,$id,${mark.xtoString},$markRef,$aux,$reprs,$timeFrom,$timeThru,$modifiedBy,$sharedWith,$nSharedFrom,$nSharedTo,$score)"
 
-  override def protect: MSearchable = {
-    xcopy(mark = mark.protect)
-  }
 }
 
 object MSearchable {
+  implicit val prMS: Protectable[MSearchable] = msProtector()
+
+  private def msProtector()(implicit mdsPr: Protectable[MDSearchable]): Protectable[MSearchable] = (o: MSearchable) => {
+    o.xcopy(mark = mdsPr.protect(o.mark))
+  }
+
   def apply(userId: UUID,
             id: ObjectId,
             mark: MDSearchable,
@@ -419,6 +365,13 @@ object MSearchable {
 }
 
 object Mark extends BSONHandlers {
+  import MarkData.mdProtector
+
+  implicit val mPr: Protectable[Mark] = mProtector()
+  private def mProtector()(implicit mdPr: Protectable[MarkData]): Protectable[Mark] = (o: Mark) => {
+    o.copy(mark = mdPr.protect(o.mark))
+  }
+
   val logger: Logger = Logger(classOf[Mark])
 
   // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once

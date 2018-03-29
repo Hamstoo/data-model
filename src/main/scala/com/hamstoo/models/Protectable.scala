@@ -7,5 +7,5 @@ package com.hamstoo.models
 trait Protectable[A] {
 
   /** Sanitize all text based content */
-  def protect: A
+  def protect(o: A): A
 }

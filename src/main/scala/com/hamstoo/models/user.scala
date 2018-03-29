@@ -23,26 +23,26 @@ import scala.util.matching.Regex
   * @param oAuth2Info   `accessToken`, `tokenType` (e.g. "Bearer"), and `expiresIn` (e.g. 3600).
   * @param avatarUrl    Link to an avatar image.
   */
-case class Profile(
-                    loginInfo: LoginInfo,
-                    confirmed: Boolean,
-                    email: Option[String],
-                    firstName: Option[String],
-                    lastName: Option[String],
-                    fullName: Option[String],
-                    passwordInfo: Option[PasswordInfo] = None,
-                    oAuth1Info: Option[OAuth1Info] = None,
-                    oAuth2Info: Option[OAuth2Info] = None,
-                    avatarUrl: Option[String] = None) extends Protectable[Profile] {
-  override def protect: Profile = {
-    copy(firstName = firstName.map(_.sanitize),
-      lastName = lastName.map(_.sanitize),
-      fullName = fullName.map(_.sanitize),
-      avatarUrl = avatarUrl.map(_.sanitize))
-  }
-}
+case class Profile(loginInfo: LoginInfo,
+                   confirmed: Boolean,
+                   email: Option[String],
+                   firstName: Option[String],
+                   lastName: Option[String],
+                   fullName: Option[String],
+                   passwordInfo: Option[PasswordInfo] = None,
+                   oAuth1Info: Option[OAuth1Info] = None,
+                   oAuth2Info: Option[OAuth2Info] = None,
+                   avatarUrl: Option[String] = None)
 
 object Profile {
+  implicit val profilePr: Protectable[Profile] = (o: Profile) => {
+    o.copy(
+      firstName = o.firstName.map(_.sanitize),
+      lastName = o.lastName.map(_.sanitize),
+      fullName = o.fullName.map(_.sanitize),
+      avatarUrl = o.avatarUrl.map(_.sanitize)
+    )
+  }
   implicit val loginInfHandler: BSONDocumentHandler[LoginInfo] = Macros.handler[LoginInfo]
   implicit val paswdInfHandler: BSONDocumentHandler[PasswordInfo] = Macros.handler[PasswordInfo]
   implicit val auth1InfHandler: BSONDocumentHandler[OAuth1Info] = Macros.handler[OAuth1Info]
@@ -66,14 +66,13 @@ case class ExtensionOptions(autoSync: Option[Boolean] = None,
   * @param extOpts    Extension options.
   * @param tutorial   If true, the user will see the tutorial on next login.
   */
-case class UserData(
-                     firstName: Option[String] = None,
-                     lastName: Option[String] = None,
-                     username: Option[String] = None,
-                     var usernameLower: Option[String] = None,
-                     avatar: Option[String] = None,
-                     extOpts: Option[ExtensionOptions] = None,
-                     tutorial: Option[Boolean] = Some(true)) {
+case class UserData(firstName: Option[String] = None,
+                    lastName: Option[String] = None,
+                    username: Option[String] = None,
+                    var usernameLower: Option[String] = None,
+                    avatar: Option[String] = None,
+                    extOpts: Option[ExtensionOptions] = None,
+                    tutorial: Option[Boolean] = Some(true)) {
 
   usernameLower = username.map(_.toLowerCase) // impossible to set any other way
 
@@ -84,6 +83,17 @@ case class UserData(
       case _ => Random.alphanumeric.take(6).mkString.toLowerCase
     }
     userDao.nextUsername(startWith + Random.nextInt(9999)).map(nxt => copy(username = Some(nxt)))
+  }
+}
+
+object UserData {
+  implicit val udPr: Protectable[UserData] = (o: UserData) => {
+    o.copy(
+      firstName = o.firstName.map(_.sanitize),
+      lastName = o.lastName.map(_.sanitize),
+      username = o.username.map(_.sanitize),
+      avatar = o.avatar.map(_.sanitize)
+    )
   }
 }
 

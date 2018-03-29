@@ -28,7 +28,7 @@ case class MarkData(override val subj: String,
                     override val tags: Option[Set[String]] = None,
                     override val comment: Option[String] = None,
                     var commentEncoded: Option[String] = None)
-  extends MDSearchable(subj, url, rating, tags, comment) {
+  extends MDSearchable(subj, url, rating, tags, comment)  {
 
   import MarkData._
 
@@ -98,18 +98,18 @@ case class MarkData(override val subj: String,
   // TODO: the interface for constructing a user repr should only be allowed to include these fields via having its own class
   def equalsPerUserRepr(other: MarkData): Boolean =
     copy(url = None, rating = None) == other.copy(url = None, rating = None)
-
-  override def protect: MarkData = {
-    copy(
-      subj = subj.sanitize,
-      url = url.map(_.sanitize),
-      comment = comment.map(_.sanitize),
-      tags = tags.map(_.map(_.sanitize))
-    )
-  }
 }
 
 object MarkData {
+  implicit val mdProtector: Protectable[MarkData] = (o: MarkData) => {
+      o.copy(
+        subj = o.subj.sanitize,
+        url = o.url.map(_.sanitize),
+        comment = o.comment.map(_.sanitize),
+        tags = o.tags.map(_.map(_.sanitize))
+      )
+  }
+
   val logger: Logger = Logger(classOf[MarkData])
 
   /* attention: mutable Java classes below.
@@ -146,12 +146,66 @@ case class MarkDataPatch(subj: Option[String],
                          url: Option[String],
                          rating: Option[Double],
                          tags: Option[Set[String]],
-                         comment: Option[String]) extends Protectable[MarkDataPatch] {
+                         comment: Option[String])
 
-  override def protect: MarkDataPatch = {
-    copy(subj = subj.map(_.sanitize),
-      url = url.map(_.sanitize),
-      tags = tags.map(_.map(_.sanitize)),
-      comment = comment.map(_.sanitize))
+object MarkDataPatch {
+  implicit val mdpProtector: Protectable[MarkDataPatch] = (o: MarkDataPatch) => {
+    o.copy(subj = o.subj.map(_.sanitize),
+      url = o.url.map(_.sanitize),
+      tags = o.tags.map(_.map(_.sanitize)),
+      comment = o.comment.map(_.sanitize))
   }
+}
+
+
+/**
+  * Searchable MarkData includes all fields excetp `commentEncoded`.
+  * TODO: Would it be better to just put `commentEncoded` and the 2 MarkAux fields in MSearchable?
+  */
+class MDSearchable(val subj: String,
+                   val url: Option[String],
+                   val rating: Option[Double],
+                   val tags: Option[Set[String]],
+                   val comment: Option[String]) {
+
+  // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
+  // rating value (not part of the data(base) model)
+  var bMasked: Boolean = false
+  var ownerRating: Option[Double] = None
+
+  def xcopy(subj: String = subj,
+            url: Option[String] = url,
+            rating: Option[Double] = rating,
+            tags: Option[Set[String]] = tags,
+            comment: Option[String] = comment) =
+    new MDSearchable(subj, url, rating, tags, comment)
+
+  /**
+    * This method is called `xtoString` instead of `toString` to avoid conflict with `case class Mark` which
+    * is going to generate its own `toString` method.  Also see `xcopy`.
+    */
+  def xtoString: String =
+    s"${classOf[MDSearchable].getSimpleName}($subj,$url,$rating,$tags,$comment)"
+}
+
+object MDSearchable {
+  implicit val mdsProtector: Protectable[MDSearchable] = (o: MDSearchable) => {
+    o.xcopy(
+      subj = o.subj.sanitize,
+      url = o.url.map(_.sanitize),
+      comment = o.comment.map(_.sanitize),
+      tags = o.tags.map(_.map(_.sanitize))
+    )
+  }
+
+  def apply(subj: String,
+            url: Option[String],
+            rating: Option[Double],
+            tags: Option[Set[String]],
+            comment: Option[String]): MDSearchable =
+    new MDSearchable(subj, url, rating, tags, comment)
+
+  def unapply(obj: MDSearchable):
+  Option[(String, Option[String], Option[Double], Option[Set[String]], Option[String])] =
+    Some((obj.subj, obj.url, obj.rating, obj.tags, obj.comment))
 }
