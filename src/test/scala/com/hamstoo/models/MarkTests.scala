@@ -145,14 +145,13 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
 
   it should "(UNIT) throw an exception when merging marks with different userIds" in {
     // different userIds should throw an AssertionError
-
     intercept[AssertionError] {
       val c = Mark(constructUserId(), mark = mdB)
       mA.merge(c)
     }
   }
 
-  it should "(UNIT) corrctly retrieve marks info" in {
+  it should "(UNIT) correctly retrieve marks info" in {
     val unrated = ReprInfo("someid", ReprType.PRIVATE)
     val rated = unrated.copy(reprId = "someId1", expRating = Some("rat"))
     val m = Mark(constructUserId(), mark = mdA, reprs = Seq(unrated))
