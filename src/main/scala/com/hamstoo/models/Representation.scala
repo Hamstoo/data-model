@@ -60,9 +60,11 @@ class RSearchable(val id: String,
     // quickly test for identical doctexts first...
     doctext.nonEmpty && doctext == oth.doctext ||
 
-    // ...or allow a lower vector similarity if the URLs have a high edit similarity...
+    // ...or allow a lower vector similarity if the *URLs* have a high edit similarity (but still require decent
+    // *doctext* edit similarity) ...
     (for(u_t <- thisUrl; u_o <- othUrl) yield Representation.editSimilarity(u_t, u_o)).exists(_ > 0.9) &&
-      vecSimilarity(oth) > DUPLICATE_VEC_SIMILARITY_THRESHOLD * 0.8 ||
+      vecSimilarity(oth) > DUPLICATE_VEC_SIMILARITY_THRESHOLD * 0.8 &&
+      editSimilarity(oth) > DUPLICATE_EDIT_SIMILARITY_THRESHOLD ||
 
     // ...and otherwise use header as a filter on top of vec/edit similarities
     header == oth.header && (
