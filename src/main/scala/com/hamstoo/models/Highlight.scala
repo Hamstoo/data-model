@@ -54,10 +54,10 @@ object Highlight extends BSONHandlers with AnnotationInfo {
   import Position.posPr
   import Preview.prvPr
 
-  implicit val hlProtector: Protectable[Highlight] = hgProtector()
+  implicit val hlProtector: Protector[Highlight] = hgProtector()
 
-  private def hgProtector()(implicit posPr: Protectable[Highlight.Position],
-                            prvPr: Protectable[Highlight.Preview]): Protectable[Highlight] = (o: Highlight) => {
+  private def hgProtector()(implicit posPr: Protector[Highlight.Position],
+                            prvPr: Protector[Highlight.Preview]): Protector[Highlight] = (o: Highlight) => {
     o.copy(pos = posPr.protect(o.pos), preview = prvPr.protect(o.preview))
   }
 
@@ -73,7 +73,7 @@ object Highlight extends BSONHandlers with AnnotationInfo {
   case class PositionElement(path: String, text: String, index: Int)
 
   object PositionElement {
-    implicit val pePr: Protectable[PositionElement] = (o: PositionElement) => o.copy(text = o.text.sanitize)
+    implicit val pePr: Protector[PositionElement] = (o: PositionElement) => o.copy(text = o.text.sanitize)
   }
 
   /** A highlight can stretch over a series of XPaths. */
@@ -84,7 +84,7 @@ object Highlight extends BSONHandlers with AnnotationInfo {
   object Position {
     import Highlight.PositionElement.pePr
 
-    implicit val posPr: Protectable[Position] = (o: Position) => {
+    implicit val posPr: Protector[Position] = (o: Position) => {
       o.copy(elements = o.elements.map(pePr.protect))
     }
   }
@@ -92,7 +92,7 @@ object Highlight extends BSONHandlers with AnnotationInfo {
   /** Text that occurs before and after the highlighted text, along with the highlighted `text` itself. */
   case class Preview(lead: String, text: String, tail: String)
   object Preview {
-    implicit val prvPr: Protectable[Preview] = (o: Preview) => {
+    implicit val prvPr: Protector[Preview] = (o: Preview) => {
       o.copy(
         lead = o.lead.sanitize,
         text = o.text.sanitize,

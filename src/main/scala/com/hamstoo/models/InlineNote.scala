@@ -40,9 +40,9 @@ case class InlineNote(usrId: UUID,
 }
 
 object InlineNote extends BSONHandlers with AnnotationInfo {
-  implicit val ntPr: Protectable[InlineNote] = ntProtector()
+  implicit val ntPr: Protector[InlineNote] = ntProtector()
 
-  private def ntProtector()(implicit posPr: Protectable[InlineNote.Position]): Protectable[InlineNote] = (o: InlineNote) => {
+  private def ntProtector()(implicit posPr: Protector[InlineNote.Position]): Protector[InlineNote] = (o: InlineNote) => {
     o.copy(pos = posPr.protect(o.pos))
   }
   /**
@@ -59,7 +59,7 @@ object InlineNote extends BSONHandlers with AnnotationInfo {
   }
 
   object Position {
-    implicit val posPr: Protectable[Position] = (o: Position) => {
+    implicit val posPr: Protector[Position] = (o: Position) => {
       o.copy(text = o.text.sanitize)
     }
   }

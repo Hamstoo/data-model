@@ -141,6 +141,7 @@ package object utils {
       if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
   }
 
+
   // MongoDB Binary Indexes have a max size of 1024 bytes.  So to combine a 12-char string with a byte array
   // as in the `urldups` collection index, the byte array must be, at most, 992 bytes.  This is presumably
   // due to some overhead in the MongoDB data types (BinData and String) and/or overhead due to the combination

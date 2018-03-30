@@ -101,7 +101,7 @@ case class MarkData(override val subj: String,
 }
 
 object MarkData {
-  implicit val mdProtector: Protectable[MarkData] = (o: MarkData) => {
+  implicit val mdProtector: Protector[MarkData] = (o: MarkData) => {
       o.copy(
         subj = o.subj.sanitize,
         url = o.url.map(_.sanitize),
@@ -149,7 +149,7 @@ case class MarkDataPatch(subj: Option[String],
                          comment: Option[String])
 
 object MarkDataPatch {
-  implicit val mdpProtector: Protectable[MarkDataPatch] = (o: MarkDataPatch) => {
+  implicit val mdpProtector: Protector[MarkDataPatch] = (o: MarkDataPatch) => {
     o.copy(subj = o.subj.map(_.sanitize),
       url = o.url.map(_.sanitize),
       tags = o.tags.map(_.map(_.sanitize)),
@@ -189,7 +189,7 @@ class MDSearchable(val subj: String,
 }
 
 object MDSearchable {
-  implicit val mdsProtector: Protectable[MDSearchable] = (o: MDSearchable) => {
+  implicit val mdsProtector: Protector[MDSearchable] = (o: MDSearchable) => {
     o.xcopy(
       subj = o.subj.sanitize,
       url = o.url.map(_.sanitize),

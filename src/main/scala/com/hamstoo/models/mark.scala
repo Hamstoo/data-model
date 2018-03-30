@@ -335,9 +335,9 @@ class MSearchable(val userId: UUID,
 }
 
 object MSearchable {
-  implicit val prMS: Protectable[MSearchable] = msProtector()
+  implicit val prMS: Protector[MSearchable] = msProtector()
 
-  private def msProtector()(implicit mdsPr: Protectable[MDSearchable]): Protectable[MSearchable] = (o: MSearchable) => {
+  private def msProtector()(implicit mdsPr: Protector[MDSearchable]): Protector[MSearchable] = (o: MSearchable) => {
     o.xcopy(mark = mdsPr.protect(o.mark))
   }
 
@@ -367,8 +367,8 @@ object MSearchable {
 object Mark extends BSONHandlers {
   import MarkData.mdProtector
 
-  implicit val mPr: Protectable[Mark] = mProtector()
-  private def mProtector()(implicit mdPr: Protectable[MarkData]): Protectable[Mark] = (o: Mark) => {
+  implicit val mPr: Protector[Mark] = mProtector()
+  private def mProtector()(implicit mdPr: Protector[MarkData]): Protector[Mark] = (o: Mark) => {
     o.copy(mark = mdPr.protect(o.mark))
   }
 

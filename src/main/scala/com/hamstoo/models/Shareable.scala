@@ -242,7 +242,7 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
 }
 
 object UserGroup extends BSONHandlers {
-  implicit val ugPr: Protectable[UserGroup] = (o: UserGroup) => {
+  implicit val ugPr: Protector[UserGroup] = (o: UserGroup) => {
     o.copy(emails = o.emails.map(_.map(_.sanitize)))
   }
 

@@ -35,7 +35,7 @@ case class Profile(loginInfo: LoginInfo,
                    avatarUrl: Option[String] = None)
 
 object Profile {
-  implicit val profilePr: Protectable[Profile] = (o: Profile) => {
+  implicit val profilePr: Protector[Profile] = (o: Profile) => {
     o.copy(
       firstName = o.firstName.map(_.sanitize),
       lastName = o.lastName.map(_.sanitize),
@@ -87,7 +87,7 @@ case class UserData(firstName: Option[String] = None,
 }
 
 object UserData {
-  implicit val udPr: Protectable[UserData] = (o: UserData) => {
+  implicit val udPr: Protector[UserData] = (o: UserData) => {
     o.copy(
       firstName = o.firstName.map(_.sanitize),
       lastName = o.lastName.map(_.sanitize),
