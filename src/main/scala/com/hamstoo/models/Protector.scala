@@ -15,10 +15,8 @@ trait Protector[A] {
 }
 
 object Protectors {
-
-  implicit def traversableProtector[A, F[_] <: Traversable[A]](implicit pr: Protector[A]): Protector[F[A]] = (o: F[A]) => {
-    o.map(pr.protect).asInstanceOf[F[A]]
-  }
+  def seq[A](implicit pr: Protector[A]): Protector[Seq[A]] = (o: Seq[A]) => o.map(pr.protect)
+  def set[A](implicit pr: Protector[A]): Protector[Set[A]] = (o: Set[A]) => o.map(pr.protect)
 
   implicit val strProtector: Protector[String] = (o: String) => o.sanitize
 }
