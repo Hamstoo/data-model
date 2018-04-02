@@ -62,7 +62,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB])
     * WHERE ANY(SPLIT(doctext) IN @query)
     * --ORDER BY score DESC -- actually this is not happening, would require '.sort' after '.find'
     */
-  def search(ids: Set[String], query: String): Future[Map[String, RSearchable]] = for {
+  def search(ids: Set[ObjectId], query: String): Future[Map[String, RSearchable]] = for {
     c <- dbColl()
     _ = logger.info(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
 

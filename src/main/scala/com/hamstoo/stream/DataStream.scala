@@ -2,7 +2,7 @@ package com.hamstoo.stream
 
 import akka.NotUsed
 import akka.stream.Materializer
-import akka.stream.scaladsl.{BroadcastHub, Sink, Source}
+import akka.stream.scaladsl.{BroadcastHub, Source}
 import com.hamstoo.stream.Tick.{ExtendedTick, Tick}
 import com.hamstoo.stream.Join.{JoinWithable, Pairwised}
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
@@ -54,6 +54,9 @@ abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
     logger.debug(s"Done materializing ${getClass.getSimpleName} BroadcastHub")
     src.named(getClass.getSimpleName)
   }
+
+  /** Shortcut to the source.  Think of a DataStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
+  def apply(): SourceType = this.source
 }
 
 /**

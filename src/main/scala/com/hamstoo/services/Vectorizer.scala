@@ -3,7 +3,7 @@ package com.hamstoo.services
 import java.util.Locale
 
 import com.google.inject.name.Named
-import com.google.inject.{ImplementedBy, Inject, Singleton}
+import com.google.inject.Inject
 import com.hamstoo.daos.MongoVectorsDao
 import com.hamstoo.models.Representation.Vec
 import play.api.Logger
@@ -31,7 +31,7 @@ object Vectorizer {
   * "Guice can create bindings for concrete types by using the type's injectable constructor."
   *   [https://github.com/google/guice/wiki/JustInTimeBindings]
   */
-@Singleton
+@com.google.inject.Singleton
 class Vectorizer @Inject() (httpClient: WSClient,
                             vectorsDao: MongoVectorsDao,
                             @Named("vectors.link") vectorsLink: String) {

@@ -3,7 +3,7 @@ package com.hamstoo.stream
 import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
-import com.google.inject.{Inject, Singleton}
+import com.google.inject.Inject
 import com.google.inject.name.Named
 import com.hamstoo.models.Representation.Vec
 
@@ -14,9 +14,9 @@ import scala.concurrent.{ExecutionContext, Future}
   * @param queryVec  A semantic word vector representing the query terms.
   * @param reprVecs  A stream of a users' marks' representations' semantic word vectors.
   */
-@Singleton
+@com.google.inject.Singleton
 class QueryCorrelation @Inject() (@Named("query.vec") queryVec: Future[Vec],
-                                  reprVecs: ReprVec)
+                                  reprVecs: ReprsStream)
                                  (implicit materializer: Materializer, ec: ExecutionContext)
     extends DataStream[Double] {
 
