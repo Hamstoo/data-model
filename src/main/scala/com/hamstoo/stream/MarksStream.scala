@@ -3,7 +3,7 @@ package com.hamstoo.stream
 import java.util.UUID
 
 import com.google.inject.name.Named
-import com.google.inject.{Inject, Singleton}
+import com.google.inject.Inject
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
 import com.hamstoo.models._
 import com.hamstoo.services.IDFModel
@@ -19,7 +19,7 @@ import scala.concurrent.duration._
 /**
   *
   */
-@Singleton
+@com.google.inject.Singleton
 class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
                              @Named("search.user.id") searchUserId: UUID,
                              query2Vecs: Query2VecsOptional,
@@ -45,13 +45,13 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
     // get a couple of queries off-and-running before we start Future-flatMap-chaining
 
     // Mongo Text Index search (e.g. includes stemming) over `entries` collection (and filter results by labels)
-    val fscoredMS = mbQuerySeq.mapOrEmptyFuture { w =>
+    val fscoredMs = mbQuerySeq.mapOrEmptyFuture { w =>
       marksDao.search(Set(searchUserId), w) // TODO: begin/end
         .map(_.toSeq.filter(_.hasTags(tags))).flatMap(filterAuthorizedRead(_, callingUserId))
     }
 
     // every single mark with an existing representation
-    val fcandidateMarks = marksDao.retrieveRepred(searchUserId, tags).flatMap(filterAuthorizedRead(_, callingUserId))
+    val funscoredMs = marksDao.retrieveRepred(searchUserId, tags).flatMap(filterAuthorizedRead(_, callingUserId))
 
     for {
       // candidate referenced marks (i.e. marks that aren't owned by the calling user)
@@ -71,9 +71,9 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
 
       // "candidates" are ALL of the marks viewable to the callingUser (with the appropriate labels), which will
       // include those that were not returned by MongoDB Text Index search
-      candidateMarks <- fcandidateMarks.map(_ ++ candidateRefs)
-      candidateReprIds = candidateMarks.map(_.primaryRepr).toSet
-      usrContentReprIds = candidateMarks.flatMap(_.userContentRepr.filterNot(NON_IDS.contains)).toSet
+      unscoredMs <- funscoredMs.map(_ ++ candidateRefs)
+//      candidateReprIds = unscoredMs.map(_.primaryRepr).toSet
+//      usrContentReprIds = unscoredMs.flatMap(_.userContentRepr.filterNot(NON_IDS.contains)).toSet
 
       // run a separate MongoDB Text Index search over `representations` collection for each query word
 //      fscoredReprs = mbQuerySeq.mapOrEmptyFuture(reprDao.search(candidateReprIds ++ usrContentReprIds, _))
@@ -83,28 +83,14 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
       // TODO: maybe use the representations collection's Text Index score and drop the marks collection's Text Index?
 //      fusrContentReprs = reprDao.retrieve(usrContentReprIds)
 
-
-
-
-
-
-
-  // TODO: next up: figure out how to make the selection/search of reprs in another stream dependent on this marks stream
-
-
-
-
-      
-
-
-      sms <- fscoredMS; srefs <- fscoredRefs
-      scoredMarks = sms.zip(srefs).map { case (ms, refs) => ms ++ refs }
+      sms <- fscoredMs; srefs <- fscoredRefs
+      scoredUngroupedMs = sms.zip(srefs).map { case (ms, refs) => ms ++ refs }
 
       // no remaining Futures depend on these, so might as well put them at the end
       /*searchTermVecs <- fsearchTermVecs; scoredReprs <- fscoredReprs; usrContentReprs <- fusrContentReprs*/
 
     } yield {
-/*      logger.debug(s"Found ${sms.map(_.size).sum} scored marks, ${srefs.map(_.size).sum} scored refs, ${scoredMarks.map(_.size).sum} total")
+/*      logger.debug(s"Found ${sms.map(_.size).sum} scored marks, ${srefs.map(_.size).sum} scored refs, ${scoredUngroupedMs.map(_.size).sum} total")
       logger.debug(s"Found ${scoredReprs.size} scored reprs and ${usrContentReprs.size} user-content reprs")
       logger.debug(s"Found ${searchTermVecs.size} search term vectors")
 */
@@ -119,20 +105,18 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
       def wgtMkScore(qm: ((String, Int), MSearchable)): Double =
         qm._1._2 * idfModel.transform(qm._1._1) * qm._2.score.get // #reps * idf * score
 
-      // `scoredMarks` will contain duplicate marks with different scores for different search terms so join them,
+      // `scoredUngroupedMs` will contain duplicate marks with different scores for different search terms so join them,
       // start by broadcasting each query word (qw) in `cleanedQuery` to its respective marks (qms)
-      val groupedMs = mbCleanedQuery.fold(Iterable.empty[MSearchable]) { cleanedQuery =>
-        cleanedQuery.view.zip(scoredMarks).flatMap { case (qw, qms) => qms.map((qw, _)) }
+      val scoredMs = mbCleanedQuery.fold(Iterable.empty[MSearchable]) { cleanedQuery =>
+        cleanedQuery.view.zip(scoredUngroupedMs).flatMap { case (qw, qms) => qms.map((qw, _)) }
           .groupBy(_._2.id).values // group query words by mark ID
           .map { seqvw => seqvw.head._2.xcopy(score = Some(seqvw.map(wgtMkScore).sum)) }
       }
 
-      // performing filterNot rather than relying on set union because groupedMs will have not only score
+      // performing filterNot rather than relying on set union because scoredMs will have not only score
       // populated but could also have different labels/rating due to MarkRef masking
-      val entries = groupedMs.toSet ++ candidateMarks.filterNot(c => groupedMs.exists(_.id == c.id))
+      val entries = scoredMs.toSet ++ unscoredMs.filterNot(c => scoredMs.exists(_.id == c.id))
       entries.map(m => Datum(MarkId(m.id), m.timeFrom, m))
-
-      // TODO: join w/ repr and user-content repr for each mark
     }
   }
 }

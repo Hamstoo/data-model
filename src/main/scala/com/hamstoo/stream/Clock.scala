@@ -4,7 +4,7 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import com.google.inject.name.Named
-import com.google.inject.{Inject, Singleton}
+import com.google.inject.Inject
 import com.hamstoo.stream.Tick.Tick
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
 import play.api.Logger
@@ -18,7 +18,7 @@ import scala.concurrent.{Await, Promise}
   * TODO: make interval private so that users cannot increment/decrement on their own but must instead use
   * TODO:   increment/decrement-named methods (to handle irregular intervals involving weekends and months and such)
   */
-@Singleton
+@com.google.inject.Singleton
 case class Clock @Inject() (@Named("clock.begin") begin: TimeStamp,
                             @Named("clock.end") end: TimeStamp,
                             @Named("clock.interval") interval: DurationMils)
