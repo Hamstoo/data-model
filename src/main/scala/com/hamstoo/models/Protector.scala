@@ -4,6 +4,7 @@ import com.hamstoo.utils.ExtendedString
 
 import scala.language.higherKinds
 
+// TODO: What about added macro generators, like `Protector,protect[A]`
 /**
   * Trait that define method for sanitizing instance on XSS vulnerabilities,
   * and in future other type of vulnerabilities.

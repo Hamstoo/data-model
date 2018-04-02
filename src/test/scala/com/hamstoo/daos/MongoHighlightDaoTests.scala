@@ -45,7 +45,7 @@ class MongoHighlightDaoTests
 
   it should "(UNIT) update highlights" in {
     val newPos = Highlight.Position(Seq(Highlight.PositionElement("", "", 0)))
-    hlightsDao.update(h.usrId, h.id, pos = newPos, prv = h.preview, coord = h.pageCoord).futureValue.pos shouldEqual newPos
+    hlightsDao.updateAndFetch(h.usrId, h.id, pos = newPos, prv = h.preview, coord = h.pageCoord).futureValue.pos shouldEqual newPos
   }
 
   it should "(UNIT) delete highlight" in {
