@@ -741,7 +741,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     }
   }
 
-  // TODO: 146: how do we ensure that the singleton ReprInfo types (PUBLIC and USER_CONTENT) remain singletons?
   /**
    * Save a ReprInfo to a mark's `reprs` list.
    *
@@ -754,19 +753,19 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     /** Insert representation info */
     def insertRepr(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = for {
       c <- dbColl()
-      _ = logger.debug(s"Inserting ${reprInfo.reprType} representation for mark: $markId...")
+      _ = logger.debug(s"Inserting ${reprInfo.reprType} representation ${reprInfo.reprId} for mark $markId")
       sel = d :~ ID -> markId :~ curnt
       mod = d :~ "$push" -> (d :~ REPRS -> reprInfo)
 
       wr <- c.update(sel, mod)
       _ <- wr.failIfError
-    } yield logger.debug(s"${reprInfo.reprType} representation for mark: $markId was inserted")
+    } yield logger.debug(s"Inserted ${reprInfo.reprType} representation ${reprInfo.reprId} for mark $markId")
 
     /** Update non-private representation */
     def updateNonPrivateRepr(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = for {
       c <- dbColl()
       reprType = reprInfo.reprType
-      _ = logger.debug(s"Updating $reprType representation information for mark: $markId...")
+      _ = logger.debug(s"Updating $reprType representation ${reprInfo.reprId} for mark $markId")
       sel = d :~ ID -> markId :~ REPR_TYPEx -> reprType :~ curnt
       mod = d :~
         "$set" -> (d :~ REPR_IDxp -> reprInfo.reprId :~ CREATEDxp -> reprInfo.created) :~
@@ -774,16 +773,16 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
       wr <- c.update(sel, mod)
       _ <- wr.failIfError
-    } yield logger.debug(s"$reprType representation was updated")
+    } yield logger.debug(s"Updated $reprType representation ${reprInfo.reprId}")
 
     /** Check if non-private representation info exist */
     def nonPrivateReprExists(markId: ObjectId, reprType: String): Future[Boolean] = for {
       c <- dbColl()
-      _ = logger.debug(s"Checking if non-private repr of type: $reprType exist...")
+      _ = logger.debug(s"Checking for existence of non-private repr of type $reprType")
       sel = d :~ ID -> markId :~  REPR_TYPEx -> reprType.toString :~ curnt
       opt <- c.find(sel).one[Mark]
     } yield {
-      logger.debug(s"$opt was retrieved")
+      logger.debug(s"Retrieved non-private repr $opt")
       opt.nonEmpty
     }
 
