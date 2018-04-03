@@ -574,9 +574,12 @@ object MSearchable {
 object Mark extends BSONHandlers {
   import MarkData.mdProtector
 
-  implicit val mPr: Protector[Mark] = mProtector()
-  private def mProtector()(implicit mdPr: Protector[MarkData]): Protector[Mark] = (o: Mark) => {
-    o.copy(mark = mdPr.protect(o.mark))
+  implicit val mPr: Protector[Mark] = {
+    def mProtector()(implicit mdPr: Protector[MarkData]): Protector[Mark] = (o: Mark) => {
+      o.copy(mark = mdPr.protect(o.mark))
+    }
+
+    mProtector()
   }
 
   val logger: Logger = Logger(classOf[Mark])
