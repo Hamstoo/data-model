@@ -116,15 +116,15 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
     for {
       digested <- digest(url).map { case (_, wsResp) => Page(markId, reprType, wsResp.bodyAsBytes.toArray) }
       frameless <- if (!MediaTypeSupport.isHTML(mediaType)) Future.successful(digested)
-      else {
-        // `loadFrames` detects and loads individual frames and those in framesets
-        // and puts loaded data into initial document
-        loadFrames(url, digested).map { framesLoadedHtml =>
-          digested.copy(content = framesLoadedHtml._1.getBytes("UTF-8"))
-        }
-      }
+                   else {
+                     // `loadFrames` detects and loads individual frames and those in framesets
+                     // and puts loaded data into initial document
+                     loadFrames(url, digested).map { framesLoadedHtml =>
+                       digested.copy(content = framesLoadedHtml._1.getBytes("UTF-8"))
+                     }
+                   }
     } yield {
-      logger.debug(s"Retrieved ${frameless.copy(content = Array.empty[Byte])} for URL $url")
+      logger.debug(s"Retrieved ${frameless.copy(content = Array.empty[Byte])} for URL: '$url'")
       frameless
     }
   }
@@ -216,7 +216,7 @@ class ContentRetriever(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
   /** This code was formerly part of the 'hamstoo' repo's LinkageService. */
   def digest(url: String): Future[(String, WSResponse)] = {
-    logger.info(s"Digesting URL $url")
+    logger.info(s"Digesting URL: '$url'")
     val link: String = checkLink(url)
 
     //@tailrec // not tail recursive because of the Future
