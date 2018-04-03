@@ -1,8 +1,14 @@
 package com.hamstoo.models
 
-import com.hamstoo.utils.ExtendedString
+//import java.lang.reflect.Field
 
-import scala.language.higherKinds
+//import com.hamstoo.utils.ExtendedString
+//import play.api.libs.json.{JsObject, Json}
+
+//import scala.annotation.tailrec
+
+//import scala.language.higherKinds
+//import scala.reflect._ // ClassTag
 
 /**
   * Main trait for of type-class group for defining protector behavior.
@@ -28,11 +34,29 @@ import scala.language.higherKinds
   *   testEntityProtector()
   * }
   */
-trait Sanitizable[A] {
+trait Sanitizable[T] {
 
   /** Sanitize all text based content */
-  def sanitize: A /*= {
-    // TODO: 208: can we do this with reflection so that all string members get sanitized?
+  def sanitize/*(implicit fmt: OFormat[T])*/: T /*= {
+    // TODO: 208: can we do this with reflection so that all Sanitizable members get sanitized?
+
+    @tailrec
+    def sanitizeOneField(jo: JsObject, fields: Seq[Field]): JsObject = if (fields.isEmpty) jo else {
+      val field = fields.head
+      val nextJo = field.get(this) match {
+        case v: String => jo + (field.getName -> Json.toJson(v.sanitize))
+        case v: Sanitizable[_] =>
+          //def getFmt[A](v: Sanitizable[A]) = Json.format[A]
+          //implicit val fmt = getFmt(v)
+          jo + (field.getName -> Json.toJson(v.sanitize))
+        case _ => jo
+      }
+      sanitizeOneField(nextJo, fields.tail)
+    }
+
+    //implicit val fmt: OFormat[T] = Json.format[T]
+    val jsObj = sanitizeOneField(Json.toJsObject(this), classTag[T].runtimeClass.getDeclaredFields)
+    jsObj.as[T]
   }*/
 }
 
