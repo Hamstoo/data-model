@@ -205,7 +205,7 @@ object ShareGroup {
   * @param userIds     Authorized user IDs.  This implementation is incomplete.  It is currently only used for
   *                    public and "logged in" authorization.  Implementation to be completed along with issue #139.
   * @param emails      Authorized email addresses.  Owners of such email addresses will be required to create accounts.
-  * @param sharedObjs  Object IDs (e.g. mark or highlight IDs) that have been shared with this UsGroup in the past.
+  * @param sharedObjs  Object IDs (e.g. mark or highlight IDs) that have been shared with this UserGroup in the past.
   * @param hash        A hash of this UserGroup to use as a MongoDB index key.
   */
 case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
