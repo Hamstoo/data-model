@@ -155,7 +155,9 @@ case class MarkDataPatch(subj: Option[String],
                          url: Option[String],
                          rating: Option[Double],
                          tags: Option[Set[String]],
-                         comment: Option[String])
+                         comment: Option[String]) {
+  def isEmpty(): Boolean = subj.isEmpty && url.isEmpty && rating.isEmpty && tags.isEmpty && comment.isEmpty
+}
 
 object MarkDataPatch {
   implicit val mdpProtector: Protector[MarkDataPatch] = (o: MarkDataPatch) => {
