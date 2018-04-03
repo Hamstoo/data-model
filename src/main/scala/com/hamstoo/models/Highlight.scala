@@ -52,7 +52,6 @@ case class Highlight(usrId: UUID,
 
 object Highlight extends BSONHandlers with AnnotationInfo {
   import Position.posPr
-  import Preview.prvPr
 
   implicit val hlProtector: Protector[Highlight] = hgProtector()
 
@@ -84,8 +83,10 @@ object Highlight extends BSONHandlers with AnnotationInfo {
   object Position {
     import Highlight.PositionElement.pePr
 
-    implicit val posPr: Protector[Position] = (o: Position) => {
-      o.copy(elements = o.elements.map(pePr.protect))
+    implicit val posPr: Protector[Position] = posProtector()
+
+    private def posProtector()(implicit posElPr: Protector[Highlight.PositionElement]): Protector[Position] = (o: Position) => {
+      o.copy(elements = o.elements.map(posElPr.protect))
     }
   }
 
