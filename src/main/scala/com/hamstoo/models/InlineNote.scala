@@ -3,7 +3,8 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.{INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.models.InlineNote.Position
+import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import play.api.libs.json.{JsObject, Json}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -11,14 +12,14 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * Data model of an inline note.  We refer to this as a "note" rather than a "comment" to help differentiate
   * between the two concepts, the latter being complementary user content.
   *
-  * @param usrId    user UUID
+  * @param usrId       user UUID
   * @param sharedWith  defines which other users are allowed to read or write this InlineNote
-  * @param id       inline note id, common for all versions through time
-  * @param markId   markId of the web page where highlighting was done; URL can be obtained from there
-  * @param pos      frontend comment data, including positioning and comment text
-  * @param memeId   'comment representation' id, to be implemented
-  * @param timeFrom timestamp
-  * @param timeThru version validity time
+  * @param id          inline note id, common for all versions through time
+  * @param markId      markId of the web page where highlighting was done; URL can be obtained from there
+  * @param pos         frontend comment data, including positioning and comment text
+  * @param memeId      'comment representation' id, to be implemented
+  * @param timeFrom    timestamp
+  * @param timeThru    version validity time
   */
 case class InlineNote(usrId: UUID,
                       sharedWith: Option[SharedWith] = None,
@@ -30,13 +31,13 @@ case class InlineNote(usrId: UUID,
                       pageCoord: Option[PageCoord] = None,
                       memeId: Option[String] = None,
                       timeFrom: TimeStamp = TIME_NOW,
-                      timeThru: TimeStamp = INF_TIME) extends Annotation with HasJsonPreview {
+                      timeThru: TimeStamp = INF_TIME) extends Annotation with Sanitizable[InlineNote] {
 
-  override def jsonPreview: JsObject = Json.obj(
-    "id" -> id,
-    "preview" -> pos.text,
-    "type" -> "comment"
-  )
+  /** HasJsonPreview interface. */
+  override def jsonPreview: JsObject = Json.obj("id" -> id, "preview" -> pos.text.sanitize, "type" -> "comment")
+
+  /** Sanitizable interface. */
+  override def sanitize: InlineNote = copy(pos = pos.sanitize)
 }
 
 object InlineNote extends BSONHandlers with AnnotationInfo {
@@ -49,13 +50,14 @@ object InlineNote extends BSONHandlers with AnnotationInfo {
     * @param offsetX  Horizontal offset inside path element. (?)
     * @param offsetY  Vertical offset inside path element. (?)
     */
-  case class Position(path: String,
-                      text: String,
-                      offsetX: Double,
-                      offsetY: Double) extends Positions {
+  case class Position(path: String, text: String, offsetX: Double, offsetY: Double)
+      extends Positions with Sanitizable[Position] {
 
     /** Coordinates (offset) of an inline note in a node.  Useful for sorting. */
     def nodeCoord = PageCoord(offsetX, offsetY)
+
+    /** Sanitizable interface. */
+    override def sanitize: Position = copy(text = text.sanitize)
   }
 
   val ID_LENGTH: Int = 16

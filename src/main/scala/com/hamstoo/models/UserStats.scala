@@ -10,12 +10,11 @@ package com.hamstoo.models
   * @param marksLatestSum  Total number over the last 4 weeks, computed from the `userstats` collection.
   * @param mostProductive  Max day over last 4 weeks.
   */
-case class UserStats(
-                  nMarks: Int,
-                  imported: Int,
-                  marksLatest: Seq[UserStatsDay],
-                  marksLatestSum: Int,
-                  mostProductive: UserStatsDay)
+case class UserStats(nMarks: Int,
+                     imported: Int,
+                     marksLatest: Seq[UserStatsDay],
+                     marksLatestSum: Int,
+                     mostProductive: UserStatsDay)
 
 /** A count of the number of marks that were created on a particular date. */
 case class UserStatsDay(date: String, nMarks: Int)

@@ -3,8 +3,9 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.{INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
-import play.api.libs.json.{JsObject, Json, OFormat}
+import com.hamstoo.models.Highlight.Preview
+import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import play.api.libs.json._
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 /**
@@ -33,20 +34,21 @@ case class Highlight(usrId: UUID,
                      preview: Highlight.Preview,
                      memeId: Option[String] = None,
                      timeFrom: TimeStamp = TIME_NOW,
-                     timeThru: TimeStamp = INF_TIME) extends Annotation with HasJsonPreview {
+                     timeThru: TimeStamp = INF_TIME) extends Annotation with Sanitizable[Highlight] {
 
-  import Highlight.fmt
+  /** Implements HasJsonPreview interface. */
+  override def jsonPreview: JsObject = {
+    val sanitary = preview.sanitize
+    Json.obj("id" -> id,
+             "preview" -> Json.obj("lead" -> sanitary.lead, "text" -> sanitary.text, "tail" -> sanitary.tail),
+             "type" -> "highlight")
+  }
 
-  override def jsonPreview: JsObject = Json.obj(
-    "id" -> id,
-    "preview" -> Json.toJson(preview),
-    "type" -> "highlight"
-  )
+  /** Sanitizable interface. */
+  override def sanitize: Highlight = copy(pos = pos.sanitize, preview = preview.sanitize)
 }
 
 object Highlight extends BSONHandlers with AnnotationInfo {
-
-  implicit val fmt: OFormat[Preview] = Json.format[Preview]
 
   /**
     * XML XPath and text located at that path.  `index` is the character index where the highlighted text
@@ -57,15 +59,20 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     *   {"path": "body/p"     , "text": "fin", "index": 11
     * ]
     */
-  case class PositionElement(path: String, text: String, index: Int)
+  case class PositionElement(path: String, text: String, index: Int) extends Sanitizable[PositionElement] {
+    override def sanitize: PositionElement = copy(text = text.sanitize)
+  }
 
   /** A highlight can stretch over a series of XPaths. */
-  case class Position(elements: Seq[PositionElement]) extends Positions {
+  case class Position(elements: Seq[PositionElement]) extends Positions with Sanitizable[Position] {
     def nonEmpty: Boolean = elements.nonEmpty
+    override def sanitize: Position = copy(elements = elements.map(_.sanitize))
   }
 
   /** Text that occurs before and after the highlighted text, along with the highlighted `text` itself. */
-  case class Preview(lead: String, text: String, tail: String)
+  case class Preview(lead: String, text: String, tail: String) extends Sanitizable[Preview] {
+    override def sanitize: Preview = copy(lead = lead.sanitize, text = text.sanitize, tail = tail.sanitize)
+  }
 
   val ID_LENGTH: Int = 16
 

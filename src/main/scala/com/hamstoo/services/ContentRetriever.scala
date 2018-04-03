@@ -9,7 +9,7 @@ import com.gargoylesoftware.htmlunit._
 import com.gargoylesoftware.htmlunit.html.HtmlPage
 import com.hamstoo.models.Page
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.utils.{MediaType, ObjectId}
+import com.hamstoo.utils.{ExtendedString, MediaType, ObjectId}
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
@@ -46,7 +46,7 @@ object ContentRetriever {
   val incapsulaWAFRgx: Regex = REGEX_FIND_WORD.format(raw"content\.incapsula\.com").r.unanchored
 
   /** Make sure the provided String is an absolute link. */
-  def checkLink(s: String): String = if (s.isEmpty) s else Try(new URI(s)) match {
+  def checkLink(s: String): String = if (s.isEmpty) s else Try(new URI(s.sanitize)) match {
     case Success(uri) if uri.isAbsolute => uri.toASCIIString
     case Success(uri) => "http://" + uri.toASCIIString
     case Failure(t) => logger.info(s"String '$s' is probably not a URL; ${t.getMessage}"); s

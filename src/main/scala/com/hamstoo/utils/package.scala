@@ -2,17 +2,19 @@ package com.hamstoo
 
 import java.util.Locale
 
+import com.hamstoo.models.{MarkData, Sanitizable}
 import org.joda.time.DateTime
+import org.jsoup.Jsoup
+import org.jsoup.safety.Whitelist
 import play.api.Logger
 import play.api.libs.json.Json
 import play.api.mvc.{Call, Request}
 import reactivemongo.api.BSONSerializationPack.Reader
+import reactivemongo.api._
 import reactivemongo.api.collections.GenericQueryBuilder
 import reactivemongo.api.commands.WriteResult
 import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
-import reactivemongo.api._
 import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
-import sys.process._
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
@@ -175,7 +177,7 @@ package object utils {
     priv.filterNot(NON_IDS.contains).orElse(pub.filterNot(NON_IDS.contains)).orElse(priv).orElse(pub)
     //if (priv.exists(NON_IDS.contains) && pub.exists(!NON_IDS.contains(_))) pub.get else priv.orElse(pub)
 
-  implicit class ExtendedString(private val s: String) extends AnyVal {
+  implicit class ExtendedString(private val s: String) extends /*AnyVal with*/ Sanitizable[String] {
     /**
       * Retrieves first chars of a string as binary sequence. This method exists as a means of constructing
       * binary prefixes of string fields for binary indexes in MongoDB.
@@ -183,6 +185,10 @@ package object utils {
     def binaryPrefix: mutable.WrappedArray[Byte] = s.getBytes.take(URL_PREFIX_LENGTH)
 
     def binPrfxComplement: String = s.substring(0, URL_PREFIX_COMPLEMENT_LENGTH)
+
+    /** Sanitize from XSS content */
+    // TODO: 208: Fred changed this from Whitelist.basic() to htmlTagsWhitelist. is that ok?
+    override def sanitize: String = Jsoup.clean(s, MarkData.htmlTagsWhitelist)
   }
 
   /**

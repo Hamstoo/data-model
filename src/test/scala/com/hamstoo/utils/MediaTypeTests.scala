@@ -1,7 +1,6 @@
-package com.hamstoo.services
+package com.hamstoo.utils
 
 import com.hamstoo.test.FlatSpecWithMatchers
-import com.hamstoo.utils.MediaType
 
 /**
   * MediaTypeTests

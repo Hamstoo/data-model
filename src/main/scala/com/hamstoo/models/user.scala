@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.daos.MongoUserDao
+import com.hamstoo.utils.ExtendedString
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
@@ -22,17 +23,24 @@ import scala.util.matching.Regex
   * @param oAuth2Info   `accessToken`, `tokenType` (e.g. "Bearer"), and `expiresIn` (e.g. 3600).
   * @param avatarUrl    Link to an avatar image.
   */
-case class Profile(
-                    loginInfo: LoginInfo,
-                    confirmed: Boolean,
-                    email: Option[String],
-                    firstName: Option[String],
-                    lastName: Option[String],
-                    fullName: Option[String],
-                    passwordInfo: Option[PasswordInfo] = None,
-                    oAuth1Info: Option[OAuth1Info] = None,
-                    oAuth2Info: Option[OAuth2Info] = None,
-                    avatarUrl: Option[String] = None)
+case class Profile(loginInfo: LoginInfo,
+                   confirmed: Boolean,
+                   email: Option[String],
+                   firstName: Option[String],
+                   lastName: Option[String],
+                   fullName: Option[String],
+                   passwordInfo: Option[PasswordInfo] = None,
+                   oAuth1Info: Option[OAuth1Info] = None,
+                   oAuth2Info: Option[OAuth2Info] = None,
+                   avatarUrl: Option[String] = None) extends Sanitizable[Profile] {
+
+  /** Sanitizable interface. */
+  def sanitize: Profile =
+    copy(firstName = firstName.map(_.sanitize),
+         lastName = lastName.map(_.sanitize),
+         fullName = fullName.map(_.sanitize),
+         avatarUrl = avatarUrl.map(_.sanitize))
+}
 
 object Profile {
   implicit val loginInfHandler: BSONDocumentHandler[LoginInfo] = Macros.handler[LoginInfo]
@@ -58,16 +66,15 @@ case class ExtensionOptions(autoSync: Option[Boolean] = None,
   * @param extOpts    Extension options.
   * @param tutorial   If true, the user will see the tutorial on next login.
   */
-case class UserData(
-                     firstName: Option[String] = None,
-                     lastName: Option[String] = None,
-                     username: Option[String] = None,
-                     var usernameLower: Option[String] = None,
-                     avatar: Option[String] = None,
-                     extOpts: Option[ExtensionOptions] = None,
-                     tutorial: Option[Boolean] = Some(true)) {
+case class UserData(firstName: Option[String] = None,
+                    lastName: Option[String] = None,
+                    username: Option[String] = None,
+                    var usernameLower: Option[String] = None,
+                    avatar: Option[String] = None,
+                    extOpts: Option[ExtensionOptions] = None,
+                    tutorial: Option[Boolean] = Some(true)) extends Sanitizable[UserData] {
 
-  usernameLower = username.map(_.toLowerCase) // impossible to set any other way
+  usernameLower = username.map(_.toLowerCase) // intentionally impossible to set any other way
 
   /** Assign a username consisting of first/last name and a random number. */
   def assignUsername()(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[UserData] = {
@@ -77,6 +84,13 @@ case class UserData(
     }
     userDao.nextUsername(startWith + Random.nextInt(9999)).map(nxt => copy(username = Some(nxt)))
   }
+
+  /** Sanitizable interface. */
+  def sanitize: UserData =
+    copy(firstName = firstName.map(_.sanitize),
+         lastName = lastName.map(_.sanitize),
+         username = username.map(_.sanitize),
+         avatar = avatar.map(_.sanitize))
 }
 
 /**

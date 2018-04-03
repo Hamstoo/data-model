@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.daos.MongoUserDao
-import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{ExtendedString, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -64,7 +64,7 @@ trait Shareable {
     */
   def isAuthorizedShare(user: Option[User]): Boolean = user.exists(ownedBy(_) || isPublic)
   def isPublic: Boolean = sharedWith.exists { sw =>
-    import SharedWith.{PUBLIC_LEVELS, Level}
+    import SharedWith.{Level, PUBLIC_LEVELS}
     Seq(sw.readOnly, sw.readWrite).flatten.exists(sg => PUBLIC_LEVELS.contains(Level(sg.level)))
   }
 }
@@ -155,7 +155,7 @@ object SharedWith {
   */
 case class ShareGroup(level: Int, group: Option[ObjectId]) {
 
-  import SharedWith.{PUBLIC_LEVELS, Level}
+  import SharedWith.{Level, PUBLIC_LEVELS}
 
   /** Returns true if the given user is authorized, either via (optional) user ID or email. */
   def isAuthorized(user: Option[User])(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] =
@@ -212,7 +212,7 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
                      userIds: Option[Set[UUID]] = None,
                      emails: Option[Set[String]] = None,
                      sharedObjs: Seq[UserGroup.SharedObj] = Seq.empty[UserGroup.SharedObj],
-                     var hash: Int = 0) {
+                     var hash: Int = 0) extends Sanitizable[UserGroup] {
 
   // if `id` is None then let `hash` be None also
   hash = if (id.isEmpty) 0 else UserGroup.hash(this)
@@ -239,6 +239,9 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
       }
     }
   }
+
+  /** Sanitizable interface. */
+  def sanitize: UserGroup = copy(emails = emails.map(_.map(_.sanitize)))
 }
 
 object UserGroup extends BSONHandlers {
