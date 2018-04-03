@@ -260,8 +260,8 @@ class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with Mocki
 
     // these are the only 2 methods of hlightsDao that should be invoked, a NPE will occur if others are invoked also
     when(hlightsDao.retrieve(any[Option[User]], anyString())).thenReturn(Future.successful(Seq(hl0)))
-    when(hlightsDao.updateAndFetch(any[UUID], anyString, any[Highlight.Position],
-                           any[Highlight.Preview], any[Option[PageCoord]]))
+    when(hlightsDao.updateSoft(any[UUID], anyString, any[Highlight.Position],
+                               any[Highlight.Preview], any[Option[PageCoord]]))
       .thenAnswer { invocation: InvocationOnMock =>
         Future.successful(hl0.copy(pos = invocation.getArgument[Highlight.Position](2),
                                    preview = invocation.getArgument[Highlight.Preview](3)))

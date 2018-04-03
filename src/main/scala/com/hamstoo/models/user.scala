@@ -32,17 +32,17 @@ case class Profile(loginInfo: LoginInfo,
                    passwordInfo: Option[PasswordInfo] = None,
                    oAuth1Info: Option[OAuth1Info] = None,
                    oAuth2Info: Option[OAuth2Info] = None,
-                   avatarUrl: Option[String] = None)
+                   avatarUrl: Option[String] = None) extends Sanitizable[Profile] {
+
+  /** Sanitizable interface. */
+  def sanitize: Profile =
+    copy(firstName = firstName.map(_.sanitize),
+         lastName = lastName.map(_.sanitize),
+         fullName = fullName.map(_.sanitize),
+         avatarUrl = avatarUrl.map(_.sanitize))
+}
 
 object Profile {
-  implicit val profilePr: Protector[Profile] = (o: Profile) => {
-    o.copy(
-      firstName = o.firstName.map(_.sanitize),
-      lastName = o.lastName.map(_.sanitize),
-      fullName = o.fullName.map(_.sanitize),
-      avatarUrl = o.avatarUrl.map(_.sanitize)
-    )
-  }
   implicit val loginInfHandler: BSONDocumentHandler[LoginInfo] = Macros.handler[LoginInfo]
   implicit val paswdInfHandler: BSONDocumentHandler[PasswordInfo] = Macros.handler[PasswordInfo]
   implicit val auth1InfHandler: BSONDocumentHandler[OAuth1Info] = Macros.handler[OAuth1Info]
@@ -72,9 +72,9 @@ case class UserData(firstName: Option[String] = None,
                     var usernameLower: Option[String] = None,
                     avatar: Option[String] = None,
                     extOpts: Option[ExtensionOptions] = None,
-                    tutorial: Option[Boolean] = Some(true)) {
+                    tutorial: Option[Boolean] = Some(true)) extends Sanitizable[UserData] {
 
-  usernameLower = username.map(_.toLowerCase) // impossible to set any other way
+  usernameLower = username.map(_.toLowerCase) // intentionally impossible to set any other way
 
   /** Assign a username consisting of first/last name and a random number. */
   def assignUsername()(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[UserData] = {
@@ -84,17 +84,13 @@ case class UserData(firstName: Option[String] = None,
     }
     userDao.nextUsername(startWith + Random.nextInt(9999)).map(nxt => copy(username = Some(nxt)))
   }
-}
 
-object UserData {
-  implicit val udPr: Protector[UserData] = (o: UserData) => {
-    o.copy(
-      firstName = o.firstName.map(_.sanitize),
-      lastName = o.lastName.map(_.sanitize),
-      username = o.username.map(_.sanitize),
-      avatar = o.avatar.map(_.sanitize)
-    )
-  }
+  /** Sanitizable interface. */
+  def sanitize: UserData =
+    copy(firstName = firstName.map(_.sanitize),
+         lastName = lastName.map(_.sanitize),
+         username = username.map(_.sanitize),
+         avatar = avatar.map(_.sanitize))
 }
 
 /**

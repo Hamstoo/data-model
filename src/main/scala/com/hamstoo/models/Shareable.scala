@@ -212,7 +212,7 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
                      userIds: Option[Set[UUID]] = None,
                      emails: Option[Set[String]] = None,
                      sharedObjs: Seq[UserGroup.SharedObj] = Seq.empty[UserGroup.SharedObj],
-                     var hash: Int = 0) {
+                     var hash: Int = 0) extends Sanitizable[UserGroup] {
 
   // if `id` is None then let `hash` be None also
   hash = if (id.isEmpty) 0 else UserGroup.hash(this)
@@ -239,12 +239,12 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
       }
     }
   }
+
+  /** Sanitizable interface. */
+  def sanitize: UserGroup = copy(emails = emails.map(_.map(_.sanitize)))
 }
 
 object UserGroup extends BSONHandlers {
-  implicit val ugPr: Protector[UserGroup] = (o: UserGroup) => {
-    o.copy(emails = o.emails.map(_.map(_.sanitize)))
-  }
 
   /** Special hashing function for UserGroups to use as their MongoDB index key. */
   private final class Hashing extends hashing.Hashing[UserGroup] {

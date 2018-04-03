@@ -37,7 +37,7 @@ case class MarkData(override val subj: String,
                     override val tags: Option[Set[String]] = None,
                     override val comment: Option[String] = None,
                     var commentEncoded: Option[String] = None)
-  extends MDSearchable(subj, url, rating, tags, comment)  {
+    extends MDSearchable(subj, url, rating, tags, comment) {
 
   import MarkData._
 
@@ -64,7 +64,7 @@ case class MarkData(override val subj: String,
     val html2 = StringEscapeUtils.unescapeHtml4(html)
 
     // example: <p><img></p>
-    Jsoup.clean(html2, htmlTagsWhitelist)
+    ExtendedString(html2).sanitize
   }
 
   /** Check for `Automarked` label. */
@@ -90,13 +90,15 @@ case class MarkData(override val subj: String,
   }
 
   /** Instead of merge, it provide patch functionallity */
-  def patch(mdp: MarkDataPatch): MarkData = {
+  // TODO: 208: see how this is done in hamstoo.MarksController.patch which is typesafe
+  // TODO: 208: there's no way to enforce that this version of the function handles all future field additions to MarkData
+  /*def patch(mdp: MarkDataPatch): MarkData = {
     MarkData(subj = mdp.subj.getOrElse(subj),
       url = if (mdp.url.isDefined) mdp.url else url,
       rating = if (mdp.rating.isDefined) mdp.rating else rating,
       tags = if (mdp.tags.isDefined) mdp.tags else tags,
       comment = if (mdp.comment.isDefined) mdp.comment else comment)
-  }
+  }*/
 
   /** If the two MarkDatas are equal, as far as generating a public representation would be concerned. */
   // TODO: the interface for constructing a public repr should only be allowed to include these fields via having its own class
@@ -110,14 +112,6 @@ case class MarkData(override val subj: String,
 }
 
 object MarkData {
-  implicit val mdProtector: Protector[MarkData] = (o: MarkData) => {
-    o.copy(
-      subj = o.subj.sanitize,
-      url = o.url.map(_.sanitize),
-      comment = o.comment.map(_.sanitize),
-      tags = o.tags.map(_.map(_.sanitize))
-    )
-  }
 
   val logger: Logger = Logger(classOf[MarkData])
 
@@ -151,6 +145,8 @@ object MarkData {
   val COMNTENC: String = nameOf[MarkData](_.commentEncoded)
 }
 
+// TODO: 208: ugly, can we get rid of this class, or at least comment on why it is necessary?
+/*
 case class MarkDataPatch(subj: Option[String],
                          url: Option[String],
                          rating: Option[Double],
@@ -160,30 +156,32 @@ case class MarkDataPatch(subj: Option[String],
 }
 
 object MarkDataPatch {
-  implicit val mdpProtector: Protector[MarkDataPatch] = (o: MarkDataPatch) => {
+  implicit val protector: Protector[MarkDataPatch] = (o: MarkDataPatch) => {
     o.copy(subj = o.subj.map(_.sanitize),
       url = o.url.map(_.sanitize),
       tags = o.tags.map(_.map(_.sanitize)),
       comment = o.comment.map(_.sanitize))
   }
 }
+*/
 
 
 /**
-  * Searchable MarkData includes all fields excetp `commentEncoded`.
+  * Searchable MarkData includes all fields except `commentEncoded`.
   * TODO: Would it be better to just put `commentEncoded` and the 2 MarkAux fields in MSearchable?
   */
 class MDSearchable(val subj: String,
                    val url: Option[String],
                    val rating: Option[Double],
                    val tags: Option[Set[String]],
-                   val comment: Option[String]) {
+                   val comment: Option[String]) extends Sanitizable[MDSearchable] {
 
   // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
   // rating value (not part of the data(base) model)
   var bMasked: Boolean = false
   var ownerRating: Option[Double] = None
 
+  /** See ScalaDoc on MSearchable.xcopy. */
   def xcopy(subj: String = subj,
             url: Option[String] = url,
             rating: Option[Double] = rating,
@@ -197,17 +195,16 @@ class MDSearchable(val subj: String,
     */
   def xtoString: String =
     s"${classOf[MDSearchable].getSimpleName}($subj,$url,$rating,$tags,$comment)"
+
+  /** Sanitizable interface. */
+  override def sanitize: MDSearchable =
+    xcopy(subj = subj.sanitize,
+          url = url.map(_.sanitize),
+          comment = comment.map(_.sanitize),
+          tags = tags.map(_.map(_.sanitize)))
 }
 
 object MDSearchable {
-  implicit val mdsProtector: Protector[MDSearchable] = (o: MDSearchable) => {
-    o.xcopy(
-      subj = o.subj.sanitize,
-      url = o.url.map(_.sanitize),
-      comment = o.comment.map(_.sanitize),
-      tags = o.tags.map(_.map(_.sanitize))
-    )
-  }
 
   def apply(subj: String,
             url: Option[String],
@@ -453,7 +450,7 @@ class MSearchable(val userId: UUID,
                   val sharedWith: Option[SharedWith],
                   val nSharedFrom: Option[Int],
                   val nSharedTo: Option[Int],
-                  val score: Option[Double]) extends Shareable {
+                  val score: Option[Double]) extends Shareable with Sanitizable[MSearchable] {
 
   /**
     * This method is called `xcopy` instead of `copy` to avoid conflict with `case class Mark` which
@@ -539,14 +536,11 @@ class MSearchable(val userId: UUID,
   def xtoString: String =
     s"${classOf[MSearchable].getSimpleName}($userId,$id,${mark.xtoString},$markRef,$aux,$reprs,$timeFrom,$timeThru,$modifiedBy,$sharedWith,$nSharedFrom,$nSharedTo,$score)"
 
+  /** Sanitizable interface. */
+  override def sanitize: MSearchable = xcopy(mark = mark.sanitize)
 }
 
 object MSearchable {
-  implicit val prMS: Protector[MSearchable] = msProtector()
-
-  private def msProtector()(implicit mdsPr: Protector[MDSearchable]): Protector[MSearchable] = (o: MSearchable) => {
-    o.xcopy(mark = mdsPr.protect(o.mark))
-  }
 
   def apply(userId: UUID,
             id: ObjectId,
@@ -572,15 +566,6 @@ object MSearchable {
 }
 
 object Mark extends BSONHandlers {
-  import MarkData.mdProtector
-
-  implicit val mPr: Protector[Mark] = {
-    def mProtector()(implicit mdPr: Protector[MarkData]): Protector[Mark] = (o: Mark) => {
-      o.copy(mark = mdPr.protect(o.mark))
-    }
-
-    mProtector()
-  }
 
   val logger: Logger = Logger(classOf[Mark])
 

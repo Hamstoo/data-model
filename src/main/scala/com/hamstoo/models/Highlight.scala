@@ -34,31 +34,21 @@ case class Highlight(usrId: UUID,
                      preview: Highlight.Preview,
                      memeId: Option[String] = None,
                      timeFrom: TimeStamp = TIME_NOW,
-                     timeThru: TimeStamp = INF_TIME) extends Annotation {
+                     timeThru: TimeStamp = INF_TIME) extends Annotation with Sanitizable[Highlight] {
 
+  /** Implements HasJsonPreview interface. */
   override def jsonPreview: JsObject = {
-    val prPrev = Preview.prvPr.protect(preview)
-    Json.obj(
-      "id" -> id,
-      "preview" -> Json.obj(
-        "lead" -> prPrev.lead,
-        "text" -> prPrev.text,
-        "tail" -> prPrev.tail
-      ),
-      "type" -> "highlight"
-    )
+    val sanitary = preview.sanitize
+    Json.obj("id" -> id,
+             "preview" -> Json.obj("lead" -> sanitary.lead, "text" -> sanitary.text, "tail" -> sanitary.tail),
+             "type" -> "highlight")
   }
+
+  /** Sanitizable interface. */
+  override def sanitize: Highlight = copy(pos = pos.sanitize, preview = preview.sanitize)
 }
 
 object Highlight extends BSONHandlers with AnnotationInfo {
-  import Position.posPr
-
-  implicit val hlProtector: Protector[Highlight] = hgProtector()
-
-  private def hgProtector()(implicit posPr: Protector[Highlight.Position],
-                            prvPr: Protector[Highlight.Preview]): Protector[Highlight] = (o: Highlight) => {
-    o.copy(pos = posPr.protect(o.pos), preview = prvPr.protect(o.preview))
-  }
 
   /**
     * XML XPath and text located at that path.  `index` is the character index where the highlighted text
@@ -69,37 +59,19 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     *   {"path": "body/p"     , "text": "fin", "index": 11
     * ]
     */
-  case class PositionElement(path: String, text: String, index: Int)
-
-  object PositionElement {
-    implicit val pePr: Protector[PositionElement] = (o: PositionElement) => o.copy(text = o.text.sanitize)
+  case class PositionElement(path: String, text: String, index: Int) extends Sanitizable[PositionElement] {
+    override def sanitize: PositionElement = copy(text = text.sanitize)
   }
 
   /** A highlight can stretch over a series of XPaths. */
-  case class Position(elements: Seq[PositionElement]) extends Positions {
+  case class Position(elements: Seq[PositionElement]) extends Positions with Sanitizable[Position] {
     def nonEmpty: Boolean = elements.nonEmpty
-  }
-
-  object Position {
-    import Highlight.PositionElement.pePr
-
-    implicit val posPr: Protector[Position] = posProtector()
-
-    private def posProtector()(implicit posElPr: Protector[Highlight.PositionElement]): Protector[Position] = (o: Position) => {
-      o.copy(elements = o.elements.map(posElPr.protect))
-    }
+    override def sanitize: Position = copy(elements = elements.map(_.sanitize))
   }
 
   /** Text that occurs before and after the highlighted text, along with the highlighted `text` itself. */
-  case class Preview(lead: String, text: String, tail: String)
-  object Preview {
-    implicit val prvPr: Protector[Preview] = (o: Preview) => {
-      o.copy(
-        lead = o.lead.sanitize,
-        text = o.text.sanitize,
-        tail = o.tail.sanitize
-      )
-    }
+  case class Preview(lead: String, text: String, tail: String) extends Sanitizable[Preview] {
+    override def sanitize: Preview = copy(lead = lead.sanitize, text = text.sanitize, tail = tail.sanitize)
   }
 
   val ID_LENGTH: Int = 16

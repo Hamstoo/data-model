@@ -2,6 +2,7 @@ package com.hamstoo
 
 import java.util.Locale
 
+import com.hamstoo.models.{MarkData, Sanitizable}
 import org.joda.time.DateTime
 import org.jsoup.Jsoup
 import org.jsoup.safety.Whitelist
@@ -141,7 +142,6 @@ package object utils {
       if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
   }
 
-
   // MongoDB Binary Indexes have a max size of 1024 bytes.  So to combine a 12-char string with a byte array
   // as in the `urldups` collection index, the byte array must be, at most, 992 bytes.  This is presumably
   // due to some overhead in the MongoDB data types (BinData and String) and/or overhead due to the combination
@@ -177,7 +177,7 @@ package object utils {
     priv.filterNot(NON_IDS.contains).orElse(pub.filterNot(NON_IDS.contains)).orElse(priv).orElse(pub)
     //if (priv.exists(NON_IDS.contains) && pub.exists(!NON_IDS.contains(_))) pub.get else priv.orElse(pub)
 
-  implicit class ExtendedString(private val s: String) extends AnyVal {
+  implicit class ExtendedString(private val s: String) extends /*AnyVal with*/ Sanitizable[String] {
     /**
       * Retrieves first chars of a string as binary sequence. This method exists as a means of constructing
       * binary prefixes of string fields for binary indexes in MongoDB.
@@ -187,7 +187,8 @@ package object utils {
     def binPrfxComplement: String = s.substring(0, URL_PREFIX_COMPLEMENT_LENGTH)
 
     /** Sanitize from XSS content */
-    def sanitize: String = Jsoup.clean(s, Whitelist.basic())
+    // TODO: 208: Fred changed this from Whitelist.basic() to htmlTagsWhitelist. is that ok?
+    override def sanitize: String = Jsoup.clean(s, MarkData.htmlTagsWhitelist)
   }
 
   /**

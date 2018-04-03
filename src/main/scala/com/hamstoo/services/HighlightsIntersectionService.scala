@@ -42,12 +42,12 @@ class HighlightsIntersectionService(hlightsDao: MongoHighlightDao)(implicit ec: 
       case (origHl, (_, 1)) :: Nil => Future successful origHl
 
       // update existing (origHl) if it's a subset of the new one (hl)
-      case (origHl, (_, -1)) :: Nil => hlightsDao updateAndFetch(origHl.usrId, origHl.id, hl.pos, hl.preview, hl.pageCoord)
+      case (origHl, (_, -1)) :: Nil => hlightsDao.updateSoft(origHl.usrId, origHl.id, hl.pos, hl.preview, hl.pageCoord)
 
       // update existing with a union of the two
       case (origHl, (e, _)) :: Nil =>
         val (pos, prv, coord) = if (e > 0) union(origHl, hl) else union(hl, origHl)
-        hlightsDao updateAndFetch(origHl.usrId, origHl.id, pos, prv, coord)
+        hlightsDao.updateSoft(origHl.usrId, origHl.id, pos, prv, coord)
 
       // fold all intersecting highlights while removing existing entries and insert a new aggregate highlight
       case seq =>

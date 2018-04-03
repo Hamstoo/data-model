@@ -4,12 +4,12 @@ import play.api.libs.json.JsObject
 
 /**
   * A trait define functionality that's required by the frontend.
-  * Mixed with Protectable trait, to return protected preview
+  * Mixed with Protectable trait, to return protected preview (TODO: 208: is this an accurate comment?)
   */
 trait HasJsonPreview {
 
   /**
-    * @return - Json object that contain data object preview information,
+    * @return - Json object that contains data object preview information
     *           based on template described below
     *             {
     *               "id": "String based identifier"
