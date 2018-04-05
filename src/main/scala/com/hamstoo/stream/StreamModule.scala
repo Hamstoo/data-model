@@ -1,9 +1,11 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.stream
 
 import java.util.UUID
 
 import akka.stream.Materializer
-import com.google.inject.name.Names
 import com.google.inject.name.Named
 import com.google.inject.{Injector, Provides, Singleton}
 import com.hamstoo.models.Representation.{Vec, VecFunctions}
@@ -21,7 +23,7 @@ import scala.concurrent.{ExecutionContext, Future}
   */
 class StreamModule(config: Config) extends ConfigModule(config) {
 
-  val logger = Logger(classOf[StreamModule])
+  override val logger = Logger(classOf[StreamModule])
 
   /**
     * "To create bindings, extend AbstractModule and override its configure method. In the method body, call
@@ -31,12 +33,14 @@ class StreamModule(config: Config) extends ConfigModule(config) {
 
     // bind typical config parameters like `idfs.resource` and `vectors.link`
     super.configure()
+    logger.info(s"Configuring module: ${classOf[StreamModule].getName}")
 
     // which query string are we computing stats/facet values for?
-    bind[String].annotatedWith(Names.named("query")).toInstance(config.getString("query"))
+    bindConfigParams[String]("query")
 
     // which user are we computing stats/facet values for?
-    bind[UUID].annotatedWith(Names.named("user.id")).toInstance(UUID.fromString(config.getString("user.id")))
+    implicit val cast = (a: AnyRef) => UUID.fromString(a.asInstanceOf[String])
+    bindConfigParams[UUID]("calling.user.id")
   }
 
   @Provides @Singleton @Named("query2Vecs")

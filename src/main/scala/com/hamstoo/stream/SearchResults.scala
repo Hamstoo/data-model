@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Inc. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
 package com.hamstoo.stream
 

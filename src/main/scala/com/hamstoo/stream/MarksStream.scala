@@ -20,7 +20,7 @@ import scala.concurrent.duration._
   */
 @com.google.inject.Singleton
 class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
-                             @Named("search.user.id") searchUserId: UUID,
+                             searchUserId0: SearchUserIdOptional,
                              query2Vecs: Query2VecsOptional,
                              labels: SearchLabelsOptional)
                             (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext,
@@ -32,6 +32,7 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
 
   import MarksStream._
 
+  val searchUserId: UUID = searchUserId0.value.getOrElse(callingUserId)
   val tags: Set[String] = labels.value
 
   /** PreloadSource interface. */

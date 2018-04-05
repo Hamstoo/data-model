@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.stream
 
 import com.hamstoo.utils.{ExtendedTimeStamp, ObjectId, TimeStamp}

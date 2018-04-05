@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Inc. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
 package com.hamstoo.stream
 
@@ -14,13 +14,16 @@ import play.api.Logger
 import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
 
-object DataStream {
+/**
+  * Base class of all DataStreams with an abstract type member rather than a generic type parameter.
+  * This trait is needed so that FacetsModel.source can merge a bunch of DataStreams of different types.
+  */
+trait DataStreamBase {
 
-  // we use a default of 1 because there appears to be a bug in BroadcastHub where if the buffer consumes
-  // the producer before any flows/sinks are attached to the materialized hub the producer will stop
-  // and the dependent flows/sinks won't ever have a chance to backpressure
-  //   [https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely]
-  val DEFAULT_BUFFER_SIZE = 1
+  // https://stackoverflow.com/questions/1154571/scala-abstract-types-vs-generics
+  type DataType // abstract type member
+  type SourceType = Source[Data[DataType], NotUsed]
+  val source: SourceType
 }
 
 /**
@@ -32,11 +35,12 @@ object DataStream {
   *                     [https://doc.akka.io/japi/akka/current/akka/stream/scaladsl/BroadcastHub.html]
   */
 abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
-                            (implicit materializer: Materializer) {
+                            (implicit materializer: Materializer) extends DataStreamBase {
 
   val logger = Logger(classOf[DataStream[T]])
 
-  type SourceType = Source[Data[T], NotUsed]
+  // TODO: put this in companion object so one can say SearchResults.DataType without needing an instance of SearchResults
+  override type DataType = T
 
   /** Pure virtual Akka Source to be defined by implementation. */
   protected def hubSource: SourceType
@@ -46,7 +50,7 @@ abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
     * Flows or Sinks as desired at runtime.
     * See also: https://doc.akka.io/docs/akka/2.5/stream/stream-dynamic.html
     */
-  final lazy val source: SourceType = {
+  override final lazy val source: SourceType = {
     assert(hubSource != null) // this assertion will fail if `source` is not `lazy`
     logger.debug(s"Materializing ${getClass.getSimpleName} BroadcastHub...")
 
@@ -60,6 +64,15 @@ abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
 
   /** Shortcut to the source.  Think of a DataStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
   def apply(): SourceType = this.source
+}
+
+object DataStream {
+
+  // we use a default of 1 because there appears to be a bug in BroadcastHub where if the buffer consumes
+  // the producer before any flows/sinks are attached to the materialized hub the producer will stop
+  // and the dependent flows/sinks won't ever have a chance to backpressure
+  //   [https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely]
+  val DEFAULT_BUFFER_SIZE = 1
 }
 
 /**
