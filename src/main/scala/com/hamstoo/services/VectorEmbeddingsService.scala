@@ -3,7 +3,7 @@ package com.hamstoo.services
 import java.util.Locale
 
 import breeze.linalg.{DenseMatrix, DenseVector, svd}
-import com.google.inject.{Inject, Singleton}
+import com.google.inject.Inject
 import com.hamstoo.daos.MongoRepresentationDao.{CONTENT_WGT, KWORDS_WGT}
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation.{Vec, VecEnum, _}
@@ -32,6 +32,56 @@ object VectorEmbeddingsService {
 
   // avg(5000, 7200, 2200, 5300, 1077, 3400) see second HTMLRepresentationServiceSpec test
   val MEDIAN_DOC_LENGTH = 4000
+
+  /**
+    * This function computes a BM25 "term frequency" which really isn't a term frequency though it is used in
+    * place of the term frequency in a TF-IDF model.
+    */
+  def bm25Tf(tf: Double, docLength: Double): Double = {
+
+    // "setting B to 0.5 here, which introduces a slight bias back towards" long documents
+    //  [http://www.benfrederickson.com/distance-metrics/]
+    val b = 0.5
+    val medianDocLength = MEDIAN_DOC_LENGTH
+    val lengthNorm = (1.0 - b) + b * docLength / medianDocLength
+
+    // "The usual value of K1 used in text search is around 1.2, which makes sense for text queries as its more
+    // important to match documents containing all of the terms in the query instead of matching repeated terms."
+    val k1 = 1.2
+    tf * (k1 + 1.0) / (k1 * lengthNorm + tf)
+  }
+
+  /**
+    * Given a word vector and a map of various vector types (that were all constructed from a single
+    * document) compute the aggregate similarity of the word to the document.
+    */
+  def documentSimilarity(wordVec: Vec, docVecs: Map[Representation.VecEnum.Value, Vec]): Double = {
+
+    // principal axes are (typically) adirectional (though we attempt to directionalize them when they
+    // are constructed in repr-engine) so allow negatives but with a penalty
+    val sims: Map[VecEnum.Value, Double] = docVecs.flatMap { case (vecType, docVec) =>
+      val cos = wordVec cosine docVec
+      vecType match {
+        case vt if vt.toString.startsWith("PC") => Some(vt -> math.max(cos, -0.95 * cos))
+        case vt => Some(vt -> cos)
+      }
+    }
+
+    //logger.debug(s"${wm.word}")
+    //sims.toSeq.sortBy(_._1).foreach { case (t, s) => logger.debug(f"  $t = $s%.2f") }
+    //logger.debug(f"    aggregateSimilarityScore(${wm.word}) = ${aggregateSimilarityScore(sims)}%.2f")
+
+    aggregateSimilarityScore(sims)
+  }
+
+  /** See kwsSimilarities.xlsx for an approximate fit of this model (R^2 ~= 12.2%). */
+  def aggregateSimilarityScore(sims: Map[VecEnum.Value, Double]): Double = {
+    0.47 * sims.getOrElse(VecEnum.IDF, 0.0) + // t-stat ~= 3.7
+      1.22 * sims.getOrElse(VecEnum.PC1, 0.0) + //           7.1
+      0.84 * sims.getOrElse(VecEnum.PC2, 0.0) + //           5.0
+      0.66 * sims.getOrElse(VecEnum.PC3, 0.0) + //           3.4
+      -0.28 * sims.getOrElse(VecEnum.KM1, 0.0)   //          -2.6
+  }
 }
 
 /**
@@ -40,17 +90,15 @@ object VectorEmbeddingsService {
   * The goal of each algorithm is to identify clusters of a document's words containing high TF-IDF words
   * and from each cluster compute an average of its words' vectors as a representation of the document.
   */
-@Singleton // Guice Singleton, not Java Singleton, so there is one per Injector instance, not one per process
+@com.google.inject.Singleton // Guice Singleton, not Java Singleton, one per Injector instance, not one per process
 class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFModel) {
 
   import VectorEmbeddingsService._
-
   val logger = Logger(classOf[VectorEmbeddingsService])
 
   // for testing only
   var wCount: Int = 0
   //var slCount: Int = 0 // Vectorizer.sAndL has been deprecated
-
 
   /**
     * Join the various string representations into a single string and weight (or repeat) each of them so that
@@ -218,38 +266,6 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
   }
 
   /**
-    * Given a word vector and a map of various vector types (that were all constructed from a single
-    * document) compute the aggregate similarity of the word to the document.
-    */
-  def documentSimilarity(wordVec: Vec, docVecs: Map[Representation.VecEnum.Value, Vec]): Double = {
-
-    // principal axes are (typically) adirectional (though we attempt to directionalize them when they
-    // are constructed in repr-engine) so allow negatives but with a penalty
-    val sims: Map[VecEnum.Value, Double] = docVecs.flatMap { case (vecType, docVec) =>
-      val cos = wordVec cosine docVec
-      vecType match {
-        case vt if vt.toString.startsWith("PC") => Some(vt -> math.max(cos, -0.95 * cos))
-        case vt => Some(vt -> cos)
-      }
-    }
-
-    //logger.debug(s"${wm.word}")
-    //sims.toSeq.sortBy(_._1).foreach { case (t, s) => logger.debug(f"  $t = $s%.2f") }
-    //logger.debug(f"    aggregateSimilarityScore(${wm.word}) = ${aggregateSimilarityScore(sims)}%.2f")
-
-    aggregateSimilarityScore(sims)
-  }
-
-  /** See kwsSimilarities.xlsx for an approximate fit of this model (R^2 ~= 12.2%). */
-  def aggregateSimilarityScore(sims: Map[VecEnum.Value, Double]): Double = {
-     0.47 * sims.getOrElse(VecEnum.IDF, 0.0) + // t-stat ~= 3.7
-     1.22 * sims.getOrElse(VecEnum.PC1, 0.0) + //           7.1
-     0.84 * sims.getOrElse(VecEnum.PC2, 0.0) + //           5.0
-     0.66 * sims.getOrElse(VecEnum.PC3, 0.0) + //           3.4
-    -0.28 * sims.getOrElse(VecEnum.KM1, 0.0)   //          -2.6
-  }
-
-  /**
     * Converts a document text to a vector by a weighted average of its words' vectors via 2 methods:
     *   1. IDF-weighted words
     *   2. IDF^3-weighted words
@@ -268,24 +284,6 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
         case Some((v1, v2)) => Some((v1 + newVecs._1, v2 + newVecs._2))
       }
     }
-  }
-
-  /**
-    * This function computes a BM25 "term frequency" which really isn't a term frequency though it is used in
-    * place of the term frequency in a TF-IDF model.
-    */
-  def bm25Tf(tf: Double, docLength: Double): Double = {
-
-    // "setting B to 0.5 here, which introduces a slight bias back towards" long documents
-    //  [http://www.benfrederickson.com/distance-metrics/]
-    val b = 0.5
-    val medianDocLength = MEDIAN_DOC_LENGTH
-    val lengthNorm = (1.0 - b) + b * docLength / medianDocLength
-
-    // "The usual value of K1 used in text search is around 1.2, which makes sense for text queries as its more
-    // important to match documents containing all of the terms in the query instead of matching repeated terms."
-    val k1 = 1.2
-    tf * (k1 + 1.0) / (k1 * lengthNorm + tf)
   }
 
   /**

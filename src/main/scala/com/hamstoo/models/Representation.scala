@@ -85,6 +85,15 @@ class RSearchable(val id: String,
 
   /** Another kind of similarity, the opposite of (relative) edit distance. */
   def editSimilarity(oth: RSearchable): Double = Representation.editSimilarity(doctext, oth.doctext)
+
+  /** See comment on MSearchable.xcopy for why this is necessary. */
+  def xcopy(id: String = id,
+            header: Option[String] = header,
+            doctext: String = doctext,
+            nWords: Option[Long] = nWords,
+            vectors: Map[String, Representation.Vec] = vectors,
+            score: Option[Double] = score): RSearchable =
+    new RSearchable(id, header, doctext, nWords, vectors, score)
 }
 
 /**

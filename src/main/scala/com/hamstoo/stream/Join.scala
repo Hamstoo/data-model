@@ -44,6 +44,8 @@ object Join {
     * This class allows two streams a and b to be joined by calling `a.joinWith(b)` as opposed to manually wiring
     * them up with a `Source.fromGraph(GraphDSL.create() ... )`.
     *
+    * See BIG NOTE below.
+    *
     * The implementations here were mostly copied from FlowOps.zipWith and zipWithGraph in
     * akka/stream/scaladsl/Flow.scala.
     *
@@ -57,7 +59,7 @@ object Join {
   implicit class JoinWithable[-In, A0, +Mat](/*private*/ val imp: FlowOps[Data[A0], Mat]) {
 
     /**
-      * Callers of this function will have to cast the returned instance to either a `Source[Data[O], Mat]` (if `imp`
+      * BIG NOTE: Callers of this function will have to cast the returned instance to either a `Source[Data[O], Mat]` (if `imp`
       * is itself a `Source[Data[A0], Mat]`) or to a `Flow[In, Data[A0], Mat]` (if `imp` is itself a `Flow`).  Since
       * `imp` is a FlowOps here, `imp.Repr` is the FlowOps version of Repr which gets overridden in both Source
       * and Flow.  I can't think of a better way to do this other than implementing duplicated implicit classes
@@ -94,6 +96,9 @@ object Join {
 
   /** Type returned by a Join's `pairwise` function. */
   case class Pairwised[A0, A1](paired: Data[(A0, A1)], consumed0: Boolean = false, consumed1: Boolean = false)
+
+  /** Nothing fancy, merely constructs a pair of the two inputs, which has the same effect as `{ case x => x }`. */
+  def DEFAULT_JOINER[A0, A1](a0: A0, a1: A1): (A0, A1) = (a0, a1)
 
   /** Default `pairwise` function.  The two returned Booleans indicate which of the two Data were fully consumed. */
   def DEFAULT_PAIRWISE[A0, A1](d0: Data[A0], d1: Data[A1]): Option[Pairwised[A0, A1]] = {
