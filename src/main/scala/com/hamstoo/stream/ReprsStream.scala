@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Inc. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
 package com.hamstoo.stream
 
@@ -43,6 +43,8 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
                                     (implicit materializer: Materializer, ec: ExecutionContext,
                                      reprDao: MongoRepresentationDao)
     extends DataStream[ReprsPair]() {
+
+  // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples
 
   // set logging level for this ReprsStream *instance*
   // "Note that you can also tell logback to periodically scan your config file"

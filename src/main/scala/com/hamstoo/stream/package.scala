@@ -1,7 +1,9 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Inc. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
 package com.hamstoo
+
+import java.util.UUID
 
 import com.google.inject.Inject
 import com.google.inject.name.Named
@@ -34,5 +36,10 @@ package object stream {
   class SearchLabelsOptional {
     @Inject(optional = true) @Named("labels")
     val value: Set[String] = Set.empty[String]
+  }
+
+  class SearchUserIdOptional {
+    @Inject(optional = true) @Named("search.user.id")
+    val value: Option[UUID] = None
   }
 }

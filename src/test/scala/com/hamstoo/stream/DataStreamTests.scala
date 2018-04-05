@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.stream
 
 import java.util.UUID
@@ -7,8 +10,8 @@ import akka.actor.Cancellable
 import akka.stream._
 import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
 import com.google.inject.{Guice, Provides}
-import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoVectorsDao}
-import com.hamstoo.models.{Mark, MarkData, ReprInfo, Representation}
+import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao, MongoVectorsDao}
+import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
 import com.hamstoo.stream.Join.JoinWithable
@@ -195,10 +198,10 @@ class DataStreamTests
       .withValue("clock.end",   confval(new DateTime(2018, 1, 15, 0, 0).getMillis))
       .withValue("clock.interval", confval((1 day).toMillis))
       .withValue("query", confval("some query"))
-      .withValue("user.id", confval(DataInfo.constructUserId().toString))
+      .withValue("calling.user.id", confval(DataInfo.constructUserId().toString))
 
     // insert some marks with reprs into the database
-    val userId = UUID.fromString(config.getString("user.id"))
+    val userId = UUID.fromString(config.getString("calling.user.id"))
     val baseVec = Seq(1.0, 2.0, 3.0)
     val baseVs = Map(VecEnum.PC1.toString -> baseVec)
     val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
@@ -214,21 +217,23 @@ class DataStreamTests
     }
 
     // bind some stuff in addition to what's required by StreamModule
-    // TODO: make these things support DI as well so that these extra bindings can be removed
+    // TODO: make these things (especially the DAOs) support DI as well so that these extra bindings can be removed
     val injector = Guice.createInjector(new StreamModule(config) {
 
       /** Override configure in a way that we would only do for this test. */
       override def configure(): Unit = {
         super.configure()
+        logger.info(s"Configuring module: ${getClass.getName}")
         bind[WSClient].toInstance(AhcWSClient())
         bind[MongoVectorsDao].toInstance(vectorsDao)
         bind[ExecutionContext].toInstance(system.dispatcher)
         bind[Materializer].toInstance(materializer)
         bind[MongoMarksDao].toInstance(marksDao)
         bind[MongoRepresentationDao].toInstance(reprsDao)
+        bind[MongoUserDao].toInstance(userDao)
       }
 
-      /** Provide a VectorEmbeddingsService for QueryCorrelation to use via StreamModule.provideQueryVec. */
+      /** Provides a VectorEmbeddingsService for SearchResults to use via StreamModule.provideQueryVec. */
       @Provides
       def provideVecSvc(idfModel: IDFModel): VectorEmbeddingsService = new VectorEmbeddingsService(null, idfModel) {
         // StreamModule.provideQueryVec doesn't care if "asdf" isn't a query word
@@ -240,11 +245,17 @@ class DataStreamTests
     import net.codingwell.scalaguice.InjectorExtensions._
     val streamModel: FacetsModel = injector.instance[FacetsModel]
 
-    val sink: Sink[Data[Double], Future[Double]] = Flow[Data[Double]]
+    type InType = (String, AnyRef)
+    type OutType = Double
+
+    val sink: Sink[InType, Future[OutType]] = Flow[InType]
       .map { d => logger.info(s"------------------ $d"); d }
-      // so the test doesn't break as more facets are added to FacetsModel
-      .filter(_.values.keys.exists(_.asInstanceOf[CompoundId].ids.contains(FacetName("QueryCorrelation"))))
-      .toMat(Sink.fold[Double, Data[Double]](0.0) { case (agg, d) => agg + d.oval.get.value })(Keep.right)
+      .filter(_._1 == "SearchResults") // filter so that the test doesn't break as more facets are added to FacetsModel
+      .toMat(Sink.fold[OutType, InType](0.0) { case (agg, d) =>
+
+        agg + d._2.asInstanceOf[Data[(MSearchable, String, Option[Double])]].oval.get.value._3.getOrElse(0.3)
+
+      })(Keep.right)
 
     // causes "[error] a.a.OneForOneStrategy - CommandError[code=11600, errmsg=interrupted at shutdown" for some reason
     //val x = streamModel.run(sink).futureValue
