@@ -2,14 +2,13 @@ package com.hamstoo.stream
 
 import java.util.UUID
 
+import akka.stream.Materializer
 import com.google.inject.name.Named
 import com.google.inject.Inject
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
 import com.hamstoo.models._
 import com.hamstoo.services.IDFModel
-import com.hamstoo.services.VectorEmbeddingsService.{Query2VecsType, WordMass}
-import com.hamstoo.stream.MarksStream.{Query2VecsOptional, SearchLabelsOptional}
-import com.hamstoo.utils.{NON_IDS, ObjectId, TimeStamp}
+import com.hamstoo.utils.{ObjectId, TimeStamp}
 import play.api.Logger
 
 import scala.collection.immutable
@@ -17,15 +16,17 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 
 /**
-  *
+  * A stream of marks, sourced from a user's search, though search terms are not required.
   */
 @com.google.inject.Singleton
 class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
                              @Named("search.user.id") searchUserId: UUID,
                              query2Vecs: Query2VecsOptional,
                              labels: SearchLabelsOptional)
-                            (implicit marksDao: MongoMarksDao,
+                            (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext,
+                             marksDao: MongoMarksDao,
                              reprDao: MongoRepresentationDao,
+                             userDao: MongoUserDao,
                              idfModel: IDFModel)
     extends PreloadSource[MSearchable]((700 days).toMillis) {
 
@@ -33,14 +34,13 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
 
   val tags: Set[String] = labels.value
 
-  /**  */
+  /** PreloadSource interface. */
   override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[MSearchable]]] = {
 
     // unpack query words/counts/vecs (which there may none of)
     val mbCleanedQuery = query2Vecs.value.map(_._1)
     val mbQuerySeq = mbCleanedQuery.map(_.map(_._1))
     val mbSearchTermVecs = query2Vecs.value.map(_._2)
-//    val fsearchTermVecs = mbSearchTermVecs.getOrElse(Future.successful(Seq.empty[WordMass]))
 
     // get a couple of queries off-and-running before we start Future-flatMap-chaining
 
@@ -72,34 +72,11 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
       // "candidates" are ALL of the marks viewable to the callingUser (with the appropriate labels), which will
       // include those that were not returned by MongoDB Text Index search
       unscoredMs <- funscoredMs.map(_ ++ candidateRefs)
-//      candidateReprIds = unscoredMs.map(_.primaryRepr).toSet
-//      usrContentReprIds = unscoredMs.flatMap(_.userContentRepr.filterNot(NON_IDS.contains)).toSet
-
-      // run a separate MongoDB Text Index search over `representations` collection for each query word
-//      fscoredReprs = mbQuerySeq.mapOrEmptyFuture(reprDao.search(candidateReprIds ++ usrContentReprIds, _))
-
-      // also get any user-content reprs that might have been excluded by the above search (we can compute
-      // similarities to these but we'll have to use the marks collection's Text Index score)
-      // TODO: maybe use the representations collection's Text Index score and drop the marks collection's Text Index?
-//      fusrContentReprs = reprDao.retrieve(usrContentReprIds)
 
       sms <- fscoredMs; srefs <- fscoredRefs
       scoredUngroupedMs = sms.zip(srefs).map { case (ms, refs) => ms ++ refs }
 
-      // no remaining Futures depend on these, so might as well put them at the end
-      /*searchTermVecs <- fsearchTermVecs; scoredReprs <- fscoredReprs; usrContentReprs <- fusrContentReprs*/
-
     } yield {
-/*      logger.debug(s"Found ${sms.map(_.size).sum} scored marks, ${srefs.map(_.size).sum} scored refs, ${scoredUngroupedMs.map(_.size).sum} total")
-      logger.debug(s"Found ${scoredReprs.size} scored reprs and ${usrContentReprs.size} user-content reprs")
-      logger.debug(s"Found ${searchTermVecs.size} search term vectors")
-*/
-      // Optional vector for search query
-      /*val opQVec: Option[Vec] = ops.flatten match {
-        case seq if seq.size > 1 => Some(seq.tail.fold(seq.head) { (a, b) => for {i <- a.indices} yield a(i) + b(i) })
-        case seq if seq.size == 1 => Some(seq.head)
-        case _ => None
-      }*/
 
       /** Weight `entries` collection search scores by both the number of repetitions of the query word and its IDF. */
       def wgtMkScore(qm: ((String, Int), MSearchable)): Double =
@@ -124,18 +101,6 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
 object MarksStream {
 
   val logger = Logger(classOf[MarksStream])
-  //val logger = Logger(MarksStream.getClass)
-
-  // https://github.com/google/guice/wiki/FrequentlyAskedQuestions#how-can-i-inject-optional-parameters-into-a-constructor
-  class Query2VecsOptional {
-    @Inject(optional = true) @Named("query2Vecs")
-    val value: Option[Query2VecsType] = None
-  }
-
-  class SearchLabelsOptional {
-    @Inject(optional = true) @Named("labels")
-    val value: Set[String] = Set.empty[String]
-  }
 
   /**
     * Filter for marks that the calling user is authorized to read.  This function relies on the marks being in
@@ -166,7 +131,8 @@ object MarksStream {
 
   /** We need to return a Future.successful(Seq.empty[T]) in a few different places if mbQuerySeq is None. */
   implicit class ExtendedQuerySeq(private val mbQuerySeq: Option[Seq[String]]) extends AnyVal {
-    def mapOrEmptyFuture[T](f: String => Future[T]): Future[Seq[T]] =
+    def mapOrEmptyFuture[T](f: String => Future[T])
+                           (implicit ec: ExecutionContext): Future[Seq[T]] =
       mbQuerySeq.fold(Future.successful(Seq.empty[T])) { querySeq => Future.sequence(querySeq.map(w => f(w))) }
   }
 }

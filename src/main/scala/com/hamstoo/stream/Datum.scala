@@ -81,6 +81,9 @@ case class Data[T](knownTime: TimeStamp, values: Map[EntityId, SourceValue[T]]) 
       s"${getClass.getSimpleName}($knownTime, ${vstr.take(150)}${if (vstr.length > 150) "...." else ""})"
     }
   }
+
+  /** Same Datum, different value. */
+  def withValue[A](value: A): Data[A] = Datum(oid.get, oval.get.sourceTime, knownTime, value)
 }
 
 /**

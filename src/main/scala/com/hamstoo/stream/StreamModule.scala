@@ -5,10 +5,10 @@ import java.util.UUID
 import akka.stream.Materializer
 import com.google.inject.name.Names
 import com.google.inject.name.Named
-import com.google.inject.{Injector, Provides}
+import com.google.inject.{Injector, Provides, Singleton}
 import com.hamstoo.models.Representation.{Vec, VecFunctions}
 import com.hamstoo.services.VectorEmbeddingsService
-import com.hamstoo.services.VectorEmbeddingsService.{Query2VecsType, WordMass}
+import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.utils.ConfigModule
 import com.typesafe.config.Config
 import play.api.Logger
@@ -39,12 +39,12 @@ class StreamModule(config: Config) extends ConfigModule(config) {
     bind[UUID].annotatedWith(Names.named("user.id")).toInstance(UUID.fromString(config.getString("user.id")))
   }
 
-  @Provides /*@Singleton*/ @Named("query2Vecs")
+  @Provides @Singleton @Named("query2Vecs")
   def provideQuery2Vecs(@Named("query") query: String, vecSvc: VectorEmbeddingsService)
                        (implicit ec: ExecutionContext): Query2VecsType =
     vecSvc.query2Vecs(query)
 
-  @Provides /*@Singleton*/ @Named("query.vec")
+  @Provides @Singleton @Named("query.vec")
   def provideQueryVec(@Named("query2Vecs") query2Vecs: Query2VecsType)
                      (implicit ec: ExecutionContext): Future[Vec] =
     query2Vecs._2.map { wordMasses =>
@@ -53,14 +53,14 @@ class StreamModule(config: Config) extends ConfigModule(config) {
       }.l2Normalize
     }
 
-  @Provides /*@Singleton*/
+  @Provides @Singleton
   def buildModel(injector: Injector, clock: Clock, materializer: Materializer): FacetsModel =
                                                               new FacetsModel(injector)(clock, materializer) {
 
     //import net.codingwell.scalaguice.InjectorExtensions._
     //val qc: QueryCorrelation = injector.instance[QueryCorrelation]
 
-    add[QueryCorrelation]() // "semanticRelevance"
+    add[SearchResults]() // "semanticRelevance"
 
     // * so a stream can only be reused (singleton) if its defined inside a type
     //   * but eventually we can make this work to automatically generate new types (perhaps)
@@ -75,5 +75,4 @@ class StreamModule(config: Config) extends ConfigModule(config) {
     //add(Rating)
     //add(SearchRelevance)
   }
-
 }
