@@ -4,7 +4,6 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
-import com.hamstoo.models.MarkData.htmlTagsWhitelist
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
@@ -350,9 +349,6 @@ class MDSearchable(val subj: String,
                    val rating: Option[Double],
                    val tags: Option[Set[String]],
                    val comment: Option[String]) {
-
-  // protect against XSS attacks (issue #208)
-  val urlSanitized: Option[String] = url.map(Jsoup.clean(_, htmlTagsWhitelist))
 
   // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
   // rating value (not part of the data(base) model)
