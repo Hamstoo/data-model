@@ -8,14 +8,14 @@ import java.util.UUID
 import akka.stream.Materializer
 import com.google.inject.name.Named
 import com.google.inject.{Injector, Provides, Singleton}
-import com.hamstoo.models.Representation.{Vec, VecFunctions}
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.utils.ConfigModule
 import com.typesafe.config.Config
 import play.api.Logger
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.duration._
 
 /**
   * "A module is a collection of bindings"
@@ -43,19 +43,16 @@ class StreamModule(config: Config) extends ConfigModule(config) {
     bindConfigParams[UUID]("calling.user.id")
   }
 
+  /** See Query2VecsOptional.  There are 2 providers of objects named "query2Vecs" but they return different types. */
   @Provides @Singleton @Named("query2Vecs")
-  def provideQuery2Vecs(@Named("query") query: String, vecSvc: VectorEmbeddingsService)
-                       (implicit ec: ExecutionContext): Query2VecsType =
-    vecSvc.query2Vecs(query)
+  def provideQuery2VecsOptional(@Named("query") query: String, vecSvc: VectorEmbeddingsService)
+                               (implicit ec: ExecutionContext): Option[Query2VecsType] =
+    Some(vecSvc.query2Vecs(query))
 
-  @Provides @Singleton @Named("query.vec")
-  def provideQueryVec(@Named("query2Vecs") query2Vecs: Query2VecsType)
-                     (implicit ec: ExecutionContext): Future[Vec] =
-    query2Vecs._2.map { wordMasses =>
-      wordMasses.foldLeft(Vec.empty) { case (agg, e) =>
-        if (agg.isEmpty) e.scaledVec else agg + e.scaledVec
-      }.l2Normalize
-    }
+  /** One of the providers is needed for when "query2Vecs" is optional and the other, this one, for when it isn't. */
+  @Provides @Singleton @Named("query2Vecs")
+  def provideQuery2Vecs(mbQuery2Vecs: Query2VecsOptional): Query2VecsType =
+    mbQuery2Vecs.value.get
 
   @Provides @Singleton
   def buildModel(injector: Injector, clock: Clock, materializer: Materializer): FacetsModel =

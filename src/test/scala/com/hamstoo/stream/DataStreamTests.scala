@@ -100,8 +100,8 @@ class DataStreamTests
   "Join" should "join DataStreams" in {
     implicit val materializer: Materializer = ActorMaterializer()
 
-    val src0 = Source((0 until 10     ).map(i => Datum(ReprId(s"id$i"), i, i)))
-    val src1 = Source((0 until 10 by 4).map(i => Datum(UnitId()       , i, i)))
+    val src0 = Source((0 until 10     ).map(i => Datum(ReprId(s"id$i"), i, i))).named("TestJoin0")
+    val src1 = Source((0 until 10 by 4).map(i => Datum(UnitId()       , i, i))).named("TestJoin1")
 
     // see comment on JoinWithable as to why the cast is necessary here
     val source: Source[Data[Int], NotUsed] =
@@ -200,20 +200,21 @@ class DataStreamTests
       .withValue("query", confval("some query"))
       .withValue("calling.user.id", confval(DataInfo.constructUserId().toString))
 
-    // insert some marks with reprs into the database
+    // insert 5 marks with reprs into the database
+    val nMarks = 5
     val userId = UUID.fromString(config.getString("calling.user.id"))
     val baseVec = Seq(1.0, 2.0, 3.0)
     val baseVs = Map(VecEnum.PC1.toString -> baseVec)
     val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
     val b :: e :: Nil = Seq("clock.begin", "clock.end").map(config.getLong)
-    (b to e by (e - b) / 4).foreach { ts =>
+    (b to e by (e - b) / (nMarks - 1)).foreach { ts =>
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
       val r = baseRepr.copy(id = s"r_${ts.Gs}", vectors = vs)
       val ri = ReprInfo(r.id, ReprType.PUBLIC)
       val m = Mark(userId, s"m_${ts.Gs}", MarkData("", None), reprs = Seq(ri), timeFrom = ts)
-      logger.info(s"------------------ $m")
-      Await.result(marksDao.insert(m), 5 seconds)
-      Await.result(reprsDao.insert(r), 5 seconds)
+      logger.info(s"\033[37m$m\033[0m")
+      Await.result(marksDao.insert(m), 8 seconds)
+      Await.result(reprsDao.insert(r), 8 seconds)
     }
 
     // bind some stuff in addition to what's required by StreamModule
@@ -231,14 +232,16 @@ class DataStreamTests
         bind[MongoMarksDao].toInstance(marksDao)
         bind[MongoRepresentationDao].toInstance(reprsDao)
         bind[MongoUserDao].toInstance(userDao)
+        bind[LogLevelOptional.typ].toInstance(Some(ch.qos.logback.classic.Level.TRACE))
       }
 
       /** Provides a VectorEmbeddingsService for SearchResults to use via StreamModule.provideQueryVec. */
       @Provides
       def provideVecSvc(idfModel: IDFModel): VectorEmbeddingsService = new VectorEmbeddingsService(null, idfModel) {
         // StreamModule.provideQueryVec doesn't care if "asdf" isn't a query word
-        override def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] =
-          Future.successful(Map("asdf" -> (1, baseVec)))
+        override def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] = {
+          Future.successful(config.getString("query").split(" ").map(_ -> (1, baseVec)).toMap)
+        }
       }
     })
 
@@ -249,19 +252,17 @@ class DataStreamTests
     type OutType = Double
 
     val sink: Sink[InType, Future[OutType]] = Flow[InType]
-      .map { d => logger.info(s"------------------ $d"); d }
+      .map { d => logger.info(s"\033[37m$d\033[0m"); d }
       .filter(_._1 == "SearchResults") // filter so that the test doesn't break as more facets are added to FacetsModel
       .toMat(Sink.fold[OutType, InType](0.0) { case (agg, d) =>
-
         agg + d._2.asInstanceOf[Data[(MSearchable, String, Option[Double])]].oval.get.value._3.getOrElse(0.3)
-
       })(Keep.right)
 
     // causes "[error] a.a.OneForOneStrategy - CommandError[code=11600, errmsg=interrupted at shutdown" for some reason
     //val x = streamModel.run(sink).futureValue
 
     val x = Await.result(streamModel.run(sink), 15 seconds)
-    x shouldBe (2.86 +- 0.01)
+    x shouldBe (16.13 +- 0.01)
   }
 
   "Clock" should "throttle a PreloadSource" in {
@@ -272,7 +273,7 @@ class DataStreamTests
       .map { n => if (n % 10 == 0) println(s"*** tick $n"); n }
       .runWith(BroadcastHub.sink[Int](bufferSize = 256))
     source.runForeach { n => Thread.sleep(1); if (n % 10 == 0) println(s"------------- source1: $n") }
-    source.runForeach(n => if (n % 10 == 0) println(s"------------- source2: $n"))*/
+    source.runForeach(n => if (n % 10 == 0) println(s"\033[37msource2\033[0m: $n"))*/
 
     // changing these (including interval) will affect results b/c it changes the effective time range the clock covers
     val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
@@ -335,7 +336,7 @@ class DataStreamTests
         (start - interval + dataInterval until stop by dataInterval).map { t =>
           Datum[TimeStamp](MarkId("kf"), t, t)
         }
-      }
+      }.named("TestThrottledSource")
     }
 
     val fut: Future[Int] = TestSource().source

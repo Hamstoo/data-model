@@ -10,6 +10,7 @@ import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.MongoRepresentationDao
 import com.hamstoo.models.RSearchable
 import com.hamstoo.stream.MarksStream.ExtendedQuerySeq
+import com.hamstoo.utils.ExtendedTimeStamp
 import ch.qos.logback.classic.{Logger => LogbackLogger}
 import org.slf4j.{LoggerFactory, Logger => Slf4jLogger}
 import play.api.Logger
@@ -50,8 +51,8 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
   // "Note that you can also tell logback to periodically scan your config file"
   // https://stackoverflow.com/questions/3837801/how-to-change-root-logging-level-programmatically
   val logger0: Slf4jLogger = LoggerFactory.getLogger(classOf[ReprsStream].getName.stripSuffix("$"))
-  logger0.asInstanceOf[LogbackLogger].setLevel(logLevel.value)
-  override val logger = new Logger(logger0)
+  logLevel.value.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
+  val logger1 = new Logger(logger0)
 
   /** Maps the stream of marks to their reprs. */
   override val hubSource: Source[Data[ReprsPair], NotUsed] = marksStream().mapAsync(4) { dat =>
@@ -73,12 +74,12 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
       if (seqOfMaps.isEmpty) reprDao.retrieve(reprIds).map(oneMap => Seq(oneMap)) else Future.successful(seqOfMaps)
     }
 
-    // also get any user-content reprs that might have been excluded by the above search (we can compute
-    // similarities to these but we'll have to use the marks collection's Text Index score to rank them)
+    // also get any reprs that might have been excluded by the above search (we can compute vector similarities
+    // to these but we'll have to use the entries/marks collection's Text Index score to rank them)
     // TODO: maybe use the representations collection's Text Index score and drop the marks collection's Text Index?
-    val funscoredUsrContentRepr = reprDao.retrieve(usrContentReprId)
+    val funscoredReprs = reprDao.retrieve(reprIds)
 
-    for(scoredReprs <- fscoredReprs; unscoredUsrContentRepr <- funscoredUsrContentRepr) yield {
+    for(scoredReprs <- fscoredReprs; unscoredReprs <- funscoredReprs) yield {
 
       // each element of `scoredReprs` contains a collection of representations for the respective word in
       // `cleanedQuery`, so zip them together, pull out the requested reprId, and multiply the MongoDB search
@@ -88,13 +89,13 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
         // both of these must contain at least 1 element
         cleanedQuery.view.zip(scoredReprs).map { case (q, scoredReprsForThisWord) =>
 
-          // only use unscoredUsrContentRepr if a scored user-content repr was not found by MongoDB Text Index search
-          lazy val ucR = unscoredUsrContentRepr.filter(_.id == reprId)
-          val mbR = scoredReprsForThisWord.get(reprId).orElse(ucR)
+          // only use unscored repr if a scored repr was not found by MongoDB Text Index search
+          lazy val mbUnscored = unscoredReprs.get(reprId)
+          val mbR = scoredReprsForThisWord.get(reprId).orElse(mbUnscored)
           val dbScore = mbR.flatMap(_.score).getOrElse(0.0)
 
           def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
-          logger.trace(f"  $rOrU-db: qword=$q dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(ucR)}")
+          logger1.trace(f"  $rOrU-db: qword=$q dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
 
           QueryResult(q._1, mbR, dbScore, q._2)
         }.force
@@ -102,7 +103,9 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
       val siteReprs = searchTermReprs("R", primaryReprId)    // website-content representations
       val userReprs = searchTermReprs("U", usrContentReprId) //    user-content representations
 
-      Datum(dat.oid.get, dat.knownTime, ReprsPair(siteReprs, userReprs))
+      val d = Datum(dat.oid.get, dat.knownTime, ReprsPair(siteReprs, userReprs))
+      logger1.debug(s"\033[32m${dat.oid.get}\033[0m: ${dat.knownTime.Gs}")
+      d
     }
   }
 }

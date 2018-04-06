@@ -12,7 +12,8 @@ import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp,
 import play.api.Logger
 
 import scala.collection.immutable
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.duration._
 
 /**
   * Base class of all DataStreams with an abstract type member rather than a generic type parameter.
@@ -101,8 +102,15 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
   def preload(begin: TimeStamp, end: TimeStamp): PreloadType
 
   /** Similar to a TimeWindow (i.e. simple range) but with a mutable buffer reference to access upon CloseGroup. */
-  class PreloadWindow(b: TimeStamp, e: TimeStamp, val buffer: PreloadType = Future.failed(new NullPointerException))
-    extends TimeWindow(b, e)
+  class KnownData(b: TimeStamp, e: TimeStamp, val buffer: PreloadType = Future.failed(new NullPointerException))
+      extends TimeWindow(b, e) {
+
+    /** WARNING: note the Await inside this function; i.e. only use it for debugging. */
+    override def toString: String = {
+      val sup = super.toString
+      if (logger.isDebugEnabled) sup.dropRight(1) + s", n=${Await.result(buffer, 15 seconds).size})" else sup
+    }
+  }
 
   /** Determines when to call `load` based on DataSource's periodicity. */
   case class PreloadFactory() {
@@ -112,7 +120,7 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
     private var buffer = Seq.empty[PreloadType]
 
     /** This method generates GroupCommands containing PreloadGroups which have Future data attached. */
-    def knownDataFor[TS](tick: Data[TS]): PreloadWindow = {
+    def knownDataFor[TS](tick: Data[TS]): KnownData = {
       val ts = tick.asInstanceOf[Tick].time
       val window = TimeWindow(ts - clock.interval, ts)
 
@@ -145,15 +153,15 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
         // note exclusive-begin/inclusive-end here, perhaps this should be handled earlier by, e.g., changing the
         // semantics of the `preload` function
         val x = iter.flatten.partition(d => window.begin < d.knownTime && d.knownTime <= window.end)
-        if (logger.isDebugEnabled)
+        if (logger.isTraceEnabled)
           Seq((x._1, "inside"), (x._2, "outside")).foreach { case (seq, which) =>
-            logger.debug(s"fpartitionedBuffer($which): ${seq.map(_.knownTime).sorted.map(_.tfmt)}") }
+            logger.trace(s"fpartitionedBuffer($which): ${seq.map(_.knownTime).sorted.map(_.tfmt)}") }
         x
       }
 
       // distribute the buffer data to the OpenGroup
       val ftickBuffer: PreloadType = fpartitionedBuffer.map(_._1)
-      val preloadWindow = new PreloadWindow(window.begin, window.end, ftickBuffer)
+      val preloadWindow = new KnownData(window.begin, window.end, ftickBuffer)
 
       // if there are any remaining, undistributed (future) data, put them into `buffer` for the next go-around
       buffer = Seq(fpartitionedBuffer.map(_._2.filter(_.knownTime > window.end)))
@@ -174,9 +182,10 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
         tick => immutable.Iterable(factory.knownDataFor(tick))
       }
 
-      // should only need a single thread b/c data must arrive sequentially per the clock anyway
-      .mapAsync(1) { w: PreloadWindow =>
-        logger.debug(s"${getClass.getSimpleName}: $w")
+      // should only need a single thread b/c data must arrive sequentially per the clock anyway,
+      // the end time of the KnownData window will be that of the most recent tick (brought here by statefulMapConcat)
+      .mapAsync(1) { w: KnownData =>
+        if (logger.isDebugEnabled) logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) $w")
         w.buffer.map { buf =>
           Data.groupByKnownTime(buf).toSeq.sortBy(_.knownTime).map(d => d.copy(knownTime = w.end))
         }
@@ -225,6 +234,6 @@ abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SI
     def joiner(v: T, t: TimeStamp): T = v
 
     // throttle the `throttlee` with the clock (see comment on JoinWithable as to why the cast is necessary here)
-    JoinWithable(throttlee).joinWith(clock.source)(joiner, pairwise).asInstanceOf[SourceType]
+    JoinWithable(throttlee).joinWith(clock())(joiner, pairwise).asInstanceOf[SourceType]
   }
 }

@@ -17,7 +17,7 @@
         <encoder>
             <!--<pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>-->
             <!--<pattern>%d{HH:mm:ss.SSS} %-5level [%logger{36}] - %msg%n</pattern>-->
-            <pattern>%date %coloredLevel %logger{15} - %message%n%xException{10}</pattern>
+            <pattern>%date %coloredLevel %logger{15}\(%line\) - %message%n%xException{10}</pattern>
         </encoder>
     </appender>
 

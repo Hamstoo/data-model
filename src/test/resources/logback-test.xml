@@ -17,7 +17,7 @@
         <encoder>
             <!--<pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>-->
             <!--<pattern>%d{HH:mm:ss.SSS} %-5level [%logger{36}] - %msg%n</pattern>-->
-            <pattern>%date %coloredLevel %logger{15} - %message%n%xException{10}</pattern>
+            <pattern>%date %coloredLevel %logger{15}\(%line\) - %message%n%xException{10}</pattern>
         </encoder>
     </appender>
 
@@ -31,5 +31,6 @@
     <logger name="org.asynchttpclient" level="INFO"/>
     <logger name="reactivemongo" level="WARN"/>
     <logger name="com.hamstoo" level="DEBUG"/>
+    <!--<logger name="com.hamstoo.stream.Join" level="TRACE"/>-->
     <logger name="d.f.embed" level="OFF" />
 </configuration>

@@ -44,8 +44,8 @@ class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
 
   // set logging level for this QuerySimilarities *instance*
   val logger0: Slf4jLogger = LoggerFactory.getLogger(classOf[SearchResults].getName.stripSuffix("$"))
-  logger0.asInstanceOf[LogbackLogger].setLevel(logLevel.value)
-  override val logger = new Logger(logger0)
+  logLevel.value.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
+  val logger1 = new Logger(logger0)
 
   // the `{ case x => x }` actually does serve a purpose, it unpacks x into a 2-tuple
   override val hubSource: Source[Data[(MSearchable, String, Option[Double])], NotUsed] =
@@ -67,19 +67,19 @@ class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
         // for database search score and again with vector cosine similarity), the silly 3.5 was chosen in order
         // to get a non-link mark (one w/out a repr) up near the top of the search results
         val mscore: Double = mark.score.getOrElse(0.0) /** MongoRepresentationDao.CONTENT_WGT*/ / cleanedQuery.length
-        logger.trace(f"*** '${mark.mark.subj}' (${mark.id})")
+        logger1.trace(f"\033[35m${mark.id}\033[0m: subj='${mark.mark.subj}'")
 
         // generate a single search result
         val fut = for(searchTermVecs <- fsearchTermVecs) yield {
 
           // compute scores aggregated across all search terms
-          val (rscore, rsim, rText, rTermText) = searchTerms2Scores("R", siteReprs, searchTermVecs)
-          val (uscore, usim, uText, uTermText) = searchTerms2Scores("U", userReprs, searchTermVecs, nWordsMult = 100)
+          val (rscore, rsim, rText, rTermText) = searchTerms2Scores("R", mark.id, siteReprs, searchTermVecs)
+          val (uscore, usim, uText, uTermText) = searchTerms2Scores("U", mark.id, userReprs, searchTermVecs, nWordsMult = 100)
 
           val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
           val rAggregate = math.exp(rsim.getOrElse(0.0)) + math.max(rscore, 0.0)
           val mAggregate = math.exp(usim.getOrElse(0.0)) + math.max(uscore, 0.0) + math.max(mscore, 0.0)
-          logger.trace(f"  scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
+          logger1.trace(f"  ${mark.id}: scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
 
           (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
             case (true, true, true) => // this first case shouldn't ever really happen
@@ -89,7 +89,7 @@ class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
                 f"Raw marks database search score: <b>$sc%.2f</b>"
               val pr = preview(mark.mark.comment.getOrElse(""), querySeq)
               val pv = s"$scoreText<br>$pr" // debugging
-              Some((mark, if (logger.isDebugEnabled) pv else pr, Some(aggregateScore)))
+              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
 
             case (true, false, _) => // this second case will occur for non-URL marks
               val aggregateScore = mAggregate * 1.6 + isdefBonus
@@ -98,7 +98,7 @@ class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
                 f"Database search scores: M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b>"
               val pr = preview(mark.mark.comment.getOrElse(""), querySeq)
               val pv = s"$scoreText<br>U-similarities: $uTermText&nbsp; $uText<br>$pr" // debugging
-              Some((mark, if (logger.isDebugEnabled) pv else pr, Some(aggregateScore)))
+              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
 
             case (false, true, _) => // this case will occur for old school bookmarks without any user content
               val aggregateScore = rAggregate * 1.4 + isdefBonus
@@ -108,7 +108,7 @@ class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
               val reprDocText = siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext)
               val pr = preview(reprDocText, querySeq)
               val pv = s"$scoreText<br>R-similarities: $rTermText&nbsp; $rText<br>$pr" // debugging
-              Some((mark, if (logger.isDebugEnabled) pv else pr, Some(aggregateScore)))
+              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
 
             case (false, false, _) => // this case should fire for most marks--those with URLs
 
@@ -126,7 +126,7 @@ class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
                 s"R-similarities: $rTermText&nbsp; $rText<br>" +
                 s"U-similarities: $uTermText&nbsp; $uText<br>$pr" // debugging
 
-              Some((mark, if (logger.isDebugEnabled) pv else pr, Some(aggregateScore)))
+              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
 
             case (_, _, false) => None
           }
@@ -142,6 +142,7 @@ class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
     * and a semantic score based on vector cosine similarity.
     */
   def searchTerms2Scores(rOrU: String,
+                         mId: String,
                          searchTermReprs: Seq[QueryResult],
                          searchTermVecs: Seq[VecSvc.WordMass],
                          nWordsMult: Int = 1): (Double, Option[Double], String, String) = {
@@ -166,7 +167,7 @@ class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
       // is 1--we have `b` hard-coded to 0.5 in `bm25Tf`--and w/out the sqrt)
       import com.hamstoo.services.VectorEmbeddingsService.bm25Tf
       def bm25(qr: QueryResult): (Double, Double, Int) = {
-        logger.trace(f"  $rOrU-sim: qword=${qr.qword} -> idf=${idfModel.transform(qr.qword)}%.2f * bm25=${bm25Tf(qr.dbScore, nWords)}%.2f")
+        logger1.trace(f"  $mId: $rOrU-sim: qword=${qr.qword} -> idf=${idfModel.transform(qr.qword)}%.2f * bm25=${bm25Tf(qr.dbScore, nWords)}%.2f")
         (idfModel.transform(qr.qword), bm25Tf(qr.dbScore, nWords), qr.count)
       }
       // https://en.wikipedia.org/wiki/Okapi_BM25
@@ -186,7 +187,7 @@ class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
       val score2 = math.pow(searchTermScores.map(x => math.pow(x._2 + 1, x._1 * x._3)).product,
         1.0 / searchTermScores.map(x =>                    x._1 * x._3 ).sum) - 1
 
-      logger.trace(f"  $rOrU-sim:   weighted-score=$score%.2f (s0=$score0%.2f s2=$score2%.2f nWords=$nWords nScores=${searchTermScores.length})")
+      logger1.trace(f"  $mId: $rOrU-sim:   weighted-score=$score%.2f (s0=$score0%.2f s2=$score2%.2f nWords=$nWords nScores=${searchTermScores.length})")
 
       // debugging
       // calculate cosine similarities for each of the search terms and sum them (no need to use geometric mean
