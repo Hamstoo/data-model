@@ -39,7 +39,7 @@ case class Clock @Inject() (@Named("clock.begin") begin: TimeStamp,
     */
   val started: Promise[Unit] = Promise()
   def start(): Unit = {
-    logger.info(s"Starting $this")
+    logger.info(s"\033[33mStarting $this\033[0m")
     started.success {}
   }
 
@@ -51,8 +51,8 @@ case class Clock @Inject() (@Named("clock.begin") begin: TimeStamp,
 
       /** Iterator protocol. */
       override def hasNext: Boolean = {
-        val b = currentTime < end
-        if (!b) logger.warn(s"*** Clock complete")
+        val b = currentTime <= end // IMPORTANT: inclusive end; shouldn't hurt anything and could help (conservative)
+        if (!b) logger.info(s"\033[33mClock complete\033[0m")
         b
       }
 
@@ -63,7 +63,7 @@ case class Clock @Inject() (@Named("clock.begin") begin: TimeStamp,
         Await.result(started.future, Duration.Inf)
 
         // TODO: would it ever make sense to have a clock Datum's knownTime be different from its sourceTime or val?
-        logger.debug(s"*** TICK: ${currentTime.tfmt}")
+        logger.debug(s"\033[33mTICK: ${currentTime.tfmt}\033[0m")
         val r = currentTime
         currentTime += interval
         Tick(r)

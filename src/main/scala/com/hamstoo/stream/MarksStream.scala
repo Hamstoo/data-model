@@ -8,7 +8,7 @@ import com.google.inject.Inject
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
 import com.hamstoo.models._
 import com.hamstoo.services.IDFModel
-import com.hamstoo.utils.{ObjectId, TimeStamp}
+import com.hamstoo.utils.{ExtendedTimeStamp, ObjectId, TimeStamp}
 import play.api.Logger
 
 import scala.collection.immutable
@@ -31,6 +31,8 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
     extends PreloadSource[MSearchable]((700 days).toMillis) {
 
   import MarksStream._
+  //override val logger: Logger = MarksStream.logger // causes a NullPointerException (kws: NPE)
+  val logger1: Logger = MarksStream.logger
 
   val searchUserId: UUID = searchUserId0.value.getOrElse(callingUserId)
   val tags: Set[String] = labels.value
