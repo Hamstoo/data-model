@@ -3,54 +3,50 @@
  */
 package com.hamstoo.stream
 
-import java.util.UUID
-
 import akka.stream.Materializer
-import com.google.inject.name.Named
-import com.google.inject.{Injector, Provides, Singleton}
+import com.google.inject.name.{Named, Names}
+import com.google.inject.{AbstractModule, Injector, Provides, Singleton}
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
-import com.hamstoo.utils.ConfigModule
-import com.typesafe.config.Config
+import net.codingwell.scalaguice.ScalaModule
 import play.api.Logger
 
-import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.concurrent.duration._
+import scala.concurrent.ExecutionContext
+import scala.reflect.ClassTag
+import scala.reflect.runtime.universe.TypeTag
 
 /**
   * "A module is a collection of bindings"
   * "The modules are the building blocks of an injector, which is Guice's object-graph builder."
+  *
+  * This StreamModule trait requires an implementation of `configure`.
   */
-class StreamModule(config: Config) extends ConfigModule(config) {
+trait StreamModule extends AbstractModule with ScalaModule {
 
-  override val logger = Logger(classOf[StreamModule])
+  val logger = Logger(classOf[StreamModule])
 
-  /**
-    * "To create bindings, extend AbstractModule and override its configure method. In the method body, call
-    * `bind` to specify each binding."
-    */
-  override def configure(): Unit = {
+  // having an `implicit this` enables the `:=` methods of InjectId and this class, StreamModule
+  implicit val implicitThis: StreamModule = this
 
-    // bind typical config parameters like `idfs.resource` and `vectors.link`
-    super.configure()
-    logger.info(s"Configuring module: ${classOf[StreamModule].getName}")
+  /** An overloaded assignment operator of sorts--or as close as you can get in Scala.  Who remembers Pascal? */
+  implicit class InjectVal[T :ClassTag :TypeTag](private val _typ: Class[T]) /*extends AnyVal*/ {
+    def :=(instance: T)(implicit module: StreamModule): Unit = module.assign(new NamelessInjectId[T], instance)
+  }
 
-    // which query string are we computing stats/facet values for?
-    bindConfigParams[String]("query")
-
-    // which user are we computing stats/facet values for?
-    implicit val cast = (a: AnyRef) => UUID.fromString(a.asInstanceOf[String])
-    bindConfigParams[UUID]("calling.user.id")
+  /** Bind a (possibly named) instance given its (type, name) pair, which Guice uses to uniquely identify bindings. */
+  def assign[T :ClassTag :TypeTag](injectId: NamelessInjectId[T], instance: T): Unit = injectId match {
+    case iid: InjectId[_] => bind[iid.typ].annotatedWith(Names.named(iid.name)).toInstance(instance)
+    case iid /*Nameless*/ => bind[iid.typ]                                     .toInstance(instance)
   }
 
   /** See Query2VecsOptional.  There are 2 providers of objects named "query2Vecs" but they return different types. */
-  @Provides @Singleton @Named("query2Vecs")
-  def provideQuery2VecsOptional(@Named("query") query: String, vecSvc: VectorEmbeddingsService)
-                               (implicit ec: ExecutionContext): Option[Query2VecsType] =
+  @Provides @Singleton @Named(Query2VecsOptional.name)
+  def provideQuery2VecsOptional(@Named(Query.name) query: Query.typ, vecSvc: VectorEmbeddingsService)
+                               (implicit ec: ExecutionContext): Query2VecsOptional.typ =
     Some(vecSvc.query2Vecs(query))
 
   /** One of the providers is needed for when "query2Vecs" is optional and the other, this one, for when it isn't. */
-  @Provides @Singleton @Named("query2Vecs")
+  @Provides @Singleton @Named(Query2VecsOptional.name)
   def provideQuery2Vecs(mbQuery2Vecs: Query2VecsOptional): Query2VecsType =
     mbQuery2Vecs.value.get
 

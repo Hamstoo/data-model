@@ -1,8 +1,11 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.utils
 
 import com.google.inject.name.Names
 import com.google.inject.AbstractModule
-import com.typesafe.config.Config
+import com.typesafe.config.{Config, ConfigValueFactory}
 import net.codingwell.scalaguice.ScalaModule
 import play.api.Logger
 
@@ -13,7 +16,7 @@ import scala.reflect.runtime.universe.TypeTag
   * "A module is a collection of bindings"
   * "The modules are the building blocks of an injector, which is Guice's object-graph builder."
   */
-class ConfigModule(config: Config) extends AbstractModule with ScalaModule {
+case class ConfigModule(config: Config) extends AbstractModule with ScalaModule {
 
   val logger = Logger(classOf[ConfigModule])
 
@@ -24,7 +27,6 @@ class ConfigModule(config: Config) extends AbstractModule with ScalaModule {
   override def configure(): Unit = {
     logger.info(s"Configuring module: ${classOf[ConfigModule].getName}")
     bindConfigParams[String]("idfs.resource", "vectors.link")
-    bindConfigParams[Long]("clock.begin", "clock.end", "clock.interval")
   }
 
   /**
@@ -38,9 +40,13 @@ class ConfigModule(config: Config) extends AbstractModule with ScalaModule {
   def bindConfigParams[T :ClassTag :TypeTag](params: String*)
                                             (implicit cast: AnyRef => T = (a: AnyRef) => a.asInstanceOf[T]): Unit = {
     params.foreach { key =>
-      if (config.hasPath(key))
+      //if (config.hasPath(key)) // no, required!
         bind[T].annotatedWith(Names.named(key)).toInstance(cast(config.getAnyRef(key)))
         //bindConstant().annotatedWith(Names.named(key)).to(config.get[String](key))
     }
   }
+}
+
+object ConfigValue {
+  def apply[T](v: T) = ConfigValueFactory.fromAnyRef(v)
 }

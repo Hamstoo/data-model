@@ -8,7 +8,7 @@ import com.google.inject.Inject
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
 import com.hamstoo.models._
 import com.hamstoo.services.IDFModel
-import com.hamstoo.utils.{ExtendedTimeStamp, ObjectId, TimeStamp}
+import com.hamstoo.utils.{ObjectId, TimeStamp}
 import play.api.Logger
 
 import scala.collection.immutable
@@ -19,7 +19,7 @@ import scala.concurrent.duration._
   * A stream of marks, sourced from a user's search, though search terms are not required.
   */
 @com.google.inject.Singleton
-class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
+class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUserId.typ,
                              searchUserId0: SearchUserIdOptional,
                              query2Vecs: Query2VecsOptional,
                              labels: SearchLabelsOptional)
@@ -35,7 +35,7 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
   val logger1: Logger = MarksStream.logger
 
   val searchUserId: UUID = searchUserId0.value.getOrElse(callingUserId)
-  val tags: Set[String] = labels.value
+  val tags: SearchLabelsOptional.typ = labels.value
 
   /** PreloadSource interface. */
   override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[MSearchable]]] = {
@@ -49,7 +49,7 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
 
     // Mongo Text Index search (e.g. includes stemming) over `entries` collection (and filter results by labels)
     val fscoredMs = mbQuerySeq.mapOrEmptyFuture { w =>
-      marksDao.search(Set(searchUserId), w) // TODO: begin/end
+      marksDao.search(Set(searchUserId), w) // TODO: 84: begin/end
         .map(_.toSeq.filter(_.hasTags(tags))).flatMap(filterAuthorizedRead(_, callingUserId))
     }
 
@@ -59,7 +59,7 @@ class MarksStream @Inject() (@Named("calling.user.id") callingUserId: UUID,
     for {
       // candidate referenced marks (i.e. marks that aren't owned by the calling user)
       id2Ref <- marksDao.retrieveRefed(callingUserId)
-      candidateRefs <- marksDao.retrieveInsecureSeq(id2Ref.keys.toSeq) // TODO: begin/end
+      candidateRefs <- marksDao.retrieveInsecureSeq(id2Ref.keys.toSeq) // TODO: 84: begin/end
         .map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
 
       // don't show the calling user marks that were shared to the search user (i.e. that the search user doesn't own)

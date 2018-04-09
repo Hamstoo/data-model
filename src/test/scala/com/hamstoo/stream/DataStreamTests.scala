@@ -3,25 +3,21 @@
  */
 package com.hamstoo.stream
 
-import java.util.UUID
-
 import akka.{Done, NotUsed}
 import akka.actor.Cancellable
 import akka.stream._
 import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
+import com.google.inject.name.Named
 import com.google.inject.{Guice, Provides}
-import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao, MongoVectorsDao}
+import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
 import com.hamstoo.stream.Join.JoinWithable
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
-import com.hamstoo.utils.{DataInfo, DurationMils, ExtendedTimeStamp, TimeStamp}
-import com.typesafe.config.ConfigValueFactory
+import com.hamstoo.utils.{ConfigModule, DataInfo, DurationMils, ExtendedTimeStamp, TimeStamp}
 import org.joda.time.{DateTime, DateTimeZone}
-import play.api.libs.ws.WSClient
-import play.api.libs.ws.ahc.AhcWSClient
 import play.api.Logger
 
 import scala.collection.immutable
@@ -192,21 +188,20 @@ class DataStreamTests
   "Facet values" should "be generated" in {
 
     // config values that stream.ConfigModule will bind for DI
-    def confval[T](v: T) = ConfigValueFactory.fromAnyRef(v)
     val config = DataInfo.config
-      .withValue("clock.begin", confval(new DateTime(2018, 1,  1, 0, 0).getMillis))
-      .withValue("clock.end",   confval(new DateTime(2018, 1, 15, 0, 0).getMillis))
-      .withValue("clock.interval", confval((1 day).toMillis))
-      .withValue("query", confval("some query"))
-      .withValue("calling.user.id", confval(DataInfo.constructUserId().toString))
+    val clockBegin: ClockBegin.typ = new DateTime(2018, 1,  1, 0, 0).getMillis
+    val clockEnd: ClockEnd.typ = new DateTime(2018, 1, 15, 0, 0).getMillis
+    val clockInterval: ClockInterval.typ = (1 day).toMillis
+    val query: Query.typ = "some query"
+    val userId: CallingUserId.typ = DataInfo.constructUserId()
 
     // insert 5 marks with reprs into the database
     val nMarks = 5
-    val userId = UUID.fromString(config.getString("calling.user.id"))
     val baseVec = Seq(1.0, 2.0, 3.0)
     val baseVs = Map(VecEnum.PC1.toString -> baseVec)
     val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
-    val b :: e :: Nil = Seq("clock.begin", "clock.end").map(config.getLong)
+    //val b :: e :: Nil = Seq(ClockBegin.name, ClockEnd.name).map(config.getLong)
+    val (b, e) = (clockBegin, clockEnd)
     (b to e by (e - b) / (nMarks - 1)).foreach { ts =>
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
       val r = baseRepr.copy(id = s"r_${ts.Gs}", vectors = vs)
@@ -218,35 +213,39 @@ class DataStreamTests
     }
 
     // bind some stuff in addition to what's required by StreamModule
-    // TODO: make these things (especially the DAOs) support DI as well so that these extra bindings can be removed
-    val injector = Guice.createInjector(new StreamModule(config) {
+    val streamInjector = Guice.createInjector(ConfigModule(DataInfo.config), new StreamModule {
 
-      /** Override configure in a way that we would only do for this test. */
       override def configure(): Unit = {
-        super.configure()
         logger.info(s"Configuring module: ${getClass.getName}")
-        bind[WSClient].toInstance(AhcWSClient())
-        bind[MongoVectorsDao].toInstance(vectorsDao)
-        bind[ExecutionContext].toInstance(system.dispatcher)
-        bind[Materializer].toInstance(materializer)
-        bind[MongoMarksDao].toInstance(marksDao)
-        bind[MongoRepresentationDao].toInstance(reprsDao)
-        bind[MongoUserDao].toInstance(userDao)
-        bind[LogLevelOptional.typ].toInstance(Some(ch.qos.logback.classic.Level.TRACE))
+
+        // TODO: make these things (especially the DAOs) support DI as well so that these extra bindings can be removed
+        classOf[ExecutionContext] := system.dispatcher
+        classOf[Materializer] := materializer
+        classOf[MongoMarksDao] := marksDao
+        classOf[MongoRepresentationDao] := reprsDao
+        classOf[MongoUserDao] := userDao
+
+        ClockBegin := clockBegin
+        ClockEnd := clockEnd
+        ClockInterval := clockInterval
+        Query := query
+        CallingUserId := userId
+        LogLevelOptional := Some(ch.qos.logback.classic.Level.TRACE)
       }
 
       /** Provides a VectorEmbeddingsService for SearchResults to use via StreamModule.provideQueryVec. */
       @Provides
-      def provideVecSvc(idfModel: IDFModel): VectorEmbeddingsService = new VectorEmbeddingsService(null, idfModel) {
-        // StreamModule.provideQueryVec doesn't care if "asdf" isn't a query word
+      def provideVecSvc(@Named(Query.name) query: Query.typ,
+                        idfModel: IDFModel): VectorEmbeddingsService = new VectorEmbeddingsService(null, idfModel) {
+
         override def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] = {
-          Future.successful(config.getString("query").split(" ").map(_ -> (1, baseVec)).toMap)
+          Future.successful(query.split(" ").map(_ -> (1, baseVec)).toMap)
         }
       }
     })
 
     import net.codingwell.scalaguice.InjectorExtensions._
-    val streamModel: FacetsModel = injector.instance[FacetsModel]
+    val streamModel: FacetsModel = streamInjector.instance[FacetsModel]
 
     type InType = (String, AnyRef)
     type OutType = Double
