@@ -29,7 +29,7 @@ import scala.util.matching.Regex
   * @param query2Vecs   Semantic word vectors for each query term.
   */
 @com.google.inject.Singleton
-class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
+class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2VecsType,
                               marksStream: MarksStream,
                               reprsStream: ReprsStream,
                               logLevel: LogLevelOptional)
@@ -67,7 +67,7 @@ class SearchResults @Inject()(@Named("query2Vecs") query2Vecs: Query2VecsType,
         // for database search score and again with vector cosine similarity), the silly 3.5 was chosen in order
         // to get a non-link mark (one w/out a repr) up near the top of the search results
         val mscore: Double = mark.score.getOrElse(0.0) /** MongoRepresentationDao.CONTENT_WGT*/ / cleanedQuery.length
-        logger1.trace(f"\033[35m${mark.id}\033[0m: subj='${mark.mark.subj}'")
+        logger1.trace(f"\u001b[35m${mark.id}\u001b[0m: subj='${mark.mark.subj}'")
 
         // generate a single search result
         val fut = for(searchTermVecs <- fsearchTermVecs) yield {

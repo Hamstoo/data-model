@@ -19,9 +19,9 @@ import scala.concurrent.{Await, Promise}
   * TODO:   increment/decrement-named methods (to handle irregular intervals involving weekends and months and such)
   */
 @com.google.inject.Singleton
-case class Clock @Inject() (@Named("clock.begin") begin: TimeStamp,
-                            @Named("clock.end") end: TimeStamp,
-                            @Named("clock.interval") interval: DurationMils)
+case class Clock @Inject() (@Named(ClockBegin.name) begin: ClockBegin.typ,
+                            @Named(ClockEnd.name) end: ClockEnd.typ,
+                            @Named(ClockInterval.name) interval: ClockInterval.typ)
                            (implicit materializer: Materializer) extends DataStream[TimeStamp] {
 
   override val logger = Logger(classOf[Clock])
