@@ -37,7 +37,7 @@ case class ConfigModule(config: Config) extends AbstractModule with ScalaModule 
     * TODO: is there anything similar to `Names.bindProperties()` that would just bind all of these?
     * TODO:   once `Conf` is moved from repr-engine to data-model we can use that class
     */
-  def bindConfigParams[T :ClassTag :TypeTag](params: String*)
+  def bindConfigParams[T :Manifest](params: String*)
                                             (implicit cast: AnyRef => T = (a: AnyRef) => a.asInstanceOf[T]): Unit = {
     params.foreach { key =>
       //if (config.hasPath(key)) // no, required!
