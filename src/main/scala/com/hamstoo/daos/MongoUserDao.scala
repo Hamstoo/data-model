@@ -38,30 +38,6 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   private def groupColl(): Future[BSONCollection] = db().map(_ collection "usergroups")
   private def marksColl(): Future[BSONCollection] = db().map(_ collection "entries")
 
-  // temporary data migration code
-  // leave this here as an example of how to perform data migration (note that this synchronization doesn't guarantee
-  // this code won't be run more than once, e.g. it might be run from backend and repr-engine)
-  if (MongoUserDao.migrateData) { synchronized { if (MongoUserDao.migrateData) {
-    MongoUserDao.migrateData = false
-
-    Await.result(for {
-      c <- dbColl()
-      _ = logger.info(s"Performing data migration for `${c.name}` collection")
-      sel = d :~ "$or" -> BSONArray(d :~ UNAMELOWx -> (d :~ "$exists" -> 0), d :~ UNAMELOWx -> "")
-      nonames <- c.find(sel).coll[User, Seq]()
-      newnames <- Future.sequence { nonames.map { u =>
-        u.userData.usernameLower.filter(_.trim.nonEmpty).fold {
-          u.userData.assignUsername()(this, implicitly[ExecutionContext]).map(ud => u.copy(userData = ud))
-        }{ _ => Future.successful(u) } // this can happen if usernameLower isn't set in the db but username is
-      }}
-      updated <- Future.sequence { newnames.map { u =>
-        c.update(d :~ ID -> u.id, d :~ "$set" -> (d :~ UDATA -> u.userData))
-      }}
-      _ = logger.info(s"Successfully assigned usernames to ${updated.size} users")
-    // put actual data migration code here
-    } yield (), 363 seconds)
-  }}} else logger.info(s"Skipping data migration for `users` collection")
-
   // ensure mongo collection has proper indexes
   private val indxs: Map[String, Index] =
     Index(PLINFOx -> Ascending :: Nil, unique = true) % s"bin-$PLINFOx-1-uniq" ::

@@ -355,6 +355,7 @@ class MDSearchable(val subj: String,
   var bMasked: Boolean = false
   var ownerRating: Option[Double] = None
 
+  /** See ScalaDoc on MSearchable.xcopy. */
   def xcopy(subj: String = subj,
             url: Option[String] = url,
             rating: Option[Double] = rating,
