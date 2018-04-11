@@ -12,6 +12,7 @@ import com.hamstoo.models.RSearchable
 import com.hamstoo.stream.MarksStream.ExtendedQuerySeq
 import com.hamstoo.utils.ExtendedTimeStamp
 import ch.qos.logback.classic.{Logger => LogbackLogger}
+import com.google.inject.name.Named
 import org.slf4j.{LoggerFactory, Logger => Slf4jLogger}
 import play.api.Logger
 
@@ -33,13 +34,13 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
 /**
   * A stream of a user's marks' representations.
   * 
-  * @param query2Vecs    An optional Query2Vecs used to compute a weighted average repr for each mark if the stream
+  * @param mbQuery2Vecs  An optional Query2Vecs used to compute a weighted average repr for each mark if the stream
   *                      of marks was the result of a search.
   * @param marksStream   Representations will be streamed for this stream of marks.
   */
 @Singleton
 /*case*/ class ReprsStream @Inject()(marksStream: MarksStream,
-                                     query2Vecs: Query2VecsOptional,
+                                     @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
                                      logLevel: LogLevelOptional)
                                     (implicit materializer: Materializer, ec: ExecutionContext,
                                      reprDao: MongoRepresentationDao)
@@ -58,7 +59,7 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
   override val hubSource: Source[Data[ReprsPair], NotUsed] = marksStream().mapAsync(4) { dat =>
 
     // unpack query words/counts/vecs (which there may none of)
-    val mbCleanedQuery = query2Vecs.value.map(_._1)
+    val mbCleanedQuery = mbQuery2Vecs.map(_._1)
     val mbQuerySeq = mbCleanedQuery.map(_.map(_._1))
     val cleanedQuery = mbCleanedQuery.getOrElse(Seq(("", 0)))
 

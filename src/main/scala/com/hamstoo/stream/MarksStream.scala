@@ -21,7 +21,7 @@ import scala.concurrent.duration._
 @com.google.inject.Singleton
 class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUserId.typ,
                              searchUserId0: SearchUserIdOptional,
-                             query2Vecs: Query2VecsOptional,
+                             @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
                              labels: SearchLabelsOptional)
                             (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext,
                              marksDao: MongoMarksDao,
@@ -41,9 +41,9 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
   override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[MSearchable]]] = {
 
     // unpack query words/counts/vecs (which there may none of)
-    val mbCleanedQuery = query2Vecs.value.map(_._1)
+    val mbCleanedQuery = mbQuery2Vecs.map(_._1)
     val mbQuerySeq = mbCleanedQuery.map(_.map(_._1))
-    val mbSearchTermVecs = query2Vecs.value.map(_._2)
+    val mbSearchTermVecs = mbQuery2Vecs.map(_._2)
 
     // get a couple of queries off-and-running before we start Future-flatMap-chaining
 

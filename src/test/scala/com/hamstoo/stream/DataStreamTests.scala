@@ -216,6 +216,7 @@ class DataStreamTests
     val streamInjector = Guice.createInjector(ConfigModule(DataInfo.config), new StreamModule {
 
       override def configure(): Unit = {
+        super.configure()
         logger.info(s"Configuring module: ${getClass.getName}")
 
         // TODO: make these things (especially the DAOs) support DI as well so that these extra bindings can be removed

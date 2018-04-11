@@ -10,6 +10,7 @@ import com.google.inject._
 import com.google.inject.name.Named
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.utils.{DurationMils, TimeStamp}
+import play.api.Logger
 
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe.TypeTag
@@ -21,17 +22,24 @@ package object stream {
   /**
     * Guice uses a (type, optional name) pair to uniquely identify bindings.  Instances of this class are that pair
     * _without_ the optional name.
+    *
+    * See also: `public static <T> Key[T] get(`type`: Class[T])` in Key.java
+    *   In other words, Guice already has this concept, but the name value can't be `final`/constant.
     */
   class NamelessInjectId[T :ClassTag :TypeTag] {
     type typ = T
 
     /** An overloaded assignment operator of sorts--or as close as you can get in Scala.  Who remembers Pascal? */
     def :=(instance: T)(implicit module: StreamModule): Unit = module.assign(this, instance)
+    def ?=(instance: T)(implicit module: StreamModule): Unit = module.assignOptional(this, instance)
   }
 
   /**
     * Guice uses a (type, optional name) pair to uniquely identify bindings.  Instances of this class are that pair
     * _with_ the optional name.
+    *
+    * See also: `static <T> Key<T> get(Class<T> type, AnnotationStrategy annotationStrategy)` in Key.java
+    *   In other words, Guice already has this concept, but the name value can't be `final`/constant.
     */
   trait InjectId[T] extends NamelessInjectId[T] {
     def name: String
@@ -56,10 +64,6 @@ package object stream {
   }
 
   object Query2VecsOptional extends InjectId[Option[Query2VecsType]] { final val name = "query2Vecs" }
-  class Query2VecsOptional {
-    @Inject(optional = true) @Named(Query2VecsOptional.name)
-    val value: Query2VecsOptional.typ = None
-  }
 
   object SearchLabelsOptional extends InjectId[Set[String]] { final val name = "labels" }
   class SearchLabelsOptional {
