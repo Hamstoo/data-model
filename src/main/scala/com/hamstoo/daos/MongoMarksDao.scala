@@ -44,108 +44,6 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   private def reprsColl(): Future[BSONCollection] = db().map(_ collection "representations")
   private def pagesColl(): Future[BSONCollection] = db().map(_ collection "pages")
 
-  // leave this here as an example of how to perform data migration (note that this synchronization doesn't guarantee
-  // this code won't be run more than once, e.g. it might be run from backend and repr-engine)
-  if (MongoMarksDao.migrateData) { synchronized { if (MongoMarksDao.migrateData) {
-    MongoMarksDao.migrateData = false
-
-    implicit val system = ActorSystem("MongoMarksDao-data_migration")
-    implicit val materializer = ActorMaterializer()
-
-    Await.result(for {
-      c <- dbColl()
-      // put actual data migration code here
-      _ <- c.update(d :~ "$or" -> Seq(d :~ REPRS -> (d :~ "$exists" -> 0)/*,
-                                      d :~ "privRepr" -> (d :~ "$exists" -> 1)*/),
-                    d :~ "$set" -> (d :~ REPRS -> BSONArray.empty), multi = true)
-      _ = logger.info(s"Performing data migration for `${c.name}` collection")
-
-      // TODO: if data migration already previously occurred then might have to remove all existing pages and reprinfos
-      // TODO:   db.entries.update({}, {'$pull':{reprs:{reprType:'PUBLIC'}}}, {multi:1})
-      // TODO:   db.pages.remove({reprType:'PUBLIC'})
-
-      cReprs <- reprsColl()
-      cPages <- pagesColl()
-      _ <- Future.sequence {
-        Seq(("priv", ReprType.PRIVATE), ("pub", ReprType.PUBLIC), ("user", ReprType.USER_CONTENT)) map {
-          case (pfx, rtyp) => {
-
-
-// Uncaught error from thread [crawler-system-akka.actor.default-dispatcher-5]: Java heap space, shutting down
-            // JVM since 'akka.jvm-exit-on-fatal-error' is enabled for ActorSystem[crawler-system]
-// java.lang.OutOfMemoryError: Java heap space
-
-            // stream marks with privRepr, pubRepr, or userRepr fields
-            c.find(d :~ (pfx + "Repr") -> (d :~ "$exists" -> 1)).cursor[BSONDocument]().documentSource().map { doc =>
-              val markId = doc.getAs[String](ID).get
-              val reprId = doc.getAs[String](pfx + "Repr").get // possibly one of NON_IDS
-              val docTime = doc.getAs[TimeStamp](TIMEFROM).get
-              val reprSel = d :~ ID -> reprId :~ curnt
-
-
-// TODO: what to do with NON_IDS?  like 'timeout'?
-
-
-              logger.info(s"Performing $rtyp repr data migration for mark $markId and repr $reprId")
-              for {
-                repr <- cReprs.find(reprSel).one[BSONDocument]
-                created = repr.fold(docTime)(_.getAs[TimeStamp](TIMEFROM).get)
-                rinfo = ReprInfo(reprId, rtyp, created, doc.getAs[String](pfx + "ExpRating"))
-                _ <- c.update(d :~ ID -> markId :~ TIMEFROM -> docTime,
-                              d :~ "$push" -> (d :~ REPRS -> rinfo)
-                                :~ "$unset" -> (d :~ (pfx + "Repr") -> 1 :~ (pfx + "ExpRating") -> 1))
-
-                // move page from reprs (or entries if private repr failed) collection to pages collection
-                _ <- repr.flatMap(_.getAs[BSONDocument]("page"))
-                         .orElse(if (rinfo.isPrivate) doc.getAs[BSONDocument]("page") else None)
-                         .fold(Future.unit) { page =>
-                  val mt = page.getAs[String]("mimeType").get
-                  val content = page.getAs[mutable.WrappedArray[Byte]]("content").get
-                  val newPage = new Page(markId, rtyp, mt, content, reprId = Some(reprId), created = created)
-                  for {
-                    _ <- cPages.insert(newPage)
-                    _ <- cReprs.update(reprSel, d :~ "$unset" -> (d :~ "page" -> 1))
-                    _ <- if (!rinfo.isPrivate) Future.unit else
-                      c.update(d :~ ID -> markId :~ TIMEFROM -> docTime, d :~ "$unset" -> (d :~ "page" -> 1)).map(_ => ())
-                  } yield ()
-                }
-              } yield ()
-            }.runWith(Sink.ignore)
-          }
-        }
-      }
-
-      // TODO: remove duplicate public & user-content representations per mark
-
-      // remove reprs from representations collection that are not referenced by pages or marks
-      _ = logger.info(s"Removing unreferenced representations...")
-      refed = "referenced"
-      _ <- cReprs.update(d, d :~ "$unset" -> (d :~ refed -> 1), multi = true)
-
-      //sel0 = d :~ REPRS -> (d :~ "$exists" -> 1)
-      strm0 = c.find(d :~ REPRS -> (d :~ "$exists" -> 1), d :~ REPRS -> 1).cursor[BSONDocument]().documentSource()
-      _ <- strm0.mapAsync(10) { doc =>
-        Future(doc.getAs[Seq[ReprInfo]](REPRS).get.map(_.reprId)).flatMap { reprIds => // non-blocking `get`: https://blog.softwaremill.com/akka-streams-pitfalls-to-avoid-part-1-75ef6403c6e6
-          cReprs.update(d :~ ID -> (d :~ "$in" -> reprIds), d :~ "$set" -> (d :~ refed -> true), multi = true) }
-      }.runWith(Sink.ignore)
-
-      //sel1 = d :~ Page.REPR_ID -> (d :~ "$exists" -> 1)
-      strm1 = cPages.find(d :~ Page.REPR_ID -> (d :~ "$exists" -> 1), d :~ Page.REPR_ID -> 1).cursor[BSONDocument]().documentSource()
-      _ <- strm1.mapAsync(10) { doc =>
-        val reprId = doc.getAs[String](Page.REPR_ID).get // blocking `get`
-        cReprs.update(d :~ ID -> reprId, d :~ "$set" -> (d :~ refed -> true), multi = true)
-      }.runWith(Sink.ignore)
-
-      _ <- cReprs.remove(d :~ refed -> (d :~ "$exists" -> false))
-      //_ <- cReprs.update(d, d :~ "$unset" -> (d :~ refed -> 1), multi = true) // not really necessary
-
-      //_ <- cReprs.update(d, d :~ "$unset" -> (d :~ "page" -> 1), multi = true) // TODO: manually: db.representations.update({}, {$unset:{page:1}}, {multi:1})
-
-      _ = logger.info(s"Done removing unreferenced representations")
-
-    } yield (), 973 seconds)
-  }}} else logger.info(s"Skipping data migration for `$collName` collection")
-
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: TIMETHRU -> Ascending :: Nil) % s"bin-$USR-1-$TIMETHRU-1" ::
@@ -773,19 +671,19 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     /** Insert representation info */
     def insertRepr(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = for {
       c <- dbColl()
-      _ = logger.debug(s"Inserting ${reprInfo.reprType} representation for mark: $markId...")
+      _ = logger.debug(s"Inserting ${reprInfo.reprType} representation ${reprInfo.reprId} for mark $markId")
       sel = d :~ ID -> markId :~ curnt
       mod = d :~ "$push" -> (d :~ REPRS -> reprInfo)
 
       wr <- c.update(sel, mod)
       _ <- wr.failIfError
-    } yield logger.debug(s"${reprInfo.reprType} representation for mark: $markId was inserted")
+    } yield logger.debug(s"Inserted ${reprInfo.reprType} representation ${reprInfo.reprId} for mark $markId")
 
     /** Update non-private representation */
     def updateNonPrivateRepr(markId: ObjectId, reprInfo: ReprInfo): Future[Unit] = for {
       c <- dbColl()
       reprType = reprInfo.reprType
-      _ = logger.debug(s"Updating $reprType representation information for mark: $markId...")
+      _ = logger.debug(s"Updating $reprType representation ${reprInfo.reprId} for mark $markId")
       sel = d :~ ID -> markId :~ REPR_TYPEx -> reprType :~ curnt
       mod = d :~
         "$set" -> (d :~ REPR_IDxp -> reprInfo.reprId :~ CREATEDxp -> reprInfo.created) :~
@@ -793,16 +691,16 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
       wr <- c.update(sel, mod)
       _ <- wr.failIfError
-    } yield logger.debug(s"$reprType representation was updated")
+    } yield logger.debug(s"Updated $reprType representation ${reprInfo.reprId}")
 
     /** Check if non-private representation info exist */
     def nonPrivateReprExists(markId: ObjectId, reprType: String): Future[Boolean] = for {
       c <- dbColl()
-      _ = logger.debug(s"Checking if non-private repr of type: $reprType exist...")
+      _ = logger.debug(s"Checking for existence of non-private repr of type $reprType")
       sel = d :~ ID -> markId :~  REPR_TYPEx -> reprType.toString :~ curnt
       opt <- c.find(sel).one[Mark]
     } yield {
-      logger.debug(s"$opt was retrieved")
+      logger.debug(s"Retrieved non-private repr $opt")
       opt.nonEmpty
     }
 
