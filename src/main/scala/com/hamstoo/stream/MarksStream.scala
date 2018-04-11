@@ -34,12 +34,6 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
   //override val logger: Logger = MarksStream.logger // causes a NullPointerException (kws: NPE)
   val logger1: Logger = MarksStream.logger
 
-
-
-  logger.error(s"************** Search user id: ${mbSearchUserId.getClass} : $mbSearchUserId")
-
-
-
   val searchUserId: UUID = mbSearchUserId.getOrElse(callingUserId)
   val tags: SearchLabelsOptional.typ = labels.value
 
