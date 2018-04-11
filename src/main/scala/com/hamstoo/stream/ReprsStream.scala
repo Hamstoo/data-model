@@ -39,11 +39,11 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
   * @param marksStream   Representations will be streamed for this stream of marks.
   */
 @Singleton
-/*case*/ class ReprsStream @Inject()(marksStream: MarksStream,
-                                     @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
-                                     logLevel: LogLevelOptional)
-                                    (implicit materializer: Materializer, ec: ExecutionContext,
-                                     reprDao: MongoRepresentationDao)
+class ReprsStream @Inject()(marksStream: MarksStream,
+                            @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
+                            logLevel: LogLevelOptional.typ)
+                           (implicit materializer: Materializer, ec: ExecutionContext,
+                            reprDao: MongoRepresentationDao)
     extends DataStream[ReprsPair]() {
 
   // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples
@@ -52,7 +52,7 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
   // "Note that you can also tell logback to periodically scan your config file"
   // https://stackoverflow.com/questions/3837801/how-to-change-root-logging-level-programmatically
   val logger0: Slf4jLogger = LoggerFactory.getLogger(classOf[ReprsStream].getName.stripSuffix("$"))
-  logLevel.value.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
+  logLevel.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
   val logger1 = new Logger(logger0)
 
   /** Maps the stream of marks to their reprs. */

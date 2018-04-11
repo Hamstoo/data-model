@@ -4,17 +4,15 @@
 package com.hamstoo.stream
 
 import akka.stream.Materializer
-import com.google.inject.name.{Named, Names}
+import com.google.inject.name.Named
 import com.google.inject._
 import com.google.inject.multibindings.OptionalBinder
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
-import net.codingwell.scalaguice.{ScalaModule, ScalaOptionBinder}
+import net.codingwell.scalaguice.ScalaModule
 import play.api.Logger
 
 import scala.concurrent.ExecutionContext
-import scala.reflect.ClassTag
-import scala.reflect.runtime.universe.TypeTag
 
 /**
   * "A module is a collection of bindings"
@@ -34,31 +32,33 @@ abstract class StreamModule extends AbstractModule with ScalaModule {
     super.configure()
     logger.info(s"Configuring module: ${classOf[StreamModule].getName}")
 
+    LogLevelOptional ?= None
     Query2VecsOptional ?= None
+    SearchLabelsOptional ?= Set.empty[String]
     SearchUserIdOptional ?= None
-
   }
 
-  /** An overloaded assignment operator of sorts--or as close as you can get in Scala.  Who remembers Pascal? */
+  /**
+    * An overloaded assignment operator of sorts--or as close as you can get in Scala.  Who remembers Pascal?
+    * Example: `classOf[ExecutionContext] := system.dispatcher`
+    */
   implicit class InjectVal[T :Manifest](private val _typ: Class[T]) /*extends AnyVal*/ {
     def :=(instance: T): Unit = new NamelessInjectId[T] := instance
-    def ?=(instance: T): Unit = new NamelessInjectId[T] ?= instance
+    def ?=(default: T): Unit = new NamelessInjectId[T] ?= default
   }
 
-  /** Bind a (possibly named) instance given its (type, name) pair, which Guice uses to uniquely identify bindings. */
-  def assign[T :Manifest](injectId: NamelessInjectId[T], instance: T): Unit = injectId match {
-    case iid: InjectId[_] => bind[iid.typ].annotatedWith(Names.named(iid.name)).toInstance(instance)
-    case iid /*Nameless*/ => bind[iid.typ]                                     .toInstance(instance)
-  }
+  /**
+    * Bind a (possibly named) instance given its (type, name) pair, which Guice uses to uniquely identify bindings.
+    *
+    * Using `OptionalBinder.setBinding` here instead of simply calling `bind` because the former works when
+    * `OptionalBinder.setDefault` has been called previously while the latter does not.
+    */
+  def assign[T :Manifest](key: Key[T], instance: T): Unit = //bind(key).toInstance(instance)
+    OptionalBinder.newOptionalBinder(binder(), key).setBinding().toInstance(instance)
 
-  /** Bind an optional. */
-  def assignOptional[T :Manifest](injectId: NamelessInjectId[T], instance: T): Unit = injectId match {
-    // "To bind a specific name, use Names.named() to create an instance to pass to annotatedWith"
-    case iid: InjectId[_] =>
-      ScalaOptionBinder.newOptionBinder[iid.typ](binder, Names.named(iid.name)).setDefault.toInstance(instance)
-    case iid /*Nameless*/ =>
-      ScalaOptionBinder.newOptionBinder[iid.typ](binder                       ).setDefault.toInstance(instance)
-  }
+  /** Bind an optional injectable argument with a default value. */
+  def assignOptional[T :Manifest](key: Key[T], default: T): Unit =
+    OptionalBinder.newOptionalBinder(binder(), key).setDefault().toInstance(default)
 
   /** See Query2VecsOptional.  There are 2 providers of objects named "query2Vecs" but they return different types. */
   @Provides @Singleton @Named(Query2VecsOptional.name)

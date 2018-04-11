@@ -32,7 +32,7 @@ import scala.util.matching.Regex
 class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2VecsType,
                               marksStream: MarksStream,
                               reprsStream: ReprsStream,
-                              logLevel: LogLevelOptional)
+                              logLevel: LogLevelOptional.typ)
                              (implicit materializer: Materializer, ec: ExecutionContext,
                               idfModel: IDFModel)
     extends DataStream[(MSearchable, String, Option[Double])] {
@@ -44,7 +44,7 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
 
   // set logging level for this QuerySimilarities *instance*
   val logger0: Slf4jLogger = LoggerFactory.getLogger(classOf[SearchResults].getName.stripSuffix("$"))
-  logLevel.value.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
+  logLevel.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
   val logger1 = new Logger(logger0)
 
   // the `{ case x => x }` actually does serve a purpose, it unpacks x into a 2-tuple
