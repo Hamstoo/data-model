@@ -34,7 +34,7 @@ class DataStreamTests
 
   val logger = Logger(classOf[DataStreamTests])
 
-  "Test" should "scratch test 0" in {
+  /*"Test" should "scratch test 0" in {
     // https://doc.akka.io/docs/akka/2.5.3/scala/stream/stream-rate.html#internal-buffers-and-their-effect
 
     implicit val materializer: Materializer = ActorMaterializer()
@@ -183,7 +183,7 @@ class DataStreamTests
     val x: Double = Await.result(g.run(), 15 seconds)
     logger.info(s"****** GroupReduce should cross-sectionally reduce streams of $what: x = $x")
     x shouldEqual 8.0
-  }
+  }*/
 
   "Facet values" should "be generated" in {
 
@@ -265,7 +265,7 @@ class DataStreamTests
     x shouldBe (16.13 +- 0.01)
   }
 
-  "Clock" should "throttle a PreloadSource" in {
+  /*"Clock" should "throttle a PreloadSource" in {
 
     // https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely
     // this doesn't print anything when lower than 255 (due to bufferSize!)
@@ -350,5 +350,5 @@ class DataStreamTests
 
     val x = Await.result(fut, 10 seconds)
     x shouldEqual 173
-  }
+  }*/
 }

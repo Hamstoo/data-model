@@ -7,9 +7,10 @@ import java.util.UUID
 
 import akka.stream.Attributes
 import com.google.inject._
-import com.google.inject.name.Named
+import com.google.inject.name.{Named, Names}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.utils.{DurationMils, TimeStamp}
+import net.codingwell.scalaguice.typeLiteral
 import play.api.Logger
 
 import scala.reflect.ClassTag
@@ -26,12 +27,13 @@ package object stream {
     * See also: `public static <T> Key[T] get(`type`: Class[T])` in Key.java
     *   In other words, Guice already has this concept, but the name value can't be `final`/constant.
     */
-  class NamelessInjectId[T :ClassTag :TypeTag] {
+  class NamelessInjectId[T :Manifest] {
+    //val tl: TypeLiteral[T] = typeLiteral[T] // doesn't work w/ `T :ClassTag :TypeTag` but works w/ `T :Manifest`
     type typ = T
 
     /** An overloaded assignment operator of sorts--or as close as you can get in Scala.  Who remembers Pascal? */
     def :=(instance: T)(implicit module: StreamModule): Unit = module.assign(this, instance)
-    def ?=(instance: T)(implicit module: StreamModule): Unit = module.assignOptional(this, instance)
+    def ?=(instance: T)(implicit module: StreamModule): Unit = module.assignOptional2(this, instance)
   }
 
   /**
@@ -71,11 +73,12 @@ package object stream {
     val value: SearchLabelsOptional.typ = Set.empty[String]
   }
 
+  //val SearchUserIdOptional = Key.get(new TypeLiteral[Option[UUID]]() {}, Names.named("search.user.id"))
   object SearchUserIdOptional extends InjectId[Option[UUID]] { final val name = "search.user.id" }
-  class SearchUserIdOptional {
+  /*class SearchUserIdOptional {
     @Inject(optional = true) @Named(SearchUserIdOptional.name)
     val value: SearchUserIdOptional.typ = None
-  }
+  }*/
 
   /** One might think that getting the name of a stream would be easier than this. */
   def streamName[S](stream: S): String = {

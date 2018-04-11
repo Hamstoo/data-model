@@ -20,7 +20,7 @@ import scala.concurrent.duration._
   */
 @com.google.inject.Singleton
 class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUserId.typ,
-                             searchUserId0: SearchUserIdOptional,
+                             @Named(SearchUserIdOptional.name) mbSearchUserId: SearchUserIdOptional.typ,
                              @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
                              labels: SearchLabelsOptional)
                             (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext,
@@ -34,7 +34,13 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
   //override val logger: Logger = MarksStream.logger // causes a NullPointerException (kws: NPE)
   val logger1: Logger = MarksStream.logger
 
-  val searchUserId: UUID = searchUserId0.value.getOrElse(callingUserId)
+
+
+  logger.error(s"************** Search user id: ${mbSearchUserId.getClass} : $mbSearchUserId")
+
+
+
+  val searchUserId: UUID = mbSearchUserId.getOrElse(callingUserId)
   val tags: SearchLabelsOptional.typ = labels.value
 
   /** PreloadSource interface. */
