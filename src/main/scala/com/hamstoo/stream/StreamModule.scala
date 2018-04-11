@@ -3,7 +3,6 @@
  */
 package com.hamstoo.stream
 
-import akka.stream.Materializer
 import com.google.inject.name.Named
 import com.google.inject._
 import com.google.inject.multibindings.OptionalBinder
@@ -20,7 +19,7 @@ import scala.concurrent.ExecutionContext
   *
   * This StreamModule trait requires an implementation of `configure`.
   */
-abstract class StreamModule extends AbstractModule with ScalaModule {
+class StreamModule extends AbstractModule with ScalaModule {
 
   val logger = Logger(classOf[StreamModule])
 
@@ -45,6 +44,7 @@ abstract class StreamModule extends AbstractModule with ScalaModule {
   implicit class InjectVal[T :Manifest](private val _typ: Class[T]) /*extends AnyVal*/ {
     def :=(instance: T): Unit = new NamelessInjectId[T] := instance
     def ?=(default: T): Unit = new NamelessInjectId[T] ?= default
+    def :=[TImpl <:T :Manifest](clazz: Class[TImpl]): Unit = bind[T].to[TImpl]
   }
 
   /**
@@ -70,27 +70,4 @@ abstract class StreamModule extends AbstractModule with ScalaModule {
   @Provides @Singleton @Named(Query2VecsOptional.name)
   def provideQuery2Vecs(@Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ): Query2VecsType =
     mbQuery2Vecs.get
-
-  @Provides @Singleton
-  def buildModel(injector: Injector, clock: Clock, materializer: Materializer): FacetsModel =
-                                                              new FacetsModel(injector)(clock, materializer) {
-
-    //import net.codingwell.scalaguice.InjectorExtensions._
-    //val qc: QueryCorrelation = injector.instance[QueryCorrelation]
-
-    add[SearchResults]() // "semanticRelevance"
-
-    // * so a stream can only be reused (singleton) if its defined inside a type
-    //   * but eventually we can make this work to automatically generate new types (perhaps)
-    //   * add[classOf[QueryCorrelation] + 2]()
-    //   * https://www.google.com/search?q=dynamically+create+type+scala&oq=dynamically+create+type+scala&aqs=chrome..69i57.5239j1j4&sourceid=chrome&ie=UTF-8
-    // * the (source) clock won't know what time its starting with until the data streams have
-    //   all been wired together (via the Injector)
-
-    //add(AvailablityBias / Recency) -- see How to Think screenshot
-    //add(ConfirmationBias)
-    //add(TimeSpent)
-    //add(Rating)
-    //add(SearchRelevance)
-  }
 }

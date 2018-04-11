@@ -6,7 +6,7 @@ package com.hamstoo.stream
 import akka.NotUsed
 import akka.stream.{Materializer, SourceShape}
 import akka.stream.scaladsl.{GraphDSL, Merge, Sink, Source}
-import com.google.inject.{Inject, Injector}
+import com.google.inject.{Inject, Injector, Singleton}
 import play.api.Logger
 
 import scala.collection.mutable
@@ -28,7 +28,7 @@ class FacetsModel @Inject()(injector: Injector)
   protected val facets = mutable.Map.empty[String, DataStreamBase]
 
   /** Add a facet to be computed by this model. */
-  def add[T <:DataStreamBase :TypeTag :ClassTag](mbName: Option[String] = None): Unit = {
+  def add[T <:DataStreamBase :ClassTag :TypeTag](mbName: Option[String] = None): Unit = {
 
     val name: String = mbName.getOrElse(classTag[T].runtimeClass.getSimpleName)
     logger.info(s"Adding data stream: $name")
@@ -80,4 +80,31 @@ class FacetsModel @Inject()(injector: Injector)
 
     SourceShape(merge.out)
   })
+}
+
+object FacetsModel {
+
+  /** Factory function to construct a default FacetsModel. */
+  @Singleton
+  case class Default @Inject()(injector: Injector, clock: Clock, materializer: Materializer)
+      extends FacetsModel(injector)(clock, materializer) {
+
+    //import net.codingwell.scalaguice.InjectorExtensions._
+    //val qc: QueryCorrelation = injector.instance[QueryCorrelation]
+
+    add[SearchResults]() // "semanticRelevance"
+
+    // * so a stream can only be reused (singleton) if its defined inside a type
+    //   * but eventually we can make this work to automatically generate new types (perhaps)
+    //   * add[classOf[QueryCorrelation] + 2]()
+    //   * https://www.google.com/search?q=dynamically+create+type+scala&oq=dynamically+create+type+scala&aqs=chrome..69i57.5239j1j4&sourceid=chrome&ie=UTF-8
+    // * the (source) clock won't know what time its starting with until the data streams have
+    //   all been wired together (via the Injector)
+
+    //add(AvailablityBias / Recency) -- see How to Think screenshot
+    //add(ConfirmationBias)
+    //add(TimeSpent)
+    //add(Rating)
+    //add(SearchRelevance)
+  }
 }
