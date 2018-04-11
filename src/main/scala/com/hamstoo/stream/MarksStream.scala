@@ -22,7 +22,7 @@ import scala.concurrent.duration._
 class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUserId.typ,
                              @Named(SearchUserIdOptional.name) mbSearchUserId: SearchUserIdOptional.typ,
                              @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
-                             labels: SearchLabelsOptional)
+                             @Named(SearchLabelsOptional.name) labels: SearchLabelsOptional.typ)
                             (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext,
                              marksDao: MongoMarksDao,
                              reprDao: MongoRepresentationDao,
@@ -35,7 +35,7 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
   val logger1: Logger = MarksStream.logger
 
   val searchUserId: UUID = mbSearchUserId.getOrElse(callingUserId)
-  val tags: SearchLabelsOptional.typ = labels.value
+  val tags: SearchLabelsOptional.typ = labels
 
   /** PreloadSource interface. */
   override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[MSearchable]]] = {
