@@ -8,7 +8,7 @@ import akka.actor.Cancellable
 import akka.stream._
 import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
 import com.google.inject.name.Named
-import com.google.inject.{Guice, Provides}
+import com.google.inject.{Guice, Injector, Provides, Singleton}
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
@@ -232,10 +232,13 @@ class DataStreamTests
         Query := query
         CallingUserId := userId
         LogLevelOptional := Some(ch.qos.logback.classic.Level.TRACE)
+
+        // finally, bind the model
+        classOf[FacetsModel] := classOf[FacetsModel.Default]
       }
 
       /** Provides a VectorEmbeddingsService for SearchResults to use via StreamModule.provideQueryVec. */
-      @Provides
+      @Provides @Singleton
       def provideVecSvc(@Named(Query.name) query: Query.typ,
                         idfModel: IDFModel): VectorEmbeddingsService = new VectorEmbeddingsService(null, idfModel) {
 
