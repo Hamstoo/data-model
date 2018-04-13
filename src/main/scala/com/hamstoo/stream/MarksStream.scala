@@ -37,7 +37,7 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
   val searchUserId: UUID = mbSearchUserId.getOrElse(callingUserId)
   val tags: SearchLabelsOptional.typ = labels
 
-  /** PreloadSource interface. */
+  /** PreloadSource interface.  `begin` should be inclusive and `end`, exclusive. */
   override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[MSearchable]]] = {
 
     // unpack query words/counts/vecs (which there may none of)
@@ -49,17 +49,18 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
 
     // Mongo Text Index search (e.g. includes stemming) over `entries` collection (and filter results by labels)
     val fscoredMs = mbQuerySeq.mapOrEmptyFuture { w =>
-      marksDao.search(Set(searchUserId), w) // TODO: 84: begin/end
+      marksDao.search(Set(searchUserId), w, begin = Some(begin), end = Some(end))
         .map(_.toSeq.filter(_.hasTags(tags))).flatMap(filterAuthorizedRead(_, callingUserId))
     }
 
     // every single mark with an existing representation
-    val funscoredMs = marksDao.retrieveRepred(searchUserId, tags).flatMap(filterAuthorizedRead(_, callingUserId))
+    val funscoredMs = marksDao.retrieveRepred(searchUserId, tags = tags, begin = Some(begin), end = Some(end))
+                        .flatMap(filterAuthorizedRead(_, callingUserId))
 
     for {
       // candidate referenced marks (i.e. marks that aren't owned by the calling user)
-      id2Ref <- marksDao.retrieveRefed(callingUserId)
-      candidateRefs <- marksDao.retrieveInsecureSeq(id2Ref.keys.toSeq) // TODO: 84: begin/end
+      id2Ref <- marksDao.retrieveRefed(callingUserId) // TODO: 84: begin/end ???
+      candidateRefs <- marksDao.retrieveInsecureSeq(id2Ref.keys.toSeq, begin = Some(begin), end = Some(end))
         .map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
 
       // don't show the calling user marks that were shared to the search user (i.e. that the search user doesn't own)
@@ -96,7 +97,7 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
       // performing filterNot rather than relying on set union because scoredMs will have not only score
       // populated but could also have different labels/rating due to MarkRef masking
       val entries = scoredMs.toSet ++ unscoredMs.filterNot(c => scoredMs.exists(_.id == c.id))
-      entries.map(m => Datum(MarkId(m.id), m.timeFrom, m))
+      entries.map(m => Datum(m, MarkId(m.id), m.timeFrom))
     }
   }
 }

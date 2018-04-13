@@ -53,26 +53,26 @@ object Join {
     *
     * `val imp` cannot be `private` because of `imp.Repr` being returned from `joinWith` which causes the following
     * compiler error: "private value imp escapes its defining scope as part of type
-    * JoinWithable.this.imp.Repr[com.hamstoo.stream.Data[O]]"
+    * JoinWithable.this.imp.Repr[com.hamstoo.stream.Datum[O]]"
     *
     * Neither A0 nor O can be covariant types (e.g. +A0) as they are in FlowOps because they both "occur in invariant
     * positions."
     */
-  implicit class JoinWithable[-In, A0, +Mat](/*private*/ val imp: FlowOps[Data[A0], Mat]) {
+  implicit class JoinWithable[-In, A0, +Mat](/*private*/ val imp: FlowOps[Datum[A0], Mat]) {
 
     /**
-      * BIG NOTE: Callers of this function will have to cast the returned instance to either a `Source[Data[O], Mat]` (if `imp`
-      * is itself a `Source[Data[A0], Mat]`) or to a `Flow[In, Data[O], Mat]` (if `imp` is itself a `Flow`).  Since
+      * BIG NOTE: Callers of this function will have to cast the returned instance to either a `Source[Datum[O], Mat]` (if `imp`
+      * is itself a `Source[Datum[A0], Mat]`) or to a `Flow[In, Datum[O], Mat]` (if `imp` is itself a `Flow`).  Since
       * `imp` is a FlowOps here, `imp.Repr` is the FlowOps version of Repr which gets overridden in both Source
       * and Flow.  I can't think of a better way to do this other than implementing duplicated implicit classes
       * for Source and Flow separately.
       *
       * Notice the `joiner` function's signature matches that of `Join2` below.
       */
-    def joinWith[A1, O](that: Graph[SourceShape[Data[A1]], _])
+    def joinWith[A1, O](that: Graph[SourceShape[Datum[A1]], _])
                        (joiner: (A0, A1) => O,
                         pairwise: Pairwiser[A0, A1] = DEFAULT_PAIRWISE[A0, A1] _,
-                        expireAfter: Duration = DEFAULT_EXPIRE_AFTER): imp.Repr[Data[O]] = {
+                        expireAfter: Duration = DEFAULT_EXPIRE_AFTER): imp.Repr[Datum[O]] = {
 
       logger.info(s"Joining streams: '${streamName(imp)}' and '${streamName(that)}'")
       imp.via(joinWithGraph(that)(joiner, pairwise, expireAfter))
@@ -80,11 +80,11 @@ object Join {
 
     /** Employ the GraphDSL to construct the joined flow. */
     protected def joinWithGraph[A1, O, M]
-                          (that: Graph[SourceShape[Data[A1]], M])
+                          (that: Graph[SourceShape[Datum[A1]], M])
                           (joiner: (A0, A1) => O,
                            pairwise: Pairwiser[A0, A1] = DEFAULT_PAIRWISE[A0, A1] _,
                            expireAfter: Duration = DEFAULT_EXPIRE_AFTER):
-                                 Graph[  FlowShape[Data[A0] @uncheckedVariance, Data[O]], M] =
+                                 Graph[  FlowShape[Datum[A0] @uncheckedVariance, Datum[O]], M] =
       GraphDSL.create(that) { implicit b => that_ =>
         import akka.stream.scaladsl.GraphDSL.Implicits._
         val join = b.add(new Join2[A0, A1, O](joiner, pairwise, expireAfter))
@@ -97,59 +97,51 @@ object Join {
   val DEFAULT_EXPIRE_AFTER: Duration = 0 seconds
 
   /** Like Budweiser, but more pairy. */
-  type Pairwiser[A0, A1] = (Data[A0], Data[A1]) => Option[Pairwised[A0, A1]]
+  type Pairwiser[A0, A1] = (Datum[A0], Datum[A1]) => Option[Pairwised[A0, A1]]
 
   /** Type returned by a Join's `pairwise` function. */
-  case class Pairwised[A0, A1](paired: Data[(A0, A1)], consumed0: Boolean = false, consumed1: Boolean = false)
+  case class Pairwised[A0, A1](paired: Datum[(A0, A1)], consumed0: Boolean = false, consumed1: Boolean = false)
 
   /** Nothing fancy, merely constructs a pair of the two inputs, which has the same effect as `{ case x => x }`. */
   def DEFAULT_JOINER[A0, A1](a0: A0, a1: A1): (A0, A1) = (a0, a1)
 
   /** Default `pairwise` function.  The two returned Booleans indicate which of the two Data were fully consumed. */
-  def DEFAULT_PAIRWISE[A0, A1](d0: Data[A0], d1: Data[A1]): Option[Pairwised[A0, A1]] = {
-    if (d0.knownTime != d1.knownTime) None       // known times must match
-    else Data.pairwise(d0, d1).map { dPaired =>  // and at least one entity ID must be joinable
-      dPaired.values.size match {
+  def DEFAULT_PAIRWISE[A0, A1](d0: Datum[A0], d1: Datum[A1]): Option[Pairwised[A0, A1]] = {
 
-        case 0 => assert(false)
-          Pairwised(dPaired)
+    // we don't care about knownTimes matching, only sourceTimes (see comment in Datum.pairwise)
+    Datum.pairwise(d0, d1).map { paired: Datum[(A0, A1)] =>
 
-        // either joining single-element, non-UnitId Datum w/ UnitId or w/ multi-element Data
-        case 1 =>
-          val idPaired = dPaired.oid.get
-          def consumed[T](x: Data[T]): Boolean = x.oid.contains(idPaired) // and we already know the knownTimes match
-          assert(consumed(d0) || consumed(d1))
-          Pairwised(dPaired, consumed(d0), consumed(d1))
+      // an element was consumed if the ids are exactly equal (e.g. a MarkId("1234") paired with UnitId() will
+      // only result in the former being consumed)
+      def consumed[T](x: Datum[T]): Boolean = x.id == paired.id && x.sourceTime == paired.sourceTime
 
-        // either joining multi-element Data with another multi-element or a UnitId (assume this knownTime is complete)
-        case _ =>
-          Pairwised(dPaired, consumed0 = true, consumed1 = true)
-      }
+      assert(consumed(d0) || consumed(d1))
+      Pairwised(paired, consumed(d0), consumed(d1))
     }
   }
 }
 
 /**
-  * `Join` specialized for 2 inputs.  Note the input streams must both emit `Data[A]`s.
+  * `Join` specialized for 2 inputs.  Note the input streams must both emit `Datum[A]`s.
   *
   * @param joiner       Joiner function that takes an A0 and an A1 as input and produces an O.
-  * @param pairwise     Pairs up the values in Data[A0] with their respective values in Data[A1] into an
-  *                     (optional) Data[(A0, A1)] (if they can indeed be joined) in preparation for joining by
+  * @param pairwise     Pairs up the values in Datum[A0] with their respective values in Datum[A1] into an
+  *                     (optional) Datum[(A0, A1)] (if they can indeed be joined) in preparation for joining by
   *                     the `joiner` function.
   * @param expireAfter  Unjoined elements will expire after this amount of time and thus never be joined.
   */
 class Join2[A0, A1, O](val joiner: (A0, A1) => O,
                        val pairwise: Join.Pairwiser[A0, A1] = Join.DEFAULT_PAIRWISE[A0, A1] _,
                        expireAfter: Duration = Join.DEFAULT_EXPIRE_AFTER)
-    extends GraphStage[FanInShape2[Data[A0], Data[A1], Data[O]]] {
+    extends GraphStage[FanInShape2[Datum[A0], Datum[A1], Datum[O]]] {
 
   val logger: Logger = Join.logger
   
   override def initialAttributes = Attributes.name("Join2")
-  override val shape = new FanInShape2[Data[A0], Data[A1], Data[O]]("Join2")
-  val in0: Inlet[Data[A0]] = shape.in0
-  val in1: Inlet[Data[A1]] = shape.in1
-  def out: Outlet[Data[O]] = shape.out
+  override val shape = new FanInShape2[Datum[A0], Datum[A1], Datum[O]]("Join2")
+  val in0: Inlet[Datum[A0]] = shape.in0
+  val in1: Inlet[Datum[A1]] = shape.in1
+  def out: Outlet[Datum[O]] = shape.out
 
   /** Define the GraphStageLogic. */
   override def createLogic(inheritedAttributes: Attributes): GraphStageLogic = new GraphStageLogic(shape) {
@@ -157,14 +149,33 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
     // "It is very important to keep the GraphStage object itself immutable and reusable. All mutable state needs
     // to be confined to the GraphStageLogic that is created for every materialization."
 
+    // it is essential to include all 3 (knownTime,sourceTime,id) fields of the Datum in its Ordered.compare method
+    // b/c if, for example, only knownTime is included then inserting two Datums with the same knownTime into one of
+    // the sets below will silently fail/no-op; try it:
+    //   val s = SortedSet.empty[(Int, Int)](Ordering.by(_._1))
+    //   s += Tuple2(1,1) // res1: s.type = TreeSet((1,1))
+    //   s += Tuple2(1,2) // res2: s.type = TreeSet((1,1))
+    //def orderingBy[T](d: Datum[T]) = (d.knownTime, d.sourceTime, d.id/*, d.value*/)
+
     // buffers of joinable (i.e. not yet fully joined nor expired) data for each input (the Orderings are merely
     // prudent, not required)
-    val joinable0: mutable.Set[Data[A0]] = mutable.SortedSet.empty[Data[A0]](Ordering.by(_.knownTime))
-    val joinable1: mutable.Set[Data[A1]] = mutable.SortedSet.empty[Data[A1]](Ordering.by(_.knownTime))
+    val joinable0: mutable.Set[Datum[A0]] = mutable.SortedSet.empty[Datum[A0]]//(Ordering.by(orderingBy))
+    val joinable1: mutable.Set[Datum[A1]] = mutable.SortedSet.empty[Datum[A1]]// Datum now extends Ordered instead
+
+    /**
+      * A Watermark class consisting of a (knownTime, sourceTime) pair.  This class is needed to handle when a bunch
+      * of sourceTimes are all jammed together with the same knownTime.
+      */
+    case class Watermark(t_k: TimeStamp, t_s: TimeStamp) extends Ordered[Watermark] {
+      override def compare(oth: Watermark): Int = if (t_k != oth.t_k) t_k.compare(oth.t_k) else t_s.compare(oth.t_s)
+      override def toString: String = s"(${t_k.Gs},${t_s.Gs})"
+      def updated(d_k: TimeStamp, d_s: TimeStamp): Watermark =
+        Watermark(math.max(t_k, d_k - expireAfter.toMillis), math.max(t_s, d_s))
+    }
 
     // high watermark timestamps for each input
-    private var watermark0: TimeStamp = -1L
-    private var watermark1: TimeStamp = -1L
+    private var watermark0 = Watermark(-1L, -1L)
+    private var watermark1 = Watermark(-1L, -1L)
 
     // "without this field the completion signalling would take one extra pull" and with it, if isAvailable(in) is
     // true, we can signal to the next call to pushOneMaybe to complete/stop, regardless of where that call originates
@@ -174,8 +185,13 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
     /** This function implements the equivalent of this line `if (pending == 0) pushAll()` of ZipWith. */
     private def pushOneMaybe(): Unit = {
 
-      // remove expired elements from the sets before searching for joinable ones
-      Seq(joinable0, joinable1).foreach(_.retain(_.knownTime >= math.min(watermark0, watermark1)))
+      // Remove expired elements from the sets before searching for joinable ones.  The watermarks have already been
+      // adjusted for a delay of `expireAfter` so if there is any delay between sourceTimes and knownTimes, this
+      // parameter value should be set larger.  Otherwise perfectly joinable sourceTime data may be dropped prematurely.
+      //val sz0 = (joinable0.size, joinable1.size)
+      Seq(joinable0, joinable1).foreach(_.retain(_.knownTime >= math.min(watermark0.t_k, watermark1.t_k)))
+      //val sz1 = (joinable0.size, joinable1.size)
+      //if (sz0 != sz1) logger.trace(s"Sizes: $sz0 -> $sz1")
 
       // find a single joinable pair, if one exists (the view/headOption combo makes this operate like a lazy find)
       val pushable = joinable0.view.flatMap { d0 =>
@@ -186,15 +202,14 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
       //val pushable = (for(d0 <- joinable0.view; d1 <- joinable1.view)
         //yield pairwise(d0, d1).map((d0, d1, _))).headOption
 
-      pushable.foreach { case (d0, d1, Join.Pairwised(dPaired, consumed0, consumed1)) =>
+      pushable.foreach { case (d0, d1, Join.Pairwised(paired, consumed0, consumed1)) =>
 
         // convert each value from an (A0, A1) pair to an O
-        val dJoined = Data(dPaired.knownTime,
-                           dPaired.values.mapValues(v => SourceValue(joiner(v.value._1, v.value._2), v.sourceTime)))
+        val joined = paired.withValue(joiner(paired.value._1, paired.value._2))
 
         // push to consumer, which should pull again from this materialized Join instance, if ready
-        logger.trace(s"  pushing: $d0 + $d1 = $dJoined")
-        push(out, dJoined)
+        logger.trace(s"  pushing: $d0 + $d1 = $joined, consumed=${(consumed0, consumed1)}")
+        push(out, joined)
 
         // cleanup to ensure we don't perform the same join again in the future (i.e. remove one or both of the joinees)
         assert(consumed0 || consumed1)
@@ -214,23 +229,70 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
       // if it's behind giving it a chance to catch up to whatever's already in the joinable1 buffer (and vice versa)
       if (watermark0 > watermark1) {
         if (willShutDown1) completeStage() else if (pushable.isEmpty) { // else wait for next onPull
-          logger.trace(s"pull(in1): ${watermark0.Gs} > ${watermark1.Gs}")
+          logger.trace(s"pull(in1): $watermark0 > $watermark1")
           if (!hasBeenPulled(in1) && !isAvailable(in1)) pull(in1)
         }
       } else if (watermark1 > watermark0) {
         if (willShutDown0) completeStage() else if (pushable.isEmpty) { // else wait for next onPull
-          logger.trace(s"pull(in0): ${watermark1.Gs} > ${watermark0.Gs}")
+          logger.trace(s"pull(in0): $watermark1 > $watermark0")
           if (!hasBeenPulled(in0) && !isAvailable(in0)) pull(in0)
         }
       } else {
         if (willShutDown0 || willShutDown1) completeStage() else if (pushable.isEmpty) { // else wait for next onPull
-          logger.trace(s"pull(in0 & in1): ${watermark0.Gs} == ${watermark1.Gs}")
+          logger.trace(s"pull(in0 & in1): $watermark0 == $watermark1")
           if (!hasBeenPulled(in0) && !isAvailable(in0)) pull(in0)
           if (!hasBeenPulled(in1) && !isAvailable(in1)) pull(in1)
         }
       }
     }
+/*
+{
+  userId: "f72f3179-e744-41b0-b750-4ef789ebc327",
+  timeThru: BSONLong(9223372036854775807),
+  timeFrom: {
+    $gte: BSONLong(1451520000000)
+  },
+  timeFrom: {
+    $lt: BSONLong(1512000000000)
+  },
+  $text: {
+    $search: "phone"
+  }
+}
 
+    {
+  userId: "f72f3179-e744-41b0-b750-4ef789ebc327",
+  timeThru: BSONLong(9223372036854775807),
+  reprs: {
+    $not: {
+      $size: BSONInteger(0)
+    }
+  },
+  timeFrom: {
+    $gte: BSONLong(1451520000000)
+  },
+  timeFrom: {
+    $lt: BSONLong(1512000000000)
+  }
+}
+
+{
+  id: {
+    $in: [
+
+    ]
+  },
+  timeThru: BSONLong(9223372036854775807),
+  timeFrom: {
+    $gte: BSONLong(1451520000000)
+  },
+  timeFrom: {
+    $lt: BSONLong(1512000000000)
+  }
+}
+*/
+    
+    
     /** InHandler 0 */
     setHandler(in0, new InHandler {
 
@@ -240,16 +302,16 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         * the element, but if it is pulled while the element has not been grabbed it will drop the buffered element.
         */
       override def onPush(): Unit = {
-        val d: Data[A0] = grab(in0)
+        val d: Datum[A0] = grab(in0)
         joinable0 += d
-        logger.trace(s"onPush0: $d -> ${joinable0.size} -> $watermark0")
-        watermark0 = math.max(watermark0, d.knownTime - expireAfter.toMillis) // update high watermark
+        logger.trace(s"onPush0: $d, sz=${joinable0.size}, wm=$watermark0")//, j=$joinable0")
+        watermark0 = watermark0.updated(d.knownTime, d.sourceTime)
         pushOneMaybe()
       }
 
       /** onUpstreamFinish of port in0 is triggered by a pull(in0) when upstream has been exhausted. */
       override def onUpstreamFinish(): Unit = {
-        logger.trace(s"onUpstreamFinish0: if (${!isAvailable(in0)} && ${watermark1.Gs} > ${watermark0.Gs})...")
+        logger.trace(s"onUpstreamFinish0: if (${!isAvailable(in0)} && $watermark1 > $watermark0)...")
         if (!isAvailable(in0) && (watermark1 > watermark0 || willShutDown1)) completeStage()
         willShutDown0 = true
       }
@@ -259,15 +321,15 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
     setHandler(in1, new InHandler {
 
       override def onPush(): Unit = {
-        val d: Data[A1] = grab(in1)
+        val d: Datum[A1] = grab(in1)
         joinable1 += d
-        logger.trace(s"onPush1: $d -> ${joinable1.size} -> $watermark1")
-        watermark1 = math.max(watermark1, d.knownTime - expireAfter.toMillis) // update high watermark
+        logger.trace(s"onPush1: $d, sz=${joinable1.size}, wm=$watermark1")//, j=$joinable1")
+        watermark1 = watermark1.updated(d.knownTime, d.sourceTime)
         pushOneMaybe()
       }
 
       override def onUpstreamFinish(): Unit = {
-        logger.trace(s"onUpstreamFinish1: if (${!isAvailable(in1)} && ${watermark0.Gs} > ${watermark1.Gs})...")
+        logger.trace(s"onUpstreamFinish1: if (${!isAvailable(in1)} && $watermark0 > $watermark1)...")
         if (!isAvailable(in1) && (watermark0 > watermark1 || willShutDown0)) completeStage()
         willShutDown1 = true
       }

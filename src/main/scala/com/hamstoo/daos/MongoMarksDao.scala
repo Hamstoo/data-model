@@ -108,12 +108,17 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     retrieveInsecureSeq(id :: Nil, timeFrom = timeFrom).map(_.headOption)
 
   /** Retrieves a list of marks by IDs, ignoring user authorization permissions. */
-  def retrieveInsecureSeq(ids: Seq[ObjectId], timeFrom: Option[TimeStamp] = None): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving (insecure) ${ids.size} marks; first, at most, 5: ${ids.take(5)}")
+  def retrieveInsecureSeq(ids: Seq[ObjectId], timeFrom: Option[TimeStamp] = None,
+                          begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[Mark]] = {
+    logger.debug(s"Retrieving (insecure) ${ids.size} marks (timeFrom=${timeFrom.map(_.tfmt)}, begin=${begin.map(_.tfmt)}, end=${end.map(_.tfmt)}); first, at most, 5: ${ids.take(5)}")
     for {
       c <- dbColl()
-      timestamp = timeFrom.fold(curnt)(d :~ TIMEFROM -> _) // if timeFrom is None, look for INF_TIME timeThru
-      seq <- c.find(d :~ ID -> (d :~ "$in" -> ids) :~ timestamp).coll[Mark, Seq]()
+      sel = d :~ ID -> (d :~ "$in" -> ids) :~
+                 timeFrom.fold(curnt)(d :~ TIMEFROM -> _) :~ // if timeFrom is None, look for INF_TIME timeThru
+                 begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
+                 end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
+
+      seq <- c.find(d :~ sel).coll[Mark, Seq]()
     } yield {
       logger.debug(s"Retrieved (insecure) ${seq.size} marks; first, at most, 5: ${seq.take(5).map(_.id)}")
       seq
@@ -211,20 +216,23 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * @param user  Only marks for this user will be returned/searched.
     * @param tags  Returned marks must have all of these tags, default to empty set.
     */
-  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String]): Future[Seq[MSearchable]] = {
+  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String],
+                     begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[MSearchable]] = {
     logger.debug(s"Retrieving represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
 
       // TODO: 146: we need an index for this query (or defer to issue #260)?
       // TODO: FFA: I think it must be defer to issue #260, otherwise how this index must looks like?
-      reprs = d :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0))
 
       // maybe we should $and instead of $or
-      sel0 = d :~ USR -> user :~ curnt :~ reprs // TODO: should `curnt` be moved into `reprs` to utilize indexes?
+      sel = d :~ USR -> user :~ curnt :~ // TODO: should `curnt` be moved into `reprs` to utilize indexes?
+                 REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0)) :~
+                 (if (tags.isEmpty) d else d :~ TAGSx -> (d :~ "$all" -> tags)) :~
+                 begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
+                 end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
 
-      sel1 = if (tags.isEmpty) sel0 else sel0 :~ TAGSx -> (d :~ "$all" -> tags)
-      seq <- c.find(sel1).coll[MSearchable, Seq]()
+      seq <- c.find(sel).coll[MSearchable, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
       seq.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
@@ -276,14 +284,17 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,
     * and potentially filter for specific mark IDs.
     */
-  def search(users: Set[UUID], query: String, ids: Set[ObjectId] = Set.empty[ObjectId]): Future[Set[MSearchable]] = {
-    logger.debug(s"Searching for marks for ${users.size} users (first, at most, 5: ${users.take(5)}) by text query '$query'")
+  def search(users: Set[UUID], query: String, ids: Set[ObjectId] = Set.empty[ObjectId],
+             begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):
+                                                                        Future[Set[MSearchable]] = {
+
+    val which = if (users.nonEmpty) s"for ${users.size} users (first, at most, 5: ${users.take(5)}) with ${ids.size}"
+                else s"with ${ids.size} IDs (first, at most, 5: ${ids.take(5)})"
+    logger.debug(s"Searching for marks $which by text query '$query' between ${begin.map(_.tfmt)} and ${end.map(_.tfmt)}")
 
     // this projection doesn't have any effect without this selection
     val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
     val searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
-
-    val idsFilter = if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids)
 
     // it appears that `$in` is not an "equality match condition" as mentioned in the MongoDB Text Index
     // documentation, using it here (rather than Future.sequence) generates the following database error:
@@ -294,9 +305,14 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     // be sure to call dbColl() separately for each element of the following sequence to ensure asynchronous execution
     Future.sequence {
       users.map { u =>
-        val sel = d :~ USR -> u :~ curnt
-        dbColl().flatMap(_.find(sel :~ searchScoreSelection :~ idsFilter,
-                                       searchScoreProjection).coll[MSearchable, Seq]())
+
+        val sel = d :~ USR -> u :~ curnt :~
+                       begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
+                       end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts)) :~
+                       searchScoreSelection :~
+                       (if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids))
+
+        dbColl().flatMap(_.find(sel, searchScoreProjection).coll[MSearchable, Seq]())
       }
     }.map(_.flatten).map { set =>
       logger.debug(s"Search retrieved ${set.size} marks")

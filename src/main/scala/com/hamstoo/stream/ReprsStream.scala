@@ -56,14 +56,14 @@ class ReprsStream @Inject()(marksStream: MarksStream,
   val logger1 = new Logger(logger0)
 
   /** Maps the stream of marks to their reprs. */
-  override val hubSource: Source[Data[ReprsPair], NotUsed] = marksStream().mapAsync(4) { dat =>
+  override val hubSource: Source[Datum[ReprsPair], NotUsed] = marksStream().mapAsync(4) { dat =>
 
     // unpack query words/counts/vecs (which there may none of)
     val mbCleanedQuery = mbQuery2Vecs.map(_._1)
     val mbQuerySeq = mbCleanedQuery.map(_.map(_._1))
     val cleanedQuery = mbCleanedQuery.getOrElse(Seq(("", 0)))
 
-    val mark = dat.oval.get.value
+    val mark = dat.value
     val primaryReprId = mark.primaryRepr // .getOrElse("") already applied
     val usrContentReprId = mark.userContentRepr.getOrElse("")
     val reprIds = Set(primaryReprId, usrContentReprId).filter(_.nonEmpty)
@@ -104,8 +104,10 @@ class ReprsStream @Inject()(marksStream: MarksStream,
       val siteReprs = searchTermReprs("R", primaryReprId)    // website-content representations
       val userReprs = searchTermReprs("U", usrContentReprId) //    user-content representations
 
-      val d = Datum(dat.oid.get, dat.knownTime, ReprsPair(siteReprs, userReprs))
-      logger1.debug(s"\033[32m${dat.oid.get}\033[0m: ${dat.knownTime.Gs}")
+      // technically we should update knownTime here to the time of repr computation, but it's not really important
+      // in this case b/c what we really want is "time that this data could have been known"
+      val d = dat.withValue(ReprsPair(siteReprs, userReprs))
+      logger1.debug(s"\033[32m${dat.id}\033[0m: ${dat.knownTime.Gs}")
       d
     }
   }

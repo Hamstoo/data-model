@@ -23,7 +23,7 @@ trait DataStreamBase {
 
   // https://stackoverflow.com/questions/1154571/scala-abstract-types-vs-generics
   type DataType // abstract type member
-  type SourceType = Source[Data[DataType], NotUsed]
+  type SourceType = Source[Datum[DataType], NotUsed]
   val source: SourceType
 }
 
@@ -53,13 +53,12 @@ abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
     */
   override final lazy val source: SourceType = {
     assert(hubSource != null) // this assertion will fail if `source` is not `lazy`
-    logger.debug(s"Materializing ${getClass.getSimpleName} BroadcastHub...")
+    logger.debug(s"Materializing ${getClass.getSimpleName} BroadcastHub")
 
     // "This Source [src] can be materialized an arbitrary number of times, where each of the new materializations
     // will receive their elements from the original [hubSource]."
     val src = hubSource.runWith(BroadcastHub.sink(bufferSize = bufferSize))
 
-    logger.debug(s"Done materializing ${getClass.getSimpleName} BroadcastHub")
     src.named(getClass.getSimpleName)
   }
 
@@ -120,8 +119,8 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
     private var buffer = Seq.empty[PreloadType]
 
     /** This method generates GroupCommands containing PreloadGroups which have Future data attached. */
-    def knownDataFor[TS](tick: Data[TS]): KnownData = {
-      val ts = tick.asInstanceOf[Tick].time
+    def knownDataFor/*[TS]*/(tick: Tick/*Datum[TS]*/): KnownData = {
+      val ts = tick/*.asInstanceOf[Tick]*/.time
       val window = TimeWindow(ts - clock.interval, ts)
 
       // the first interval boundary strictly after ts
@@ -143,7 +142,7 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
       (firstPreloadEnd until lastPreloadEnd.get by loadInterval).foreach { end_i =>
 
         // these calls to `preload` be executed in parallel, but the buffer appending won't be
-        logger.debug(s"preload begin: [${(end_i - loadInterval).tfmt}, ${end_i.tfmt})")
+        logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) knownDataFor: ${ts.tfmt}, preload begin: [${(end_i - loadInterval).tfmt}, ${end_i.tfmt})")
         buffer = buffer :+ preload(end_i - loadInterval, end_i)
       }
 
@@ -155,7 +154,7 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
         val x = iter.flatten.partition(d => window.begin < d.knownTime && d.knownTime <= window.end)
         if (logger.isTraceEnabled)
           Seq((x._1, "inside"), (x._2, "outside")).foreach { case (seq, which) =>
-            logger.trace(s"fpartitionedBuffer($which): ${seq.map(_.knownTime).sorted.map(_.tfmt)}") }
+            logger.trace(s"(\033[2m${getClass.getSimpleName}\033[0m) fpartitionedBuffer($which): ${seq.map(_.knownTime).sorted.map(_.tfmt)}") }
         x
       }
 
@@ -179,7 +178,7 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
       // only allows (probably) smaller chunks of known data to pass at each tick
       .statefulMapConcat { () =>
         val factory = PreloadFactory()
-        tick => immutable.Iterable(factory.knownDataFor(tick))
+        tick => immutable.Iterable(factory.knownDataFor(tick.asInstanceOf[Tick]))
       }
 
       // should only need a single thread b/c data must arrive sequentially per the clock anyway,
@@ -187,7 +186,7 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
       .mapAsync(1) { w: KnownData =>
         if (logger.isDebugEnabled) logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) $w")
         w.buffer.map { buf =>
-          Data.groupByKnownTime(buf).toSeq.sortBy(_.knownTime).map(d => d.copy(knownTime = w.end))
+          buf.toSeq.sorted.map(d => d.copy(knownTime = w.end))
         }
       }
       .mapConcat(immutable.Iterable(_: _*))
@@ -225,10 +224,9 @@ abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SI
     // watermark0 gets ahead of the clock's watermark1
 
     /** Move `d.knownTime`s up to the end of the clock window that they fall inside, just like PreloadSource. */
-    def pairwise(d: Data[T], t: Tick): Option[Join.Pairwised[T, TimeStamp]] =
+    def pairwise(d: Datum[T], t: Tick): Option[Join.Pairwised[T, TimeStamp]] =
       if (d.knownTime > t.time) None
-      else Some(Pairwised(Data(t.time, d.values.mapValues(sv => SourceValue((sv.value, 0L), sv.sourceTime))),
-                          consumed0 = true))
+      else Some(Pairwised(Datum((d.value, 0L), d.id, d.sourceTime, t.time), consumed0 = true))
 
     /** Simply ignore the 0L "value" that was paired up with each `sv.value` in `pairwise`. */
     def joiner(v: T, t: TimeStamp): T = v
