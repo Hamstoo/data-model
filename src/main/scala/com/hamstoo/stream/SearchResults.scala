@@ -47,15 +47,13 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
   logLevel.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
   val logger1 = new Logger(logger0)
 
-  // the `{ case x => x }` actually does serve a purpose, it unpacks x into a 2-tuple
-  override val hubSource: Source[Data[(MSearchable, String, Option[Double])], NotUsed] =
+  // the `{ case x => x }` actually does serve a purpose, it unpacks x into a 2-tuple which `identity` cannot do
+  override val hubSource: Source[Datum[(MSearchable, String, Option[Double])], NotUsed] =
     marksStream().joinWith(reprsStream()) { case x => x }
-      .mapAsync(2) { dat: Data[(MSearchable, ReprsPair)] =>
+      .mapAsync(2) { dat: Datum[(MSearchable, ReprsPair)] =>
 
         // unpack the pair datum
-        val (mark, reprs) = dat.oval.get.value
-        val siteReprs = reprs.siteReprs
-        val userReprs = reprs.userReprs
+        val (mark, ReprsPair(siteReprs, userReprs)) = dat.value
 
         // get uniquified `querySeq` and (future) vectors for all terms in search query `fsearchTermVecs`
         val (cleanedQuery, fsearchTermVecs) = query2Vecs

@@ -27,7 +27,7 @@ case class TimeWinCrossSec(begin: TimeStamp, end1: TimeStamp) extends Group(end1
 trait GroupFactory[G <: Group] {
 
   /** Computes the groups to which a given datapoint belongs. */
-  def groupsFor[T](d: Data[T]): Set[G]
+  def groupsFor[T](d: Datum[T]): Set[G]
 }
 
 /**
@@ -42,7 +42,7 @@ class TimeWindowFactory(length: Duration, step: Duration) extends GroupFactory[T
   val windowsPerEvent: Int = (windowLength / windowStep).toInt
 
   /** Computes the groups to which a given datapoint belongs. */
-  override def groupsFor[T](d: Data[T]): Set[TimeWindow] = {
+  override def groupsFor[T](d: Datum[T]): Set[TimeWindow] = {
     val ts = d.knownTime
     val firstWindowStart = ts - ts % windowStep - windowLength + windowStep
     (0 until windowsPerEvent).toSet.map((i: Int) =>
@@ -54,7 +54,7 @@ class TimeWindowFactory(length: Duration, step: Duration) extends GroupFactory[T
   * A GroupFactory that generates groups for cross-sections (orthogonal to time) of data.
   */
 class CrossSectionFactory() extends GroupFactory[CrossSection] {
-  override def groupsFor[T](d: Data[T]) = Set(CrossSection(d.knownTime))
+  override def groupsFor[T](d: Datum[T]) = Set(CrossSection(d.knownTime))
 }
 
 /**
@@ -63,7 +63,7 @@ class CrossSectionFactory() extends GroupFactory[CrossSection] {
 sealed trait GroupCommand[T] { def g: Group }
 case class OpenGroup[T](g: Group) extends GroupCommand[T]
 case class CloseGroup[T](g: Group) extends GroupCommand[T]
-case class AddToGroup[T](d: Data[T], g: Group) extends GroupCommand[T]
+case class AddToGroup[T](d: Datum[T], g: Group) extends GroupCommand[T]
 
 /**
   * Functor to yield open/close/add GroupCommands for datapoints via `forData` method.
@@ -81,7 +81,7 @@ abstract class GroupCommandFactory[G <: Group](groupFactory: GroupFactory[G]) {
   private val openGroups = mutable.Set[G]()
 
   /** Return the list of GroupCommands for the given datum. */
-  def commandsFor[T](d: Data[T]): List[GroupCommand[T]] // must be a List, not a Seq, as req'd by statefulMapConcat
+  def commandsFor[T](d: Datum[T]): List[GroupCommand[T]] // must be a List, not a Seq, as req'd by statefulMapConcat
 
   /**
     * Given a datum, compute the set of groups to which it belongs, and return a list of open/close/add GroupCommands.
@@ -90,7 +90,7 @@ abstract class GroupCommandFactory[G <: Group](groupFactory: GroupFactory[G]) {
     *                      TimeWindowCommandFactory closes groups when it's no longer possible that an existing
     *                      group could contain any future datapoints.
     */
-  protected def commandsForInner[T](d: Data[T], triggerClose: G => Boolean): List[GroupCommand[T]] = {
+  protected def commandsForInner[T](d: Datum[T], triggerClose: G => Boolean): List[GroupCommand[T]] = {
 
     // produce new groups for this data
     val newGroups = groupFactory.groupsFor(d)
@@ -101,7 +101,7 @@ abstract class GroupCommandFactory[G <: Group](groupFactory: GroupFactory[G]) {
     // command these (nonexistent) groups to open (e.g. their time is just beginning)
     val openCommands = newGroups.diff(openGroups).map { g => openGroups.add(g); OpenGroup[T](g) }
 
-    // command these groups to add the new Data[T]
+    // command these groups to add the new Datum[T]
     val addCommands = newGroups.map(g => AddToGroup(d, g))
 
     // command these groups to close (e.g. their time has passed)
@@ -125,7 +125,7 @@ abstract class HighWatermarkCommandFactory[G <: Group, F <: GroupFactory[G]](tim
   val maxDelayMils: TimeStamp = maxDelay.toMillis
 
   /** Ensure datum delays are within acceptable bounds and, if so, generate group commands. */
-  override def commandsFor[T](d: Data[T]): List[GroupCommand[T]] = {
+  override def commandsFor[T](d: Datum[T]): List[GroupCommand[T]] = {
 
     // if datum missed the boat for this window (and all future windows) then ignore it
     if (d.knownTime < watermark) {
@@ -135,10 +135,12 @@ abstract class HighWatermarkCommandFactory[G <: Group, F <: GroupFactory[G]](tim
     } else {
 
       // if `maxDelayMils == 0` then we're computing a cross-sectional group and if `d.values.size > 1` then all of
-      // the data for this group should reside inside one single Data[T] (as opposed to a series of Datum[T]), so we
+      // the data for this group should reside inside one single Datum[T] (as opposed to a series of Datum[T]), so we
       // immediately close the group; o/w wait until we see data with timestamps past the high watermark, even in the
       // case of cross-sectional which could also be be arriving one Datum[T] at a time
-      val bCrossSecData: Boolean = maxDelayMils == 0 && d.values.size > 1
+      //val bCrossSecData: Boolean = maxDelayMils == 0 && d.values.size > 1
+      // update (2018.4.12): cross-sectional, multi-value Data has been retired in favor of single-value Datum only
+      val bCrossSecData: Boolean = maxDelayMils == 0 && false
 
       // update high watermark
       watermark = math.max(watermark, d.knownTime - maxDelayMils + (if (bCrossSecData) 1 else 0))
@@ -162,7 +164,8 @@ class TimeWindowCommandFactory(timeWindowFactory: TimeWindowFactory, maxDelay: D
 
 /**
   * A 0-time-width GroupCommandFactory that, when operating on Data[T], issues CloseGroup commands in tandem with
-  * each Open/AddGroup command pair.  When operating on Datum[T]
+  * each Open/AddGroup command pair.  When operating on Datum[T] it has to wait until the first data item following
+  * the group in order to trigger it to close.
   */
 class CrossSectionCommandFactory
   extends HighWatermarkCommandFactory[CrossSection, CrossSectionFactory](new CrossSectionFactory(), 0 millis)

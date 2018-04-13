@@ -5,6 +5,8 @@ import akka.stream.scaladsl.Source
 import com.hamstoo.utils.ExtendedTimeStamp
 import play.api.Logger
 
+import scala.collection.immutable
+
 /**
   * A stream reducer.  Doesn't reduce the whole stream, but rather groups of elements along it and reduces each
   * group into its own datapoint.
@@ -13,18 +15,19 @@ object GroupReduce {
 
   val logger = Logger(GroupReduce.getClass/*.getName*/)
 
+  // similar to a KnownDataFor
   // support for using a Seq here:
   //   http://blog.kunicki.org/blog/2016/07/20/implementing-a-custom-akka-streams-graph-stage/
-  case class GroupData[T](group: Option[Group], data: Seq[Data[T]])
+  case class GroupData[T](group: Option[Group], data: Seq[Datum[T]])
 
   /**
     * Group the input DataStream into at most maxSubstreams, and then aggregate and reduce each one individually.
     *   https://softwaremill.com/windowing-data-in-akka-streams/
     *
-    * @param dataSource  The Source[Data[T] ] to be group-reduced.
+    * @param dataSource  The Source[Datum[T] ] to be group-reduced.
     * @param grouper  This parameter is a factory function that constructs a new GroupCommandFactory "each time the
     *                 stream will be materialized."  The constructed GroupCommandFactory gets bound into a closure
-    *                 that generates group _commands_, not the groups themselves, for each streamed Data[T].
+    *                 that generates group _commands_, not the groups themselves, for each streamed Datum[T].
     * @param maxSubstreams  "upper bound on the number of sub-streams that will be open at any time"
     *                       "configures the maximum number of substreams (keys) that are supported; if more distinct
     *                       keys are encountered then the stream fails"
@@ -33,14 +36,14 @@ object GroupReduce {
     * @tparam T  Data type
     * @tparam G  The type of group produced by the grouper's group commands.
     */
-  def apply[T, G <: Group](dataSource: Source[Data[T], NotUsed],
+  def apply[T, G <: Group](dataSource: Source[Datum[T], NotUsed],
                            grouper: () => GroupCommandFactory[G],
                            maxSubstreams: Int = 64)
-                          (reducer: (Seq[T]) => T): Source[Data[T], NotUsed] =
+                          (reducer: (Traversable[T]) => T): Source[Datum[T], NotUsed] =
     dataSource
 
       // "The no-argument function provided to statefulMapConcat will be called each time the stream will be
-      // materialized" so every Data[T] that is streamed as part of the same materialization will share the same
+      // materialized" so every Datum[T] that is streamed as part of the same materialization will share the same
       // GroupCommandFactory with its own state
       .statefulMapConcat { () => // each datum will map to a set of groups which it belongs to
         val factory = grouper() // construct a new GroupCommandFactory for this materialization
@@ -54,7 +57,7 @@ object GroupReduce {
       .takeWhile(!_.isInstanceOf[CloseGroup[T]])
 
       // fold will emit its final value "when takeWhile encounters a CloseWindow (or when the whole stream completes)"
-      .fold(GroupData(None, Seq.empty[Data[T]])) {
+      .fold(GroupData(None, Seq.empty[Datum[T]])) {
         case (agg, OpenGroup(g)) =>
           assert(agg.data.isEmpty)
           logger.debug(s"OpenGroup($g)")
@@ -72,33 +75,33 @@ object GroupReduce {
       // This is entirely optional, if sub-stream processing is fast, you might want to drop the .async"
       //.async
 
-      .map { g =>
+      .mapConcat { g =>
         assert(g.group.nonEmpty && g.data.nonEmpty)
 
         val knownTime = g.data.map(_.knownTime).max
 
-        val values: Map[EntityId, SourceValue[T]] = g.group.get.longitudinal match {
+        /** Data (i.e. multiple Datum[T]s) reducer, as opposed to `reducer` which reduces values. */
+        def dataReducer(id: EntityId, data: Traversable[Datum[T]]): Datum[T] = {
+          val reducedVal = reducer(data.map(_.value))
+          val reducedSourceTime = data.map(_.sourceTime).max
+          Datum(reducedVal, id, reducedSourceTime, knownTime)
+        }
+
+        // must generate an immutable.Iterable to satisfy mapConcat
+        g.group.get.longitudinal match {
 
           // longitudinal (across time) aggregation
           case Some(true) =>
-            // pivot from Data[T].values (which each include every entity ID) to Seq[T] for each entity ID
-            val entityIds = g.data.flatMap(_.values.keys).toSet
-            entityIds.par.map { id =>
-              val svs: Seq[SourceValue[T]] = g.data.flatMap(_.values.get(id))
-              val reducedVal = SourceValue(reducer(svs.map(_.value)), svs.map(_.sourceTime).max)
-              logger.debug(s"Longitudinal reduce at ${knownTime.dt}: $reducedVal")
-              id -> reducedVal
-            }.toMap.seq
+
+            g.data.groupBy(_.id).par.map((dataReducer _).tupled).seq
 
           // cross-sectional (across entities) aggregation (or both cross-sectional/longitudinal combined)
           case _ =>
-            val svs: Seq[SourceValue[T]] = g.data.flatMap(_.values.values)
-            val reducedVal = SourceValue(reducer(svs.map(_.value)), svs.map(_.sourceTime).max)
-            logger.debug(s"Cross-sectional reduce at ${knownTime.dt}: $reducedVal")
-            Map(UnitId() -> reducedVal)
-        }
 
-        Data(knownTime, values)
+            val dat = dataReducer(UnitId(), g.data)
+            logger.debug(s"Cross-sectional reduce at ${knownTime.dt}: ${dat.value}")
+            immutable.Iterable(dat)
+        }
       }
       .mergeSubstreams
 }
