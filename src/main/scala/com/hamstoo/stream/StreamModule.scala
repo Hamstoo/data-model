@@ -31,6 +31,9 @@ class StreamModule extends AbstractModule with ScalaModule {
     super.configure()
     logger.info(s"Configuring module: ${classOf[StreamModule].getName}")
 
+    // the clock doesn't really ever have to end, we can rely on other data streams to run out first
+    ClockEnd ?= None
+
     LogLevelOptional ?= None
     Query2VecsOptional ?= None
     SearchLabelsOptional ?= Set.empty[String]
@@ -53,12 +56,17 @@ class StreamModule extends AbstractModule with ScalaModule {
     * Using `OptionalBinder.setBinding` here instead of simply calling `bind` because the former works when
     * `OptionalBinder.setDefault` has been called previously while the latter does not.
     */
-  def assign[T :Manifest](key: Key[T], instance: T): Unit = //bind(key).toInstance(instance)
+  def assign[T :Manifest](key: Key[T], instance: T): Unit = {
+    logger.info(s"Binding $key to instance: $instance")
+    //bind(key).toInstance(instance) // see ScalaDoc above for why not doing this
     OptionalBinder.newOptionalBinder(binder(), key).setBinding().toInstance(instance)
+  }
 
   /** Bind an optional injectable argument with a default value. */
-  def assignOptional[T :Manifest](key: Key[T], default: T): Unit =
+  def assignOptional[T :Manifest](key: Key[T], default: T): Unit = {
+    logger.info(s"Binding (optional) $key to default: $default")
     OptionalBinder.newOptionalBinder(binder(), key).setDefault().toInstance(default)
+  }
 
   /** See Query2VecsOptional.  There are 2 providers of objects named "query2Vecs" but they return different types. */
   @Provides @Singleton @Named(Query2VecsOptional.name)
