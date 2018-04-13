@@ -77,7 +77,7 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
           val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
           val rAggregate = math.exp(rsim.getOrElse(0.0)) + math.max(rscore, 0.0)
           val mAggregate = math.exp(usim.getOrElse(0.0)) + math.max(uscore, 0.0) + math.max(mscore, 0.0)
-          logger1.trace(f"  ${mark.id}: scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
+          logger1.trace(f"  (\033[2m${mark.id}\033[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
 
           (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
             case (true, true, true) => // this first case shouldn't ever really happen
@@ -165,7 +165,13 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
       // is 1--we have `b` hard-coded to 0.5 in `bm25Tf`--and w/out the sqrt)
       import com.hamstoo.services.VectorEmbeddingsService.bm25Tf
       def bm25(qr: QueryResult): (Double, Double, Int) = {
-        logger1.trace(f"  $mId: $rOrU-sim: qword=${qr.qword} -> idf=${idfModel.transform(qr.qword)}%.2f * bm25=${bm25Tf(qr.dbScore, nWords)}%.2f")
+
+        if (logger1.isTraceEnabled) {
+          val owm = searchTermVecs.find(_.word == qr.qword) // same documentSimilarity calculation as below
+          val mu = owm.map(wm => VecSvc.documentSimilarity(wm.scaledVec, docVecs.map(kv => VecEnum.withName(kv._1) -> kv._2))).getOrElse(Double.NaN)
+          logger1.trace(f"  (\033[2m$mId\033[0m) $rOrU-sim(${qr.qword}): idf=${idfModel.transform(qr.qword)}%.2f bm25=${bm25Tf(qr.dbScore, nWords)}%.2f sim=$mu%.2f")
+        }
+
         (idfModel.transform(qr.qword), bm25Tf(qr.dbScore, nWords), qr.count)
       }
       // https://en.wikipedia.org/wiki/Okapi_BM25
@@ -179,13 +185,11 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
       // that don't match all the query words; e.g. if there are 3 query words, a document that has 1 missing
       // will have about a 25% lower geo mean with 0.1 than with 1.0, and 2 missing out of 3 will be 50% lower)
       val score = math.exp(searchTermScores.map(x => x._1 * x._3 * math.log(x._2 + 0.1)).sum /
-        searchTermScores.map(x => x._1 * x._3                       ).sum) - 0.1
+                           searchTermScores.map(x => x._1 * x._3                       ).sum) - 0.1
 
       // geometic mean, computed w/out logs (unstable)
       val score2 = math.pow(searchTermScores.map(x => math.pow(x._2 + 1, x._1 * x._3)).product,
-        1.0 / searchTermScores.map(x =>                    x._1 * x._3 ).sum) - 1
-
-      logger1.trace(f"  $mId: $rOrU-sim:   weighted-score=$score%.2f (s0=$score0%.2f s2=$score2%.2f nWords=$nWords nScores=${searchTermScores.length})")
+                      1.0 / searchTermScores.map(x =>                    x._1 * x._3 ).sum) - 1
 
       // debugging
       // calculate cosine similarities for each of the search terms and sum them (no need to use geometric mean
@@ -207,6 +211,8 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
         val weightedSum = similarities.zip(idfs).map { case (a, b) => a * b }.sum
         Some(weightedSum / idfs.sum)
       }
+
+      logger1.trace(f"  (\033[2m$mId\033[0m) $rOrU-sim: wsim=${similarity.getOrElse(Double.NaN)}%.2f wscore=$score%.2f (s0=$score0%.2f s2=$score2%.2f nWords=$nWords nScores=${searchTermScores.length})")
 
       // debugging
       var extraText = ""

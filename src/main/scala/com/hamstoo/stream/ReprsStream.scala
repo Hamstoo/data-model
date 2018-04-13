@@ -96,7 +96,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
           val dbScore = mbR.flatMap(_.score).getOrElse(0.0)
 
           def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
-          logger1.trace(f"  $rOrU-db: qword=$q dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
+          logger1.trace(f"  (\033[2m${mark.id}\033[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
 
           QueryResult(q._1, mbR, dbScore, q._2)
         }.force

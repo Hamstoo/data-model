@@ -220,7 +220,7 @@ class DataStreamTests
       val m = Mark(userId, s"m_${ts.Gs}", MarkData("", None), reprs = Seq(ri), timeFrom = ts)
       logger.info(s"\033[37m$m\033[0m")
       Await.result(marksDao.insert(m), 8 seconds)
-      /*if (i != nMarks - 1)*/ Await.result(reprsDao.insert(r), 8 seconds) // skip one at the end for a better test of Join
+      if (i != nMarks - 1) Await.result(reprsDao.insert(r), 8 seconds) // skip one at the end for a better test of Join
     }
 
     // bind some stuff in addition to what's required by StreamModule
@@ -237,6 +237,7 @@ class DataStreamTests
         classOf[MongoRepresentationDao] := reprsDao
         classOf[MongoUserDao] := userDao
 
+        //Val("clock.begin"):~ TimeStamp =~ clockBegin // alternative syntax? more like Scala?
         ClockBegin := clockBegin
         ClockEnd := clockEnd
         ClockInterval := clockInterval
@@ -277,8 +278,9 @@ class DataStreamTests
 
     val x = Await.result(streamModel.run(sink), 15 seconds)
 
-    // TODO: shouldn't this be 20 b/c there are 5 marks????
-    x shouldBe (16.13 +- 0.01)
+    // (2.63 + 3.1 + 2.1 + 1.91 + 1.77) * 1.4 =~ 16.13
+    // (2.63 + 3.1 + 2.1 + 1.91       ) * 1.4 =~ 13.65 (with `if (i != nMarks - 1)` enabled above)
+    x shouldBe (13.65 +- 0.01)
   }
 
   "Clock" should "throttle a PreloadSource" in {
