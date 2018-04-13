@@ -31,9 +31,6 @@ class StreamModule extends AbstractModule with ScalaModule {
     super.configure()
     logger.info(s"Configuring module: ${classOf[StreamModule].getName}")
 
-    // the clock doesn't really ever have to end, we can rely on other data streams to run out first
-    ClockEnd ?= None
-
     LogLevelOptional ?= None
     Query2VecsOptional ?= None
     SearchLabelsOptional ?= Set.empty[String]

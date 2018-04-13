@@ -200,8 +200,8 @@ class DataStreamTests
 
     // config values that stream.ConfigModule will bind for DI
     val config = DataInfo.config
-    val clockBegin: ClockBegin.typ =      new DateTime(2018, 1,  1, 0, 0).getMillis
-    val clockEnd  : ClockEnd  .typ = Some(new DateTime(2018, 1, 15, 0, 0).getMillis)
+    val clockBegin: ClockBegin.typ = new DateTime(2018, 1,  1, 0, 0).getMillis
+    val clockEnd  : ClockEnd  .typ = new DateTime(2018, 1, 15, 0, 0).getMillis
     val clockInterval: ClockInterval.typ = (1 day).toMillis
     val query: Query.typ = "some query"
     val userId: CallingUserId.typ = DataInfo.constructUserId()
@@ -212,7 +212,7 @@ class DataStreamTests
     val baseVs = Map(VecEnum.PC1.toString -> baseVec)
     val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
     //val b :: e :: Nil = Seq(ClockBegin.name, ClockEnd.name).map(config.getLong)
-    val (b, e) = (clockBegin, clockEnd.get)
+    val (b, e) = (clockBegin, clockEnd)
     (b to e by (e - b) / (nMarks - 1)).zipWithIndex.foreach { case (ts, i) =>
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
       val r = baseRepr.copy(id = s"r_${ts.Gs}", vectors = vs)
@@ -297,7 +297,7 @@ class DataStreamTests
     val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
     val stop: TimeStamp = new DateTime(2018, 1, 10, 0, 0, DateTimeZone.UTC).getMillis
     val interval: DurationMils = (2 days).toMillis
-    implicit val clock: Clock = Clock(start, Some(stop), interval)
+    implicit val clock: Clock = Clock(start, stop, interval)
 
     // changing this interval should not affect the results (even if it's fractional)
     val preloadInterval = 3 days
@@ -338,7 +338,7 @@ class DataStreamTests
     val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
     val stop: TimeStamp = new DateTime(2018, 1, 10, 0, 0, DateTimeZone.UTC).getMillis
     val interval: DurationMils = (2 days).toMillis
-    implicit val clock: Clock = Clock(start, Some(stop), interval)
+    implicit val clock: Clock = Clock(start, stop, interval)
 
     implicit val ec: ExecutionContext = system.dispatcher
     case class TestSource() extends ThrottledSource[TimeStamp]() {

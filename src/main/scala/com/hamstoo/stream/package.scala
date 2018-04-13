@@ -70,7 +70,7 @@ package object stream {
   // more here: https://github.com/codingwell/scala-guice/issues/56
   // Error message: "No implementation for scala.Option<java.lang.Object> annotated with @com.google.inject.name
   // .Named(value=clock.end) was bound."
-  object ClockEnd extends InjectId[Option[java.lang.Long]] { final val name = "clock.end" }
+  object ClockEnd extends InjectId[/*Option[java.lang.Long]*/TimeStamp] { final val name = "clock.end" }
 
   // optionals
   object LogLevelOptional extends NamelessInjectId[Option[ch.qos.logback.classic.Level]]

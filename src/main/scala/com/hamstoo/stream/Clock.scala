@@ -26,7 +26,7 @@ case class Clock @Inject() (@Named(ClockBegin.name) begin: ClockBegin.typ,
 
   override val logger = Logger(classOf[Clock])
 
-  override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.map(_.toLong.tfmt)}, ${interval.dfmt})"
+  override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.tfmt}, ${interval.dfmt})"
   logger.info(s"Constructing $this")
 
   /**
@@ -51,7 +51,10 @@ case class Clock @Inject() (@Named(ClockBegin.name) begin: ClockBegin.typ,
 
       /** Iterator protocol. */
       override def hasNext: Boolean = {
-        val bool = end.fold(true)(currentTime <= _) // IMPORTANT: inclusive end; shouldn't hurt anything and could help (conservative)
+
+        // inclusive end: shouldn't hurt anything and could help (conservative), but note that we could skip
+        // over end, making this point moot, if `end - start` is not an exact number of `interval`s
+        val bool = currentTime <= end
         if (!bool) logger.info(s"\033[33mClock complete\033[0m")
         bool
       }
