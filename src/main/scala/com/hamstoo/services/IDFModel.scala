@@ -7,6 +7,7 @@ import java.util.{Locale, Scanner}
 import com.google.inject.{Inject, Singleton}
 import com.google.inject.name.Named
 import com.hamstoo.services.IDFModel.ResourcePathOptional
+import com.hamstoo.stream.InjectId
 import play.api.Logger
 import play.api.libs.json.{JsValue, Json}
 import com.hamstoo.utils.cleanly
@@ -17,10 +18,7 @@ import scala.util.matching.UnanchoredRegex
 object IDFModel {
 
   // https://github.com/google/guice/wiki/FrequentlyAskedQuestions#how-can-i-inject-optional-parameters-into-a-constructor
-  class ResourcePathOptional {
-    @Inject(optional = true) @Named("idfs.resource.path")
-    val value: Option[String] = None
-  }
+  object ResourcePathOptional extends InjectId[Option[String]] { final val name = "idfs.resource.path" }
 }
 
 /**
@@ -44,7 +42,8 @@ object IDFModel {
   * http://www.benfrederickson.com/distance-metrics/
   */
 @Singleton
-class IDFModel @Inject() (@Named("idfs.resource") zipfileResource: String, opzipfilepath: ResourcePathOptional) {
+class IDFModel @Inject() (@Named("idfs.resource") zipfileResource: String,
+                          @Named("idfs.resource.path") opzipfilepath: ResourcePathOptional.typ) {
 
   val logger: Logger = Logger(classOf[IDFModel])
 
@@ -60,8 +59,8 @@ class IDFModel @Inject() (@Named("idfs.resource") zipfileResource: String, opzip
 
   // Load IDFs in from a zipped JSON file.
   // get resource file off the classpath if not explicitly provided
-  val zipfilepath: String = opzipfilepath.value.getOrElse('/' + zipfileResource)
-  val inputStream: InputStream = opzipfilepath.value.fold(getClass.getResourceAsStream(zipfilepath))(new FileInputStream(_))
+  val zipfilepath: String = opzipfilepath.getOrElse('/' + zipfileResource)
+  val inputStream: InputStream = opzipfilepath.fold(getClass.getResourceAsStream(zipfilepath))(new FileInputStream(_))
   val infilepath: String = zipfilepath.substring(0, zipfilepath.length - 4) // remove ".zip"
   logger.info(s"Loading IDFs from $zipfilepath")
   cleanly(new ZipInputStream(inputStream))(_.close) { in =>

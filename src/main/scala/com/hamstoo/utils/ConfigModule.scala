@@ -4,21 +4,18 @@
 package com.hamstoo.utils
 
 import com.google.inject.name.Names
-import com.google.inject.AbstractModule
+import com.hamstoo.services.IDFModel
+import com.hamstoo.stream.BaseModule
 import com.typesafe.config.{Config, ConfigValueFactory}
-import net.codingwell.scalaguice.ScalaModule
 import play.api.Logger
-
-import scala.reflect.ClassTag
-import scala.reflect.runtime.universe.TypeTag
 
 /**
   * "A module is a collection of bindings"
   * "The modules are the building blocks of an injector, which is Guice's object-graph builder."
   */
-case class ConfigModule(config: Config) extends AbstractModule with ScalaModule {
+case class ConfigModule(config: Config) extends BaseModule {
 
-  val logger = Logger(classOf[ConfigModule])
+  import ConfigModule._
 
   /**
     * "To create bindings, extend AbstractModule and override its configure method.  In the method body, call
@@ -27,6 +24,7 @@ case class ConfigModule(config: Config) extends AbstractModule with ScalaModule 
   override def configure(): Unit = {
     logger.info(s"Configuring module: ${classOf[ConfigModule].getName}")
     bindConfigParams[String]("idfs.resource", "vectors.link")
+    IDFModel.ResourcePathOptional ?= None
   }
 
   /**
@@ -45,6 +43,10 @@ case class ConfigModule(config: Config) extends AbstractModule with ScalaModule 
         //bindConstant().annotatedWith(Names.named(key)).to(config.get[String](key))
     }
   }
+}
+
+object ConfigModule {
+  val logger = Logger(classOf[ConfigModule])
 }
 
 object ConfigValue {

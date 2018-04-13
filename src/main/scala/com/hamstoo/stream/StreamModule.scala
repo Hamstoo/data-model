@@ -19,12 +19,9 @@ import scala.concurrent.ExecutionContext
   *
   * This StreamModule trait requires an implementation of `configure`.
   */
-class StreamModule extends AbstractModule with ScalaModule {
+class StreamModule extends BaseModule {
 
-  val logger = Logger(classOf[StreamModule])
-
-  // having an `implicit this` enables the `:=` methods of InjectId and this class, StreamModule
-  implicit val implicitThis: StreamModule = this
+  import StreamModule._
 
   /** Configure optional default values. */
   override def configure(): Unit = {
@@ -37,34 +34,6 @@ class StreamModule extends AbstractModule with ScalaModule {
     SearchUserIdOptional ?= None
   }
 
-  /**
-    * An overloaded assignment operator of sorts--or as close as you can get in Scala.  Who remembers Pascal?
-    * Example: `classOf[ExecutionContext] := system.dispatcher`
-    */
-  implicit class InjectVal[T :Manifest](private val _typ: Class[T]) /*extends AnyVal*/ {
-    def :=(instance: T): Unit = new NamelessInjectId[T] := instance
-    def ?=(default: T): Unit = new NamelessInjectId[T] ?= default
-    def :=[TImpl <:T :Manifest](clazz: Class[TImpl]): Unit = bind[T].to[TImpl]
-  }
-
-  /**
-    * Bind a (possibly named) instance given its (type, name) pair, which Guice uses to uniquely identify bindings.
-    *
-    * Using `OptionalBinder.setBinding` here instead of simply calling `bind` because the former works when
-    * `OptionalBinder.setDefault` has been called previously while the latter does not.
-    */
-  def assign[T :Manifest](key: Key[T], instance: T): Unit = {
-    logger.debug(s"Binding $key to instance: $instance")
-    //bind(key).toInstance(instance) // see ScalaDoc above for why not doing this
-    OptionalBinder.newOptionalBinder(binder(), key).setBinding().toInstance(instance)
-  }
-
-  /** Bind an optional injectable argument with a default value. */
-  def assignOptional[T :Manifest](key: Key[T], default: T): Unit = {
-    logger.debug(s"Binding (optional) $key to default: $default")
-    OptionalBinder.newOptionalBinder(binder(), key).setDefault().toInstance(default)
-  }
-
   /** See Query2VecsOptional.  There are 2 providers of objects named "query2Vecs" but they return different types. */
   @Provides @Singleton @Named(Query2VecsOptional.name)
   def provideQuery2VecsOptional(@Named(Query.name) query: Query.typ, vecSvc: VectorEmbeddingsService)
@@ -75,4 +44,8 @@ class StreamModule extends AbstractModule with ScalaModule {
   @Provides @Singleton @Named(Query2VecsOptional.name)
   def provideQuery2Vecs(@Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ): Query2VecsType =
     mbQuery2Vecs.get
+}
+
+object StreamModule {
+  val logger = Logger(classOf[StreamModule])
 }

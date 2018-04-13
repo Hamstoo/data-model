@@ -34,8 +34,8 @@ package object stream {
     type typ = T
 
     /** An overloaded assignment operator of sorts--or as close as you can get in Scala.  Who remembers Pascal? */
-    def :=(instance: T)(implicit module: StreamModule): Unit = module.assign(key, instance)
-    def ?=(default: T)(implicit module: StreamModule): Unit = module.assignOptional(key, default)
+    def :=(instance: T)(implicit module: BaseModule): Unit = module.assign(key, instance)
+    def ?=(default: T)(implicit module: BaseModule): Unit = module.assignOptional(key, default)
 
     /**
       * Guice is a Java package so it uses its own version of a Manifest/ClassTag/TypeTag called a TypeLiteral,
