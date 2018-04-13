@@ -6,7 +6,7 @@ import akka.stream.scaladsl.Source
 import com.google.inject.name.Named
 import com.google.inject.Inject
 import com.hamstoo.stream.Tick.Tick
-import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
+import com.hamstoo.utils.{ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
 import play.api.Logger
 
 import scala.concurrent.duration.Duration

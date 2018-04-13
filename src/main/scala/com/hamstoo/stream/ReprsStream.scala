@@ -107,7 +107,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
       // technically we should update knownTime here to the time of repr computation, but it's not really important
       // in this case b/c what we really want is "time that this data could have been known"
       val d = dat.withValue(ReprsPair(siteReprs, userReprs))
-      logger1.debug(s"\033[32m${dat.id}\033[0m: ${dat.knownTime.Gs}")
+      logger1.trace(s"\033[32m${dat.id}\033[0m: ${dat.knownTime.Gs}")
       d
     }
   }

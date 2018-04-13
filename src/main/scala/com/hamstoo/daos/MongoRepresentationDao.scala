@@ -64,7 +64,7 @@ class MongoRepresentationDao(db: () => Future[DefaultDB])
     */
   def search(ids: Set[ObjectId], query: String): Future[Map[String, RSearchable]] = for {
     c <- dbColl()
-    _ = logger.info(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
+    _ = logger.debug(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
 
     // this Future.sequence the only way I can think of to lookup documents via their IDs prior to a Text Index search
     seq <- Future.sequence { ids.map { id =>
