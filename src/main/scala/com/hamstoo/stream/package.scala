@@ -11,6 +11,7 @@ import com.google.inject.name.Names
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.utils.{DurationMils, TimeStamp}
 import net.codingwell.scalaguice.typeLiteral
+import play.api.Logger
 
 import scala.util.Try
 
@@ -40,7 +41,8 @@ package object stream {
       * Guice is a Java package so it uses its own version of a Manifest/ClassTag/TypeTag called a TypeLiteral,
       * and scala-guice defines the corresponding classOf/typeOf factory function called typeLiteral.
       */
-    def key: Key[T] = Key.get(typeLiteral[T])
+    val key: Key[T] = Key.get(typeLiteral[T])
+    if (key != null) Logger.info(s"${getClass.getSimpleName}($key)")
   }
 
   /**
@@ -50,18 +52,27 @@ package object stream {
     * See also: `static <T> Key<T> get(Class<T> type, AnnotationStrategy annotationStrategy)` in Key.java
     *   In other words, Guice already has this concept, but the name value can't be `final`/constant.
     */
-  abstract class InjectId[T: Manifest] extends NamelessInjectId[T] {
+  abstract class /*RichKey*/InjectId[T: Manifest] extends NamelessInjectId[T] {
     def name: String
-    override def key: Key[T] = Key.get(typeLiteral[T], Names.named(name))
+    override val key: Key[T] = Key.get(typeLiteral[T], Names.named(name))
+    if (key != null) Logger.info(s"${getClass.getSimpleName}($key)")
   }
 
   // `final val`s are required so that their values are constants that can be used at compile time in @Named annotations
   object CallingUserId extends InjectId[UUID] { final val name = "calling.user.id" }
   object Query extends InjectId[String] { final val name = "query" }
   object ClockBegin extends InjectId[TimeStamp] { final val name = "clock.begin" }
-  object ClockEnd extends InjectId[TimeStamp] { final val name = "clock.end" }
   object ClockInterval extends InjectId[DurationMils] { final val name = "clock.interval" }
 
+  // using Option[TimeStamp/Long] here works to construct the binding, but it doesn't work when it comes time for
+  // injection because Scala's Long gets changed into a Java primitive `long` and then into an Option[Object] in
+  // resulting bytecode, so ClockEnd.typ ends up being an Option[Object] that can't be found at injection time
+  // more here: https://github.com/codingwell/scala-guice/issues/56
+  // Error message: "No implementation for scala.Option<java.lang.Object> annotated with @com.google.inject.name
+  // .Named(value=clock.end) was bound."
+  object ClockEnd extends InjectId[Option[java.lang.Long]] { final val name = "clock.end" }
+
+  // optionals
   object LogLevelOptional extends NamelessInjectId[Option[ch.qos.logback.classic.Level]]
   object Query2VecsOptional extends InjectId[Option[Query2VecsType]] { final val name = "query2Vecs" }
   object SearchLabelsOptional extends InjectId[Set[String]] { final val name = "labels" }
