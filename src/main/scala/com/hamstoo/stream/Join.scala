@@ -164,7 +164,8 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
     /**
       * A Watermark class consisting of a (knownTime, sourceTime) pair.  This class is needed to handle when a bunch
-      * of sourceTimes are all jammed together with the same knownTime.
+      * of sourceTimes are all jammed together with the same knownTime.  In that case we defer to the sourceTime
+      * portion of the Watermark to tell us which input port to pull from next.
       */
     case class Watermark(t_k: TimeStamp, t_s: TimeStamp) extends Ordered[Watermark] {
       override def compare(oth: Watermark): Int = if (t_k != oth.t_k) t_k.compare(oth.t_k) else t_s.compare(oth.t_s)

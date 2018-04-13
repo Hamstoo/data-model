@@ -244,11 +244,14 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * Returns them in a map from the referenced mark IDs to the MarkRefs themselves--the assumption being they'll
     * need to be "application-level joined" by the caller.
     */
-  def retrieveRefed(user: UUID): Future[Map[ObjectId, MarkRef]] = {
+  def retrieveRefed(user: UUID, begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):
+                                                                            Future[Map[ObjectId, MarkRef]] = {
     logger.debug(s"Retrieving referenced marks for user $user")
     for {
       c <- dbColl()
-      sel = d :~ USR -> user :~ REFIDx -> (d :~ "$exists" -> true) :~ curnt
+      sel = d :~ USR -> user :~ REFIDx -> (d :~ "$exists" -> true) :~ curnt :~
+                 begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
+                 end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
       seq <- c.find(sel).coll[MSearchable, Seq]()
     } yield {
       logger.debug(s"${seq.size} referenced marks were successfully retrieved")

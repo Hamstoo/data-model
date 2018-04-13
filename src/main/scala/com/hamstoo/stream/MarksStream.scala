@@ -59,7 +59,7 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
 
     for {
       // candidate referenced marks (i.e. marks that aren't owned by the calling user)
-      id2Ref <- marksDao.retrieveRefed(callingUserId) // TODO: 84: begin/end ???
+      id2Ref <- marksDao.retrieveRefed(callingUserId, begin = Some(begin), end = Some(end))
       candidateRefs <- marksDao.retrieveInsecureSeq(id2Ref.keys.toSeq, begin = Some(begin), end = Some(end))
         .map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
 
