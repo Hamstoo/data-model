@@ -42,7 +42,7 @@ package object stream {
       * and scala-guice defines the corresponding classOf/typeOf factory function called typeLiteral.
       */
     val key: Key[T] = Key.get(typeLiteral[T])
-    if (key != null) Logger.info(s"${getClass.getSimpleName}($key)")
+    if (key != null) Logger.debug(s"${getClass.getSimpleName}($key)")
   }
 
   /**
@@ -55,7 +55,7 @@ package object stream {
   abstract class /*RichKey*/InjectId[T: Manifest] extends NamelessInjectId[T] {
     def name: String
     override val key: Key[T] = Key.get(typeLiteral[T], Names.named(name))
-    if (key != null) Logger.info(s"${getClass.getSimpleName}($key)")
+    if (key != null) Logger.debug(s"${getClass.getSimpleName}($key)")
   }
 
   // `final val`s are required so that their values are constants that can be used at compile time in @Named annotations

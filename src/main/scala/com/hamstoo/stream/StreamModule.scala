@@ -54,14 +54,14 @@ class StreamModule extends AbstractModule with ScalaModule {
     * `OptionalBinder.setDefault` has been called previously while the latter does not.
     */
   def assign[T :Manifest](key: Key[T], instance: T): Unit = {
-    logger.info(s"Binding $key to instance: $instance")
+    logger.debug(s"Binding $key to instance: $instance")
     //bind(key).toInstance(instance) // see ScalaDoc above for why not doing this
     OptionalBinder.newOptionalBinder(binder(), key).setBinding().toInstance(instance)
   }
 
   /** Bind an optional injectable argument with a default value. */
   def assignOptional[T :Manifest](key: Key[T], default: T): Unit = {
-    logger.info(s"Binding (optional) $key to default: $default")
+    logger.debug(s"Binding (optional) $key to default: $default")
     OptionalBinder.newOptionalBinder(binder(), key).setDefault().toInstance(default)
   }
 
