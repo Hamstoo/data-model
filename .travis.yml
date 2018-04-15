@@ -1,0 +1,23 @@
+dist: trusty
+sudo: false
+language: scala
+scala:
+  - 2.12.3
+jdk: oraclejdk8
+cache:
+  directories: # cache project dependencies and compiled packages
+    - "~/.ivy2"
+    - "~/.sbt"
+    - "target"
+    - "project/target"
+notifications:
+  slack: hamstoo:s1tSsEWgnS4bHOsxXM9OLrXQ
+
+before_script:
+  - sbt test:compile # compile with test cases
+
+script:
+  - sbt test
+
+after_success:
+  - sbt publish
