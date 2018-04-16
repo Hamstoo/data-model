@@ -190,6 +190,17 @@ package object utils {
   }
 
   /**
+    * This could probably be done more generically with Typeclasses or something, but this is quick and easy
+    * and sufficient for now.
+    * See also: https://www.cakesolutions.net/teamblogs/demystifying-implicits-and-typeclasses-in-scala
+    */
+  implicit class ExtendedDouble(private val d: Double) extends AnyVal {
+    def coalesce(ifNaN: Double): Double = if (d.isNaN) ifNaN else d
+    def coalesce0: Double = coalesce(0)
+    def or0: Double = coalesce0
+  }
+
+  /**
     * MongoDB documents with TimeThrus equal to this value are current.  Those with lesser TimeThrus were either
     * deleted or have been updated, in which case there should be a new document with a matching TimeFrom.
     *

@@ -11,6 +11,7 @@ import com.hamstoo.models.{MSearchable, RSearchable}
 import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream.Join.JoinWithable
+import com.hamstoo.utils.ExtendedDouble
 import ch.qos.logback.classic.{Logger => LogbackLogger}
 import com.google.inject.name.Named
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
@@ -24,6 +25,17 @@ import scala.concurrent.ExecutionContext
 import scala.util.matching.Regex
 
 /**
+  * Search relevance scores.
+  * @param uraw  User-content raw (non-semantic) score.  Includes MongoDB Text Index search score.
+  * @param usem  User-content vector similarity (cosine distance).
+  * @param rraw  Representation raw (non-semantic) score.  Includes MongoDB Text Index search score.
+  * @param rsem  Representation vector similarity (cosine distance).
+  */
+case class SearchRelevance(uraw: Double, usem: Double, rraw: Double, rsem: Double) {
+  def sum: Double = uraw + usem + rraw + rsem
+}
+
+/**
   * Define the (default) implementation of this facet.
   * @param reprsStream  A stream of a user's marks' representations.
   * @param query2Vecs   Semantic word vectors for each query term.
@@ -35,7 +47,7 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
                               logLevel: LogLevelOptional.typ)
                              (implicit materializer: Materializer, ec: ExecutionContext,
                               idfModel: IDFModel)
-    extends DataStream[(MSearchable, String, Option[Double])] {
+    extends DataStream[(MSearchable, String, Option[SearchRelevance])] {
 
   // can only obtain an EC from an ActorMaterializer via `.system`, not from a plain old Materializer
   //implicit val ec: ExecutionContext = materializer.system.dispatcher
@@ -48,7 +60,7 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
   val logger1 = new Logger(logger0)
 
   // the `{ case x => x }` actually does serve a purpose, it unpacks x into a 2-tuple which `identity` cannot do
-  override val hubSource: Source[Datum[(MSearchable, String, Option[Double])], NotUsed] =
+  override val hubSource: SourceType =
     marksStream().joinWith(reprsStream()) { case x => x }
       .mapAsync(2) { dat: Datum[(MSearchable, ReprsPair)] =>
 
@@ -74,47 +86,68 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
           val (rscore, rsim, rText, rTermText) = searchTerms2Scores("R", mark.id, siteReprs, searchTermVecs)
           val (uscore, usim, uText, uTermText) = searchTerms2Scores("U", mark.id, userReprs, searchTermVecs, nWordsMult = 100)
 
+          // semantic relevances
+          val rsem = math.exp(rsim.getOrElse(0.0))
+          val usem = math.exp(usim.getOrElse(0.0))
+
+          // raw (syntactic?) relevances
+          val uraw = math.max(uscore, 0.0) + math.max(mscore, 0.0)
+          val rraw = math.max(rscore, 0.0)
+
+          // aggregated
           val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
-          val rAggregate = math.exp(rsim.getOrElse(0.0)) + math.max(rscore, 0.0)
-          val mAggregate = math.exp(usim.getOrElse(0.0)) + math.max(uscore, 0.0) + math.max(mscore, 0.0)
-          logger1.trace(f"  (\033[2m${mark.id}\033[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
+          val rAggregate = rsem + rraw
+          val mAggregate = usem + uraw
+          logger1.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
+
+          // divy up the relevance into named buckets
+          val relevance = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
+            case (true, true, true) => // this first case shouldn't ever really happen
+              SearchRelevance(mscore + isdefBonus, 0, 0, 0)
+
+            case (true, false, _) => // this second case will occur for non-URL marks
+              SearchRelevance(      uraw * 1.6 + isdefBonus, usem * 1.6, 0, 0)
+
+            case (false, true, _) => // this case will occur for old-school bookmarks without any user content
+              SearchRelevance(0, 0, rraw * 1.4 + isdefBonus, rsem * 1.4)
+
+            case (false, false, _) => // this case should fire for most marks--those with URLs
+
+              // maybe want to do max(0, cosine)?  or incorporate antonyms and compute cosine(query-antonyms)?
+              // because antonyms may be highly correlated with their opposites given similar surrounding words
+              SearchRelevance(uraw + Seq(mscore, uscore).count(_ > 1e-10), usem,
+                              rraw + Seq(rscore        ).count(_ > 1e-10), rsem)
+          }
+
+          val aggregateScore = relevance.sum
 
           (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
             case (true, true, true) => // this first case shouldn't ever really happen
-              val aggregateScore = mscore + isdefBonus
               val sc = mark.score.getOrElse(Double.NaN)
               val scoreText = f"Aggregate score: <b>$aggregateScore%.2f</b> (bonus=$isdefBonus), " +
                 f"Raw marks database search score: <b>$sc%.2f</b>"
               val pr = preview(mark.mark.comment.getOrElse(""), querySeq)
               val pv = s"$scoreText<br>$pr" // debugging
-              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
+              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(relevance)))
 
             case (true, false, _) => // this second case will occur for non-URL marks
-              val aggregateScore = mAggregate * 1.6 + isdefBonus
               val scoreText = f"Aggregate score: <b>$aggregateScore%.2f</b> (bonus=$isdefBonus), " +
                 f"User content similarity: <b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
                 f"Database search scores: M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b>"
               val pr = preview(mark.mark.comment.getOrElse(""), querySeq)
               val pv = s"$scoreText<br>U-similarities: $uTermText&nbsp; $uText<br>$pr" // debugging
-              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
+              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(relevance)))
 
-            case (false, true, _) => // this case will occur for old school bookmarks without any user content
-              val aggregateScore = rAggregate * 1.4 + isdefBonus
+            case (false, true, _) => // this case will occur for old-school bookmarks without any user content
               val scoreText = f"Aggregate score: <b>$aggregateScore%.2f</b> (bonus=$isdefBonus), " +
                 f"URL content similarity: <b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, " +
                 f"Database search scores: R=<b>$rscore%.2f</b>"
               val reprDocText = siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext)
               val pr = preview(reprDocText, querySeq)
               val pv = s"$scoreText<br>R-similarities: $rTermText&nbsp; $rText<br>$pr" // debugging
-              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
+              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(relevance)))
 
             case (false, false, _) => // this case should fire for most marks--those with URLs
-
-              // maybe want to do max(0, cosine)?  or incorporate antonyms and compute cosine(query-antonyms)?
-              // because antonyms may be highly correlated with their opposites given similar surrounding words
-              val aggregateScore = rAggregate + mAggregate + isdefBonus
-
-              // Produce webpage text preview
               val scoreText = f"Aggregate score: <b>$aggregateScore%.2f</b> (bonus=$isdefBonus), " +
                 f"Similarities: R=<b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, U=<b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
                 f"Database search scores: R=<b>$rscore%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b>"
@@ -124,7 +157,7 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
                 s"R-similarities: $rTermText&nbsp; $rText<br>" +
                 s"U-similarities: $uTermText&nbsp; $uText<br>$pr" // debugging
 
-              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
+              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(relevance)))
 
             case (_, _, false) => None
           }
@@ -169,7 +202,7 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
         if (logger1.isTraceEnabled) {
           val owm = searchTermVecs.find(_.word == qr.qword) // same documentSimilarity calculation as below
           val mu = owm.map(wm => VecSvc.documentSimilarity(wm.scaledVec, docVecs.map(kv => VecEnum.withName(kv._1) -> kv._2))).getOrElse(Double.NaN)
-          logger1.trace(f"  (\033[2m$mId\033[0m) $rOrU-sim(${qr.qword}): idf=${idfModel.transform(qr.qword)}%.2f bm25=${bm25Tf(qr.dbScore, nWords)}%.2f sim=$mu%.2f")
+          logger1.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim(${qr.qword}): idf=${idfModel.transform(qr.qword)}%.2f bm25=${bm25Tf(qr.dbScore, nWords)}%.2f sim=$mu%.2f")
         }
 
         (idfModel.transform(qr.qword), bm25Tf(qr.dbScore, nWords), qr.count)
@@ -212,7 +245,7 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
         Some(weightedSum / idfs.sum)
       }
 
-      logger1.trace(f"  (\033[2m$mId\033[0m) $rOrU-sim: wsim=${similarity.getOrElse(Double.NaN)}%.2f wscore=$score%.2f (s0=$score0%.2f s2=$score2%.2f nWords=$nWords nScores=${searchTermScores.length})")
+      logger1.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim: wsim=${similarity.getOrElse(Double.NaN)}%.2f wscore=$score%.2f (s0=$score0%.2f s2=$score2%.2f nWords=$nWords nScores=${searchTermScores.length})")
 
       // debugging
       var extraText = ""
