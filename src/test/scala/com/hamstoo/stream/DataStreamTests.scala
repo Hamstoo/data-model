@@ -270,7 +270,7 @@ class DataStreamTests
       .map { d => logger.info(s"\033[37m$d\033[0m"); d }
       .filter(_._1 == "SearchResults") // filter so that the test doesn't break as more facets are added to FacetsModel
       .toMat(Sink.fold[OutType, InType](0.0) { case (agg, d) =>
-      agg + d._2.asInstanceOf[Datum[(MSearchable, String, Option[Double])]].value._3.getOrElse(0.3)
+      agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
     })(Keep.right)
 
     // causes "[error] a.a.OneForOneStrategy - CommandError[code=11600, errmsg=interrupted at shutdown" for some reason

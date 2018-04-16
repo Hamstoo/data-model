@@ -40,10 +40,9 @@ abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
 
   val logger = Logger(classOf[DataStream[T]])
 
-  // TODO: put this in companion object so one can say SearchResults.DataType without needing an instance of SearchResults
-  override type DataType = T
+  override type DataType = T // abstract type member implementation
 
-  /** Pure virtual Akka Source to be defined by implementation. */
+  /** Abstract Akka Source to be defined by implementation. */
   protected def hubSource: SourceType
 
   /**
