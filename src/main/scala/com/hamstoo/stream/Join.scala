@@ -246,54 +246,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         }
       }
     }
-/*
-{
-  userId: "f72f3179-e744-41b0-b750-4ef789ebc327",
-  timeThru: BSONLong(9223372036854775807),
-  timeFrom: {
-    $gte: BSONLong(1451520000000)
-  },
-  timeFrom: {
-    $lt: BSONLong(1512000000000)
-  },
-  $text: {
-    $search: "phone"
-  }
-}
 
-    {
-  userId: "f72f3179-e744-41b0-b750-4ef789ebc327",
-  timeThru: BSONLong(9223372036854775807),
-  reprs: {
-    $not: {
-      $size: BSONInteger(0)
-    }
-  },
-  timeFrom: {
-    $gte: BSONLong(1451520000000)
-  },
-  timeFrom: {
-    $lt: BSONLong(1512000000000)
-  }
-}
-
-{
-  id: {
-    $in: [
-
-    ]
-  },
-  timeThru: BSONLong(9223372036854775807),
-  timeFrom: {
-    $gte: BSONLong(1451520000000)
-  },
-  timeFrom: {
-    $lt: BSONLong(1512000000000)
-  }
-}
-*/
-    
-    
     /** InHandler 0 */
     setHandler(in0, new InHandler {
 

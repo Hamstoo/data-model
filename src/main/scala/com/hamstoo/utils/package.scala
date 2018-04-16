@@ -196,7 +196,7 @@ package object utils {
     */
   implicit class ExtendedDouble(private val d: Double) extends AnyVal {
     def coalesce(ifNaN: Double): Double = if (d.isNaN) ifNaN else d
-    def coalesce0: Double = coalesce(0)
+    def coalesce0(implicit ev: Numeric[Double]): Double = coalesce(ev.zero) // using Numeric typeclass
     def or0: Double = coalesce0
   }
 
