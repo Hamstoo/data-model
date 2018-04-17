@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.stream
 
 import akka.stream.Materializer
@@ -12,7 +15,7 @@ object StreamOps {
 
     /** Map a stream of Datum[A]s to Datum[O]s. */
     def map[O](f: A => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
-      override def hubSource: SourceType = s().map(d => d.withValue(f(d.value)))
+      override def hubSource: SourceType = s().map(_.mapValue(f))
     }
 
     /** Invoke JoinWithable.joinWith on the provided streams. */

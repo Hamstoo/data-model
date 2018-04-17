@@ -20,9 +20,9 @@ import scala.concurrent.duration._
   */
 @com.google.inject.Singleton
 class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUserId.typ,
-                             @Named(SearchUserIdOptional.name) mbSearchUserId: SearchUserIdOptional.typ,
                              @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
-                             @Named(SearchLabelsOptional.name) labels: SearchLabelsOptional.typ)
+                             mbSearchUserId: MarksStream.SearchUserIdOptional,
+                             labels: MarksStream.SearchLabelsOptional)
                             (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext,
                              marksDao: MongoMarksDao,
                              reprDao: MongoRepresentationDao,
@@ -34,8 +34,8 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
   //override val logger: Logger = MarksStream.logger // causes a NullPointerException (kws: NPE)
   val logger1: Logger = MarksStream.logger
 
-  val searchUserId: UUID = mbSearchUserId.getOrElse(callingUserId)
-  val tags: SearchLabelsOptional.typ = labels
+  val searchUserId: UUID = mbSearchUserId.value.getOrElse(callingUserId)
+  val tags: Set[String] = labels.value
 
   /** PreloadSource interface.  `begin` should be inclusive and `end`, exclusive. */
   override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[MSearchable]]] = {
@@ -105,6 +105,16 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
 object MarksStream {
 
   val logger = Logger(classOf[MarksStream])
+
+  case class SearchUserIdOptional() extends OptionalInjectId[Option[UUID]] {
+    final val name = "search.user.id"
+    @Inject(optional = true) @Named(name) val value: Option[UUID] = None
+  }
+
+  case class SearchLabelsOptional() extends OptionalInjectId[Set[String]] {
+    final val name = "labels"
+    @Inject(optional = true) @Named(name) val value: Set[String] = Set.empty[String]
+  }
 
   /**
     * Filter for marks that the calling user is authorized to read.  This function relies on the marks being in

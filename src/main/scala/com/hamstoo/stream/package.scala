@@ -6,8 +6,8 @@ package com.hamstoo
 import java.util.UUID
 
 import akka.stream.Attributes
-import com.google.inject._
-import com.google.inject.name.Names
+import com.google.inject.{Inject, Key}
+import com.google.inject.name.{Named, Names}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.utils.{DurationMils, TimeStamp}
 import net.codingwell.scalaguice.typeLiteral
@@ -28,20 +28,20 @@ package object stream {
     * we use the older Scala version's `T :Manifest` context bound instead, which is what scala-guice uses also.
     *
     * See also: `public static <T> Key[T] get(`type`: Class[T])` in Key.java
-    *   In other words, Guice already has this concept, but the name value can't be `final`/constant.
+    *   In other words, Guice already has this InjectId concept, but the name value can't be made `final`/constant.
     */
   class NamelessInjectId[T :Manifest] {
     type typ = T
 
     /** An overloaded assignment operator of sorts--or as close as you can get in Scala.  Who remembers Pascal? */
-    def :=(instance: T)(implicit module: BaseModule): Unit = module.assign(key, instance)
-    def ?=(default: T)(implicit module: BaseModule): Unit = module.assignOptional(key, default)
+    def :=(instance: typ)(implicit module: BaseModule): Unit = module.assign(key, instance)
+    def ?=(default: typ)(implicit module: BaseModule): Unit = module.assignOptional(key, default)
 
     /**
-      * Guice is a Java package so it uses its own version of a Manifest/ClassTag/TypeTag called a TypeLiteral,
-      * and scala-guice defines the corresponding classOf/typeOf factory function called typeLiteral.
+      * Guice is a Java package so it uses its own (Java) version of a Manifest/ClassTag/TypeTag called a TypeLiteral,
+      * and the scala-guice package defines the corresponding classOf/typeOf factory function called typeLiteral.
       */
-    val key: Key[T] = Key.get(typeLiteral[T])
+    val key: Key[typ] = Key.get(typeLiteral[typ])
     if (key != null) Logger.debug(s"${getClass.getSimpleName}($key)")
   }
 
@@ -50,12 +50,39 @@ package object stream {
     * _with_ the optional name.
     *
     * See also: `static <T> Key<T> get(Class<T> type, AnnotationStrategy annotationStrategy)` in Key.java
-    *   In other words, Guice already has this concept, but the name value can't be `final`/constant.
+    *   In other words, Guice already has this concept, but the name value can't be made `final`/constant.
     */
-  abstract class /*RichKey*/InjectId[T: Manifest] extends NamelessInjectId[T] {
+  abstract class /*RichKey*/InjectId[T :Manifest] extends NamelessInjectId[T] {
     def name: String
-    override val key: Key[T] = Key.get(typeLiteral[T], Names.named(name))
+    override val key: Key[typ] = Key.get(typeLiteral[typ], Names.named(name))
     if (key != null) Logger.debug(s"${getClass.getSimpleName}($key)")
+  }
+
+  /**
+    * Rather than binding optional defaults inside StreamModule.configure, thus requiring it to know about all the
+    * optionals that are out there, we have this OptionalInjectId class that... read more below.
+    */
+  abstract class OptionalInjectId[T :Manifest] extends InjectId[T] {
+
+    /**
+      * I tried to implement this in a way where each instance of this class would register itself via a singleton
+      * StreamModule.registerDefault, but since Scala objects are lazily instantiated that doesn't work.  Supposedly
+      * the preferred way to provide optional values with Guice is via OptionalBinders, but then some module somewhere
+      * still needs to perform the `bind` during the module's `configure` thus requiring StreamModule to know about
+      * all of the possible optionals.  Just-in-time (JIT) binding using @Inject, however, allows the binding to occur
+      * at injection-time rather than at configure-time.  So that is why we're using this older, un-preferred "holder"
+      * pattern as described here:
+      *   https://github.com/google/guice/wiki/FrequentlyAskedQuestions#how-can-i-inject-optional-parameters-into-a-constructor
+      *
+      * This also means that derived classes of this `OptionalInjectId` class will have to be straight-up classes,
+      * not objects, as they'll need to have JIT constructors that can be executed at injection-time.
+      *
+      * This `value` member cannot be annotated here because `name` is not (yet) `final` which occurs inside the
+      * derived classes.  So derived classes will have to provide an overriding implementation of `value` with
+      * the @Inject and (optional) @Named annotations as shown here commented out.
+      */
+    //@Inject(optional = true) @Named(name) // error: "annotation argument needs to be a constant"
+    def value: T //= default
   }
 
   // `final val`s are required so that their values are constants that can be used at compile time in @Named annotations
@@ -75,8 +102,6 @@ package object stream {
   // optionals
   object LogLevelOptional extends NamelessInjectId[Option[ch.qos.logback.classic.Level]]
   object Query2VecsOptional extends InjectId[Option[Query2VecsType]] { final val name = "query2Vecs" }
-  object SearchLabelsOptional extends InjectId[Set[String]] { final val name = "labels" }
-  object SearchUserIdOptional extends InjectId[Option[UUID]] { final val name = "search.user.id" }
 
   /** One might think that getting the name of a stream would be easier than this. */
   def streamName[S](stream: S): String = {

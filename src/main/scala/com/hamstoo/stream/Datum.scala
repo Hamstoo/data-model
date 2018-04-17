@@ -94,6 +94,7 @@ case class Datum[T](value: T, id: EntityId, sourceTime: TimeStamp, knownTime: Ti
 
   /** Same Datum, different value. */
   def withValue[A](newValue: A): Datum[A] = Datum(newValue, id, sourceTime, knownTime)
+  def mapValue[A](f: T => A): Datum[A] = withValue(f(value))
 
   /**
     * Ordered[Datum[T]] interface.  If there are multiple (knownTime,sourceTime,id) 3-tuples with different values
