@@ -5,10 +5,8 @@ package com.hamstoo.stream
 
 import com.google.inject.name.Named
 import com.google.inject._
-import com.google.inject.multibindings.OptionalBinder
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
-import net.codingwell.scalaguice.ScalaModule
 import play.api.Logger
 
 import scala.concurrent.ExecutionContext
@@ -28,10 +26,9 @@ class StreamModule extends BaseModule {
     super.configure()
     logger.info(s"Configuring module: ${classOf[StreamModule].getName}")
 
+    // see, using this method of declaring optional defaults requires StreamModule to know about them
     LogLevelOptional ?= None
     Query2VecsOptional ?= None
-    SearchLabelsOptional ?= Set.empty[String]
-    SearchUserIdOptional ?= None
   }
 
   /** See Query2VecsOptional.  There are 2 providers of objects named "query2Vecs" but they return different types. */

@@ -18,8 +18,8 @@ import scala.reflect.runtime.universe._ // TypeTag & typeTag
   * A "facets model" is a collection of facet-computing streams.  Running the model generates a merged stream of
   * values containing all of the facets with their own labels.
   */
-class FacetsModel @Inject()(injector: Injector)
-                           (implicit clock: Clock, materializer: Materializer) {
+class FacetsModel @Inject() (injector: Injector)
+                            (implicit clock: Clock, materializer: Materializer) {
 
   val logger: Logger = Logger(classOf[FacetsModel])
   logger.info(s"Constructing model: ${classOf[FacetsModel].getName}")
@@ -86,7 +86,7 @@ object FacetsModel {
 
   /** Factory function to construct a default FacetsModel. */
   @Singleton
-  case class Default @Inject()(injector: Injector, clock: Clock, materializer: Materializer)
+  case class Default @Inject() (injector: Injector, clock: Clock, materializer: Materializer)
       extends FacetsModel(injector)(clock, materializer) {
 
     //import net.codingwell.scalaguice.InjectorExtensions._
