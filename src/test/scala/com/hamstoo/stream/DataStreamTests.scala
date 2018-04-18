@@ -110,7 +110,7 @@ class DataStreamTests
     def newSource(step: Int, id: EntityId, name: String): Source[Datum[Int], NotUsed] =
       Source((expireAfter until end by step).map(i => Datum(i - expireAfter, id, i, knownTime))).named(name)
     val src0 = newSource(1, ReprId(s"id"), "TestJoin0")
-    val src1 = newSource(4, UnitId()     , "TestJoin1")
+    val src1 = newSource(4, UnitId       , "TestJoin1")
 
     // see comment on JoinWithable as to why the cast is necessary here
     val source: Source[Datum[Int], NotUsed] =

@@ -224,8 +224,8 @@ abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SI
 
     /** Move `d.knownTime`s up to the end of the clock window that they fall inside, just like PreloadSource. */
     def pairwise(d: Datum[T], t: Tick): Option[Join.Pairwised[T, TimeStamp]] =
-      if (d.knownTime > t.time) None
-      else Some(Pairwised(Datum((d.value, 0L), d.id, d.sourceTime, t.time), consumed0 = true))
+      if (d.knownTime > t.time) None // throttlee known time must come before current clock time to be emitted
+      else Some(Pairwised(Datum((d.value, 0L), d.id, d.sourceTime, t.time), consumed0 = true)) // throttlee consumed
 
     /** Simply ignore the 0L "value" that was paired up with each `sv.value` in `pairwise`. */
     def joiner(v: T, t: TimeStamp): T = v

@@ -98,7 +98,7 @@ object GroupReduce {
           // cross-sectional (across entities) aggregation (or both cross-sectional/longitudinal combined)
           case _ =>
 
-            val dat = dataReducer(UnitId(), g.data)
+            val dat = dataReducer(UnitId, g.data)
             logger.debug(s"Cross-sectional reduce at ${knownTime.dt}: ${dat.value}")
             immutable.Iterable(dat)
         }
