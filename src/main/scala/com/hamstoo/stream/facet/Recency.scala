@@ -13,36 +13,35 @@ import org.joda.time.DateTime
 import scala.concurrent.duration._
 
 /**
-  *
-  * @param halfLife
-  * @param now
-  * @param marks
-  * @param m
+  * The values of this facet are higher for more recent marks and lower for older marks, with a maximum value of 1.
+  * @param halfLife0  Decay rate.
+  * @param now0       Current date-time.
+  * @param marks      MarksStream
   */
 @Singleton
-class Recency @Inject() (halfLife: Recency.HalfLifeOptional,
-                         now: Recency.CurrentTimeOptional,
+class Recency @Inject() (halfLife0: Recency.HalfLifeOptional,
+                         now0: Recency.CurrentTimeOptional,
                          marks: MarksStream)
                         (implicit m: Materializer)
     extends DataStream[Double] {
 
+  val halfLife: DurationMils = halfLife0.value
+  val now: TimeStamp = now0.value
+
   import com.hamstoo.stream.StreamOps._
+  //import spire.implicits._
 
   override val hubSource: SourceType = {
 
-    //implicit val doubleOpStream: OpStream[Double] = fractionalOpStream[Double]
+    // this doesn't compile when spire.algebra.NRoot is used in place of Powable in StreamOps, the
+    // `import spire.implicits._` seems to convert `now` into some implicit Spire type and then the compiler thinks
+    // that there also needs to be a Ring[DataStream] to perform the subtraction, here's the error message:
+    //   "could not find implicit value for parameter ev: spire.algebra.Ring[com.hamstoo.stream.DataStream[Double]]"
 
-    val x: Double = now.value.toDouble
-    val y: DataStream[Double] = marks("timeFrom", scala.reflect.classTag[Double])
-
-    //doubleOpStream.-(x, y)
-
-    y - now.value // debugging/testing
-
-    (now - marks("timeFrom")) / halfLife
+    val nHalfLifes = (now - marks.timeFrom) / halfLife
+    0.5 pow nHalfLifes
 
   }.source
-
 }
 
 object Recency {
