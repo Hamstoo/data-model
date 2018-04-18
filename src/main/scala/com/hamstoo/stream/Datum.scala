@@ -19,7 +19,7 @@ trait EntityId extends Ordered[EntityId] {
   def compare(oth: EntityId): Int = CompoundId(this).toSortedString.compare(CompoundId(oth).toSortedString)
 }
 
-case class UnitId() extends EntityId
+case object UnitId extends EntityId
 case class MarkId(id: ObjectId) extends EntityId
 case class ReprId(id: ObjectId) extends EntityId
 case class FacetName(name: String) extends EntityId
@@ -39,7 +39,7 @@ object EntityId {
     case (a: CompoundId, b: CompoundId) =>
       val (smaller, larger) = if (a.ids.size < b.ids.size) (a.ids, b.ids) else (b.ids, a.ids)
       if (smaller != a.ids.intersect(b.ids)) None else larger.size match {
-        case 0 => Some(UnitId())
+        case 0 => Some(UnitId)
         case 1 => larger.headOption
         case _ => Some(CompoundId(larger))
       }
@@ -52,7 +52,7 @@ object EntityId {
     case (a: CompoundId, b: CompoundId) =>
       val union = a.ids.union(b.ids)
       union.size match {
-        case 0 => UnitId()
+        case 0 => UnitId
         case 1 => union.head
         case _ => CompoundId(union)
       }
@@ -65,7 +65,7 @@ object CompoundId {
   /** Construct a CompoundId from other types of EntityIds. */
   def apply(eid: EntityId): CompoundId = eid match {
     case x: CompoundId => x
-    case _: UnitId => CompoundId(Set.empty[EntityId])
+    case UnitId => CompoundId(Set.empty[EntityId])
     case x => CompoundId(Set(x))
   }
 }
@@ -130,14 +130,14 @@ object Datum {
   * A Tick is just an alias for a Datum[TimeStamp], like any other Datum[T], but with bounds on its
   * value, sourceTime, and knownTime.  Namely, they must all be equal.
   */
-//class Tick(val time: TimeStamp) extends Datum[TimeStamp](UnitId(), time, time, time)
+//class Tick(val time: TimeStamp) extends Datum[TimeStamp](UnitId, time, time, time)
 object Tick {
   type Tick = Datum[TimeStamp]
 
-  def apply(time: TimeStamp): Tick = Datum[TimeStamp](time, UnitId(), time, time)
+  def apply(time: TimeStamp): Tick = Datum[TimeStamp](time, UnitId, time, time)
 
   def unapply[T](dat: Datum[T]): Option[TimeStamp] =
-    if (dat.id == UnitId() && dat.value.isInstanceOf[TimeStamp] &&
+    if (dat.id == UnitId && dat.value.isInstanceOf[TimeStamp] &&
         dat.value == dat.sourceTime && dat.value == dat.knownTime) Some(dat.value.asInstanceOf[TimeStamp]) else None
 
   implicit class ExtendedTick(private val tick: Tick) extends AnyVal {

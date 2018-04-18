@@ -111,7 +111,7 @@ object Join {
     // we don't care about knownTimes matching, only sourceTimes (see comment in Datum.pairwise)
     Datum.pairwise(d0, d1).map { paired: Datum[(A0, A1)] =>
 
-      // an element was consumed if the ids are exactly equal (e.g. a MarkId("1234") paired with UnitId() will
+      // an element was consumed if the ids are exactly equal (e.g. a MarkId("1234") paired with UnitId will
       // only result in the former being consumed)
       def consumed[T](x: Datum[T]): Boolean = x.id == paired.id && x.sourceTime == paired.sourceTime
 

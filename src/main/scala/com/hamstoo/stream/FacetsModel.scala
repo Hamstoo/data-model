@@ -11,8 +11,8 @@ import play.api.Logger
 
 import scala.collection.mutable
 import scala.concurrent.Future
-import scala.reflect._ // ClassTag
-import scala.reflect.runtime.universe._ // TypeTag & typeTag
+import scala.reflect.{ClassTag, classTag}
+import scala.reflect.runtime.universe.TypeTag
 
 /**
   * A "facets model" is a collection of facet-computing streams.  Running the model generates a merged stream of

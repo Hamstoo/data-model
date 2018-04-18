@@ -26,22 +26,36 @@ class Recency @Inject() (halfLife: Recency.HalfLifeOptional,
                         (implicit m: Materializer)
     extends DataStream[Double] {
 
-  // TODO
-  override val hubSource: SourceType = marks().map(_.mapValue(_.timeFrom.toDouble))
+  import com.hamstoo.stream.StreamOps._
+
+  override val hubSource: SourceType = {
+
+    //implicit val doubleOpStream: OpStream[Double] = fractionalOpStream[Double]
+
+    val x: Double = now.value.toDouble
+    val y: DataStream[Double] = marks("timeFrom", scala.reflect.classTag[Double])
+
+    //doubleOpStream.-(x, y)
+
+    y - now.value // debugging/testing
+
+    (now - marks("timeFrom")) / halfLife
+
+  }.source
 
 }
 
 object Recency {
 
-  /** Optional half-life parameter to Recency facet.  Memories fade over time. */
+  /** Optional half-life parameter for compuation of Recency facet.  Memories fade over time. */
   case class HalfLifeOptional() extends OptionalInjectId[DurationMils] {
     final val name = "recency.halfLife"
     @Inject(optional = true) @Named(name) val value: DurationMils = (365 * 2).days.toMillis
   }
 
-  /** Optional current time parameter to Recency facet. */
-  case class CurrentTimeOptional() extends OptionalInjectId[Option[TimeStamp]] {
+  /** Optional current time parameter for compuation of Recency facet. */
+  case class CurrentTimeOptional() extends OptionalInjectId[TimeStamp] {
     final val name = "current.time"
-    @Inject(optional = true) @Named(name) val value: Option[TimeStamp] = Some(DateTime.now.getMillis)
+    @Inject(optional = true) @Named(name) val value: TimeStamp = DateTime.now.getMillis
   }
 }
