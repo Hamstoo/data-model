@@ -135,7 +135,7 @@ class DataStreamTests
     testGroupReduce(iter, "(singular) Datum")
   }
 
-  "GroupReduce" should "cross-sectionally reduce streams of (plural) Data (which we actually no longer have)" in {
+  it should "cross-sectionally reduce streams of (plural) Data (which we actually no longer have)" in {
 
     val iter = List(Datum(0.4, ReprId("a"), 0), Datum(0.6, ReprId("b"), 0),
       Datum(1.2, ReprId("b"), 1), Datum(1.5, ReprId("c"), 1), Datum(1.8, ReprId("a"), 1),

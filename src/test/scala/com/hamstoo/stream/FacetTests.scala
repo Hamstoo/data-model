@@ -11,7 +11,7 @@ import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
-import com.hamstoo.stream.facet.SearchResults
+import com.hamstoo.stream.facet.{Recency, SearchResults}
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
 import com.hamstoo.utils.{ConfigModule, DataInfo, ExtendedTimeStamp}
@@ -30,8 +30,36 @@ class FacetTests
     with FutureHandler {
 
   val logger = Logger(classOf[FacetTests])
+  type OutType = FacetsModel.OutType // (String, AnyRef)
 
-  "Facet values" should "be generated" in {
+  "FacetsModel" should "compute SearchResults" in {
+
+    // filter so that the test doesn't break as more facets are added to FacetsModel
+    val facetName = classOf[SearchResults].getSimpleName
+    val x = facetsSeq.filter(_._1 == facetName)
+      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
+      .foldLeft(0.0) { case (agg, d) =>
+        agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
+      }
+
+    // (2.63 + 3.1 + 2.1 + 1.91 + 1.77) * 1.4 =~ 16.13
+    // (2.63 + 3.1 + 2.1 + 1.91       ) * 1.4 =~ 13.65 (with `if (i != nMarks - 1)` enabled below)
+    x shouldBe (13.65 +- 0.01)
+  }
+
+  it should "compute Recency" in {
+
+    val facetName = classOf[Recency].getSimpleName
+    val x = facetsSeq.filter(_._1 == facetName)
+      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] => agg + d.value } }
+
+    // see data-model/RecencyTest.xlsx for an independent calculation of this value
+    x shouldBe (4.54 +- 0.01)
+  }
+
+  // construct the stream graph but don't materialize it, let the individual tests do that
+  lazy val facetsSeq: Seq[OutType] = {
 
     // config values that stream.ConfigModule will bind for DI
     val config = DataInfo.config
@@ -80,6 +108,9 @@ class FacetTests
         CallingUserId := userId
         LogLevelOptional := Some(ch.qos.logback.classic.Level.TRACE)
 
+        // fix this value (don't use default DateTime.now) so that computed values don't change every day
+        Recency.CurrentTimeOptional() := new DateTime(2018, 4, 19, 0, 0).getMillis
+
         // finally, bind the model
         classOf[FacetsModel] := classOf[FacetsModel.Default]
       }
@@ -96,25 +127,14 @@ class FacetTests
     })
 
     import net.codingwell.scalaguice.InjectorExtensions._
-    val streamModel: FacetsModel = streamInjector.instance[FacetsModel]
+    val facetsModel = streamInjector.instance[FacetsModel]
 
-    type InType = (String, AnyRef)
-    type OutType = Double
-
-    val sink: Sink[InType, Future[OutType]] = Flow[InType]
-      .map { d => logger.info(s"\033[37m$d\033[0m"); d }
-      .filter(_._1 == "SearchResults") // filter so that the test doesn't break as more facets are added to FacetsModel
-      .toMat(Sink.fold[OutType, InType](0.0) { case (agg, d) =>
-      agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
-    })(Keep.right)
+    // materialize
+    val sink: Sink[OutType, Future[Seq[OutType]]] = Flow[OutType].toMat(Sink.seq)(Keep.right)
 
     // causes "[error] a.a.OneForOneStrategy - CommandError[code=11600, errmsg=interrupted at shutdown" for some reason
-    //val x = streamModel.run(sink).futureValue
+    //facetsModel.run(sink).futureValue
 
-    val x = Await.result(streamModel.run(sink), 15 seconds)
-
-    // (2.63 + 3.1 + 2.1 + 1.91 + 1.77) * 1.4 =~ 16.13
-    // (2.63 + 3.1 + 2.1 + 1.91       ) * 1.4 =~ 13.65 (with `if (i != nMarks - 1)` enabled above)
-    x shouldBe (13.65 +- 0.01)
+    Await.result(facetsModel.run(sink), 15 seconds)
   }
 }
