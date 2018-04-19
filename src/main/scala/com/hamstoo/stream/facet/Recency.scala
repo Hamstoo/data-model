@@ -14,6 +14,7 @@ import scala.concurrent.duration._
 
 /**
   * The values of this facet are higher for more recent marks and lower for older marks, with a maximum value of 1.
+  *
   * @param halfLife0  Decay rate.
   * @param now0       Current date-time.
   * @param marks      MarksStream
@@ -38,7 +39,8 @@ class Recency @Inject() (halfLife0: Recency.HalfLifeOptional,
     // that there also needs to be a Ring[DataStream] to perform the subtraction, here's the error message:
     //   "could not find implicit value for parameter ev: spire.algebra.Ring[com.hamstoo.stream.DataStream[Double]]"
 
-    val nHalfLifes = (now - marks.timeFrom) / halfLife
+    val timeSince: DataStream[TimeStamp] = now - StreamOps(marks).timeFrom
+    val nHalfLifes: DataStream[Double] = timeSince / halfLife
     0.5 pow nHalfLifes
 
   }.source

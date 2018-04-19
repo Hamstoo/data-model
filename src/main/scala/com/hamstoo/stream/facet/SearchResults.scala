@@ -1,23 +1,22 @@
 /*
  * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
-package com.hamstoo.stream
+package com.hamstoo.stream.facet
 
 import akka.stream.Materializer
-import com.google.inject.Inject
-import com.hamstoo.models.{MSearchable, RSearchable}
-import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
-import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
-import com.hamstoo.stream.StreamOps._
 import ch.qos.logback.classic.{Logger => LogbackLogger}
+import com.google.inject.Inject
 import com.google.inject.name.Named
+import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
+import com.hamstoo.models.{MSearchable, RSearchable}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
+import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
+import com.hamstoo.stream._
 import org.slf4j.{LoggerFactory, Logger => Slf4jLogger}
 import play.api.Logger
 
 import scala.annotation.tailrec
-import scala.collection.breakOut
-import scala.collection.immutable
+import scala.collection.{breakOut, immutable}
 import scala.concurrent.ExecutionContext
 import scala.util.matching.Regex
 

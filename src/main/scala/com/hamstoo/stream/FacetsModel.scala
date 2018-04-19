@@ -7,6 +7,7 @@ import akka.NotUsed
 import akka.stream.{Materializer, SourceShape}
 import akka.stream.scaladsl.{GraphDSL, Merge, Sink, Source}
 import com.google.inject.{Inject, Injector, Singleton}
+import com.hamstoo.stream.facet.{Recency, SearchResults}
 import play.api.Logger
 
 import scala.collection.mutable
@@ -89,19 +90,13 @@ object FacetsModel {
   case class Default @Inject() (injector: Injector, clock: Clock, materializer: Materializer)
       extends FacetsModel(injector)(clock, materializer) {
 
-    //import net.codingwell.scalaguice.InjectorExtensions._
-    //val qc: QueryCorrelation = injector.instance[QueryCorrelation]
+    // An injected instance of a stream can only be reused (singleton) if its defined inside a type (e.g. see Recency).
+    // But eventually (perhaps) we can automatically generate new types (e.g. add[classOf[Recency] + 2]) or lookup
+    // nodes in the injected Akka stream graph by name.
+    //   https://www.google.com/search?q=dynamically+create+type+scala&oq=dynamically+create+type+scala&aqs=chrome..69i57.5239j1j4&sourceid=chrome&ie=UTF-8
 
-    add[SearchResults]() // "semanticRelevance"
-
-    // * so a stream can only be reused (singleton) if its defined inside a type
-    //   * but eventually we can make this work to automatically generate new types (perhaps)
-    //   * add[classOf[QueryCorrelation] + 2]()
-    //   * https://www.google.com/search?q=dynamically+create+type+scala&oq=dynamically+create+type+scala&aqs=chrome..69i57.5239j1j4&sourceid=chrome&ie=UTF-8
-    // * the (source) clock won't know what time its starting with until the data streams have
-    //   all been wired together (via the Injector)
-
-    //add(AvailablityBias / Recency) -- see How to Think screenshot
+    add[SearchResults]()
+    add[Recency]() // see How to Think screenshot
     //add(ConfirmationBias)
     //add(TimeSpent)
     //add(Rating)
