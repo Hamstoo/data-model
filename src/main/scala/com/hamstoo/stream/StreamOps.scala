@@ -68,17 +68,8 @@ object StreamOps {
     def -[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.minus(_, c.as[A]))
     def *[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.times(_, c.as[A]))
     def /[C: Numeric](c: C)(implicit ev: Fractional[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.div(_, c.as[A]))
+    def /[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(_.as[Double] / c.as[Double])
     def pow[C: Numeric](c: C)(implicit ev: Powable[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.fpow(_, c.as[A]))
-
-    def /[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = {
-      /*val x: DataStream[Double] =*/ s.map(_.as[Double] / c.as[Double])
-      /*
-      //val fr: Fractional[Double] = Fractional[Double]()
-      val fr: Fractional[Double] = implicitly[Fractional[Double]]
-      //x.map { a => fr.div(a, c.as[Double]) }
-
-      s.map { a => fr.div(a.as[Double], c.as[Double]) }*/
-    }
   }
 
   /**

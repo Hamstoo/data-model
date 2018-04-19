@@ -22,6 +22,7 @@ import scala.reflect.runtime.universe.TypeTag
 class FacetsModel @Inject() (injector: Injector)
                             (implicit clock: Clock, materializer: Materializer) {
 
+  import FacetsModel._
   val logger: Logger = Logger(classOf[FacetsModel])
   logger.info(s"Constructing model: ${classOf[FacetsModel].getName}")
 
@@ -52,7 +53,7 @@ class FacetsModel @Inject() (injector: Injector)
     *            `Sink.fold[Double, Data[Double]]` would mean T is a lonely `Double`.
     * @return  Returns a future containing the result of the sink.
     */
-  def run[T](sink: Sink[(String, AnyRef), Future[T]]): Future[T] = {
+  def run[T](sink: Sink[OutType, Future[T]]): Future[T] = {
 
     // simultaneously allow the facets to start producing data (it's safer to start the clock after materialization
     // because of weird buffer effects and such)
@@ -63,10 +64,10 @@ class FacetsModel @Inject() (injector: Injector)
   }
 
   /** Wire up the model by merging all the individual facets, but don't run it, and don't start the clock. */
-  def source: Source[(String, AnyRef), NotUsed] = Source.fromGraph(GraphDSL.create() { implicit b =>
+  def source: Source[OutType, NotUsed] = Source.fromGraph(GraphDSL.create() { implicit b =>
     import GraphDSL.Implicits._
 
-    val merge = b.add(Merge[(String, AnyRef)](facets.size))
+    val merge = b.add(Merge[OutType](facets.size))
 
     // wire all of the facets into the hub
     facets.zipWithIndex.foreach { case ((name, ds), i) =>
@@ -84,6 +85,8 @@ class FacetsModel @Inject() (injector: Injector)
 }
 
 object FacetsModel {
+
+  type OutType = (String, AnyRef)
 
   /** Factory function to construct a default FacetsModel. */
   @Singleton
