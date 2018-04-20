@@ -1,19 +1,23 @@
-package com.hamstoo.stream
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
+package com.hamstoo.stream.dataset
 
 import java.util.UUID
 
 import akka.stream.Materializer
-import com.google.inject.name.Named
 import com.google.inject.Inject
+import com.google.inject.name.Named
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
 import com.hamstoo.models._
 import com.hamstoo.services.IDFModel
+import com.hamstoo.stream._
 import com.hamstoo.utils.{ObjectId, TimeStamp}
 import play.api.Logger
 
 import scala.collection.immutable
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
   * A stream of marks, sourced from a user's search, though search terms are not required.
@@ -141,12 +145,5 @@ object MarksStream {
     def maskOrElse(m: MSearchable) = m.mask(id2Ref.get(m.id), callingUser)
 
     marks.map(maskOrElse).filter(_.hasTags(tags))
-  }
-
-  /** We need to return a Future.successful(Seq.empty[T]) in a few different places if mbQuerySeq is None. */
-  implicit class ExtendedQuerySeq(private val mbQuerySeq: Option[Seq[String]]) extends AnyVal {
-    def mapOrEmptyFuture[T](f: String => Future[T])
-                           (implicit ec: ExecutionContext): Future[Seq[T]] =
-      mbQuerySeq.fold(Future.successful(Seq.empty[T])) { querySeq => Future.sequence(querySeq.map(w => f(w))) }
   }
 }

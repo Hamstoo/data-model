@@ -1,19 +1,20 @@
 /*
  * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
-package com.hamstoo.stream
+package com.hamstoo.stream.config
 
 import akka.NotUsed
-import akka.stream.{Materializer, SourceShape}
 import akka.stream.scaladsl.{GraphDSL, Merge, Sink, Source}
+import akka.stream.{Materializer, SourceShape}
 import com.google.inject.{Inject, Injector, Singleton}
 import com.hamstoo.stream.facet.{Recency, SearchResults}
+import com.hamstoo.stream.{Clock, DataStreamBase}
 import play.api.Logger
 
 import scala.collection.mutable
 import scala.concurrent.Future
-import scala.reflect.{ClassTag, classTag}
 import scala.reflect.runtime.universe.TypeTag
+import scala.reflect.{ClassTag, classTag}
 
 /**
   * A "facets model" is a collection of facet-computing streams.  Running the model generates a merged stream of

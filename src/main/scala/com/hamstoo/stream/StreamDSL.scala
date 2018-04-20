@@ -15,10 +15,10 @@ import scala.reflect.{ClassTag, classTag}
 /**
   * The DataStream DSL.
   */
-object StreamOps {
+object StreamDSL {
 
   /** Operations between pairs of DataStreams. */
-  implicit class StreamOps[A](private val s: DataStream[A]) extends AnyVal {
+  implicit class StreamDSL[A](private val s: DataStream[A]) extends AnyVal {
 
     /** Map a stream of Datum[A]s to Datum[O]s. */
     def map[O](f: A => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
@@ -67,8 +67,12 @@ object StreamOps {
     def +[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.plus(_, c.as[A]))
     def -[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.minus(_, c.as[A]))
     def *[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.times(_, c.as[A]))
-    def /[C: Numeric](c: C)(implicit ev: Fractional[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.div(_, c.as[A]))
-    def /[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(_.as[Double] / c.as[Double])
+
+    // ambiguous to have both
+    //def /[C: Numeric](c: C)(implicit ev: Fractional[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.div(_, c.as[A]))
+    def /[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) =
+      s.map(a => implicitly[Fractional[Double]].div(a.as[Double], c.as[Double]))
+
     def pow[C: Numeric](c: C)(implicit ev: Powable[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.fpow(_, c.as[A]))
   }
 

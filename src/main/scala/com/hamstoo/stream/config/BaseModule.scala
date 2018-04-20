@@ -1,10 +1,11 @@
 /*
  * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
-package com.hamstoo.stream
+package com.hamstoo.stream.config
 
 import com.google.inject.multibindings.OptionalBinder
 import com.google.inject.{AbstractModule, Key}
+import com.hamstoo.stream.NamelessInjectId
 import net.codingwell.scalaguice.ScalaModule
 import play.api.Logger
 

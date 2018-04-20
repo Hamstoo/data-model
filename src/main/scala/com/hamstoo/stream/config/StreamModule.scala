@@ -1,12 +1,13 @@
 /*
  * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
-package com.hamstoo.stream
+package com.hamstoo.stream.config
 
-import com.google.inject.name.Named
 import com.google.inject._
+import com.google.inject.name.Named
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
+import com.hamstoo.stream._
 import play.api.Logger
 
 import scala.concurrent.ExecutionContext
