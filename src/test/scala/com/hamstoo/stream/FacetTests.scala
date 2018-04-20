@@ -55,8 +55,8 @@ class FacetTests
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] => agg + d.value } }
 
-    // see data-model/RecencyTest.xlsx for an independent calculation of this value
-    x shouldBe (4.54 +- 0.01)
+    // see data-model/docs/RecencyTest.xlsx for an independent calculation of this value
+    x / Recency.COEF shouldBe (4.54 +- 0.01)
   }
 
   // construct the stream graph but don't materialize it, let the individual tests do that
@@ -130,12 +130,12 @@ class FacetTests
     import net.codingwell.scalaguice.InjectorExtensions._
     val facetsModel = streamInjector.instance[FacetsModel]
 
-    // materialize
-    val sink: Sink[OutType, Future[Seq[OutType]]] = Flow[OutType].toMat(Sink.seq)(Keep.right)
+    // this sink is no longer necessary now that filtering is happening after materialization
+    //val sink: Sink[OutType, Future[Seq[OutType]]] = Flow[OutType].toMat(Sink.seq)(Keep.right)
 
     // causes "[error] a.a.OneForOneStrategy - CommandError[code=11600, errmsg=interrupted at shutdown" for some reason
     //facetsModel.run(sink).futureValue
 
-    Await.result(facetsModel.run(sink), 15 seconds)
+    Await.result(facetsModel.run(Sink.seq), 15 seconds)
   }
 }

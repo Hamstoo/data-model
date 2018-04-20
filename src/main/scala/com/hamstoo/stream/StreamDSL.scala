@@ -17,7 +17,12 @@ import scala.reflect.{ClassTag, classTag}
   */
 object StreamDSL {
 
-  /** Operations between pairs of DataStreams. */
+  /**
+    * Operations between pairs of DataStreams.
+    *
+    * "You can avoid instantiating your extension class by making it a value class."
+    *   https://stackoverflow.com/questions/40454260/is-new-instance-of-class-created-per-each-implicit-class-conversion
+    */
   implicit class StreamDSL[A](private val s: DataStream[A]) extends AnyVal {
 
     /** Map a stream of Datum[A]s to Datum[O]s. */
@@ -25,27 +30,29 @@ object StreamDSL {
       override def hubSource: SourceType = s().map(_.mapValue(f))
     }
 
+    /** This really shouldn't be part of the interface, so just pass `ev.m` explicitly when necessary. */
+    //def mapI[O](f: A => O)(implicit ev: Implicits[_, _]): DataStream[O] = s.map(f)(ev.m)
+
     /** Map Datum values to one of their fields (as Doubles). */
-    def apply(fieldName: String)(implicit ev: ClassTag[A], m: Materializer): DataStream[Double] = {
-      //val field = classTag[A].runtimeClass.getField(fieldName)
-      //s.map(a => field.get(a).asInstanceOf[Double])
+    def apply(fieldName: String)(implicit ev: ClassTag[A], m: Materializer): DataStream[Double] =
       s(fieldName, classTag[Double])
-    }
 
     /** Map Datum values to one of their fields (as instances of specified `asTyp` type). */
     def apply[T](fieldName: String, asTyp: ClassTag[T])(implicit ev: ClassTag[A], m: Materializer): DataStream[T] = {
-      implicit val ctT = asTyp
+      implicit val ctT: ClassTag[T] = asTyp // used in call to `as` below
       val getter = classTag[A].runtimeClass.getDeclaredMethod(fieldName)
+      //val getter = typeTag[A].mirror.runtimeClass(typeTag[A].tpe).getDeclaredMethod(fieldName) // https://stackoverflow.com/questions/11494788/how-to-create-a-typetag-manually/11495793#11495793
       s.map { a =>
         val ivk: AnyRef = getter.invoke(a)
-        ivk.as[T]
+        ivk.asC[T]
       }
     }
 
     /** Should we enumerate a few common fields like this? */
-    def timeFrom(implicit ev: ClassTag[A], m: Materializer)/*: DataStream[TimeStamp]*/ = s("timeFrom", classTag[TimeStamp])
-    def timeThru(implicit ev: ClassTag[A], m: Materializer): DataStream[TimeStamp] = s("timeThru", classTag[TimeStamp])
-    def mark(implicit ev: ClassTag[A], m: Materializer): DataStream[MarkData] = s("timeThru", classTag[MarkData])
+    def timeFrom(implicit ev: ClassTag[A], m: Materializer) = s("timeFrom", classTag[TimeStamp])
+    def timeThru(implicit ev: ClassTag[A], m: Materializer) = s("timeThru", classTag[TimeStamp])
+    def mark(implicit ev: ClassTag[A], m: Materializer) = s("mark", classTag[MarkData])
+    def rating(implicit ev: ClassTag[A], m: Materializer) = s("rating", classTag[Option[Double]])
 
     /** Invoke JoinWithable.joinWith on the provided streams. */
     def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
@@ -64,16 +71,17 @@ object StreamDSL {
     def pow(that: DataStream[A])(implicit ev: Powable[A], m: Materializer) = s.join(that)(ev.fpow)
 
     /** Binary operations between a LHS DataStream and a RHS numeric constant. */
-    def +[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.plus(_, c.as[A]))
-    def -[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.minus(_, c.as[A]))
-    def *[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.times(_, c.as[A]))
+    def +[C](c: C)(implicit ev: Implicits[C, A]) = s.map(ev.nm1.plus(_, c.as[A]))(ev.m)
+    def -[C](c: C)(implicit ev: Implicits[C, A]) = s.map(ev.nm1.minus(_, c.as[A]))(ev.m)
+    def *[C](c: C)(implicit ev: Implicits[C, A]) = s.map(ev.nm1.times(_, c.as[A]))(ev.m)
 
-    // ambiguous to have both
-    //def /[C: Numeric](c: C)(implicit ev: Fractional[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.div(_, c.as[A]))
-    def /[C: Numeric](c: C)(implicit ev: Numeric[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) =
-      s.map(a => implicitly[Fractional[Double]].div(a.as[Double], c.as[Double]))
+    // ambiguous to have both, and the first one is insufficient when DataStream numerator is non-Fractional,
+    // compiler error: "could not find implicit value for parameter fr: Fractional[com.hamstoo.utils.TimeStamp]"
+    //def /[C](c: C)(implicit ev: Implicits[C, A], fr: Fractional[A]) = s.map(fr.div(_, c.as[A]))
+    def /[C](c: C)(implicit ev: Implicits[C, A]) =
+      s.map(a => implicitly[Fractional[Double]].div(a.asDouble(ev.ct1), c.asDouble(ev.ct0)))(ev.m)
 
-    def pow[C: Numeric](c: C)(implicit ev: Powable[A], m: Materializer, ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.fpow(_, c.as[A]))
+    def pow[C](c: C)(implicit ev: Implicits[C, A], pw: Powable[A]) = s.map(pw.fpow(_, c.as[A]))(ev.m)
   }
 
   /**
@@ -81,26 +89,13 @@ object StreamDSL {
     */
   implicit class StreamConst[C](private val c: C) extends AnyVal {
 
-
-
-
-
-
-    // TODO: can we bind all the implicits to an inner class and then make each individual operator func take that as a single implicit?
-    //class Implicits(implicit val x: Int) {} // cannot extend AnyVal if this is here
-    //object MyImplicits extends Implicits
-
-
-
-
-
-
     /** All of these functions return DataStream[A]s. */
-    def +[A](s: DataStream[A])(implicit ev: Numeric[A], m: Materializer, evC: Numeric[C], ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.plus(c.as[A], _))
-    def -[A](s: DataStream[A])(implicit ev: Numeric[A], m: Materializer, evC: Numeric[C], ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.minus(c.as[A], _))
-    def *[A](s: DataStream[A])(implicit ev: Numeric[A], m: Materializer, evC: Numeric[C], ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.times(c.as[A], _))
-    def /[A](s: DataStream[A])(implicit ev: Fractional[A], m: Materializer, evC: Numeric[C], ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.div(c.as[A], _))
-    def pow[A](s: DataStream[A])(implicit ev: Powable[A], m: Materializer, evC: Numeric[C], ctA: ClassTag[A], ctC: ClassTag[C]) = s.map(ev.fpow(c.as[A], _))
+    def +[A](s: DataStream[A])(implicit ev: Implicits[C, A]) = s.map(ev.nm1.plus(c.as[A], _))(ev.m)
+    def -[A](s: DataStream[A])(implicit ev: Implicits[C, A]) = s.map(ev.nm1.minus(c.as[A], _))(ev.m)
+    def *[A](s: DataStream[A])(implicit ev: Implicits[C, A]) = s.map(ev.nm1.times(c.as[A], _))(ev.m)
+    def /[A](s: DataStream[A])(implicit ev: Implicits[C, A]) =
+      s.map(a => implicitly[Fractional[Double]].div(c.asDouble(ev.ct0), a.asDouble(ev.ct1)))(ev.m)
+    def pow[A](s: DataStream[A])(implicit ev: Implicits[C, A], pw: Powable[A]) = s.map(pw.fpow(c.as[A], _))(ev.m)
   }
 
   /** See comment in Recency for why Spire's NRoot cannot be used in place of this typeclass. */
@@ -108,11 +103,17 @@ object StreamDSL {
   implicit object PowableDouble extends Powable[Double] { def fpow(x: Double, y: Double): Double = math.pow(x, y) }
 
   /**
-    * Generic implicit converters: https://hamstoo.com/my-marks/ug6JOWPLt3puWLeV
-    * This doesn't seem to work.  The idea would be for Optionals to be implicitly converted to their Numeric
-    * values, which could then participate in implicit StreamOps.
+    * Bind all the implicits inside a wrapper so that individual operator functions need only take a single
+    * implicit parameter.
     */
-  //implicit def optionalToValue[A](opt: OptionalInjectId[A]): A = opt.value
+  @scala.annotation.implicitNotFound(msg = "No StreamDSL.Implicits available for [${_0}, ${_1}]")
+  case class Implicits[_0, _1](ct0: ClassTag[_0], ct1: ClassTag[_1], nm0: Numeric[_0], nm1: Numeric[_1],
+                               m: Materializer)
+
+  /** `implicit` Implicits factory function. */
+  implicit def implicits[_0, _1](implicit ct0: ClassTag[_0], ct1: ClassTag[_1], nm0: Numeric[_0], nm1: Numeric[_1],
+                                 m: Materializer): Implicits[_0, _1] =
+    Implicits(ct0, ct1, nm0, nm1, m)
 
   /**
     * In this ridiculous class, the only allowable way to call asInstance[T] is on the unboxed/primitive version
@@ -125,14 +126,24 @@ object StreamDSL {
     * To produce this error, comment out `.asInstance[Double]` from line 202 in the `case Long` section and run
     * FacetTests: `sbt "testOnly *FacetTests*"`.  Error message:
     *   "java.lang.ClassCastException: java.lang.Long cannot be cast to java.lang.Double"
+    *
+    * @param v   The value to be type casted to a T, the "to" type.
+    * @tparam F  The "from" type being casted from.
     */
-  implicit class As[F](private val v: F) extends AnyVal {
-    def as[T](implicit ctA: ClassTag[F], ctT: ClassTag[T]): T = {
+  protected implicit class As[F](private val v: F) extends AnyVal {
+
+    /** Extract ClassTags from Implicits wrapper. */
+    def as[T](implicit ev: Implicits[F, T]): T = v.asC[T](ev.ct0, ev.ct1)
+
+    def asDouble(implicit ctF: ClassTag[F]): Double = asC(ctF, classTag[Double])
+
+    /** Ridiculous. */
+    def asC[T](implicit ctF: ClassTag[F], ctT: ClassTag[T]): T = {
 
       //import scala.runtime.BoxesRunTime._ // unboxTo* and boxTo* which seem to be the same as asInstanceOf
 
       //
-      ctA.runtimeClass match {
+      ctF.runtimeClass match {
         case java.lang.Byte.TYPE => val x = v.asInstanceOf[Byte]
           ctT.runtimeClass match {
             case java.lang.Byte.TYPE => x.asInstanceOf[Byte].asInstanceOf[T]
@@ -243,11 +254,16 @@ object StreamDSL {
     }
   }
 
-  // this will convert a boxed/AnyRef type into it's equivalent unboxed/AnyVal, but then I don't know how
-  // to use that returned value in asInstanceOf without
-  //   [https://stackoverflow.com/questions/40841922/get-class-of-boxed-type-from-class-of-primitive-type]
-  // scala> unboxedClass[java.lang.Double]()
-  // res0: Class[_] = double
-  class Unboxed[R <: AnyRef] { def apply[V <: AnyVal]()(implicit conv: R => V, ct: ClassTag[V]) = ct.runtimeClass }
-  def unboxedClass[R <: AnyRef] = new Unboxed[R]
+  /**
+    * This will convert a boxed/AnyRef Java type into it's equivalent unboxed/AnyVal Scala type, but then I don't
+    * know how to use that returned value in asInstanceOf without inadvertently switching back to the boxed/AnyRef.
+    *   [https://stackoverflow.com/questions/40841922/get-class-of-boxed-type-from-class-of-primitive-type]
+    *
+    * {{{
+    *   scala> unboxedClass[java.lang.Double]()
+    *   res0: Class[_] = double
+    * }}}
+    */
+  //class Unboxed[R <: AnyRef] { def apply[V <: AnyVal]()(implicit conv: R => V, ct: ClassTag[V]) = ct.runtimeClass }
+  //def unboxedClass[R <: AnyRef] = new Unboxed[R]
 }
