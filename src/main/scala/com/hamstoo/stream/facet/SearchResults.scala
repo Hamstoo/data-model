@@ -12,6 +12,7 @@ import com.hamstoo.models.{MSearchable, RSearchable}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream._
+import com.hamstoo.stream.dataset.{QueryResult, RepredMarks, ReprsPair}
 import org.slf4j.{LoggerFactory, Logger => Slf4jLogger}
 import play.api.Logger
 

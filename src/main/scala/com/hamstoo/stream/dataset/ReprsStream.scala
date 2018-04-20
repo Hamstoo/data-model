@@ -1,18 +1,18 @@
 /*
  * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
-package com.hamstoo.stream
+package com.hamstoo.stream.dataset
 
 import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
+import ch.qos.logback.classic.{Logger => LogbackLogger}
+import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.MongoRepresentationDao
 import com.hamstoo.models.{MSearchable, RSearchable}
-import com.hamstoo.stream.MarksStream.ExtendedQuerySeq
+import com.hamstoo.stream._
 import com.hamstoo.utils.ExtendedTimeStamp
-import ch.qos.logback.classic.{Logger => LogbackLogger}
-import com.google.inject.name.Named
 import org.slf4j.{LoggerFactory, Logger => Slf4jLogger}
 import play.api.Logger
 

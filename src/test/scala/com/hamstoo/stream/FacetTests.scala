@@ -11,10 +11,11 @@ import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
+import com.hamstoo.stream.config.{ConfigModule, FacetsModel, StreamModule}
 import com.hamstoo.stream.facet.{Recency, SearchResults}
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
-import com.hamstoo.utils.{ConfigModule, DataInfo, ExtendedTimeStamp}
+import com.hamstoo.utils.{DataInfo, ExtendedTimeStamp}
 import org.joda.time.DateTime
 import play.api.Logger
 

@@ -38,7 +38,7 @@ trait DataStreamBase {
 abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
                             (implicit materializer: Materializer) extends DataStreamBase {
 
-  val logger = Logger(classOf[DataStream[T]])
+  val logger = Logger(getClass)
 
   override type DataType = T // abstract type member implementation
 

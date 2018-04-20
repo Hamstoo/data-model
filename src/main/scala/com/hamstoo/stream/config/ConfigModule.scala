@@ -1,11 +1,10 @@
 /*
  * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
-package com.hamstoo.utils
+package com.hamstoo.stream.config
 
 import com.google.inject.name.Names
 import com.hamstoo.services.IDFModel
-import com.hamstoo.stream.BaseModule
 import com.typesafe.config.{Config, ConfigValueFactory}
 import play.api.Logger
 

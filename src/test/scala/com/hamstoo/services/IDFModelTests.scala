@@ -4,8 +4,9 @@
 package com.hamstoo.services
 
 import com.google.inject.{Guice, Injector}
+import com.hamstoo.stream.config.ConfigModule
 import com.hamstoo.test.FlatSpecWithMatchers
-import com.hamstoo.utils.{ConfigModule, DataInfo}
+import com.hamstoo.utils.DataInfo
 
 /**
   * IDFModel tests.

@@ -9,10 +9,12 @@ import akka.stream.Attributes
 import com.google.inject.{Inject, Key}
 import com.google.inject.name.{Named, Names}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
+import com.hamstoo.stream.config.BaseModule
 import com.hamstoo.utils.{DurationMils, TimeStamp}
 import net.codingwell.scalaguice.typeLiteral
 import play.api.Logger
 
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 
 
@@ -123,5 +125,12 @@ package object stream {
     }.getOrElse(None)
 
     x.fold("<noname>")(_.n)
+  }
+
+  /** We need to return a Future.successful(Seq.empty[T]) in a few different places if mbQuerySeq is None. */
+  implicit class ExtendedQuerySeq(private val mbQuerySeq: Option[Seq[String]]) extends AnyVal {
+    def mapOrEmptyFuture[T](f: String => Future[T])
+                           (implicit ec: ExecutionContext): Future[Seq[T]] =
+      mbQuerySeq.fold(Future.successful(Seq.empty[T])) { querySeq => Future.sequence(querySeq.map(w => f(w))) }
   }
 }
