@@ -29,6 +29,8 @@ class Recency @Inject() (facetArg: Recency.FacetArgOptional,
                         (implicit m: Materializer)
     extends DataStream[Double] {
 
+  import Recency._
+
   // below 0.01 and above 0.99 the half-life gets very close to 0, near 0.5 it tends towards positive/negative infinity
   val cleanedArg: Option[Double] = facetArg.value match {
     case x if x < 0.01  => Some(0.01)
@@ -38,10 +40,9 @@ class Recency @Inject() (facetArg: Recency.FacetArgOptional,
     case _              => Some(0.99)
   }
 
-  // see data-model/RecencyTest.xlsx for calculations of these values
+  // see data-model/docs/RecencyTest.xlsx for calculations of these values
   val EXPONENT = 6.74
   val DIVISOR = 0.1025737151
-  val COEF = 1.0
 
   val mbHalfLife: Option[DurationMils] = cleanedArg.map { a => {
     (if (a < 0.5) -1 else 1) * pow(-log(abs(a - 0.5)), EXPONENT) / DIVISOR
@@ -70,10 +71,15 @@ class Recency @Inject() (facetArg: Recency.FacetArgOptional,
 
 object Recency {
 
+  val COEF = 4.0
+
+  // 0.65 is equivalent to a 2-year (63072000017 ms) half-life
+  val DEFAULT = 0.65
+
   /** Optional half-life argument for computation of Recency model.  Memories fade over time. */
   case class FacetArgOptional() extends OptionalInjectId[Double] {
-    final val name = "facet.arg.recency"                   // 0.65 is equivalent to a 2-year (63072000017 ms) half-life
-    @Inject(optional = true) @Named(name) val value: Double = 0.65
+    final val name = "facet.arg.recency"
+    @Inject(optional = true) @Named(name) val value: Double = DEFAULT
   }
 
   /** Optional current time parameter for compuation of Recency model. */
