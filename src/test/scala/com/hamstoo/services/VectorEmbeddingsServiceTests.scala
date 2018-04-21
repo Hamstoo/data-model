@@ -1,11 +1,16 @@
 package com.hamstoo.services
 
-import akka.stream.ActorMaterializer
+import java.util.Locale
+
+import com.google.inject.{Guice, Injector}
+import com.hamstoo.daos.MongoVectorsDao
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
-import com.hamstoo.services.VectorEmbeddingService.WordMass
+import com.hamstoo.services.VectorEmbeddingsService.WordMass
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
+import com.hamstoo.utils.{ConfigModule, DataInfo}
+import play.api.libs.ws.WSClient
 import play.api.libs.ws.ahc.AhcWSClient
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -20,14 +25,21 @@ class VectorEmbeddingsServiceTests
   extends AkkaMongoEnvironment("VectorEmbeddingsServiceSpec-ActorSystem")
     with FutureHandler {
 
-  import com.hamstoo.utils.DataInfo._
-
-  implicit val materializer: ActorMaterializer = ActorMaterializer()
   implicit val ex: ExecutionContext = system.dispatcher
 
-  lazy val vectorizer = new Vectorizer(AhcWSClient(), vectorsDao, vectorsLink)
-  lazy val idfModel = new IDFModel(idfsResource)
-  lazy val vecSvc = new VectorEmbeddingsService(vectorizer, idfModel)
+  // create a Guice object graph configuration/module and instantiate it to an injector
+  lazy val injector: Injector = Guice.createInjector(new ConfigModule(DataInfo.config) {
+    override def configure(): Unit = {
+      super.configure()
+      bind[WSClient].toInstance(AhcWSClient())
+      bind[MongoVectorsDao].toInstance(vectorsDao)
+    }
+  })
+
+  // instantiate components from the Guice injector
+  import net.codingwell.scalaguice.InjectorExtensions._
+  lazy val vectorizer: Vectorizer = injector.instance[Vectorizer]
+  lazy val vecSvc: VectorEmbeddingsService = injector.instance[VectorEmbeddingsService]
 
   // skip all of these tests because CircleCI doesn't have access to the conceptnet-vectors container
 
@@ -41,7 +53,6 @@ class VectorEmbeddingsServiceTests
 
     vec0.head shouldEqual 8.61e-5 +- 1e-7
     vec0.head shouldEqual vec1.head +- 1e-15
-
   }
 
   it should "produce similar vecs in some cases (test is NON-DETERMINISTIC; if it fails try re-running it" ignore {
@@ -89,7 +100,6 @@ class VectorEmbeddingsServiceTests
     val meanMeanDiff: Double = means.head - means.tail.mean
     println(f"meanMeanDiff = $meanMeanDiff%.3f")
     meanMeanDiff should be > 0.4
-
   }
 
   it should "produce similar vectors in other cases" ignore {
@@ -128,7 +138,6 @@ class VectorEmbeddingsServiceTests
     cosines(3) shouldEqual 0.977 +- 1e-3 // 0.905
     cosines(4) shouldEqual 0.346 +- 1e-3 // 0.522
     cosines(5) shouldEqual 0.563 +- 1e-3 // 0.516
-
   }
 
   it should "select top words" ignore {
@@ -136,7 +145,6 @@ class VectorEmbeddingsServiceTests
     val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt).futureValue._1
     // 2 words are duplicates and out of the remaining 7 only 5 are kept per `text2TopWords.desiredFracWords` function
     topWords.size shouldEqual 5
-
   }
 
   it should "k-means vectorize" ignore {
@@ -149,7 +157,7 @@ class VectorEmbeddingsServiceTests
         ("ford"  , -0.626,  0.630),
         ("toyota", -0.482,  0.846)).foreach { case (w, s0, s1) =>
 
-      val wordVec = vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, w).futureValue.get._1
+      val wordVec = vectorizer.dbCachedLookupFuture(Locale.ENGLISH, w).futureValue.get._1
       vecs.head.cosine(wordVec) shouldEqual s0 +- 1e-3
       vecs(1).cosine(wordVec) shouldEqual s1 +- 1e-3
     }

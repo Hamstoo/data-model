@@ -1,15 +1,13 @@
 package com.hamstoo.daos
 
 import com.hamstoo.models.Representation._
-import com.hamstoo.models.{Page, Representation, RSearchable}
+import com.hamstoo.models.{Representation, RSearchable}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-import reactivemongo.bson.{BSONDocument, BSONDocumentHandler, Macros}
 
-import scala.collection.breakOut
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
@@ -64,9 +62,9 @@ class MongoRepresentationDao(db: () => Future[DefaultDB])
     * WHERE ANY(SPLIT(doctext) IN @query)
     * --ORDER BY score DESC -- actually this is not happening, would require '.sort' after '.find'
     */
-  def search(ids: Set[String], query: String): Future[Map[String, RSearchable]] = for {
+  def search(ids: Set[ObjectId], query: String): Future[Map[String, RSearchable]] = for {
     c <- dbColl()
-    _ = logger.info(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
+    _ = logger.debug(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
 
     // this Future.sequence the only way I can think of to lookup documents via their IDs prior to a Text Index search
     seq <- Future.sequence { ids.map { id =>

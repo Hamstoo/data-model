@@ -17,7 +17,7 @@
         <encoder>
             <!--<pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>-->
             <!--<pattern>%d{HH:mm:ss.SSS} %-5level [%logger{36}] - %msg%n</pattern>-->
-            <pattern>%date %coloredLevel %logger{15} - %message%n%xException{10}</pattern>
+            <pattern>%date %coloredLevel %logger{15}\(%line\) - %message%n%xException{10}</pattern>
         </encoder>
     </appender>
 
@@ -25,10 +25,10 @@
         <appender-ref ref="STDOUT"/>
     </root>
 
+    <logger name="akka" level="INFO"/> <!-- must also be set in reference.conf -->
+    <logger name="play" level="INFO"/>
     <logger name="io.netty" level="INFO"/>
     <logger name="org.asynchttpclient" level="INFO"/>
     <logger name="reactivemongo" level="WARN"/>
     <logger name="com.hamstoo" level="INFO"/>
-    <logger name="com.hamstoo.daos" level="INFO"/>
-    <logger name="com.hamstoo.models" level="INFO"/>
 </configuration>

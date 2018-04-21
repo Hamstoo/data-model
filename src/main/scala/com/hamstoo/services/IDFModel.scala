@@ -4,12 +4,22 @@ import java.io._
 import java.util.zip.{ZipEntry, ZipInputStream, ZipOutputStream}
 import java.util.{Locale, Scanner}
 
+import com.google.inject.{Inject, Singleton}
+import com.google.inject.name.Named
+import com.hamstoo.services.IDFModel.ResourcePathOptional
+import com.hamstoo.stream.InjectId
 import play.api.Logger
 import play.api.libs.json.{JsValue, Json}
 import com.hamstoo.utils.cleanly
 
 import scala.collection.mutable
 import scala.util.matching.UnanchoredRegex
+
+object IDFModel {
+
+  // https://github.com/google/guice/wiki/FrequentlyAskedQuestions#how-can-i-inject-optional-parameters-into-a-constructor
+  object ResourcePathOptional extends InjectId[Option[String]] { final val name = "idfs.resource.path" }
+}
 
 /**
   * IDF calculator.
@@ -31,7 +41,9 @@ import scala.util.matching.UnanchoredRegex
   * http://opensourceconnections.com/blog/2015/10/16/bm25-the-next-generation-of-lucene-relevation/
   * http://www.benfrederickson.com/distance-metrics/
   */
-class IDFModel(zipfileResource: String, opzipfilepath: Option[String] = None) {
+@Singleton
+class IDFModel @Inject() (@Named("idfs.resource") zipfileResource: String,
+                          @Named("idfs.resource.path") opzipfilepath: ResourcePathOptional.typ) {
 
   val logger: Logger = Logger(classOf[IDFModel])
 
@@ -53,7 +65,7 @@ class IDFModel(zipfileResource: String, opzipfilepath: Option[String] = None) {
   logger.info(s"Loading IDFs from $zipfilepath")
   cleanly(new ZipInputStream(inputStream))(_.close) { in =>
     in.getNextEntry // move to the first/only compressed file in the zip archive
-  val js: JsValue = Json.parse(in)
+    val js: JsValue = Json.parse(in)
     idfs = js.as[MapType]
     maxIdf = idfs.maxBy(_._2)._2
   }

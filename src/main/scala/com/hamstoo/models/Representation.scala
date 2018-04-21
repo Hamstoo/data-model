@@ -1,7 +1,5 @@
 package com.hamstoo.models
 
-import java.util.UUID
-
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.daos.MongoMarksDao
 import com.hamstoo.models.Representation.VecEnum
@@ -50,38 +48,52 @@ class RSearchable(val id: String,
                   val nWords: Option[Long],
                   val vectors: Map[String, Representation.Vec],
                   val score: Option[Double]) {
+
+  import com.hamstoo.models.Representation._
+
   /**
     * Return true if `oth`er repr is a likely duplicate of this one.  False positives possible.
     * TODO: need to measure this distribution to determine if `DUPLICATE_SIMILARITY_THRESHOLD` is sufficient
     */
-  def isDuplicate(oth: RSearchable): Boolean = {
+  def isDuplicate(oth: RSearchable, thisUrl: Option[String], othUrl: Option[String]): Boolean = {(
+                                                                                          // parens fix multi-line ||
+    // quickly test for identical doctexts first...
+    doctext.nonEmpty && doctext == oth.doctext ||
 
-    // quickly test for identical doctexts first and otherwise use header as a filter on top of vec/edit similarities
-    !doctext.isEmpty && doctext == oth.doctext || header == oth.header && (
+    // ...or allow a lower vector similarity if the *URLs* have a high edit similarity (but still require decent
+    // *doctext* edit similarity) ...
+    (for(u_t <- thisUrl; u_o <- othUrl) yield Representation.editSimilarity(u_t, u_o)).exists(_ > 0.9) &&
+      vecSimilarity(oth) > DUPLICATE_VEC_SIMILARITY_THRESHOLD * 0.8 &&
+      editSimilarity(oth) > DUPLICATE_EDIT_SIMILARITY_THRESHOLD ||
+
+    // ...and otherwise use header as a filter on top of vec/edit similarities
+    header == oth.header && (
 
       // The `editSimilarity` is really what we're after here, but it's really, really slow (6-20 seconds per
       // comparison) so we filter via `vecSimilarity` first.  The reason we don't just always use vecSimilarity is
       // because it has too many false positives, like, e.g., when a site has very few English words.
-      vecSimilarity(oth) > Representation.DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
-      editSimilarity(oth) > Representation.DUPLICATE_EDIT_SIMILARITY_THRESHOLD
+      vecSimilarity(oth) > DUPLICATE_VEC_SIMILARITY_THRESHOLD &&
+      editSimilarity(oth) > DUPLICATE_EDIT_SIMILARITY_THRESHOLD
     )
-  }
+  )}
 
   /** Define `similarity` in one place so that it can be used in multiple. */
   def vecSimilarity(oth: RSearchable): Double = (for {
     thisVec <- vectors.get(VecEnum.IDF3.toString)
     othVec <- oth.vectors.get(VecEnum.IDF3.toString)
-  } yield Representation.VecFunctions(thisVec).cosine(othVec)).getOrElse(0.0)
+  } yield VecFunctions(thisVec).cosine(othVec)).getOrElse(0.0)
 
   /** Another kind of similarity, the opposite of (relative) edit distance. */
-  def editSimilarity(oth: RSearchable): Double = {
-    if (doctext.isEmpty && oth.doctext.isEmpty) 1.0
-    else {
-      val editDist = LevenshteinDistance.getDefaultInstance.apply(doctext, oth.doctext)
-      val relDist = editDist / math.max(doctext.length, oth.doctext.length).toDouble // toDouble is important here
-      1.0 - relDist
-    }
-  }
+  def editSimilarity(oth: RSearchable): Double = Representation.editSimilarity(doctext, oth.doctext)
+
+  /** See comment on MSearchable.xcopy for why this is necessary. */
+  def xcopy(id: String = id,
+            header: Option[String] = header,
+            doctext: String = doctext,
+            nWords: Option[Long] = nWords,
+            vectors: Map[String, Representation.Vec] = vectors,
+            score: Option[Double] = score): RSearchable =
+    new RSearchable(id, header, doctext, nWords, vectors, score)
 }
 
 /**
@@ -163,10 +175,22 @@ case class Representation(
 }
 
 object Representation extends BSONHandlers {
+
   type Vec = Seq[Double]
+  object Vec { def empty = Seq.empty[Double] }
 
   val DUPLICATE_VEC_SIMILARITY_THRESHOLD = 0.95
   val DUPLICATE_EDIT_SIMILARITY_THRESHOLD = 0.85
+
+  /** Another kind of similarity, the opposite of (relative) edit distance. */
+  def editSimilarity(str0: String, str1: String): Double = {
+    if (str0.isEmpty && str1.isEmpty) 1.0
+    else {
+      val editDist = LevenshteinDistance.getDefaultInstance.apply(str0, str1)
+      val relDist = editDist / math.max(str0.length, str1.length).toDouble // toDouble is important here
+      1.0 - relDist
+    }
+  }
 
   implicit class VecFunctions(private val vec: Vec) extends AnyVal {
 
@@ -176,15 +200,15 @@ object Representation extends BSONHandlers {
     // on the list to make evaluation lazy, though View construction also has its cost.
     def -(other: Vec): Vec = {
       @tailrec
-      def rec(a: Vec, b: Vec, c: Vec): Vec = if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head - b.head) +: c)
-
+      def rec(a: Vec, b: Vec, c: Vec): Vec =
+        if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head - b.head) +: c)
       rec(vec, other, Nil)
     }
 
     def +(other: Vec): Vec = {
       @tailrec
-      def rec(a: Vec, b: Vec, c: Vec): Vec = if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head + b.head) +: c)
-
+      def rec(a: Vec, b: Vec, c: Vec): Vec =
+        if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head + b.head) +: c)
       rec(vec, other, Nil)
     }
 
@@ -217,8 +241,8 @@ object Representation extends BSONHandlers {
 
     def dot(other: Vec): Double = {
       @tailrec
-      def rec(a: Vec, b: Vec, sum: Double): Double = if (a.isEmpty || b.isEmpty) sum else rec(a.tail, b.tail, sum + a.head * b.head)
-
+      def rec(a: Vec, b: Vec, sum: Double): Double =
+        if (a.isEmpty || b.isEmpty) sum else rec(a.tail, b.tail, sum + a.head * b.head)
       rec(vec, other, 0.0)
     }
 

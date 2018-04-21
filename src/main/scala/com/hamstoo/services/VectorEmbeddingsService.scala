@@ -1,6 +1,9 @@
 package com.hamstoo.services
 
+import java.util.Locale
+
 import breeze.linalg.{DenseMatrix, DenseVector, svd}
+import com.google.inject.Inject
 import com.hamstoo.daos.MongoRepresentationDao.{CONTENT_WGT, KWORDS_WGT}
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation.{Vec, VecEnum, _}
@@ -11,9 +14,10 @@ import scala.annotation.tailrec
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.Random
+import scala.util.matching.Regex
 
 
-object VectorEmbeddingService {
+object VectorEmbeddingsService {
 
   /**
     * A word's `mass` can be thought of as its TF-IDF or BM25 score.  `tf` is a function of `count` such as
@@ -21,8 +25,63 @@ object VectorEmbeddingService {
     */
   case class WordMass(word: String, count: Double, tf: Double, mass: Double, scaledVec: Vec)
 
+  // first of the pair is a map from query word to count, second is just what it says
+  type WordCountsType = Seq[(String, Int)]
+  type WordMassesType = Future[Seq[WordMass]]
+  type Query2VecsType = (WordCountsType, WordMassesType)
+
   // avg(5000, 7200, 2200, 5300, 1077, 3400) see second HTMLRepresentationServiceSpec test
   val MEDIAN_DOC_LENGTH = 4000
+
+  /**
+    * This function computes a BM25 "term frequency" which really isn't a term frequency though it is used in
+    * place of the term frequency in a TF-IDF model.
+    */
+  def bm25Tf(tf: Double, docLength: Double): Double = {
+
+    // "setting B to 0.5 here, which introduces a slight bias back towards" long documents
+    //  [http://www.benfrederickson.com/distance-metrics/]
+    val b = 0.5
+    val medianDocLength = MEDIAN_DOC_LENGTH
+    val lengthNorm = (1.0 - b) + b * docLength / medianDocLength
+
+    // "The usual value of K1 used in text search is around 1.2, which makes sense for text queries as its more
+    // important to match documents containing all of the terms in the query instead of matching repeated terms."
+    val k1 = 1.2
+    tf * (k1 + 1.0) / (k1 * lengthNorm + tf)
+  }
+
+  /**
+    * Given a word vector and a map of various vector types (that were all constructed from a single
+    * document) compute the aggregate similarity of the word to the document.
+    */
+  def documentSimilarity(wordVec: Vec, docVecs: Map[Representation.VecEnum.Value, Vec]): Double = {
+
+    // principal axes are (typically) adirectional (though we attempt to directionalize them when they
+    // are constructed in repr-engine) so allow negatives but with a penalty
+    val sims: Map[VecEnum.Value, Double] = docVecs.flatMap { case (vecType, docVec) =>
+      val cos = wordVec cosine docVec
+      vecType match {
+        case vt if vt.toString.startsWith("PC") => Some(vt -> math.max(cos, -0.95 * cos))
+        case vt => Some(vt -> cos)
+      }
+    }
+
+    //logger.debug(s"${wm.word}")
+    //sims.toSeq.sortBy(_._1).foreach { case (t, s) => logger.debug(f"  $t = $s%.2f") }
+    //logger.debug(f"    aggregateSimilarityScore(${wm.word}) = ${aggregateSimilarityScore(sims)}%.2f")
+
+    aggregateSimilarityScore(sims)
+  }
+
+  /** See kwsSimilarities.xlsx for an approximate fit of this model (R^2 ~= 12.2%). */
+  def aggregateSimilarityScore(sims: Map[VecEnum.Value, Double]): Double = {
+    0.47 * sims.getOrElse(VecEnum.IDF, 0.0) + // t-stat ~= 3.7
+      1.22 * sims.getOrElse(VecEnum.PC1, 0.0) + //           7.1
+      0.84 * sims.getOrElse(VecEnum.PC2, 0.0) + //           5.0
+      0.66 * sims.getOrElse(VecEnum.PC3, 0.0) + //           3.4
+      -0.28 * sims.getOrElse(VecEnum.KM1, 0.0)   //          -2.6
+  }
 }
 
 /**
@@ -31,16 +90,15 @@ object VectorEmbeddingService {
   * The goal of each algorithm is to identify clusters of a document's words containing high TF-IDF words
   * and from each cluster compute an average of its words' vectors as a representation of the document.
   */
-class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
+@com.google.inject.Singleton // Guice Singleton, not Java Singleton, one per Injector instance, not one per process
+class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFModel) {
 
-  import VectorEmbeddingService._
-
+  import VectorEmbeddingsService._
   val logger = Logger(classOf[VectorEmbeddingsService])
 
   // for testing only
   var wCount: Int = 0
   //var slCount: Int = 0 // Vectorizer.sAndL has been deprecated
-
 
   /**
     * Join the various string representations into a single string and weight (or repeat) each of them so that
@@ -63,9 +121,9 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     // word count is used to normalize $search scores obtained from queries against MongoDB Text Index
     var nWords: Long = 0
 
-    lazy val defaultSeqWM: Future[Seq[WordMass]] = Future.successful(Seq.empty[WordMass])
+    lazy val defaultSeqWM: WordMassesType = Future.successful(Seq.empty[WordMass])
 
-    val seq: Future[Seq[WordMass]] = if (maxLen == 0) defaultSeqWM else {
+    val seq: WordMassesType = if (maxLen == 0) defaultSeqWM else {
       Future.sequence(strreprs.map { case (str, wgt) =>
         // normalize w.r.t. cubrt(char count ratio) b/c `doctext` can be many, many times longer than the others
         if (str.isEmpty) defaultSeqWM else {
@@ -208,38 +266,6 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
   }
 
   /**
-    * Given a word vector and a map of various vector types (that were all constructed from a single
-    * document) compute the aggregate similarity of the word to the document.
-    */
-  def documentSimilarity(wordVec: Vec, docVecs: Map[Representation.VecEnum.Value, Vec]): Double = {
-
-    // principal axes are (typically) adirectional (though we attempt to directionalize them when they
-    // are constructed in repr-engine) so allow negatives but with a penalty
-    val sims: Map[VecEnum.Value, Double] = docVecs.flatMap { case (vecType, docVec) =>
-      val cos = wordVec cosine docVec
-      vecType match {
-        case vt if vt.toString.startsWith("PC") => Some(vt -> math.max(cos, -0.95 * cos))
-        case vt => Some(vt -> cos)
-      }
-    }
-
-    //logger.debug(s"${wm.word}")
-    //sims.toSeq.sortBy(_._1).foreach { case (t, s) => logger.debug(f"  $t = $s%.2f") }
-    //logger.debug(f"    aggregateSimilarityScore(${wm.word}) = ${aggregateSimilarityScore(sims)}%.2f")
-
-    aggregateSimilarityScore(sims)
-  }
-
-  /** See kwsSimilarities.xlsx for an approximate fit of this model (R^2 ~= 12.2%). */
-  def aggregateSimilarityScore(sims: Map[VecEnum.Value, Double]): Double = {
-     0.47 * sims.getOrElse(VecEnum.IDF, 0.0) + // t-stat ~= 3.7
-     1.22 * sims.getOrElse(VecEnum.PC1, 0.0) + //           7.1
-     0.84 * sims.getOrElse(VecEnum.PC2, 0.0) + //           5.0
-     0.66 * sims.getOrElse(VecEnum.PC3, 0.0) + //           3.4
-    -0.28 * sims.getOrElse(VecEnum.KM1, 0.0)   //          -2.6
-  }
-
-  /**
     * Converts a document text to a vector by a weighted average of its words' vectors via 2 methods:
     *   1. IDF-weighted words
     *   2. IDF^3-weighted words
@@ -258,24 +284,6 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
         case Some((v1, v2)) => Some((v1 + newVecs._1, v2 + newVecs._2))
       }
     }
-  }
-
-  /**
-    * This function computes a BM25 "term frequency" which really isn't a term frequency though it is used in
-    * place of the term frequency in a TF-IDF model.
-    */
-  def bm25Tf(tf: Double, docLength: Double): Double = {
-
-    // "setting B to 0.5 here, which introduces a slight bias back towards" long documents
-    //  [http://www.benfrederickson.com/distance-metrics/]
-    val b = 0.5
-    val medianDocLength = MEDIAN_DOC_LENGTH
-    val lengthNorm = (1.0 - b) + b * docLength / medianDocLength
-
-    // "The usual value of K1 used in text search is around 1.2, which makes sense for text queries as its more
-    // important to match documents containing all of the terms in the query instead of matching repeated terms."
-    val k1 = 1.2
-    tf * (k1 + 1.0) / (k1 * lengthNorm + tf)
   }
 
   /**
@@ -346,7 +354,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
       val str =
         "inevitable stagnation despotic rage providing species absorbs conventional serious youthful rate nonetheless"
       str.split(" ").foreach { w =>
-        vectorizer.dbCachedLookup(vectorizer.ENGLISH, w)
+        vectorizer.dbCachedLookup(Locale.ENGLISH, w)
           .foreach { case (v, _) =>
             val cosines = clusters.map(_.vecSum cosine v).map(cos => f"$cos%.2f")
             println(s"WORD: $w -> COSINES: $cosines")
@@ -370,7 +378,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     logger.debug(s"Counting words ($wCount, ${Vectorizer.dbCount}, ${Vectorizer.fCount})")
 
     // count number of occurrences of each (non-standardized) word so that we only have to lookup a vec for each once
-    val grouped0: Seq[(String, Int)] = words.groupBy(identity).mapValues(_.length).toSeq
+    val grouped0: WordCountsType = words.groupBy(identity).mapValues(_.length).toSeq
 
     /**
       * This is an older implementation of countWords that doesn't make use of ReactiveMongo's asynchronicity
@@ -379,7 +387,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
       * so I'm leaving it commented-out here for that purpose.
       */
     //@tailrec
-    def rec(grouped: Seq[(String, Int)], wordCounts: Map[String, (Int, Vec)] = Map.empty[String, (Int, Vec)]):
+    def rec(grouped: WordCountsType, wordCounts: Map[String, (Int, Vec)] = Map.empty[String, (Int, Vec)]):
                                               Future[Map[String, (Int, Vec)]] = {
 
       if (grouped.isEmpty) Future.successful(wordCounts) else {
@@ -387,7 +395,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
         // call dbCachedLookupFuture for each non-standardized/raw word in `grouped`
         // TODO: it would be nice if we could standardize the word first before calling `dbCachedLookup`
         // TODO: this would cut down on re-querying vectors for words that have already been found
-        vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, grouped.head._1)
+        vectorizer.dbCachedLookupFuture(Locale.ENGLISH, grouped.head._1)
           .map { optWordVec =>
             optWordVec.collect { case (vec, standardizedWord) =>
               val updt = wordCounts.getOrElse(standardizedWord, (0, vec))
@@ -406,7 +414,7 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
 
       // TODO: it would be nice if we could standardize the word first before calling `dbCachedLookup`
       // TODO: this would cut down on re-querying vectors for words that have already been found
-      vectorizer.dbCachedLookupFuture(vectorizer.ENGLISH, w).map {
+      vectorizer.dbCachedLookupFuture(Locale.ENGLISH, w).map {
         _.map { case (vec, standardizedWord) =>
           wCount += 1 // not threadsafe, but just for testing, so who cares
           (standardizedWord, (n, vec))
@@ -435,6 +443,34 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
     val nDesired = math.min(maxWords, fracDesired * nUnique).toInt
     logger.info(f"Document word mass stats: # unique = $nUnique, # top = $nDesired (${fracDesired*100}%.1f%%)")
     nDesired
+  }
+
+  // regex that matches all possible valid word delimiters, this includes various punctuation possibly followed or
+  // prepended by spaces, it's used in the following word-matching regex and for these spacers replacement later
+  val spcrRgx: String = """[-\/_\+—]|(\.\s+)|([\s,:;?!…]\s*)|(\.\.\.\s*)|(\s*["“”\(\)]\s*)"""
+
+  // regex that matches all latin alphabet words, separated by all kinds of spacers.
+  val termRgx: Regex = s"[^a-z]*([a-z]+(($spcrRgx|[\\.'’])[a-z]+)*+)".r.unanchored
+
+  /**
+    * For a given query string, compute WordMasses, which include weighted word vectors, for each de-duplicated
+    * word in the string.
+    */
+  def query2Vecs(query: String): Query2VecsType = {
+
+    // don't use a Set here, allow words to be specified more than once as a potential way for users to tailor queries
+    val cleanedQuery: WordCountsType = utils.tokenize(utils.parse(query))
+      .filter(_.nonEmpty)
+      .flatMap(termRgx.findFirstMatchIn)
+      .map(_.group(1).replaceAll("’", "'").replaceAll(s"($spcrRgx)+", ""))
+      .groupBy(identity).mapValues(_.size) // count occurrences of each word
+      .toSeq // must be converted from a map to a seq b/c it gets zipped with other parallel seqs down below
+
+    // cleaned query words with the same number of original occurrences joined back into a single string
+    val rejoinedQuery = cleanedQuery.map { case (w, n) => (w + " ") * n }.mkString(" ")
+
+    // get vectors for all terms (per `identity`) in search query
+    (cleanedQuery, text2TopWords(rejoinedQuery, identity).map(_._1))
   }
 
   /**
@@ -469,7 +505,8 @@ class VectorEmbeddingsService(vectorizer: Vectorizer, idfModel: IDFModel) {
       // scale the TFs by their IDFs (i.e. "mass") and the word vectors by the resulting product
       val withIdfs = counts.toSeq.map { case (w, (n, v)) =>
         val tf = bm25Tf(n, docLength) // "true" docLength
-      val mass = tf * idfModel.transform(w)
+        val mass = tf * idfModel.transform(w)
+        logger.debug(f"text2TopWords.withIdfs: WordMass($w, $n, $tf%.2f * ${mass / tf}%.2f = $mass%.2f)")
         WordMass(w, n, tf, mass, v * mass)
       }
 

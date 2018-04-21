@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.utils
 
 import java.util.UUID
@@ -5,17 +8,17 @@ import java.util.UUID
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models._
 import com.mohiva.play.silhouette.api.LoginInfo
+import com.typesafe.config.{Config, ConfigFactory}
 
 /**
   * Trait that contain test information
   */
 object DataInfo {
 
-  // vector service address
-  lazy val vectorsLink = "http://localhost:5000"
-
-  // idfs zip file address
-  lazy val idfsResource = "idfs/text8.json.zip"
+  // https://stackoverflow.com/questions/24153614/scala-write-value-to-typesafe-config-object
+  // https://alvinalexander.com/scala/how-to-create-multiline-strings-heredoc-in-scala-cookbook
+  lazy val config: Config = ConfigFactory.parseString("""vectors.link = "http://localhost:5000"
+                                                        |idfs.resource = idfs/text8.json.zip""".stripMargin)
 
   // these used to be `userId` and `markId` constants but were changed to functions to avoid collisions between tests
   def constructUserId(): UUID = UUID.randomUUID()

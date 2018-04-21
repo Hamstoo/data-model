@@ -25,25 +25,22 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
 
   // default mongo version, override if needed
   val mongoVersion: Version = Version.V3_5_1
-  // default mongo port, override if needed
-  val mongoPort: Int = 12345
 
-  // mongodb uri and database name
-  private[hamstoo] val dbUri = s"mongodb://localhost:$mongoPort/hamstoo"
-
-  // uninitialized fongo (fake mongo) instance
-  private lazy val fongo: MongodProps = mongoStart(mongoPort, mongoVersion)
+  // fongo (fake mongo) instance
+  final lazy val fongo: MongodProps = mongoStart(mongoPort, mongoVersion)
 
   override def beforeAll(): Unit = {
     println(s"Starting MongoDB:$mongoVersion instance on port: $mongoPort")
-    fongo // init fongo
+    fongo // start fake mongodb
     Thread.sleep(1000) // delay to successful start
     dbConn = Some(getDbConnection(dbUri))
   }
 
-  override def afterAll(): Unit = {
+  override def afterAll(): Unit = shutdownMongo()
+
+  def shutdownMongo(): Unit = {
     println("Stopping MongoDB instance")
-    mongoStop(fongo)
+    mongoStop(fongo) // stop fake mongodb
     Thread.sleep(1000) // delay to successful stop
     dbConn = None
   }
@@ -66,6 +63,7 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
 
   lazy val statsDao = new MongoUserStatsDao(db)
   lazy implicit val userDao = new MongoUserDao(db)
+  lazy implicit val urlDuplicatesDao = new MongoUrlDuplicatesDao(db)
   lazy implicit val marksDao = new MongoMarksDao(db)
   lazy implicit val pagesDao = new MongoPagesDao(db)
   lazy val notesDao = new MongoInlineNoteDao(db)

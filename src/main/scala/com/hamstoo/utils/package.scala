@@ -2,7 +2,7 @@ package com.hamstoo
 
 import java.util.Locale
 
-import org.joda.time.DateTime
+import org.joda.time.{DateTime, DateTimeZone}
 import play.api.Logger
 import play.api.libs.json.Json
 import play.api.mvc.{Call, Request}
@@ -12,7 +12,6 @@ import reactivemongo.api.commands.WriteResult
 import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
 import reactivemongo.api._
 import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
-import sys.process._
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
@@ -97,8 +96,13 @@ package object utils {
   def endpoint2Link(endpoint: Call)(implicit request: Request[Any]): String = httpHost + endpoint
   def httpHost(implicit request: Request[Any]): String = s"http${if (request.secure) "s" else ""}://${request.host}"
 
+  /** Extended ReactiveMongo QueryBuilder */
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
-    /** Short for `.cursor` with `.collect` consecutive calls with default error handler. */
+
+    /**
+      * Short for `.cursor` with `.collect` consecutive calls with default error handler. Or maybe this is
+      * short for "collection" analogous to `GenericQueryBuilder.one`.  Either way, it works.
+      */
     def coll[E, C[_] <: Iterable[_]](n: Int = -1)
                                     (implicit r: Reader[E], cbf: CanBuildFrom[C[_], E, C[E]]): Future[C[E]] = {
 
@@ -192,15 +196,33 @@ package object utils {
     * For reference, Long.MaxValue is equal to 9223372036854775807 or MongoDB's `NumberLong("9223372036854775807")`.
     */
   type TimeStamp = Long
+  type DurationMils = Long
   val INF_TIME: TimeStamp = Long.MaxValue
   def TIME_NOW: TimeStamp = DateTime.now.getMillis
 
   implicit class ExtendedTimeStamp(private val ms: TimeStamp) extends AnyVal {
     /** Converts from time in milliseconds to a Joda DateTime. */
-    def dt: DateTime = new DateTime(ms)
+    def dt: DateTime = new DateTime(ms, DateTimeZone.UTC)
+    /** Giga-seconds make for an easily readable display. */
+    def Gs: Double = ms.toDouble / 1000000000
+    /** Time format. */
+    def tfmt: String = s"${ms.dt} [${ms.Gs}]".replaceAll("T00:00:00.000", "").replaceAll(":00:00.000", "")
     /** Converts from time in milliseconds to a JsValueWrapper. */
     def toJson: Json.JsValueWrapper =
       s"${dt.year.getAsString}-${dt.monthOfYear.getAsString}-${dt.dayOfMonth.getAsString}"
+  }
+
+  implicit class ExtendedDurationMils(private val dur: DurationMils) extends AnyVal {
+    def toDays: Double = dur.toDouble / 1000 / 60 / 60 / 24
+    def toDuration: Duration = dur.millis
+    /** Duration format. */
+    def dfmt: String = s"${dur.toDays} days [${dur.Gs}]"
+  }
+
+  /** It seems unnecessary to muck up the type inheritance hierarchy for silly stuff like this. */
+  implicit class IdAndTimeFromable(private val duck: { def id: ObjectId; def timeFrom: TimeStamp }) {
+    import scala.language.reflectiveCalls
+    def idt: String = s"${duck.id} [${duck.timeFrom}]"
   }
 
   /** A couple of handy ReactiveMongo shortcuts that were formerly being defined in every DAO class. */
