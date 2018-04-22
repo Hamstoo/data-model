@@ -17,7 +17,7 @@ version := {
     (if (branch == "master") "" else branch + "-") + l.trim
   } getOrElse "latest"
 }
-scalaVersion := "2.12.3"
+scalaVersion := "2.12.5"
 
 organization := "com.hamstoo"
 
