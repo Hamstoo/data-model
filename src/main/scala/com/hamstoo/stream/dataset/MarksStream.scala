@@ -110,15 +110,8 @@ object MarksStream {
 
   val logger = Logger(classOf[MarksStream])
 
-  case class SearchUserIdOptional() extends OptionalInjectId[Option[UUID]] {
-    final val name = "search.user.id"
-    @Inject(optional = true) @Named(name) val value: Option[UUID] = None
-  }
-
-  case class SearchLabelsOptional() extends OptionalInjectId[Set[String]] {
-    final val name = "labels"
-    @Inject(optional = true) @Named(name) val value: Set[String] = Set.empty[String]
-  }
+  case class SearchUserIdOptional() extends OptionalInjectId[Option[UUID]]("search.user.id", None)
+  case class SearchLabelsOptional() extends OptionalInjectId[Set[String]]("labels", Set.empty[String])
 
   /**
     * Filter for marks that the calling user is authorized to read.  This function relies on the marks being in

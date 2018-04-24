@@ -5,13 +5,12 @@ package com.hamstoo.stream.facet
 
 import akka.stream.Materializer
 import com.google.inject.{Inject, Singleton}
-import com.google.inject.name.Named
 import com.hamstoo.stream.{DataStream, OptionalInjectId}
 import com.hamstoo.stream.dataset.MarksStream
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, TimeStamp}
 import org.joda.time.DateTime
 
-import math.{abs, pow, log}
+import math.{abs, log, pow}
 import scala.concurrent.duration._
 
 /**
@@ -23,7 +22,7 @@ import scala.concurrent.duration._
   * @param marks     Marks data source.
   */
 @Singleton
-class Recency @Inject() (facetArg: Recency.FacetArgOptional,
+class Recency @Inject() (facetArg: Recency.Arg,
                          now: Recency.CurrentTimeOptional,
                          marks: MarksStream)
                         (implicit m: Materializer)
@@ -34,8 +33,8 @@ class Recency @Inject() (facetArg: Recency.FacetArgOptional,
   // below 0.01 and above 0.99 the half-life gets very close to 0, near 0.5 it tends towards positive/negative infinity
   val cleanedArg: Option[Double] = facetArg.value match {
     case x if x < 0.01  => Some(0.01)
-    case x if x < 0.491 => Some(x)
-    case x if x < 0.509 => None // undefined: model will return constant 0.0
+    case x if x < 0.481 => Some(x)
+    case x if x < 0.519 => None // undefined: model will return constant 0.0
     case x if x < 0.99  => Some(x)
     case _              => Some(0.99)
   }
@@ -76,15 +75,9 @@ object Recency {
   // 0.65 is equivalent to a 2-year (63072000017 ms) half-life
   val DEFAULT = 0.65
 
-  /** Optional half-life argument for computation of Recency model.  Memories fade over time. */
-  case class FacetArgOptional() extends OptionalInjectId[Double] {
-    final val name = "facet.arg.recency"
-    @Inject(optional = true) @Named(name) val value: Double = DEFAULT
-  }
+  /** Optional half-life (input) argument for computation of Recency model.  Memories fade over time. */
+  case class Arg() extends OptionalInjectId[Double]("recency", DEFAULT)
 
   /** Optional current time parameter for compuation of Recency model. */
-  case class CurrentTimeOptional() extends OptionalInjectId[TimeStamp] {
-    final val name = "current.time"
-    @Inject(optional = true) @Named(name) val value: TimeStamp = DateTime.now.getMillis
-  }
+  case class CurrentTimeOptional() extends OptionalInjectId[TimeStamp]("current.time", DateTime.now.getMillis)
 }
