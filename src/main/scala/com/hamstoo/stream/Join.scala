@@ -194,14 +194,13 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
       //val sz1 = (joinable0.size, joinable1.size)
       //if (sz0 != sz1) logger.trace(s"Sizes: $sz0 -> $sz1")
 
-      // find a single joinable pair, if one exists (the view/headOption combo makes this operate like a lazy find)
-      val pushable = joinable0.view.flatMap { d0 =>
-        joinable1.view.flatMap { d1 => pairwise(d0, d1).map((d0, d1, _)) }.headOption
-      }.headOption
-
-      // perhaps this has the same effect as the above; is it easier to read?
-      //val pushable = (for(d0 <- joinable0.view; d1 <- joinable1.view)
-        //yield pairwise(d0, d1).map((d0, d1, _))).headOption
+      // find a single joinable pair, if one exists and the out port is pushable (the view/headOption combo makes this
+      // operate like a lazy find that stops iterating as soon as it finds a match)
+      val pushable = if (isAvailable(out)) {
+        joinable0.view.flatMap { d0 =>
+          joinable1.view.flatMap { d1 => pairwise(d0, d1).map((d0, d1, _)) }.headOption
+        }.headOption
+      } else None
 
       pushable.foreach { case (d0, d1, Join.Pairwised(paired, consumed0, consumed1)) =>
 
@@ -228,21 +227,23 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
       // update: switched from a single willShutDown to two so that if in1 finishes we can still pull from in0
       // if it's behind giving it a chance to catch up to whatever's already in the joinable1 buffer (and vice versa)
+      val b0 = !hasBeenPulled(in0) && !isAvailable(in0)
+      val b1 = !hasBeenPulled(in1) && !isAvailable(in1)
       if (watermark0 > watermark1) {
         if (willShutDown1) completeStage() else if (pushable.isEmpty) { // else wait for next onPull
-          logger.trace(s"pull(in1): $watermark0 > $watermark1")
-          if (!hasBeenPulled(in1) && !isAvailable(in1)) pull(in1)
+          logger.trace(s"pull(in1[$b1]): $watermark0 > $watermark1")
+          if (b1) pull(in1)
         }
-      } else if (watermark1 > watermark0) {
+      } else if (watermark0 < watermark1) {
         if (willShutDown0) completeStage() else if (pushable.isEmpty) { // else wait for next onPull
-          logger.trace(s"pull(in0): $watermark1 > $watermark0")
-          if (!hasBeenPulled(in0) && !isAvailable(in0)) pull(in0)
+          logger.trace(s"pull(in0[$b0]): $watermark0 < $watermark1")
+          if (b0) pull(in0)
         }
       } else {
         if (willShutDown0 || willShutDown1) completeStage() else if (pushable.isEmpty) { // else wait for next onPull
-          logger.trace(s"pull(in0 & in1): $watermark0 == $watermark1")
-          if (!hasBeenPulled(in0) && !isAvailable(in0)) pull(in0)
-          if (!hasBeenPulled(in1) && !isAvailable(in1)) pull(in1)
+          logger.trace(s"pull(in0[$b0] & in1[$b1]): $watermark0 == $watermark1")
+          if (b0) pull(in0)
+          if (b1) pull(in1)
         }
       }
     }
