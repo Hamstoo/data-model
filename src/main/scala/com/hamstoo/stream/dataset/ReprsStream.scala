@@ -51,9 +51,11 @@ class ReprsStream @Inject() (marksStream: MarksStream,
   // set logging level for this ReprsStream *instance*
   // "Note that you can also tell logback to periodically scan your config file"
   // https://stackoverflow.com/questions/3837801/how-to-change-root-logging-level-programmatically
-  val logger0: Slf4jLogger = LoggerFactory.getLogger(classOf[ReprsStream].getName.stripSuffix("$"))
-  logLevel.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
-  val logger1 = new Logger(logger0)
+  val logger1: Logger = {
+    val logback = LoggerFactory.getLogger(classOf[ReprsStream].getName.stripSuffix("$")).asInstanceOf[LogbackLogger]
+    logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
+    new Logger(logback)
+  }
 
   /** Maps the stream of marks to their reprs. */
   override val hubSource: Source[Datum[ReprsPair], NotUsed] = marksStream().mapAsync(4) { dat =>

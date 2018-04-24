@@ -51,9 +51,11 @@ class SearchResults @Inject() (@Named(Query2VecsOptional.name) query2Vecs: Query
   import SearchResults._
 
   // set logging level for this QuerySimilarities *instance*
-  val logger0: Slf4jLogger = LoggerFactory.getLogger(classOf[SearchResults].getName.stripSuffix("$"))
-  logLevel.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
-  val logger1 = new Logger(logger0)
+  val logger1: Logger = {
+    val logback = LoggerFactory.getLogger(classOf[SearchResults].getName.stripSuffix("$")).asInstanceOf[LogbackLogger]
+    logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
+    new Logger(logback)
+  }
 
   override val hubSource: SourceType = repredMarks.source
     .mapAsync(2) { dat: Datum[(MSearchable, ReprsPair)] =>
