@@ -196,11 +196,9 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
       // find a single joinable pair, if one exists and the out port is pushable (the view/headOption combo makes this
       // operate like a lazy find that stops iterating as soon as it finds a match)
-      val pushable = if (isAvailable(out)) {
-        joinable0.view.flatMap { d0 =>
-          joinable1.view.flatMap { d1 => pairwise(d0, d1).map((d0, d1, _)) }.headOption
-        }.headOption
-      } else None
+      val pushable = joinable0.view.flatMap { d0 =>
+        joinable1.view.flatMap { d1 => pairwise(d0, d1).map((d0, d1, _)) }.headOption
+      }.headOption
 
       pushable.foreach { case (d0, d1, Join.Pairwised(paired, consumed0, consumed1)) =>
 
@@ -261,7 +259,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         joinable0 += d
         logger.trace(s"onPush0: $d, sz=${joinable0.size}, wm=$watermark0")//, j=$joinable0")
         watermark0 = watermark0.updated(d.knownTime, d.sourceTime)
-        pushOneMaybe()
+        if (isAvailable(out)) pushOneMaybe()
       }
 
       /** onUpstreamFinish of port in0 is triggered by a pull(in0) when upstream has been exhausted. */
@@ -280,7 +278,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         joinable1 += d
         logger.trace(s"onPush1: $d, sz=${joinable1.size}, wm=$watermark1")//, j=$joinable1")
         watermark1 = watermark1.updated(d.knownTime, d.sourceTime)
-        pushOneMaybe()
+        if (isAvailable(out)) pushOneMaybe()
       }
 
       override def onUpstreamFinish(): Unit = {
