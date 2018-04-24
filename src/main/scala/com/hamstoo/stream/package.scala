@@ -6,10 +6,10 @@ package com.hamstoo
 import java.util.UUID
 
 import akka.stream.Attributes
-import com.google.inject.{Inject, Key}
-import com.google.inject.name.{Named, Names}
+import com.google.inject.{ConfigurationException, Inject, Key}
+import com.google.inject.name.Names
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
-import com.hamstoo.stream.config.BaseModule
+import com.hamstoo.stream.config.{BaseModule, StreamModule}
 import com.hamstoo.utils.{DurationMils, TimeStamp}
 import net.codingwell.scalaguice.typeLiteral
 import play.api.Logger
@@ -60,31 +60,53 @@ package object stream {
     if (key != null) Logger.debug(s"${getClass.getSimpleName}($key)")
   }
 
+  /** If a `final val name` isn't required for a @Named annotation, then this factory can be used. */
+  object InjectId {
+    // (1) defining `name` as a `val` here causes a NPE
+    // (2) using `name` instead of `_name` as apply's argument hangs (https://hamstoo.com/my-marks/11SuyL1ZqgXzJ5ik)
+    def apply[T :Manifest](_name: String): InjectId[T] = new InjectId[T] { override def name: String = _name }
+  }
+
   /**
     * Rather than binding optional defaults inside StreamModule.configure, thus requiring it to know about all the
-    * optionals that are out there, we have this OptionalInjectId class that... read more below.
+    * optionals that are out there, we have this OptionalInjectId class that allows the default values to be
+    * defined right along with the keys themselves.
+    *
+    * I tried to implement this in a way where each instance of this class would register itself via a singleton
+    * StreamModule.registerDefault, but since Scala objects are lazily instantiated that doesn't work.  Supposedly
+    * the preferred way to provide optional values with Guice is via OptionalBinders, but then some module somewhere
+    * still needs to perform the `bind` during the module's `configure` thus requiring StreamModule to know about
+    * all of the possible optionals.  So rather than pushing instances of this class to StreamModule, instead we
+    * access the StreamModule injector inside this class via its StreamModule.WrappedInjector member.
     */
-  abstract class OptionalInjectId[T :Manifest] extends InjectId[T] {
+  abstract class OptionalInjectId[T :Manifest](_name: String, default: => T = null) extends InjectId[T] {
+
+    override def name: String = _name
 
     /**
-      * I tried to implement this in a way where each instance of this class would register itself via a singleton
-      * StreamModule.registerDefault, but since Scala objects are lazily instantiated that doesn't work.  Supposedly
-      * the preferred way to provide optional values with Guice is via OptionalBinders, but then some module somewhere
-      * still needs to perform the `bind` during the module's `configure` thus requiring StreamModule to know about
-      * all of the possible optionals.  Just-in-time (JIT) binding using @Inject, however, allows the binding to occur
-      * at injection-time rather than at configure-time.  So that is why we're using this older, un-preferred "holder"
-      * pattern as described here:
-      *   https://github.com/google/guice/wiki/FrequentlyAskedQuestions#how-can-i-inject-optional-parameters-into-a-constructor
+      * So when Guice constructs an OptionalInjectId, it will call this `injector_` mutator, but we don't have to when
+      * we construct one.  This is called setter injection:
+      *     https://groups.google.com/forum/#!topic/google-guice/KFKP6Zd6vu0
       *
-      * This also means that derived classes of this `OptionalInjectId` class will have to be straight-up classes,
-      * not objects, as they'll need to have JIT constructors that can be executed at injection-time.
-      *
-      * This `value` member cannot be annotated here because `name` is not (yet) `final` which occurs inside the
-      * derived classes.  So derived classes will have to provide an overriding implementation of `value` with
-      * the @Inject and (optional) @Named annotations as shown here commented out.
+      * For why this is an Option[Injector] and not just a raw Injector (besides the fact that it's initialized to
+      * None), see the ScalaDoc for `StreamModule.provideStreamInjector`.
       */
-    //@Inject(optional = true) @Named(name) // error: "annotation argument needs to be a constant"
-    def value: T //= default
+    private var injector: StreamModule.WrappedInjector = None
+    @Inject def injector_(inj: StreamModule.WrappedInjector): Unit = injector = inj
+
+    /** Use the injector to construct a (possibly annotated) T. */
+    def value: T = {
+      if (injector.isEmpty)
+        throw new NullPointerException(s"Unable to get injected value for $key; OptionalInjectId values can only be gotten at (dependency) injection time")
+      Logger.debug(s"Getting instance for $key (default = $default) from injector ${injector.get.hashCode}")
+      Try(injector.get.getInstance(key)).recover {
+        case e: ConfigurationException if e.getMessage.contains("No implementation for") =>
+          Logger.debug(s"Using default instance $default given exception: $e")
+          default
+        case e => Logger.error("Unexpected exception type", e)
+          throw e
+      }.get
+    }
   }
 
   // `final val`s are required so that their values are constants that can be used at compile time in @Named annotations

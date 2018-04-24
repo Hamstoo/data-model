@@ -42,8 +42,30 @@ class StreamModule extends BaseModule {
   @Provides @Singleton @Named(Query2VecsOptional.name)
   def provideQuery2Vecs(@Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ): Query2VecsType =
     mbQuery2Vecs.get
+
+  /**
+    * StreamModules are typically passed to `parentInjector.createChildInjector(new StreamModule)`.  In such cases
+    * optional bindings (e.g. see OptionalInjectId) can be constructed by the parentInjector because the optional
+    * defaults are available to the parent.  But if we override an optional's default in the child module, then we
+    * want to ignore the parent's bindings.  So we need a way to inject the child injector into any OptionalInjectIds
+    * that we encounter.  We can't inject a raw Injector into OptionalInjectIds, but we can inject a wrapped Injector
+    * using some sort of wrapper that the parent won't be able to JIT bind (e.g. won't have a provider for).  We
+    * use an Option as our wrapper for this purpose exactly.
+    *
+    * See also:
+    *   https://github.com/google/guice/issues/847
+    *   https://groups.google.com/forum/#!msg/google-guice/Q592mWKTS1Q/9V_fsy3QeFYJ
+    *
+    * @param injector  This injector (assuming our parent injector is unable to JIT bind an Option[Injector]).
+    */
+  @Provides @Singleton
+  def provideStreamInjector(injector: Injector): WrappedInjector = {
+    logger.info(s"Stream injector: ${injector.hashCode}")
+    Some(injector)
+  }
 }
 
 object StreamModule {
   val logger = Logger(classOf[StreamModule])
+  type WrappedInjector = Option[Injector]
 }

@@ -4,7 +4,7 @@
 package com.hamstoo.stream
 
 import akka.stream._
-import akka.stream.scaladsl.{Flow, Keep, Sink}
+import akka.stream.scaladsl.Sink
 import com.google.inject.name.Named
 import com.google.inject.{Guice, Provides, Singleton}
 import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
@@ -87,8 +87,13 @@ class FacetTests
       if (i != nMarks - 1) Await.result(reprsDao.insert(r), 8 seconds) // skip one at the end for a better test of Join
     }
 
+    // this commented out line would have the same effect as below, but in the hamstoo project we already have an
+    // appInjector and we need to call createChildInjector from it, so we do so here also to better mimic that scenario
+    //val streamInjector = Guice.createInjector(ConfigModule(DataInfo.config), new StreamModule {
+    val appInjector = Guice.createInjector(ConfigModule(DataInfo.config))
+
     // bind some stuff in addition to what's required by StreamModule
-    val streamInjector = Guice.createInjector(ConfigModule(DataInfo.config), new StreamModule {
+    val streamInjector = appInjector.createChildInjector(new StreamModule {
 
       override def configure(): Unit = {
         super.configure()
@@ -126,6 +131,8 @@ class FacetTests
         }
       }
     })
+
+    logger.info(s"App injector: ${appInjector.hashCode}, stream injector: ${streamInjector.hashCode}")
 
     import net.codingwell.scalaguice.InjectorExtensions._
     val facetsModel = streamInjector.instance[FacetsModel]
