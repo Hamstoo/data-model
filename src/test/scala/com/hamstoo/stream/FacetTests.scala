@@ -12,7 +12,7 @@ import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
 import com.hamstoo.stream.config.{ConfigModule, FacetsModel, StreamModule}
-import com.hamstoo.stream.facet.{Recency, SearchResults}
+import com.hamstoo.stream.facet.{AggregateSearchScore, Recency, SearchResults}
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
 import com.hamstoo.utils.{DataInfo, ExtendedTimeStamp}
@@ -46,6 +46,17 @@ class FacetTests
     // (2.63 + 3.1 + 2.1 + 1.91 + 1.77) * 1.4 =~ 16.13
     // (2.63 + 3.1 + 2.1 + 1.91       ) * 1.4 =~ 13.65 (with `if (i != nMarks - 1)` enabled below)
     x shouldBe (13.65 +- 0.01)
+  }
+
+  it should "compute AggregateSearchScore" in {
+
+    val facetName = classOf[AggregateSearchScore].getSimpleName
+    val x = facetsSeq.filter(_._1 == facetName)
+      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] => agg + d.value } }
+
+    // this value is 4x the SearchResults value
+    x / AggregateSearchScore.COEF shouldBe (54.61 +- 0.01)
   }
 
   it should "compute Recency" in {
@@ -116,6 +127,10 @@ class FacetTests
 
         // fix this value (don't use default DateTime.now) so that computed values don't change every day
         Recency.CurrentTimeOptional() := new DateTime(2018, 4, 19, 0, 0).getMillis
+
+        // we're 100% relying on semantic (vector similarity), marked-content so these inputs quadruple the output value
+        AggregateSearchScore.SemanticWeight() := 1.0
+        AggregateSearchScore.UserContentWeight() := 0.0
 
         // finally, bind the model
         classOf[FacetsModel] := classOf[FacetsModel.Default]

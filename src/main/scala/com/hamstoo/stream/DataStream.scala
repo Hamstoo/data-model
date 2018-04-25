@@ -22,7 +22,7 @@ import scala.concurrent.duration._
 trait DataStreamBase {
 
   // https://stackoverflow.com/questions/1154571/scala-abstract-types-vs-generics
-  type DataType // abstract type member
+  type DataType // abstract type member (declaration/interface)
   type SourceType = Source[Datum[DataType], NotUsed]
   val source: SourceType
 }
@@ -35,12 +35,14 @@ trait DataStreamBase {
   *                   is backpressured. Must be a power of two and less than 4096."
   *                     [https://doc.akka.io/japi/akka/current/akka/stream/scaladsl/BroadcastHub.html]
   */
-abstract class DataStream[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
-                            (implicit materializer: Materializer) extends DataStreamBase {
+abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
+                             (implicit materializer: Materializer) extends DataStreamBase {
 
   val logger = Logger(getClass)
 
-  override type DataType = T // abstract type member implementation
+  // https://stackoverflow.com/questions/33458782/scala-type-members-variance
+  //type CovariantDataType[-U >: T] = T
+  override type DataType <: T // abstract type member (definition/implementation)
 
   /** Abstract Akka Source to be defined by implementation. */
   protected def hubSource: SourceType
@@ -88,7 +90,7 @@ object DataStream {
   *                     [https://doc.akka.io/japi/akka/current/akka/stream/scaladsl/BroadcastHub.html]
   * @tparam T The type of data being streamed.
   */
-abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
+abstract class PreloadSource[/*+*/T](loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
                                (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
     extends DataStream[T](bufferSize) {
 
@@ -100,7 +102,8 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
   def preload(begin: TimeStamp, end: TimeStamp): PreloadType
 
   /** Similar to a TimeWindow (i.e. simple range) but with a mutable buffer reference to access upon CloseGroup. */
-  class KnownData(b: TimeStamp, e: TimeStamp, val buffer: PreloadType = Future.failed(new NullPointerException))
+  class KnownData(b: TimeStamp, e: TimeStamp,
+                  val buffer: PreloadType = Future.failed(new NullPointerException)/*.asInstanceOf[PreloadType]*/)
       extends TimeWindow(b, e) {
 
     /** WARNING: note the Await inside this function; i.e. only use it for debugging. */
@@ -118,8 +121,8 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
     private var buffer = Seq.empty[PreloadType]
 
     /** This method generates GroupCommands containing PreloadGroups which have Future data attached. */
-    def knownDataFor/*[TS]*/(tick: Tick/*Datum[TS]*/): KnownData = {
-      val ts = tick/*.asInstanceOf[Tick]*/.time
+    def knownDataFor(tick: Tick): KnownData = {
+      val ts = tick.time
       val window = TimeWindow(ts - clock.interval, ts)
 
       // the first interval boundary strictly after ts
@@ -185,10 +188,16 @@ abstract class PreloadSource[T](loadInterval: DurationMils, bufferSize: Int = Da
       .mapAsync(1) { w: KnownData =>
         if (logger.isDebugEnabled) logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) $w")
         w.buffer.map { buf =>
-          buf.toSeq.sorted.map(d => d.copy(knownTime = w.end))
+          buf.toSeq.sorted(Ordering[ABV]).map(d => d.copy(knownTime = w.end))
         }
       }
-      .mapConcat(immutable.Iterable(_: _*))
+
+      // without the `asInstanceOf` the following compiler error occurs (all because DataType must be covariant)
+      // > type mismatch;
+      // > [error]  found   : scala.collection.immutable.Iterable[com.hamstoo.stream.Datum[T]]
+      // > [error]  required: scala.collection.immutable.Iterable[com.hamstoo.stream.Datum[PreloadSource.this.DataType]]
+      // TODO: is the `.to[immutable.Iterable]` required here?
+      .mapConcat(_.to[immutable.Iterable].asInstanceOf[immutable.Iterable[Datum[DataType]]])
   }
 }
 
@@ -223,9 +232,9 @@ abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SI
     // watermark0 gets ahead of the clock's watermark1
 
     /** Move `d.knownTime`s up to the end of the clock window that they fall inside, just like PreloadSource. */
-    def pairwise(d: Datum[T], t: Tick): Option[Join.Pairwised[T, TimeStamp]] =
+    def pairwise(d: Datum[DataType], t: Tick): Option[Join.Pairwised[DataType, clock.DataType]] =
       if (d.knownTime > t.time) None // throttlee known time must come before current clock time to be emitted
-      else Some(Pairwised(Datum((d.value, 0L), d.id, d.sourceTime, t.time), consumed0 = true)) // throttlee consumed
+      else Some(Pairwised(Datum((d.value, null.asInstanceOf[clock.DataType]), d.id, d.sourceTime, t.time), consumed0 = true)) // throttlee consumed
 
     /** Simply ignore the 0L "value" that was paired up with each `sv.value` in `pairwise`. */
     def joiner(v: T, t: TimeStamp): T = v

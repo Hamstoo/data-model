@@ -58,7 +58,7 @@ class ReprsStream @Inject() (marksStream: MarksStream,
   }
 
   /** Maps the stream of marks to their reprs. */
-  override val hubSource: Source[Datum[ReprsPair], NotUsed] = marksStream().mapAsync(4) { dat =>
+  override val hubSource: SourceType/*Source[Datum[ReprsPair], NotUsed]*/ = marksStream().mapAsync(4) { dat =>
 
     // unpack query words/counts/vecs (which there may none of)
     val mbCleanedQuery = mbQuery2Vecs.map(_._1)
@@ -112,7 +112,7 @@ class ReprsStream @Inject() (marksStream: MarksStream,
       logger1.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
       d
     }
-  }
+  }.asInstanceOf[SourceType]
 }
 
 /**

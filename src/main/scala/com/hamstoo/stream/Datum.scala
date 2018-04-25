@@ -71,6 +71,26 @@ object CompoundId {
 }
 
 /**
+  * All But the Value trait.  This trait is necessary because Datum is covariant in type T but Ordered is not.
+  * Fortunately the `compare` method doesn't care.
+  */
+trait ABV extends Ordered[ABV] {
+  def id: EntityId
+  def sourceTime: TimeStamp
+  def knownTime: TimeStamp
+
+  /**
+    * Ordered[Datum[T]] interface.  If there are multiple (knownTime,sourceTime,id) 3-tuples with different values
+    * the behavior is (justifiably) undefined.  In addition, `value` is not included in this method, nor should
+    * it be, lest it would have to be orderable.  The SortedSets in Join require Datum to be orderable.
+    */
+  override def compare(oth: ABV): Int =
+    if (knownTime != oth.knownTime) knownTime.compare(oth.knownTime)
+    else if (sourceTime != oth.sourceTime) sourceTime.compare(oth.sourceTime)
+    else id.compare(oth.id)
+}
+
+/**
   * A `Datum` (singular) is a (single) datapoint/value corresponding to some entity at some point in time.  The
   * data type is determined by the collection or stream that holds the data set to which the datum belongs.
   *
@@ -83,7 +103,7 @@ object CompoundId {
   *                     http://blog.colinbreck.com/considering-time-in-a-streaming-data-system/
   * @param value        The value of this datapoint
   */
-case class Datum[T](value: T, id: EntityId, sourceTime: TimeStamp, knownTime: TimeStamp) extends Ordered[Datum[T]] {
+case class Datum[+T](value: T, id: EntityId, sourceTime: TimeStamp, knownTime: TimeStamp) extends ABV {
 
   override def toString: String = this match {
     case Tick(time) => s"Tick(${time.tfmt})"
@@ -95,16 +115,6 @@ case class Datum[T](value: T, id: EntityId, sourceTime: TimeStamp, knownTime: Ti
   /** Same Datum, different value. */
   def withValue[A](newValue: A): Datum[A] = Datum(newValue, id, sourceTime, knownTime)
   def mapValue[A](f: T => A): Datum[A] = withValue(f(value))
-
-  /**
-    * Ordered[Datum[T]] interface.  If there are multiple (knownTime,sourceTime,id) 3-tuples with different values
-    * the behavior is (justifiably) undefined.  In addition, `value` is not included in this method, nor should
-    * it be, lest it would have to be orderable.  The SortedSets in Join require Datum to be orderable.
-    */
-  override def compare(oth: Datum[T]): Int =
-    if (knownTime != oth.knownTime) knownTime.compare(oth.knownTime)
-    else if (sourceTime != oth.sourceTime) sourceTime.compare(oth.sourceTime)
-    else id.compare(oth.id)
 }
 
 object Datum {
