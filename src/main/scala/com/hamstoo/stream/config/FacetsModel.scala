@@ -7,7 +7,7 @@ import akka.NotUsed
 import akka.stream.scaladsl.{GraphDSL, Merge, Sink, Source}
 import akka.stream.{Materializer, SourceShape}
 import com.google.inject.{Inject, Injector, Singleton}
-import com.hamstoo.stream.facet.{Recency, SearchResults}
+import com.hamstoo.stream.facet.{AggregateSearchScore, Recency, SearchResults}
 import com.hamstoo.stream.{Clock, DataStreamBase}
 import play.api.Logger
 
@@ -100,6 +100,7 @@ object FacetsModel {
     //   https://www.google.com/search?q=dynamically+create+type+scala&oq=dynamically+create+type+scala&aqs=chrome..69i57.5239j1j4&sourceid=chrome&ie=UTF-8
 
     add[SearchResults]()
+    add[AggregateSearchScore]()
     add[Recency]() // see How to Think screenshot
     //add(ConfirmationBias)
     //add(TimeSpent)

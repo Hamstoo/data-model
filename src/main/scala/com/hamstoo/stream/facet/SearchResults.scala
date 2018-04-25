@@ -13,7 +13,7 @@ import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream._
 import com.hamstoo.stream.dataset.{QueryResult, RepredMarks, ReprsPair}
-import org.slf4j.{LoggerFactory, Logger => Slf4jLogger}
+import org.slf4j.LoggerFactory
 import play.api.Logger
 
 import scala.annotation.tailrec
@@ -22,7 +22,10 @@ import scala.concurrent.ExecutionContext
 import scala.util.matching.Regex
 
 /**
-  * Search relevance scores.
+  * Search relevance scores.  This class uses "raw" to refer to the opposite of "semantic" because I'm not sure
+  * if "syntactic" is really the right word either.
+  * See also: https://en.wikipedia.org/wiki/Semantic_similarity
+  *
   * @param uraw  User-content raw (non-semantic) score.  Includes MongoDB Text Index search score.
   * @param usem  User-content vector similarity (cosine distance).
   * @param rraw  Representation raw (non-semantic) score.  Includes MongoDB Text Index search score.

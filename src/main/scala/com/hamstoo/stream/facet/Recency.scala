@@ -65,7 +65,7 @@ class Recency @Inject() (facetArg: Recency.Arg,
       (0.5 pow nHalfLifes) * COEF
 
     }
-  }.source
+  }.source.asInstanceOf[SourceType]
 }
 
 object Recency {

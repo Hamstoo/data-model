@@ -93,7 +93,7 @@ class ClockTests
         // a preload source would backup the data until the (exclusive) beginning of the tick interval before `start`,
         // so that's what we do here with `start - interval + dataInterval` to make the two test results match up
         (start - interval + dataInterval until stop by dataInterval).map { t => Datum[TimeStamp](t, MarkId("kf"), t) }
-      }.named("TestThrottledSource")
+      }.named("TestThrottledSource").asInstanceOf[SourceType]
     }
 
     val fut: Future[Int] = TestSource().source
