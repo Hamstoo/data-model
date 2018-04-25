@@ -1,41 +1,49 @@
 /*
  * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
-package com.hamstoo.stream
+package com.hamstoo.stream.facet
 
-import akka.NotUsed
 import akka.stream.Materializer
-import akka.stream.scaladsl.Source
-import com.google.inject.Inject
-import com.hamstoo.models.{MSearchable, RSearchable}
-import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
-import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
-import com.hamstoo.stream.Join.JoinWithable
 import ch.qos.logback.classic.{Logger => LogbackLogger}
+import com.google.inject.Inject
 import com.google.inject.name.Named
+import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
+import com.hamstoo.models.{MSearchable, RSearchable}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
+import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
+import com.hamstoo.stream._
+import com.hamstoo.stream.dataset.{QueryResult, RepredMarks, ReprsPair}
 import org.slf4j.{LoggerFactory, Logger => Slf4jLogger}
 import play.api.Logger
 
 import scala.annotation.tailrec
-import scala.collection.breakOut
-import scala.collection.immutable
+import scala.collection.{breakOut, immutable}
 import scala.concurrent.ExecutionContext
 import scala.util.matching.Regex
 
 /**
+  * Search relevance scores.
+  * @param uraw  User-content raw (non-semantic) score.  Includes MongoDB Text Index search score.
+  * @param usem  User-content vector similarity (cosine distance).
+  * @param rraw  Representation raw (non-semantic) score.  Includes MongoDB Text Index search score.
+  * @param rsem  Representation vector similarity (cosine distance).
+  */
+case class SearchRelevance(uraw: Double, usem: Double, rraw: Double, rsem: Double) {
+  def sum: Double = uraw + usem + rraw + rsem
+}
+
+/**
   * Define the (default) implementation of this facet.
-  * @param reprsStream  A stream of a user's marks' representations.
+  * @param repredMarks  A stream of a user's marks paired with their representations.
   * @param query2Vecs   Semantic word vectors for each query term.
   */
 @com.google.inject.Singleton
-class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2VecsType,
-                              marksStream: MarksStream,
-                              reprsStream: ReprsStream,
-                              logLevel: LogLevelOptional.typ)
-                             (implicit materializer: Materializer, ec: ExecutionContext,
-                              idfModel: IDFModel)
-    extends DataStream[(MSearchable, String, Option[Double])] {
+class SearchResults @Inject() (@Named(Query2VecsOptional.name) query2Vecs: Query2VecsType,
+                               repredMarks: RepredMarks,
+                               logLevel: LogLevelOptional.typ)
+                              (implicit materializer: Materializer, ec: ExecutionContext,
+                               idfModel: IDFModel)
+    extends DataStream[SearchResults.typ] {
 
   // can only obtain an EC from an ActorMaterializer via `.system`, not from a plain old Materializer
   //implicit val ec: ExecutionContext = materializer.system.dispatcher
@@ -43,97 +51,121 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
   import SearchResults._
 
   // set logging level for this QuerySimilarities *instance*
-  val logger0: Slf4jLogger = LoggerFactory.getLogger(classOf[SearchResults].getName.stripSuffix("$"))
-  logLevel.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
-  val logger1 = new Logger(logger0)
+  val logger1: Logger = {
+    val logback = LoggerFactory.getLogger(classOf[SearchResults].getName.stripSuffix("$")).asInstanceOf[LogbackLogger]
+    logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
+    new Logger(logback)
+  }
 
-  // the `{ case x => x }` actually does serve a purpose, it unpacks x into a 2-tuple which `identity` cannot do
-  override val hubSource: Source[Datum[(MSearchable, String, Option[Double])], NotUsed] =
-    marksStream().joinWith(reprsStream()) { case x => x }
-      .mapAsync(2) { dat: Datum[(MSearchable, ReprsPair)] =>
+  override val hubSource: SourceType = repredMarks.source
+    .mapAsync(2) { dat: Datum[(MSearchable, ReprsPair)] =>
 
-        // unpack the pair datum
-        val (mark, ReprsPair(siteReprs, userReprs)) = dat.value
+      // unpack the pair datum
+      val (mark, ReprsPair(siteReprs, userReprs)) = dat.value
 
-        // get uniquified `querySeq` and (future) vectors for all terms in search query `fsearchTermVecs`
-        val (cleanedQuery, fsearchTermVecs) = query2Vecs
-        val querySeq = cleanedQuery.map(_._1)
+      // get uniquified `querySeq` and (future) vectors for all terms in search query `fsearchTermVecs`
+      val (cleanedQuery, fsearchTermVecs) = query2Vecs
+      val querySeq = cleanedQuery.map(_._1)
 
-        // the `marks` collection includes the users own input (assuming the user chose to provide any input
-        // in the first place) so it should be weighted pretty high if a word match is found, the fuzzy reasoning
-        // behind why it is squared is because the representations collection is also incorporated twice (once
-        // for database search score and again with vector cosine similarity), the silly 3.5 was chosen in order
-        // to get a non-link mark (one w/out a repr) up near the top of the search results
-        val mscore: Double = mark.score.getOrElse(0.0) /** MongoRepresentationDao.CONTENT_WGT*/ / cleanedQuery.length
-        logger1.trace(f"\u001b[35m${mark.id}\u001b[0m: subj='${mark.mark.subj}'")
+      // the `marks` collection includes the users own input (assuming the user chose to provide any input
+      // in the first place) so it should be weighted pretty high if a word match is found, the fuzzy reasoning
+      // behind why it is squared is because the representations collection is also incorporated twice (once
+      // for database search score and again with vector cosine similarity), the silly 3.5 was chosen in order
+      // to get a non-link mark (one w/out a repr) up near the top of the search results
+      val mscore: Double = mark.score.getOrElse(0.0) /** MongoRepresentationDao.CONTENT_WGT*/ / cleanedQuery.length
+      logger1.trace(f"\u001b[35m${mark.id}\u001b[0m: subj='${mark.mark.subj}'")
 
-        // generate a single search result
-        val fut = for(searchTermVecs <- fsearchTermVecs) yield {
+      // generate a single search result
+      val fut = for(searchTermVecs <- fsearchTermVecs) yield {
 
-          // compute scores aggregated across all search terms
-          val (rscore, rsim, rText, rTermText) = searchTerms2Scores("R", mark.id, siteReprs, searchTermVecs)
-          val (uscore, usim, uText, uTermText) = searchTerms2Scores("U", mark.id, userReprs, searchTermVecs, nWordsMult = 100)
+        // compute scores aggregated across all search terms
+        val (rscore, rsim, rText, rTermText) = searchTerms2Scores("R", mark.id, siteReprs, searchTermVecs)
+        val (uscore, usim, uText, uTermText) = searchTerms2Scores("U", mark.id, userReprs, searchTermVecs, nWordsMult = 100)
 
-          val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
-          val rAggregate = math.exp(rsim.getOrElse(0.0)) + math.max(rscore, 0.0)
-          val mAggregate = math.exp(usim.getOrElse(0.0)) + math.max(uscore, 0.0) + math.max(mscore, 0.0)
-          logger1.trace(f"  (\033[2m${mark.id}\033[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
+        // semantic relevances
+        val rsem = math.exp(rsim.getOrElse(0.0))
+        val usem = math.exp(usim.getOrElse(0.0))
 
-          (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
-            case (true, true, true) => // this first case shouldn't ever really happen
-              val aggregateScore = mscore + isdefBonus
-              val sc = mark.score.getOrElse(Double.NaN)
-              val scoreText = f"Aggregate score: <b>$aggregateScore%.2f</b> (bonus=$isdefBonus), " +
-                f"Raw marks database search score: <b>$sc%.2f</b>"
-              val pr = preview(mark.mark.comment.getOrElse(""), querySeq)
-              val pv = s"$scoreText<br>$pr" // debugging
-              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
+        // raw (syntactic?) relevances
+        val uraw = math.max(uscore, 0.0) + math.max(mscore, 0.0)
+        val rraw = math.max(rscore, 0.0)
 
-            case (true, false, _) => // this second case will occur for non-URL marks
-              val aggregateScore = mAggregate * 1.6 + isdefBonus
-              val scoreText = f"Aggregate score: <b>$aggregateScore%.2f</b> (bonus=$isdefBonus), " +
-                f"User content similarity: <b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
-                f"Database search scores: M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b>"
-              val pr = preview(mark.mark.comment.getOrElse(""), querySeq)
-              val pv = s"$scoreText<br>U-similarities: $uTermText&nbsp; $uText<br>$pr" // debugging
-              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
+        // aggregated
+        val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
+        val rAggregate = rsem + rraw
+        val mAggregate = usem + uraw
+        logger1.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
 
-            case (false, true, _) => // this case will occur for old school bookmarks without any user content
-              val aggregateScore = rAggregate * 1.4 + isdefBonus
-              val scoreText = f"Aggregate score: <b>$aggregateScore%.2f</b> (bonus=$isdefBonus), " +
-                f"URL content similarity: <b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, " +
-                f"Database search scores: R=<b>$rscore%.2f</b>"
-              val reprDocText = siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext)
-              val pr = preview(reprDocText, querySeq)
-              val pv = s"$scoreText<br>R-similarities: $rTermText&nbsp; $rText<br>$pr" // debugging
-              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
+        // divy up the relevance into named buckets
+        val mbRelevance = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
+          case (true, true, true) => // this first case shouldn't ever really happen
+            Some(SearchRelevance(mscore + isdefBonus, 0, 0, 0))
 
-            case (false, false, _) => // this case should fire for most marks--those with URLs
+          case (true, false, _) => // this second case will occur for non-URL marks
+            Some(SearchRelevance(      uraw * 1.6 + isdefBonus, usem * 1.6, 0, 0))
 
-              // maybe want to do max(0, cosine)?  or incorporate antonyms and compute cosine(query-antonyms)?
-              // because antonyms may be highly correlated with their opposites given similar surrounding words
-              val aggregateScore = rAggregate + mAggregate + isdefBonus
+          case (false, true, _) => // this case will occur for old-school bookmarks without any user content
+            Some(SearchRelevance(0, 0, rraw * 1.4 + isdefBonus, rsem * 1.4))
 
-              // Produce webpage text preview
-              val scoreText = f"Aggregate score: <b>$aggregateScore%.2f</b> (bonus=$isdefBonus), " +
-                f"Similarities: R=<b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, U=<b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
-                f"Database search scores: R=<b>$rscore%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b>"
-              val reprDocText = siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext)
-              val pr = preview(mark.mark.comment.getOrElse("") + " " * PREVIEW_LENGTH + reprDocText, querySeq)
-              val pv = s"$scoreText<br>" +
-                s"R-similarities: $rTermText&nbsp; $rText<br>" +
-                s"U-similarities: $uTermText&nbsp; $uText<br>$pr" // debugging
+          case (false, false, _) => // this case should fire for most marks--those with URLs
 
-              Some((mark, if (logger1.isDebugEnabled) pv else pr, Some(aggregateScore)))
+            // maybe want to do max(0, cosine)?  or incorporate antonyms and compute cosine(query-antonyms)?
+            // because antonyms may be highly correlated with their opposites given similar surrounding words
+            Some(SearchRelevance(uraw + Seq(mscore, uscore).count(_ > 1e-10), usem,
+                                 rraw + Seq(rscore        ).count(_ > 1e-10), rsem))
 
-            case (_, _, false) => None
-          }
+          case (_, _, false) => None
         }
 
-        fut.map { _.map(dat.withValue) }
+        val aggregateScore = mbRelevance.map(_.sum)
 
-      }.mapConcat(_.to[immutable.Iterable])
-      .asInstanceOf[SourceType] // see "BIG NOTE" on JoinWithable
+        // generate text and return values
+        (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
+          case (true, true, true) => // this first case shouldn't ever really happen
+            val sc = mark.score.getOrElse(Double.NaN)
+            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+              f"Raw marks database search score: <b>$sc%.2f</b>"
+            val pr = preview(mark.mark.comment.getOrElse(""), querySeq)
+            val pv = s"$scoreText<br>$pr" // debugging
+            Some((mark, if (logger1.isDebugEnabled) pv else pr, mbRelevance))
+
+          case (true, false, _) => // this second case will occur for non-URL marks
+            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+              f"User content similarity: <b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
+              f"Database search scores: M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b>"
+            val pr = preview(mark.mark.comment.getOrElse(""), querySeq)
+            val pv = s"$scoreText<br>U-similarities: $uTermText&nbsp; $uText<br>$pr" // debugging
+            Some((mark, if (logger1.isDebugEnabled) pv else pr, mbRelevance))
+
+          case (false, true, _) => // this case will occur for old-school bookmarks without any user content
+            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+              f"URL content similarity: <b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, " +
+              f"Database search scores: R=<b>$rscore%.2f</b>"
+            val reprDocText = siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext)
+            val pr = preview(reprDocText, querySeq)
+            val pv = s"$scoreText<br>R-similarities: $rTermText&nbsp; $rText<br>$pr" // debugging
+            Some((mark, if (logger1.isDebugEnabled) pv else pr, mbRelevance))
+
+          case (false, false, _) => // this case should fire for most marks--those with URLs
+            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+              f"Similarities: R=<b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, U=<b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
+              f"Database search scores: R=<b>$rscore%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b>"
+            val reprDocText = siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext)
+            val pr = preview(mark.mark.comment.getOrElse("") + " " * PREVIEW_LENGTH + reprDocText, querySeq)
+            val pv = s"$scoreText<br>" +
+              s"R-similarities: $rTermText&nbsp; $rText<br>" +
+              s"U-similarities: $uTermText&nbsp; $uText<br>$pr" // debugging
+
+            Some((mark, if (logger1.isDebugEnabled) pv else pr, mbRelevance))
+
+          case (_, _, false) => None
+        }
+      }
+
+      fut.map { _.map(dat.withValue) }
+
+    }.mapConcat(_.to[immutable.Iterable])
+    .asInstanceOf[SourceType] // see "BIG NOTE" on JoinWithable
 
   /**
     * Convert a list of reprs, one for each search term, into a weighted average MongoDB Text Index search score
@@ -169,7 +201,7 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
         if (logger1.isTraceEnabled) {
           val owm = searchTermVecs.find(_.word == qr.qword) // same documentSimilarity calculation as below
           val mu = owm.map(wm => VecSvc.documentSimilarity(wm.scaledVec, docVecs.map(kv => VecEnum.withName(kv._1) -> kv._2))).getOrElse(Double.NaN)
-          logger1.trace(f"  (\033[2m$mId\033[0m) $rOrU-sim(${qr.qword}): idf=${idfModel.transform(qr.qword)}%.2f bm25=${bm25Tf(qr.dbScore, nWords)}%.2f sim=$mu%.2f")
+          logger1.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim(${qr.qword}): idf=${idfModel.transform(qr.qword)}%.2f bm25=${bm25Tf(qr.dbScore, nWords)}%.2f sim=$mu%.2f")
         }
 
         (idfModel.transform(qr.qword), bm25Tf(qr.dbScore, nWords), qr.count)
@@ -212,7 +244,7 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
         Some(weightedSum / idfs.sum)
       }
 
-      logger1.trace(f"  (\033[2m$mId\033[0m) $rOrU-sim: wsim=${similarity.getOrElse(Double.NaN)}%.2f wscore=$score%.2f (s0=$score0%.2f s2=$score2%.2f nWords=$nWords nScores=${searchTermScores.length})")
+      logger1.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim: wsim=${similarity.getOrElse(Double.NaN)}%.2f wscore=$score%.2f (s0=$score0%.2f s2=$score2%.2f nWords=$nWords nScores=${searchTermScores.length})")
 
       // debugging
       var extraText = ""
@@ -233,6 +265,8 @@ class SearchResults @Inject()(@Named(Query2VecsOptional.name) query2Vecs: Query2
 }
 
 object SearchResults {
+
+  type typ = (MSearchable, String, Option[SearchRelevance])
 
   // capital letter regular expression (TODO: https://github.com/Hamstoo/hamstoo/issues/68)
   val capitalRgx: Regex = s"[A-Z]".r.unanchored

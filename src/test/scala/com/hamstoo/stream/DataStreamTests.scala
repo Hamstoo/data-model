@@ -7,21 +7,14 @@ import akka.{Done, NotUsed}
 import akka.actor.Cancellable
 import akka.stream._
 import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
-import com.google.inject.name.Named
-import com.google.inject.{Guice, Injector, Provides, Singleton}
-import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
-import com.hamstoo.models._
-import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
-import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
 import com.hamstoo.stream.Join.JoinWithable
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
-import com.hamstoo.utils.{ConfigModule, DataInfo, DurationMils, ExtendedTimeStamp, TimeStamp}
-import org.joda.time.{DateTime, DateTimeZone}
+import org.joda.time.DateTime
 import play.api.Logger
 
 import scala.collection.immutable
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
 /**
@@ -110,7 +103,7 @@ class DataStreamTests
     def newSource(step: Int, id: EntityId, name: String): Source[Datum[Int], NotUsed] =
       Source((expireAfter until end by step).map(i => Datum(i - expireAfter, id, i, knownTime))).named(name)
     val src0 = newSource(1, ReprId(s"id"), "TestJoin0")
-    val src1 = newSource(4, UnitId()     , "TestJoin1")
+    val src1 = newSource(4, UnitId       , "TestJoin1")
 
     // see comment on JoinWithable as to why the cast is necessary here
     val source: Source[Datum[Int], NotUsed] =
@@ -142,7 +135,7 @@ class DataStreamTests
     testGroupReduce(iter, "(singular) Datum")
   }
 
-  "GroupReduce" should "cross-sectionally reduce streams of (plural) Data (which we actually no longer have)" in {
+  it should "cross-sectionally reduce streams of (plural) Data (which we actually no longer have)" in {
 
     val iter = List(Datum(0.4, ReprId("a"), 0), Datum(0.6, ReprId("b"), 0),
       Datum(1.2, ReprId("b"), 1), Datum(1.5, ReprId("c"), 1), Datum(1.8, ReprId("a"), 1),
@@ -194,179 +187,5 @@ class DataStreamTests
     val x: Double = Await.result(g.run(), 15 seconds)
     logger.info(s"****** GroupReduce should cross-sectionally reduce streams of $what: x = $x")
     x shouldEqual 8.0
-  }
-
-  "Facet values" should "be generated" in {
-
-    // config values that stream.ConfigModule will bind for DI
-    val config = DataInfo.config
-    val clockBegin: ClockBegin.typ = new DateTime(2018, 1,  1, 0, 0).getMillis
-    val clockEnd  : ClockEnd  .typ = new DateTime(2018, 1, 15, 0, 0).getMillis
-    val clockInterval: ClockInterval.typ = (1 day).toMillis
-    val query: Query.typ = "some query"
-    val userId: CallingUserId.typ = DataInfo.constructUserId()
-
-    // insert 5 marks with reprs into the database
-    val nMarks = 5
-    val baseVec = Seq(1.0, 2.0, 3.0)
-    val baseVs = Map(VecEnum.PC1.toString -> baseVec)
-    val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
-    //val b :: e :: Nil = Seq(ClockBegin.name, ClockEnd.name).map(config.getLong)
-    val (b, e) = (clockBegin, clockEnd)
-    (b to e by (e - b) / (nMarks - 1)).zipWithIndex.foreach { case (ts, i) =>
-      val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
-      val r = baseRepr.copy(id = s"r_${ts.Gs}", vectors = vs)
-      val ri = ReprInfo(r.id, ReprType.PUBLIC)
-      val m = Mark(userId, s"m_${ts.Gs}", MarkData("", None), reprs = Seq(ri), timeFrom = ts)
-      logger.info(s"\033[37m$m\033[0m")
-      Await.result(marksDao.insert(m), 8 seconds)
-      if (i != nMarks - 1) Await.result(reprsDao.insert(r), 8 seconds) // skip one at the end for a better test of Join
-    }
-
-    // bind some stuff in addition to what's required by StreamModule
-    val streamInjector = Guice.createInjector(ConfigModule(DataInfo.config), new StreamModule {
-
-      override def configure(): Unit = {
-        super.configure()
-        logger.info(s"Configuring module: ${getClass.getName}")
-
-        // TODO: make these things (especially the DAOs) support DI as well so that these extra bindings can be removed
-        classOf[ExecutionContext] := system.dispatcher
-        classOf[Materializer] := materializer
-        classOf[MongoMarksDao] := marksDao
-        classOf[MongoRepresentationDao] := reprsDao
-        classOf[MongoUserDao] := userDao
-
-        //Val("clock.begin"):~ TimeStamp =~ clockBegin // alternative syntax? more like Scala?
-        ClockBegin := clockBegin
-        ClockEnd := clockEnd
-        ClockInterval := clockInterval
-        Query := query
-        CallingUserId := userId
-        LogLevelOptional := Some(ch.qos.logback.classic.Level.TRACE)
-
-        // finally, bind the model
-        classOf[FacetsModel] := classOf[FacetsModel.Default]
-      }
-
-      /** Provides a VectorEmbeddingsService for SearchResults to use via StreamModule.provideQueryVec. */
-      @Provides @Singleton
-      def provideVecSvc(@Named(Query.name) query: Query.typ,
-                        idfModel: IDFModel): VectorEmbeddingsService = new VectorEmbeddingsService(null, idfModel) {
-
-        override def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] = {
-          Future.successful(query.split(" ").map(_ -> (1, baseVec)).toMap)
-        }
-      }
-    })
-
-    import net.codingwell.scalaguice.InjectorExtensions._
-    val streamModel: FacetsModel = streamInjector.instance[FacetsModel]
-
-    type InType = (String, AnyRef)
-    type OutType = Double
-
-    val sink: Sink[InType, Future[OutType]] = Flow[InType]
-      .map { d => logger.info(s"\033[37m$d\033[0m"); d }
-      .filter(_._1 == "SearchResults") // filter so that the test doesn't break as more facets are added to FacetsModel
-      .toMat(Sink.fold[OutType, InType](0.0) { case (agg, d) =>
-      agg + d._2.asInstanceOf[Datum[(MSearchable, String, Option[Double])]].value._3.getOrElse(0.3)
-    })(Keep.right)
-
-    // causes "[error] a.a.OneForOneStrategy - CommandError[code=11600, errmsg=interrupted at shutdown" for some reason
-    //val x = streamModel.run(sink).futureValue
-
-    val x = Await.result(streamModel.run(sink), 15 seconds)
-
-    // (2.63 + 3.1 + 2.1 + 1.91 + 1.77) * 1.4 =~ 16.13
-    // (2.63 + 3.1 + 2.1 + 1.91       ) * 1.4 =~ 13.65 (with `if (i != nMarks - 1)` enabled above)
-    x shouldBe (13.65 +- 0.01)
-  }
-
-  "Clock" should "throttle a PreloadSource" in {
-
-    // https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely
-    // this doesn't print anything when lower than 255 (due to bufferSize!)
-    /*val source = Source(0 to 255)
-      .map { n => if (n % 10 == 0) println(s"*** tick $n"); n }
-      .runWith(BroadcastHub.sink[Int](bufferSize = 256))
-    source.runForeach { n => Thread.sleep(1); if (n % 10 == 0) println(s"------------- source1: $n") }
-    source.runForeach(n => if (n % 10 == 0) println(s"\033[37msource2\033[0m: $n"))*/
-
-    // changing these (including interval) will affect results b/c it changes the effective time range the clock covers
-    val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
-    val stop: TimeStamp = new DateTime(2018, 1, 10, 0, 0, DateTimeZone.UTC).getMillis
-    val interval: DurationMils = (2 days).toMillis
-    implicit val clock: Clock = Clock(start, stop, interval)
-
-    // changing this interval should not affect the results (even if it's fractional)
-    val preloadInterval = 3 days
-
-    implicit val ec: ExecutionContext = system.dispatcher
-    case class TestSource() extends PreloadSource[TimeStamp](preloadInterval.toMillis) {
-      //override val logger = Logger(classOf[TestSource]) // this line causes a NPE for some reason
-      override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[TimeStamp]]] = Future {
-
-        // must snapBegin, o/w DataSource's preloadInterval can affect the results, which it should not
-        val dataInterval = (12 hours).toMillis
-        val snapBegin = ((begin - 1) / dataInterval + 1) * dataInterval
-
-        val x = (snapBegin until end by dataInterval).map { t =>
-          logger.debug(s"preload i: ${t.tfmt}")
-          Datum[TimeStamp](t, MarkId("je"), t)
-        }
-        logger.debug(s"preload end: n=${x.length}")
-        x
-      }
-    }
-
-    val fut: Future[Int] = TestSource().source
-      .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.sourceTime.tfmt} / ${e.value.dt.getDayOfMonth}"); e }
-      .runWith(
-        Sink.fold[Int, Datum[TimeStamp]](0) { case (agg, d) => agg + d.value.dt.getDayOfMonth }
-      )
-
-    clock.start()
-
-    val x = Await.result(fut, 10 seconds)
-    x shouldEqual 173
-  }
-
-  "Clock" should "throttle a ThrottledSource" in {
-
-    // changing these (including interval) will affect results b/c it changes the effective time range the clock covers
-    val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
-    val stop: TimeStamp = new DateTime(2018, 1, 10, 0, 0, DateTimeZone.UTC).getMillis
-    val interval: DurationMils = (2 days).toMillis
-    implicit val clock: Clock = Clock(start, stop, interval)
-
-    implicit val ec: ExecutionContext = system.dispatcher
-    case class TestSource() extends ThrottledSource[TimeStamp]() {
-
-      // this doesn't work with a `val` (NPE) for some reason, but it works with `lazy val` or `def`
-      override lazy val throttlee: SourceType = Source {
-
-        // no need to snapBegin like with PreloadSource test b/c peeking outside of the class for when to start
-        val dataInterval = (12 hours).toMillis
-
-        // a preload source would backup the data until the (exclusive) beginning of the tick interval before `start`,
-        // so that's what we do here with `start - interval + dataInterval` to make the two test results match up
-        (start - interval + dataInterval until stop by dataInterval).map { t =>
-          Datum[TimeStamp](t, MarkId("kf"), t)
-        }
-      }.named("TestThrottledSource")
-    }
-
-    val fut: Future[Int] = TestSource().source
-      .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.sourceTime.tfmt} / ${e.value.dt.getDayOfMonth}"); e }
-      .runWith(
-        Sink.fold[Int, Datum[TimeStamp]](0) { case (agg, d) => agg + d.value.dt.getDayOfMonth }
-      )
-
-    Thread.sleep(5000)
-    clock.start()
-
-    val x = Await.result(fut, 10 seconds)
-    x shouldEqual 173
   }
 }

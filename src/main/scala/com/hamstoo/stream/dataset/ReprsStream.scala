@@ -1,18 +1,18 @@
 /*
  * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
  */
-package com.hamstoo.stream
+package com.hamstoo.stream.dataset
 
 import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
-import com.google.inject.{Inject, Singleton}
-import com.hamstoo.daos.MongoRepresentationDao
-import com.hamstoo.models.RSearchable
-import com.hamstoo.stream.MarksStream.ExtendedQuerySeq
-import com.hamstoo.utils.ExtendedTimeStamp
 import ch.qos.logback.classic.{Logger => LogbackLogger}
 import com.google.inject.name.Named
+import com.google.inject.{Inject, Singleton}
+import com.hamstoo.daos.MongoRepresentationDao
+import com.hamstoo.models.{MSearchable, RSearchable}
+import com.hamstoo.stream._
+import com.hamstoo.utils.ExtendedTimeStamp
 import org.slf4j.{LoggerFactory, Logger => Slf4jLogger}
 import play.api.Logger
 
@@ -39,11 +39,11 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
   * @param marksStream   Representations will be streamed for this stream of marks.
   */
 @Singleton
-class ReprsStream @Inject()(marksStream: MarksStream,
-                            @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
-                            logLevel: LogLevelOptional.typ)
-                           (implicit materializer: Materializer, ec: ExecutionContext,
-                            reprDao: MongoRepresentationDao)
+class ReprsStream @Inject() (marksStream: MarksStream,
+                             @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
+                             logLevel: LogLevelOptional.typ)
+                            (implicit materializer: Materializer, ec: ExecutionContext,
+                             reprDao: MongoRepresentationDao)
     extends DataStream[ReprsPair]() {
 
   // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples
@@ -51,9 +51,11 @@ class ReprsStream @Inject()(marksStream: MarksStream,
   // set logging level for this ReprsStream *instance*
   // "Note that you can also tell logback to periodically scan your config file"
   // https://stackoverflow.com/questions/3837801/how-to-change-root-logging-level-programmatically
-  val logger0: Slf4jLogger = LoggerFactory.getLogger(classOf[ReprsStream].getName.stripSuffix("$"))
-  logLevel.foreach { lv => logger0.asInstanceOf[LogbackLogger].setLevel(lv); logger0.info(s"Overriding log level to: $lv") }
-  val logger1 = new Logger(logger0)
+  val logger1: Logger = {
+    val logback = LoggerFactory.getLogger(classOf[ReprsStream].getName.stripSuffix("$")).asInstanceOf[LogbackLogger]
+    logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
+    new Logger(logback)
+  }
 
   /** Maps the stream of marks to their reprs. */
   override val hubSource: Source[Datum[ReprsPair], NotUsed] = marksStream().mapAsync(4) { dat =>
@@ -96,7 +98,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
           val dbScore = mbR.flatMap(_.score).getOrElse(0.0)
 
           def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
-          logger1.trace(f"  (\033[2m${mark.id}\033[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
+          logger1.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
 
           QueryResult(q._1, mbR, dbScore, q._2)
         }.force
@@ -107,8 +109,20 @@ class ReprsStream @Inject()(marksStream: MarksStream,
       // technically we should update knownTime here to the time of repr computation, but it's not really important
       // in this case b/c what we really want is "time that this data could have been known"
       val d = dat.withValue(ReprsPair(siteReprs, userReprs))
-      logger1.trace(s"\033[32m${dat.id}\033[0m: ${dat.knownTime.Gs}")
+      logger1.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
       d
     }
   }
+}
+
+/**
+  * Represented marks stream as the representations by themselves aren't that useful, are they?
+  */
+@Singleton
+class RepredMarks @Inject() (marks: MarksStream, reprs: ReprsStream)
+                            (implicit materializer: Materializer)
+    extends DataStream[(MSearchable, ReprsPair)] {
+
+  import com.hamstoo.stream.Join.JoinWithable
+  override def hubSource: SourceType = marks().joinWith(reprs()) { case x => x }.asInstanceOf[SourceType]
 }

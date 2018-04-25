@@ -190,10 +190,13 @@ class MongoMarksDao(db: () => Future[DefaultDB])
 
     } yield {
 
-      // filter/find down to a single (optional) mark
-      val optMark = seq.find(_.mark.url.exists(urls.contains))
-      logger.debug(s"$optMark mark was successfully retrieved")
-      optMark
+      // filter/find down to a single (optional) mark, but first look for a (current, i.e. no mergeId) mark with the
+      // original URL (which corrects for erroneous URL dups, issue #325)
+      val mbMark = seq.find(_.mark.url.contains(url))
+        .orElse(seq.find(_.mark.url.exists(urls.contains)))
+
+      logger.debug(s"$mbMark mark was successfully retrieved")
+      mbMark
     }
   }
 

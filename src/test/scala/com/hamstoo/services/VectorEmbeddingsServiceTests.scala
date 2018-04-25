@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.services
 
 import java.util.Locale
@@ -7,9 +10,10 @@ import com.hamstoo.daos.MongoVectorsDao
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingsService.WordMass
+import com.hamstoo.stream.config.ConfigModule
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
-import com.hamstoo.utils.{ConfigModule, DataInfo}
+import com.hamstoo.utils.DataInfo
 import play.api.libs.ws.WSClient
 import play.api.libs.ws.ahc.AhcWSClient
 
