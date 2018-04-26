@@ -7,7 +7,7 @@ import akka.stream.Materializer
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.stream.{DataStream, OptionalInjectId}
 
-import math.{min, max}
+import math.{max, min}
 import scala.reflect.classTag
 
 /**
@@ -30,7 +30,7 @@ class AggregateSearchScore @Inject() (semWgt: AggregateSearchScore.SemanticWeigh
 
   logger.info(f"Semantic weight: ${semWgt.value}%.2f, user-content weight: ${usrWgt.value}%.2f, ")
 
-  override val hubSource: SourceType = {
+  override val hubSource: SourceType[Double] = {
     import com.hamstoo.stream.StreamDSL._
 
     val relevanceOption: DataStream[Option[SearchRelevance]] = searchResults("_3", classTag[Option[SearchRelevance]])
@@ -53,7 +53,7 @@ class AggregateSearchScore @Inject() (semWgt: AggregateSearchScore.SemanticWeigh
 
     value * COEF
 
-  }.source.asInstanceOf[SourceType]
+  }.source
 }
 
 object AggregateSearchScore {

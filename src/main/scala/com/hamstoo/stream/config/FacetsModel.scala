@@ -8,7 +8,7 @@ import akka.stream.scaladsl.{GraphDSL, Merge, Sink, Source}
 import akka.stream.{Materializer, SourceShape}
 import com.google.inject.{Inject, Injector, Singleton}
 import com.hamstoo.stream.facet.{AggregateSearchScore, Recency, SearchResults}
-import com.hamstoo.stream.{Clock, DataStreamBase}
+import com.hamstoo.stream.{Clock, DataStream}
 import play.api.Logger
 
 import scala.collection.mutable
@@ -28,10 +28,10 @@ class FacetsModel @Inject() (injector: Injector)
   logger.info(s"Constructing model: ${classOf[FacetsModel].getName}")
 
   // a set of all the facets/statistics/metrics to be computed by this model
-  protected val facets = mutable.Map.empty[String, DataStreamBase]
+  protected val facets = mutable.Map.empty[String, DataStream[_]]
 
   /** Add a facet to be computed by this model. */
-  def add[T <:DataStreamBase :ClassTag :TypeTag](mbName: Option[String] = None): Unit = {
+  def add[T <:DataStream[_] :ClassTag :TypeTag](mbName: Option[String] = None): Unit = {
 
     val name: String = mbName.getOrElse(classTag[T].runtimeClass.getSimpleName)
     logger.info(s"Adding data stream: $name")
@@ -40,10 +40,7 @@ class FacetsModel @Inject() (injector: Injector)
 
     // note that scalaguice still uses old Scala version implicit Manifests (presumably for backwards compatibility)
     import net.codingwell.scalaguice.InjectorExtensions._
-    val t: T = injector.instance[T]
-
-    val ds = t.asInstanceOf[DataStreamBase]
-
+    val ds: T = injector.instance[T]
     facets += name -> ds
   }
 

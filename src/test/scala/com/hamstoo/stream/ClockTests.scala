@@ -85,7 +85,7 @@ class ClockTests
     case class TestSource() extends ThrottledSource[TimeStamp]() {
 
       // this doesn't work with a `val` (NPE) for some reason, but it works with `lazy val` or `def`
-      override lazy val throttlee: SourceType = Source {
+      override lazy val throttlee: SourceType[TimeStamp] = Source {
 
         // no need to snapBegin like with PreloadSource test b/c peeking outside of the class for when to start
         val dataInterval = (12 hours).toMillis
@@ -93,7 +93,7 @@ class ClockTests
         // a preload source would backup the data until the (exclusive) beginning of the tick interval before `start`,
         // so that's what we do here with `start - interval + dataInterval` to make the two test results match up
         (start - interval + dataInterval until stop by dataInterval).map { t => Datum[TimeStamp](t, MarkId("kf"), t) }
-      }.named("TestThrottledSource").asInstanceOf[SourceType]
+      }.named("TestThrottledSource")
     }
 
     val fut: Future[Int] = TestSource().source

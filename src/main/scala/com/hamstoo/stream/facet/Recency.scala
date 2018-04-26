@@ -49,7 +49,7 @@ class Recency @Inject() (facetArg: Recency.Arg,
 
   logger.info(s"Using a half-life of ${mbHalfLife.getOrElse(Long.MaxValue).dfmt} given arg value ${facetArg.value}")
 
-  override val hubSource: SourceType = {
+  override val hubSource: SourceType[Double] = {
     import com.hamstoo.stream.StreamDSL._
 
     // this doesn't compile when spire.algebra.NRoot is used in place of Powable in StreamOps, the
@@ -65,7 +65,7 @@ class Recency @Inject() (facetArg: Recency.Arg,
       (0.5 pow nHalfLifes) * COEF
 
     }
-  }.source.asInstanceOf[SourceType]
+  }.source
 }
 
 object Recency {

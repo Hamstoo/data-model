@@ -24,9 +24,9 @@ object StreamDSL {
 
     /** DataStreams of Traversables can be flattened. */
     def flatten(implicit m: Materializer): DataStream[T] = new DataStream[T] {
-      override def hubSource: SourceType = s().mapConcat { d: Datum[Traversable[T]] =>
+      override def hubSource: SourceType[T] = s().mapConcat { d: Datum[Traversable[T]] =>
         val values: Traversable[T] = d.value
-        values.map { v: T => d.withValue[T](v) }.to[immutable.Iterable].asInstanceOf[immutable.Iterable[Datum[DataType]]]
+        values.map { v: T => d.withValue[T](v) }.to[immutable.Iterable]
       }
     }
   }
@@ -41,7 +41,7 @@ object StreamDSL {
 
     /** Map a stream of Datum[A]s to Datum[O]s. */
     def map[O](f: A => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
-      override def hubSource: SourceType = s().map(_.mapValue(a => f(a).asInstanceOf[DataType]))
+      override def hubSource: SourceType[O] = s().map(_.mapValue(f))
     }
 
     /** This really shouldn't be part of the interface, so just pass `ev.m` explicitly when necessary. */
@@ -70,7 +70,7 @@ object StreamDSL {
 
     /** Invoke JoinWithable.joinWith on the provided streams. */
     def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
-      override def hubSource: SourceType = s().joinWith(that())(op).asInstanceOf[SourceType]
+      override val hubSource: SourceType[O] = s().joinWith(that())(op).asInstanceOf[SourceType[O]]
     }
 
     /** The `{ case x => x }` actually does serve a purpose; it unpacks x into a 2-tuple, which `identity` cannot do. */
