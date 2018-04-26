@@ -72,7 +72,7 @@ object CompoundId {
 
 /**
   * All But the Value trait.  This trait is necessary because Datum is covariant in type T but Ordered is not.
-  * Fortunately the `compare` method doesn't care.
+  * Fortunately the `compare` method doesn't care either way.
   */
 trait ABV extends Ordered[ABV] {
   def id: EntityId

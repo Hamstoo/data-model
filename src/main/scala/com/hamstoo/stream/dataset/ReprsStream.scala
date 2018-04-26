@@ -3,9 +3,7 @@
  */
 package com.hamstoo.stream.dataset
 
-import akka.NotUsed
 import akka.stream.Materializer
-import akka.stream.scaladsl.Source
 import ch.qos.logback.classic.{Logger => LogbackLogger}
 import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
@@ -13,7 +11,7 @@ import com.hamstoo.daos.MongoRepresentationDao
 import com.hamstoo.models.{MSearchable, RSearchable}
 import com.hamstoo.stream._
 import com.hamstoo.utils.ExtendedTimeStamp
-import org.slf4j.{LoggerFactory, Logger => Slf4jLogger}
+import org.slf4j.LoggerFactory
 import play.api.Logger
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -58,7 +56,7 @@ class ReprsStream @Inject() (marksStream: MarksStream,
   }
 
   /** Maps the stream of marks to their reprs. */
-  override val hubSource: SourceType/*Source[Datum[ReprsPair], NotUsed]*/ = marksStream().mapAsync(4) { dat =>
+  override val hubSource: SourceType[ReprsPair] = marksStream().mapAsync(4) { dat =>
 
     // unpack query words/counts/vecs (which there may none of)
     val mbCleanedQuery = mbQuery2Vecs.map(_._1)
@@ -112,7 +110,7 @@ class ReprsStream @Inject() (marksStream: MarksStream,
       logger1.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
       d
     }
-  }.asInstanceOf[SourceType]
+  }
 }
 
 /**
@@ -121,8 +119,15 @@ class ReprsStream @Inject() (marksStream: MarksStream,
 @Singleton
 class RepredMarks @Inject() (marks: MarksStream, reprs: ReprsStream)
                             (implicit materializer: Materializer)
-    extends DataStream[(MSearchable, ReprsPair)] {
+    extends DataStream[RepredMarks.typ] {
 
+  import RepredMarks._
+
+  // see comment on JoinWithable as to why the cast is necessary here
   import com.hamstoo.stream.Join.JoinWithable
-  override def hubSource: SourceType = marks().joinWith(reprs()) { case x => x }.asInstanceOf[SourceType]
+  override def hubSource: SourceType[typ] = marks().joinWith(reprs()) { case x => x }.asInstanceOf[SourceType[typ]]
+}
+
+object RepredMarks {
+  type typ = (MSearchable, ReprsPair)
 }

@@ -60,7 +60,7 @@ class SearchResults @Inject() (@Named(Query2VecsOptional.name) query2Vecs: Query
     new Logger(logback)
   }
 
-  override val hubSource: SourceType = repredMarks.source
+  override val hubSource: SourceType[typ] = repredMarks.source
     .mapAsync(2) { dat: Datum[(MSearchable, ReprsPair)] =>
 
       // unpack the pair datum
@@ -168,7 +168,7 @@ class SearchResults @Inject() (@Named(Query2VecsOptional.name) query2Vecs: Query
       fut.map { _.map(dat.withValue) }
 
     }.mapConcat(_.to[immutable.Iterable])
-    .asInstanceOf[SourceType] // see "BIG NOTE" on JoinWithable
+    .asInstanceOf[SourceType[typ]] // see "BIG NOTE" on JoinWithable
 
   /**
     * Convert a list of reprs, one for each search term, into a weighted average MongoDB Text Index search score

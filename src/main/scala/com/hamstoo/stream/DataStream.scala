@@ -16,18 +16,6 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
 
 /**
-  * Base class of all DataStreams with an abstract type member rather than a generic type parameter.
-  * This trait is needed so that FacetsModel.source can merge a bunch of DataStreams of different types.
-  */
-trait DataStreamBase {
-
-  // https://stackoverflow.com/questions/1154571/scala-abstract-types-vs-generics
-  type DataType // abstract type member (declaration/interface)
-  type SourceType = Source[Datum[DataType], NotUsed]
-  val source: SourceType
-}
-
-/**
   * A dynamic BroadcastHub wrapper around an Akka Stream.
   *
   * @param bufferSize "Buffer size used by the producer. Gives an upper bound on how "far" from each other two
@@ -36,35 +24,35 @@ trait DataStreamBase {
   *                     [https://doc.akka.io/japi/akka/current/akka/stream/scaladsl/BroadcastHub.html]
   */
 abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
-                             (implicit materializer: Materializer) extends DataStreamBase {
+                             (implicit materializer: Materializer) {
 
   val logger = Logger(getClass)
 
-  // https://stackoverflow.com/questions/33458782/scala-type-members-variance
-  //type CovariantDataType[-U >: T] = T
-  override type DataType <: T // abstract type member (definition/implementation)
+  // don't even try mentioning T anywhere in this type definition, more at the link
+  //   https://stackoverflow.com/questions/33458782/scala-type-members-variance
+  type SourceType[+U] = Source[Datum[U], NotUsed]
 
   /** Abstract Akka Source to be defined by implementation. */
-  protected def hubSource: SourceType
+  protected def hubSource: SourceType[T]
 
   /**
     * This `lazy val` materializes `hubSource` into a dynamic BroadcastHub, which can be wired into as many
     * Flows or Sinks as desired at runtime.
     * See also: https://doc.akka.io/docs/akka/2.5/stream/stream-dynamic.html
     */
-  override final lazy val source: SourceType = {
+  final lazy val source: SourceType[T] = {
     assert(hubSource != null) // this assertion will fail if `source` is not `lazy`
     logger.debug(s"Materializing ${getClass.getSimpleName} BroadcastHub")
 
     // "This Source [src] can be materialized an arbitrary number of times, where each of the new materializations
     // will receive their elements from the original [hubSource]."
-    val src = hubSource.runWith(BroadcastHub.sink(bufferSize = bufferSize))
+    val hub = hubSource.runWith(BroadcastHub.sink(bufferSize = bufferSize))
 
-    src.named(getClass.getSimpleName)
+    hub.named(getClass.getSimpleName)
   }
 
   /** Shortcut to the source.  Think of a DataStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
-  def apply(): SourceType = this.source
+  def apply(): SourceType[T] = this.source
 }
 
 object DataStream {
@@ -103,7 +91,7 @@ abstract class PreloadSource[/*+*/T](loadInterval: DurationMils, bufferSize: Int
 
   /** Similar to a TimeWindow (i.e. simple range) but with a mutable buffer reference to access upon CloseGroup. */
   class KnownData(b: TimeStamp, e: TimeStamp,
-                  val buffer: PreloadType = Future.failed(new NullPointerException)/*.asInstanceOf[PreloadType]*/)
+                  val buffer: PreloadType = Future.failed(new NullPointerException))
       extends TimeWindow(b, e) {
 
     /** WARNING: note the Await inside this function; i.e. only use it for debugging. */
@@ -172,7 +160,7 @@ abstract class PreloadSource[/*+*/T](loadInterval: DurationMils, bufferSize: Int
   }
 
   /** Groups preloaded data into clock tick intervals and throttles it to the pace of the ticks. */
-  override protected val hubSource: SourceType = {
+  override protected val hubSource: SourceType[T] = {
 
     clock.source
 
@@ -180,7 +168,7 @@ abstract class PreloadSource[/*+*/T](loadInterval: DurationMils, bufferSize: Int
       // only allows (probably) smaller chunks of known data to pass at each tick
       .statefulMapConcat { () =>
         val factory = PreloadFactory()
-        tick => immutable.Iterable(factory.knownDataFor(tick.asInstanceOf[Tick]))
+        tick => immutable.Iterable(factory.knownDataFor(tick))
       }
 
       // should only need a single thread b/c data must arrive sequentially per the clock anyway,
@@ -192,12 +180,8 @@ abstract class PreloadSource[/*+*/T](loadInterval: DurationMils, bufferSize: Int
         }
       }
 
-      // without the `asInstanceOf` the following compiler error occurs (all because DataType must be covariant)
-      // > type mismatch;
-      // > [error]  found   : scala.collection.immutable.Iterable[com.hamstoo.stream.Datum[T]]
-      // > [error]  required: scala.collection.immutable.Iterable[com.hamstoo.stream.Datum[PreloadSource.this.DataType]]
-      // TODO: is the `.to[immutable.Iterable]` required here?
-      .mapConcat(_.to[immutable.Iterable].asInstanceOf[immutable.Iterable[Datum[DataType]]])
+      // convert to an immutable
+      .mapConcat(immutable.Iterable(_: _*))
   }
 }
 
@@ -222,24 +206,24 @@ abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SI
     *   2. User-defined, domain logic buffer: throttlee.buffer(500, OverflowStrategy.backpressure)
     * [https://doc.akka.io/docs/akka/current/stream/stream-rate.html]
     */
-  def throttlee: SourceType
+  def throttlee: SourceType[T]
 
   /** Throttles data by joining it with the clock and then mapping back to itself. */
-  override protected val hubSource: SourceType = {
+  override protected val hubSource: SourceType[T] = {
 
     // the Join that this function uses should only have a single clock tick in its joinable1 buffer at a time, every
     // call to pushOneMaybe will either push or result in a pull from the throttlee, as soon as the throttlee's
     // watermark0 gets ahead of the clock's watermark1
 
     /** Move `d.knownTime`s up to the end of the clock window that they fall inside, just like PreloadSource. */
-    def pairwise(d: Datum[DataType], t: Tick): Option[Join.Pairwised[DataType, clock.DataType]] =
+    def pairwise(d: Datum[T], t: Tick): Option[Join.Pairwised[T, TimeStamp]] =
       if (d.knownTime > t.time) None // throttlee known time must come before current clock time to be emitted
-      else Some(Pairwised(Datum((d.value, null.asInstanceOf[clock.DataType]), d.id, d.sourceTime, t.time), consumed0 = true)) // throttlee consumed
+      else Some(Pairwised(Datum((d.value, 0L), d.id, d.sourceTime, t.time), consumed0 = true)) // throttlee consumed
 
     /** Simply ignore the 0L "value" that was paired up with each `sv.value` in `pairwise`. */
     def joiner(v: T, t: TimeStamp): T = v
 
     // throttle the `throttlee` with the clock (see comment on JoinWithable as to why the cast is necessary here)
-    JoinWithable(throttlee).joinWith(clock())(joiner, pairwise).asInstanceOf[SourceType]
+    JoinWithable(throttlee).joinWith(clock())(joiner, pairwise).asInstanceOf[SourceType[T]]
   }
 }
