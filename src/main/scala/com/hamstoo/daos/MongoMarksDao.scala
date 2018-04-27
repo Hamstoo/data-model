@@ -105,10 +105,11 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * @return          None if no such mark is found.
     */
   def retrieveInsecure(id: ObjectId, timeFrom: Option[TimeStamp] = None): Future[Option[Mark]] =
-    retrieveInsecureSeq(id :: Nil, timeFrom = timeFrom).map(_.headOption)
+    // note that the `n = 1` here may have no effect, see the "batch size" comment in ExtendedQB.coll
+    retrieveInsecureSeq(id :: Nil, timeFrom = timeFrom, n = 1).map(_.headOption)
 
   /** Retrieves a list of marks by IDs, ignoring user authorization permissions. */
-  def retrieveInsecureSeq(ids: Seq[ObjectId], timeFrom: Option[TimeStamp] = None,
+  def retrieveInsecureSeq(ids: Seq[ObjectId], timeFrom: Option[TimeStamp] = None, n: Int = -1,
                           begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[Mark]] = {
     logger.debug(s"Retrieving (insecure) ${ids.size} marks (timeFrom=${timeFrom.map(_.tfmt)}, begin=${begin.map(_.tfmt)}, end=${end.map(_.tfmt)}); first, at most, 5: ${ids.take(5)}")
     for {
@@ -118,7 +119,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
 
-      seq <- c.find(d :~ sel).coll[Mark, Seq]()
+      seq <- c.find(d :~ sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq](n = n)
     } yield {
       logger.debug(s"Retrieved (insecure) ${seq.size} marks; first, at most, 5: ${seq.take(5).map(_.id)}")
       seq

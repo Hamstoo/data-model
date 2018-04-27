@@ -17,6 +17,7 @@ import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
+import scala.util.Try
 import scala.util.matching.Regex
 
 
@@ -51,21 +52,18 @@ case class MarkData(override val subj: String,
     val document: Node = parser.parse(c)
 
     // detects embedded links in text only and make them clickable (issue #136)
-    // ignores html links (anchors) to avoid double tags because
-    // commonmark.parser.parse(...) does not allocate <a>
-    // (anchor tag) from text as a separate node
-    // and such tags will be double tagged like <a href...><a href...>Link</a></a>
-    val visitor = new TextNodesVisitor
-    document.accept(visitor)
+    // ignores html links (anchors) to avoid double tags because commonmark.parser.parse(...) does not allocate <a>
+    // to separate nodes, so such tags would o/w be double tagged like <a href...><a href...>Link</a></a>
+    document.accept(MarkdownNodesVisitor())
 
-    val html = renderer.render(document)
+    val html0 = renderer.render(document)
 
     // example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
     // convert that &ldquo; back to a < character
-    val html2 = StringEscapeUtils.unescapeHtml4(html)
+    val html1 = StringEscapeUtils.unescapeHtml4(html0)
 
     // example: <p><img></p>
-    Jsoup.clean(html2, htmlTagsWhitelist)
+    Jsoup.clean(html1, htmlTagsWhitelist)
   }
 
   /** Check for `Automarked` label. */
@@ -104,16 +102,18 @@ case class MarkData(override val subj: String,
 object MarkData {
   val logger: Logger = Logger(classOf[MarkData])
 
-  /* attention: mutable Java classes below.
-  for markdown parsing/rendering: */
+  // attention: mutable Java classes below
+
+  // for markdown parsing/rendering
   lazy val parser: Parser = Parser.builder().build()
   lazy val renderer: HtmlRenderer = HtmlRenderer.builder().build()
 
   // for XSS filtering (https://jsoup.org/cookbook/cleaning-html/whitelist-sanitizer)
   lazy val htmlTagsWhitelist: Whitelist = Whitelist.relaxed()
     .addTags("hr") // horizontal rule
-    .addEnforcedAttribute("a", "rel", "nofollow noopener noreferrer") /*
-    https://medium.com/@jitbit/target-blank-the-most-underestimated-vulnerability-ever-96e328301f4c : */
+    .addTags("del").addTags("s") // strikethrough
+    .addTags("div").addAttributes("div", "style") // to allow text-align and such
+    .addEnforcedAttribute("a", "rel", "nofollow noopener noreferrer") // https://medium.com/@jitbit/target-blank-the-most-underestimated-vulnerability-ever-96e328301f4c
     .addEnforcedAttribute("a", "target", "_blank")
 
   val commentMergeSeparator: String = "\n\n---\n\n"
@@ -138,21 +138,94 @@ case class MarkRef(markId: ObjectId,
                    tags: Option[Set[String]] = None)
 
 /**
-  * This class is used to detect embedded links in text and wrap them w/ <a> anchor tags.  It visits
-  * only text nodes.
+  * This class is used to detect embedded links in text and wrap them w/ <a> anchor tags.  It also parses
+  * strikethrough which the Commonmark Markdown parser does not handle.
+  *
+  * This class only visits Markdown nodes because any HTML put in the comment by the user does not, itself,
+  * get parsed into nodes, which would require a call to Jsoup.parse.
   */
-class TextNodesVisitor extends AbstractVisitor {
-  import TextNodesVisitor._
+case class MarkdownNodesVisitor() extends AbstractVisitor {
+  import MarkdownNodesVisitor._
+
+  override def visit(htmlBlock: HtmlBlock): Unit =
+    htmlBlock.setLiteral(parseStrikethrough(htmlBlock.getLiteral)) // TODO: use Jsoup.parse here instead
 
   override def visit(text: Text): Unit = {
+    val lit0 = text.getLiteral
+
     // find and wrap links
-    val wrappedEmbeddedLinks = embeddedLinksToHtmlLinks(text.getLiteral)
+    val lit1 = parseLinksInText(lit0)
+
+    // process strikethrough, but if there were any embedded links then just punt on it
+    val lit2 = parseStrikethrough(lit1) // TODO: Jsoup.parse
+
     // apply changes to currently visiting text node
-    text.setLiteral(wrappedEmbeddedLinks)
+    text.setLiteral(lit2)
   }
+  
+  
 }
 
-object TextNodesVisitor {
+object MarkdownNodesVisitor {
+
+  /**
+    * This function takes HTML (as a String), as opposed to straight-up text, because it has already undergone
+    * _some_ parsing.
+    *
+    * TODO: it would probably be better if this function took a Jsoup.parse nodes tree as input rather than a String
+    */
+  def parseStrikethrough(html: String): String = Try {
+
+    // process double '~'s into <del> tags (there has to be a better way, this code is inelegance at its finest)
+    // explanation of rules implemented below: https://talk.commonmark.org/t/feature-request-strikethrough-text/220/5
+    // additional support: https://webapps.stackexchange.com/questions/14986/strikethrough-with-github-markdown
+
+    // the top of a Stack is its head position
+    val strikes = mutable.Stack[(Int, Option[Int])]()
+    def isOpen: Boolean = strikes.headOption.exists(_._2.isEmpty)
+
+    // pad beginning and ending of string so that we can iterate each char by 4-tuples
+    var insideTag = false
+    val quadable = " " + html + "  "
+    (0 until html.length).foreach { i: Int =>
+      val quad = quadable.substring(i, i + 4)
+      (quad(0), quad(1), quad(2), quad(3)) match {
+
+        case ('<', _, _, _) if !insideTag => insideTag = true
+
+        // neither `a` nor `b` can be '~' to satisfy both #1s below
+        case (a, '~', '~', b) if a != '~' && b != '~' =>
+
+          if (a == '>' && insideTag) insideTag = false
+
+          // > A double ~~ can open strikethrough iff:
+          // >   1. it is not part of a sequence of 3 or more unescaped '~'s, and
+          // >   2. it is not followed by whitespace
+          if (!b.isWhitespace && !isOpen) strikes.push((i, None))
+
+          // > A double ~~ can close strikethrough iff:
+          // >   1. it is not part of a sequence of 3 or more unescaped '~'s, and
+          // >   2. it is not preceded by whitespace
+          else if (!a.isWhitespace && isOpen) strikes.push(strikes.pop.copy(_2 = Some(i)))
+
+        case ('>', _, _, _) if insideTag => insideTag = false
+
+        case _ =>
+      }
+    }
+
+    // iterate in reverse because the top of a Stack is its head position
+    var previousEndPlus2 = 0
+    strikes.reverse.collect {
+      case (b, Some(e)) => // ignore unclosed strikethroughs: (b, None)
+
+        val sub = html.substring(previousEndPlus2, b) + "<del>" + html.substring(b + 2, e) + "</del>"
+        previousEndPlus2 = e + 2
+        sub
+    }.mkString("") +
+      html.substring(previousEndPlus2, html.length)
+
+  }.getOrElse(html)
 
   /**
     * Find all embedded URLs and convert them to HTML <a> links (anchors). This regex is designed to ignore HTML link
@@ -165,7 +238,7 @@ object TextNodesVisitor {
     * (?<!href=") - this ignore condition should stay because commonmark.parser.parse(...) does not allocate <a>
     *   (anchor tag) from text as a separate node
     */
-  def embeddedLinksToHtmlLinks(text: String): String = {
+  def parseLinksInText(text: String): String = {
     val regexStr =
       "(?<!href=\")" + // ignore http pattern prepended by 'href=' expression
         "((?:https?|ftp)://)" + // check protocol
