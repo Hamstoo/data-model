@@ -13,8 +13,9 @@ name := "data-model"
 //   https://graysonkoonce.com/getting-the-current-branch-name-during-a-pull-request-in-travis-ci/
 version := {
   val gitbranch = Process("git rev-parse --abbrev-ref HEAD").lineStream.head
-  val branch = if (!Seq("HEAD", "undefined").contains(gitbranch)) gitbranch else // will fail w/ detached head locally
-    sys.env(if (sys.env("TRAVIS_PULL_REQUEST") == "true") "TRAVIS_PULL_REQUEST_BRANCH" else "TRAVIS_BRANCH")
+  val branch = scala.util.Try(sys.env(
+    if (sys.env("TRAVIS_PULL_REQUEST") == "true") "TRAVIS_PULL_REQUEST_BRANCH" else "TRAVIS_BRANCH"
+  )).getOrElse(gitbranch)
   Source.fromFile("VERSION").getLines find (_ => true) map { l =>
     (if (branch == "master") "" else branch + "-") + l.trim
   } getOrElse "latest"
