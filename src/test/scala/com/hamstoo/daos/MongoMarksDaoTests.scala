@@ -82,10 +82,6 @@ class MongoMarksDaoTests
     marksDao.retrieve(uuid2).futureValue.map(_.id) shouldEqual Seq(m3.id)
   }
 
-  it should "(UNIT) retrieve by uuid and url" in {
-    marksDao.retrieveByUrl(url, uuid1).futureValue.get.id shouldEqual m1.id
-  }
-
   it should "(UNIT) retrieve by uuid and tags" in {
     val tagged = marksDao.retrieveTagged(uuid1, tagSet.get).futureValue.map(_.id)
     tagged.size shouldEqual 2
@@ -178,5 +174,19 @@ class MongoMarksDaoTests
 
   it should "(UNIT) check if mark was every previously deleted" in {
     marksDao.isDeleted(uuid1, m1.mark.url.get).futureValue shouldEqual true
+  }
+
+  it should "(UNIT) retrieve by uuid and url" in {
+    val url1 = "https://mail.google.com/mail/u/0/#inbox/162e903e20ce4af3"
+    val url2 = "https://mail.google.com/mail/u/0/#inbox/162e5aa71f6ebdff"
+
+    val m1 = Mark(uuid1, "markID1", mark = MarkData("subj1", Some(url1)))
+    val m2 = Mark(uuid1, "markID2", mark = MarkData("subj2", Some(url2)))
+
+    marksDao.insert(m1).futureValue shouldEqual m1
+    marksDao.retrieveByUrl(url1, uuid1).futureValue.value shouldEqual m1
+
+    marksDao.insert(m2).futureValue shouldEqual m2
+    marksDao.retrieveByUrl(url2, uuid1).futureValue.value shouldEqual m2
   }
 }

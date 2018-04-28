@@ -23,11 +23,17 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
 
   self: Suite =>
 
+  // default mongo port, override if needed
+  def mongoPort: Int = 12345
+
   // default mongo version, override if needed
-  val mongoVersion: Version = Version.V3_5_1
+  def mongoVersion: Version = Version.V3_5_1
+
+  // mongodb uri and database name
+  def dbUri = s"mongodb://localhost:$mongoPort/hamstoo"
 
   // fongo (fake mongo) instance
-  final lazy val fongo: MongodProps = mongoStart(mongoPort, mongoVersion)
+  lazy val fongo: MongodProps = mongoStart(mongoPort, mongoVersion)
 
   override def beforeAll(): Unit = {
     println(s"Starting MongoDB:$mongoVersion instance on port: $mongoPort")

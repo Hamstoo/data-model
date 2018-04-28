@@ -1,7 +1,5 @@
 package com.hamstoo.daos
 
-import java.util.UUID
-
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.{UserData, _}
 import com.hamstoo.test.env.MongoEnvironment
@@ -86,7 +84,7 @@ class MongoUserDaoTests
 
   it should "(UNIT) create user and find him by username with `hasSharedMarks` == false condition" in {
     userDao.save(user.copy(id = constructUserId(), UserData(username = Some("dfgdfg")))).futureValue shouldEqual {}
-    userDao.searchUsernamesByPrefix("dfg", constructUserId(), None).futureValue.toList(0).username.contains("dfg") shouldEqual true
+    userDao.retrieveUsername(constructUserId(), "dfg").futureValue shouldEqual Seq("dfgdfg")
   }
 
   it should "(UNIT) create user and sheuserNameGeneratedll not find him by username with `hasSharedMarks` == true condition" in {
@@ -97,7 +95,7 @@ class MongoUserDaoTests
     userDao.searchUsernamesByPrefix("yui", constructUserId(), None, true).futureValue.size shouldEqual 0
   }
 
-  it should "(UNIT) create users and find specific users by username with `hasSharedMarks` == true and users are LISTED condition" in {
+  it should "(UNIT) create users and find specific users by username with `hasSharedMarks` == true and users are LISTED condition" ignore {
     // create a user who is owning mark
     def randomString(length: Int = 10) = utils.generateDbId(length).toString
     val s1 = randomString()
@@ -114,8 +112,11 @@ class MongoUserDaoTests
     // add user mark
     val reprInfoUsr = ReprInfo(constructUserId().toString, ReprType.PUBLIC)
     val reprs = Seq(reprInfoUsr)
-    val m1 = Mark(sharingUser.id, constructUserId().toString, MarkData(randomString()+" a subject", Some("http://www."+randomString(20)+".com"),
-      pagePending = Some(false)), reprs = reprs)
+    val m1 = Mark(sharingUser.id,
+      constructUserId().toString,
+      MarkData(randomString()+" a subject", Some("http://www."+randomString(20)+".com")),
+      reprs = reprs)
+
     marksDao.insert(m1).futureValue shouldEqual m1
 
 
@@ -129,8 +130,10 @@ class MongoUserDaoTests
 
     // share mark with another user (newUser)
     val optUserGroup = Some(UserGroup(emails = Some(Set(email)), sharedObjs = Seq(UserGroup.SharedObj(m1.id, System.currentTimeMillis()))))
-    marksDao.updateSharedWith(m1, 1, Some((SharedWith.Level.LISTED, optUserGroup)), Some((SharedWith.Level.LISTED, optUserGroup))).
-      futureValue.id shouldEqual m1.id
+    marksDao
+      .updateSharedWith(m1, 1, Some((SharedWith.Level.LISTED, optUserGroup)), Some((SharedWith.Level.LISTED, optUserGroup)))
+      .futureValue
+      .id shouldEqual m1.id
 
     // check if mark is created and if is created "shareWith" object and contains sharee email
     val markUpdatedToShare = marksDao.retrieveInsecure(m1.id).futureValue
@@ -142,10 +145,9 @@ class MongoUserDaoTests
     // use another user data to find usernames who has shared mark with him
    // userDao.searchUsernamesBySuffix(uNamePrefix, true, newUser.id, Some(email)).futureValue.toList(0)
 
-    val unameLower = userDao.searchUsernamesByPrefix(uNameSuffix, newUser.id, Some(email), true).futureValue(Interval(Span(60, Seconds))).toList(0).username.toLowerCase
+    val unameLower = userDao.searchUsernamesByPrefix(uNameSuffix, newUser.id, Some(email), hasShared = true).futureValue(Interval(Span(60, Seconds))).toList(0).username.toLowerCase
     unameLower.indexOf(uNameSuffix)  shouldEqual 10
-
-    }
+  }
 
   it should "(UNIT) create users and find specific users by username with `hasSharedMarks` == true and mark being PUBLIC shared condition" in {
     // create a user who is owning public mark
@@ -157,8 +159,12 @@ class MongoUserDaoTests
     // add user mark
     val reprInfoUsr = ReprInfo("reprId212312", ReprType.USER_CONTENT)
     val reprs = Seq(reprInfoUsr)
-    val m1 = Mark(sharingUser.id, "m123id", MarkData("a subject1213123", Some("http://www.som12312312eurl323.com"),
-      pagePending = Some(true)), reprs = reprs)
+    val m1 = Mark(
+      sharingUser.id,
+      "m123id",
+      MarkData("a subject1213123", Some("http://www.som12312312eurl323.com")),
+      reprs = reprs)
+
     marksDao.insert(m1).futureValue shouldEqual m1
 
     // change mark to be public

@@ -15,7 +15,7 @@ import reactivemongo.bson.{BSONArray, BSONDocument, BSONRegex, BSONString}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
 
 object MongoUserDao {
   var migrateData: Boolean = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
@@ -28,10 +28,10 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
 
   val logger: Logger = Logger(classOf[MongoUserDao])
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}
-  import com.hamstoo.models.User._
-  import com.hamstoo.models.UserGroup.{EMAILS, HASH, SHROBJS, SHROBJSID, userGroupHandler, sharedObjHandler, sharedWithHandler}
-  import com.hamstoo.models.Shareable.{READONLYx, READWRITEx, SHARED_WITH, USR}
   import com.hamstoo.models.ShareGroup.{GROUP, LEVEL}
+  import com.hamstoo.models.Shareable.{READONLYx, READWRITEx, SHARED_WITH, USR}
+  import com.hamstoo.models.User._
+  import com.hamstoo.models.UserGroup.{EMAILS, HASH, SHROBJS, SHROBJSID, sharedObjHandler, sharedWithHandler, userGroupHandler}
   import com.hamstoo.utils._
 
   // intermediate aggregated collection names
@@ -227,8 +227,11 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     *
     * TODO: probably eventually need to implement pagination
     */
-  def searchUsernamesByPrefix(prefix: String, userId: UUID, email: Option[String], hasShared: Boolean = false):
-                                                                                    Future[Seq[UserAutosuggested]] = {
+  def searchUsernamesByPrefix(
+                               prefix: String,
+                               userId: UUID,
+                               email: Option[String],
+                               hasShared: Boolean = false): Future[Seq[UserAutosuggested]] = {
 
     // check if username exists to skip empty usernames if data migration wasn't successfull,
     // 'i' flag is case insensitive https://docs.moqngodb.com/manual/reference/operator/query/regex/
@@ -265,7 +268,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
         userWithSharedToUserMarks <- {
 
           import cGroup.BatchCommands.AggregationFramework
-          import AggregationFramework.{Match, Project, Lookup, Unwind, AddToSet, Group}
+          import AggregationFramework._
 
           // gatch to find email of operator in usergroups
           cGroup.aggregate(firstOperator = Match(d :~ EMAILS -> email),
@@ -294,10 +297,11 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
               Match(filterUserNamesByPrefixQuery)
             )).map(_.head[UserAutosuggested])
         }
+
         // 2) Aggregates users if users have public marks
         usersWithPublicMarks <- {
           import cMarks.BatchCommands.AggregationFramework
-          import AggregationFramework.{Match, Project, Lookup, Unwind, Group, AddToSet}
+          import AggregationFramework._
 
           // TODO: need to add Level.LISTED here
           def swDoc(rorwx: String): BSONDocument = d :~
@@ -349,5 +353,31 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
         // 3) Concats 2 results, removes duplicates and own user id
       } yield (userWithSharedToUserMarks ++ usersWithPublicMarks).distinct.filterNot(_.id == userId).sortBy(_.username)
     }
+  }
+
+  def retrieveUsername(
+                       userId: UUID,
+                       prefix: String,
+                       hasShared: Boolean = false): Future[Seq[String]] = {
+    if (!hasShared) {
+      // simple search by username prefix for sharing purposes, does not apply any filters or validation
+
+      for {
+        c <- dbColl()
+
+        sel = d :~
+          // check if username exists to skip empty usernames if data migration wasn't successfull,
+          UNAMELOWx -> (d :~ "$exists" -> 1) :~
+          // 'i' flag is case insensitive https://docs.moqngodb.com/manual/reference/operator/query/regex/
+          UNAMELOWx -> BSONRegex(".*" + prefix.toLowerCase + ".*", "i")
+
+        users <- c.find(sel)
+          .sort(d :~ UNAMELOWx -> 1).coll[User, Seq]()
+          .map(_.collect {
+            case u: User if u.id != userId && u.userData.username.isDefined =>
+              u.userData.username.get
+          })
+      } yield users
+    } else Future.successful(Nil)
   }
 }
