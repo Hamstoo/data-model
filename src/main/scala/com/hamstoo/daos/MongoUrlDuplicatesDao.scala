@@ -66,7 +66,7 @@ class MongoUrlDuplicatesDao(db: () => Future[DefaultDB])(implicit e: ExecutionCo
     urlDup
   }
 
-  /** Retrieve duplicates for user. */
+  /** Retrieve duplicates for user.  Same prefix-search-then-filter implementation as ImageDao.retrieve.*/
   def retrieve(userId: UUID, url: String): Future[Set[UrlDuplicate]] = for {
     c <- dbColl()
     _ = logger.debug(s"Retrieving URL duplicates for $userId, URL: $url")
