@@ -3,9 +3,8 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import akka.NotUsed
-import akka.actor.ActorSystem
-import akka.stream.{ActorMaterializer, Materializer}
-import akka.stream.scaladsl.{Sink, Source}
+import akka.stream.Materializer
+import akka.stream.scaladsl.Source
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Representation.ReprType
@@ -13,14 +12,12 @@ import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
 import com.mohiva.play.silhouette.api.exceptions.NotAuthorizedException
 import play.api.Logger
-import reactivemongo.akkastream.cursorProducer
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
-import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 
@@ -167,6 +164,19 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   /** Retrieves the original creation time of a mark. */
   def retrieveCreationTime(id: String): Future[Option[TimeStamp]] =
     retrieveInsecureHist(id).map(_.lastOption.map(_.timeFrom))
+
+  /** If a current mark can't be found, then look for a merged mark that might have subsumed it. */
+  def retrieveInsecureOrSubsumed(id: ObjectId): Future[Option[Mark]] = for {
+    m0 <- retrieveInsecure(id)
+
+    // if a current mark can't be found, then look for a merged mark that might have subsumed it
+    m1 <- if (m0.isDefined) Future.successful(m0) else for {
+      retiredMarks <- retrieveInsecureHist(id)
+      _ = logger.debug(s"Unable to find mark $id; searching merged/retired marks: ${retiredMarks.flatMap(_.mergeId)}")
+      mrgId = retiredMarks.headOption.flatMap(_.mergeId)
+      m1 <- if (mrgId.isDefined) retrieveInsecure(mrgId.get) else Future.successful(None)
+    } yield m1
+  } yield m1
 
   /**
     * Retrieves a current mark by user and URL, None if not found.  This is used in the Chrome extension via the
