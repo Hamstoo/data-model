@@ -34,91 +34,54 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
     val d = MarkData("", None, None, None, Some("~~strikethrough~~"), None)
     d.commentEncoded.get shouldEqual "<p><del>strikethrough</del></p>"
     val e = MarkData("", None, None, None, Some("~~not struck ~~"), None)
-    e.commentEncoded.get shouldEqual "<p>~~not struck ~~</p>"
+    e.commentEncoded.get shouldEqual "<p>~~not struck ~~</p>" // no good b/c of the space after the 'k'
   }
 
+  val domainLink = "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'"
+  val ipLink0 = "https://216.58.209.99:90/"
+  val ipLink1 = "https://234.234.234:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'"
+
   it should "(UNIT) markdown should detect embedded domain link" in {
-
-    val b = emptyMarkData.copy(comment = Some("hello markdown link conversion text " +
-      StringEscapeUtils.unescapeHtml4("https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'" +
-        "&kjdk9238493kmfdsdfdsf='sdf'")))
-
-    b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
-      "<a href=\"" + StringEscapeUtils.escapeHtml4(
-      "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'") +
+    val orig = emptyMarkData.copy(comment = Some("hello " + StringEscapeUtils.unescapeHtml4(domainLink)))
+    val parsed = "<p>hello <a href=\"" + StringEscapeUtils.escapeHtml4(domainLink) +
       "\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
-      StringEscapeUtils.escapeHtml4("https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'" +
-        "&kjdk9238493kmfdsdfdsf='sdf'") + "</a></p>"
+      StringEscapeUtils.escapeHtml4(domainLink) + "</a></p>"
+    orig.commentEncoded.get shouldEqual parsed
   }
 
   it should "(UNIT) markdown should detect embedded IP link" in {
-
-    val b = emptyMarkData.copy(comment = Some("hello markdown link conversion text " +
-      StringEscapeUtils.unescapeHtml4("https://216.58.209.99:90/")))
-
-    b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
-      "<a href=\"" + StringEscapeUtils.escapeHtml4(
-      "https://216.58.209.99:90/") + "\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
-      StringEscapeUtils.escapeHtml4("https://216.58.209.99:90/") + "</a></p>"
+    val orig = emptyMarkData.copy(comment = Some("hello " + StringEscapeUtils.unescapeHtml4(ipLink0)))
+    val parsed = "<p>hello <a href=\"" + StringEscapeUtils.escapeHtml4(ipLink0) +
+      "\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
+      StringEscapeUtils.escapeHtml4(ipLink0) + "</a></p>"
+    orig.commentEncoded.get shouldEqual parsed
   }
 
   it should "(UNIT) find embedded link with IP and tag it as <a> tag" in {
-
-    val nonFilteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
-      "https://234.234.234:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf' </p>"
-
-    val filteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
-      "<a href=\"https://234.234.234:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'\">" +
-      "https://234.234.234:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'</a> </p>"
-
-    val s1 = MarkdownNodesVisitor.parseLinksInText(nonFilteredOfEmbeddedLinksTags)
-    println(filteredOfEmbeddedLinksTags)
-    println(s1)
-    s1 shouldEqual filteredOfEmbeddedLinksTags
+    val orig = "<p>hello " + ipLink0 + " </p>"
+    val parsed = "<p>hello <a href=\"" + ipLink0 + "\">" + ipLink0 + "</a> </p>"
+    MarkdownNodesVisitor.parseLinksInText(orig) shouldEqual parsed
   }
 
   it should "(UNIT) find embedded link with domain name and tag it as <a> tag" in {
-
-    val nonFilteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
-      "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf' </p>"
-
-    val filteredOfEmbeddedLinksTags = "<p>hello embedded link in text " +
-      "<a href=\"https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'\">" +
-      "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'</a> </p>"
-
-    val s1 = MarkdownNodesVisitor.parseLinksInText(nonFilteredOfEmbeddedLinksTags)
-    println(filteredOfEmbeddedLinksTags)
-    println(s1)
-    s1 shouldEqual filteredOfEmbeddedLinksTags
+    val orig = "<p>hello " + domainLink + " </p>"
+    val parsed = "<p>hello <a href=\"" + domainLink + "\">" + domainLink + "</a> </p>"
+    MarkdownNodesVisitor.parseLinksInText(orig) shouldEqual parsed
   }
 
-  it should "(UNIT) skip <a> tagged link in function `embeddedLinksToHtmlLinks` " in {
-
-    val nonFilteredOfEmbeddedLinksTags =
-      " <p>hello markdown link conversion text " +
-        "<a href=\"https://www.google.com\">" +
-        "I'm an inline-kinda link</a></p>"
-
-    val filteredOfEmbeddedLinksTags =
-      " <p>hello markdown link conversion text " +
-        "<a href=\"https://www.google.com\">" +
-        "I'm an inline-kinda link</a></p>"
-
-    val s1 = MarkdownNodesVisitor.parseLinksInText(nonFilteredOfEmbeddedLinksTags)
-    println(filteredOfEmbeddedLinksTags)
-    println(s1)
-    s1 shouldEqual filteredOfEmbeddedLinksTags
+  it should "(UNIT) skip <a> tagged link in function `embeddedLinksToHtmlLinks`" in {
+    val orig = " <p>hello <a href=\"https://www.google.com\">I'm an inline-kinda link</a></p>"
+    val parsed = " <p>hello <a href=\"https://www.google.com\">I'm an inline-kinda link</a></p>"
+    MarkdownNodesVisitor.parseLinksInText(orig) shouldEqual parsed
   }
 
   it should "(UNIT) skip and whitelist <a> tagged link in function `commentEncoded`" in {
-
-    val b = emptyMarkData.copy(comment = Some("hello markdown link conversion text " +
+    val orig = emptyMarkData.copy(comment = Some("hello " +
       StringEscapeUtils.unescapeHtml4("<a href=\"https://www.google.com\">I'm an inline-kinda link</a>")))
-
-    b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
-      "<a href=\"" + StringEscapeUtils.escapeHtml4(
-      "https://www.google.com") + "\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
+    val parsed = "<p>hello <a href=\"" + StringEscapeUtils.escapeHtml4("https://www.google.com") +
+      "\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
       StringEscapeUtils.escapeHtml4("I'm an inline-kinda link") + "</a></p>"
+    orig.commentEncoded.get shouldEqual parsed
   }
 
   it should "(UNIT) try to prevent XSS attacks" in {
