@@ -15,10 +15,15 @@ import com.typesafe.config.{Config, ConfigFactory}
   */
 object DataInfo {
 
+  // default mongo port, override if needed
+  val mongoPort: Int = 12345
+
   // https://stackoverflow.com/questions/24153614/scala-write-value-to-typesafe-config-object
   // https://alvinalexander.com/scala/how-to-create-multiline-strings-heredoc-in-scala-cookbook
-  lazy val config: Config = ConfigFactory.parseString("""vectors.link = "http://localhost:5000"
-                                                        |idfs.resource = idfs/text8.json.zip""".stripMargin)
+  lazy val config: Config = ConfigFactory.parseString(s"""vectors.link = "http://localhost:5000"
+                                                         |idfs.resource = idfs/text8.json.zip
+                                                         |mongodb.uri = "mongodb://localhost:$mongoPort/hamstoo"
+                                                         |""".stripMargin)
 
   // these used to be `userId` and `markId` constants but were changed to functions to avoid collisions between tests
   def constructUserId(): UUID = UUID.randomUUID()

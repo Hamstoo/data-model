@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
@@ -14,7 +17,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 /**
   * MongoMarksDao tests.
   */
-class MongoMarksDaoTests
+class MarkDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler

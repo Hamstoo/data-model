@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import com.google.inject.Inject
@@ -16,7 +19,7 @@ import scala.concurrent.duration._
 /**
   * Data access object for all images (formerly just for profile pictures), implemented with MongoDB's binary keys.
   */
-class ImageDao @Inject() (db: () => Future[DefaultDB]) {
+class ImageDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._
   import com.hamstoo.models.Image._

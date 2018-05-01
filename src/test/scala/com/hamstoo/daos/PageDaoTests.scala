@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
@@ -19,7 +22,7 @@ import scala.util.Failure
 /**
   * All classes have ScalaDoc!
   */
-class MongoPagesDaoTests
+class PageDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler

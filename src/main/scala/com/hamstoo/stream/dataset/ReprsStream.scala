@@ -7,7 +7,7 @@ import akka.stream.Materializer
 import ch.qos.logback.classic.{Logger => LogbackLogger}
 import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
-import com.hamstoo.daos.MongoRepresentationDao
+import com.hamstoo.daos.RepresentationDao
 import com.hamstoo.models.{MSearchable, RSearchable}
 import com.hamstoo.stream._
 import com.hamstoo.utils.ExtendedTimeStamp
@@ -41,7 +41,7 @@ class ReprsStream @Inject() (marksStream: MarksStream,
                              @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
                              logLevel: LogLevelOptional.typ)
                             (implicit materializer: Materializer, ec: ExecutionContext,
-                             reprDao: MongoRepresentationDao)
+                             reprDao: RepresentationDao)
     extends DataStream[ReprsPair]() {
 
   // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples

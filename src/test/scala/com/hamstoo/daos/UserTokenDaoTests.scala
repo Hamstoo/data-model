@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
@@ -12,7 +15,7 @@ import org.scalatest.OptionValues
   * Author: fayaz.sanaulla@gmail.com
   * Date: 12.11.17
   */
-class MongoUserTokenDaoTests
+class UserTokenDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler

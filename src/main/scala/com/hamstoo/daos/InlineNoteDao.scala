@@ -1,7 +1,11 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.google.inject.Inject
 import com.hamstoo.models.{InlineNote, PageCoord}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -15,14 +19,15 @@ import scala.concurrent.duration._
   * Data access object for inline notes (of which there can be many per mark) as opposed to comments (of which there
   * is only one per mark).
   */
-class MongoInlineNoteDao(db: () => Future[DefaultDB])
-                        (implicit marksDao: MongoMarksDao, userDao: MongoUserDao, pagesDao: MongoPagesDao)
-                                        extends MongoAnnotationDao[InlineNote]("inline note", db) {
+class InlineNoteDao @Inject()(implicit db: () => Future[DefaultDB],
+                              marksDao: MarkDao,
+                              userDao: UserDao,
+                              pagesDao: PageDao) extends AnnotationDao[InlineNote]("inline note") {
 
   import com.hamstoo.models.InlineNote._
   import com.hamstoo.utils._
 
-  override val logger = Logger(classOf[MongoInlineNoteDao])
+  override val logger = Logger(classOf[InlineNoteDao])
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "comments")
 
   Await.result(dbColl() map (_.indexesManager ensure indxs), 366 seconds)

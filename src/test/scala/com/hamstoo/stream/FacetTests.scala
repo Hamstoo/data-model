@@ -7,7 +7,7 @@ import akka.stream._
 import akka.stream.scaladsl.Sink
 import com.google.inject.name.Named
 import com.google.inject.{Guice, Provides, Singleton}
-import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
+import com.hamstoo.daos.{MarkDao, RepresentationDao, UserDao}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
@@ -113,9 +113,9 @@ class FacetTests
         // TODO: make these things (especially the DAOs) support DI as well so that these extra bindings can be removed
         classOf[ExecutionContext] := system.dispatcher
         classOf[Materializer] := materializer
-        classOf[MongoMarksDao] := marksDao
-        classOf[MongoRepresentationDao] := reprsDao
-        classOf[MongoUserDao] := userDao
+        classOf[MarkDao] := marksDao
+        classOf[RepresentationDao] := reprsDao
+        classOf[UserDao] := userDao
 
         //Val("clock.begin"):~ TimeStamp =~ clockBegin // alternative syntax? more like Scala?
         ClockBegin := clockBegin

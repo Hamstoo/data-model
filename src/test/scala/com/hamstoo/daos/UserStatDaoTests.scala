@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
@@ -16,7 +19,7 @@ import scala.concurrent.Future
   * 2 tests in this class are responsible for testing total marks particular users.
   * They are designed to test the counting of marks after marks modifications operations.
   */
-class MongoUserStatsDaoTests extends FlatSpecWithMatchers
+class UserStatDaoTests extends FlatSpecWithMatchers
     with MongoEnvironment
     with OptionValues
     with FutureHandler {

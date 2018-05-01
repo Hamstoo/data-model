@@ -1,7 +1,7 @@
 package com.hamstoo.models
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.daos.MongoMarksDao
+import com.hamstoo.daos.MarkDao
 import com.hamstoo.models.Representation.VecEnum
 import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.similarity.LevenshteinDistance
@@ -308,7 +308,7 @@ object Representation extends BSONHandlers {
   /** Implicit class for converting an Either[ObjectId, ReprType.Value] into a Future[ObjectId]. */
   implicit class ExtendedEitherRepr(private val repr: Either[ObjectId, ReprType.Value]) /*extends AnyVal*/ {
 
-    def toReprId(mark: Mark)(implicit marksDao: MongoMarksDao, ex: ExecutionContext): Future[ObjectId] = {
+    def toReprId(mark: Mark)(implicit marksDao: MarkDao, ex: ExecutionContext): Future[ObjectId] = {
       repr.fold(
         rid => Future.successful(rid),
         rtyp => marksDao.retrieve(User(mark.userId), mark.id, timeFrom = Some(mark.timeFrom)).map { mbMark =>
