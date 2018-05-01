@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
@@ -10,7 +13,7 @@ import org.scalatest.OptionValues
 /**
   * Unit tests for all (basically CRUD) methods of MongoInlineNoteDao class
   */
-class MongoInlineNoteDaoTests
+class InlineNoteDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler

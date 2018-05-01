@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
@@ -20,13 +23,13 @@ import scala.concurrent.{ExecutionContext, Future}
   * @param ec   execution context thread pool
   * @tparam A   this type param must be subtype of Annotation and have a defined BSONDocument handler
   */
-abstract class MongoAnnotationDao[A <: Annotation: BSONDocumentHandler]
-                                 (name: String,
-                                  db: () => Future[DefaultDB])
-                                 (implicit marksDao: MongoMarksDao,
-                                  userDao: MongoUserDao,
-                                  pagesDao: MongoPagesDao,
-                                  ec: ExecutionContext)
+abstract class AnnotationDao[A <: Annotation: BSONDocumentHandler]
+                            (name: String)
+                            (implicit db: () => Future[DefaultDB],
+                             marksDao: MarkDao,
+                             userDao: UserDao,
+                             pagesDao: PageDao,
+                             ec: ExecutionContext)
                 extends AnnotationInfo {
 
   val logger: Logger

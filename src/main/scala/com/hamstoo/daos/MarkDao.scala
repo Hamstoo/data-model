@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
@@ -5,6 +8,7 @@ import java.util.UUID
 import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
+import com.google.inject.Inject
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Representation.ReprType
@@ -21,20 +25,20 @@ import reactivemongo.bson._
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 
-object MongoMarksDao {
+object MarkDao {
   var migrateData: Boolean = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
 }
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
   */
-class MongoMarksDao(db: () => Future[DefaultDB])
-                   (implicit userDao: MongoUserDao,
-                    urlDuplicatesDao: MongoUrlDuplicatesDao,
-                    ex: ExecutionContext) {
+class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
+                        userDao: UserDao,
+                        urlDuplicatesDao: UrlDuplicateDao,
+                        ec: ExecutionContext) {
 
   import com.hamstoo.utils._
-  val logger: Logger = Logger(classOf[MongoMarksDao])
+  val logger: Logger = Logger(classOf[MarkDao])
 
   val collName: String = "entries"
   private val dbColl: () => Future[BSONCollection] = () => db().map(_ collection collName)

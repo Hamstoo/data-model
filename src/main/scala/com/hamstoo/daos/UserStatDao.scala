@@ -1,7 +1,11 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.google.inject.Inject
 import com.hamstoo.models.{Mark, MarkData, UserStats, UserStatsDay}
 import org.joda.time.DateTime
 import play.api.Logger
@@ -16,14 +20,14 @@ import scala.concurrent.Future
 /**
   * Data access object for usage stats.
   */
-class MongoUserStatsDao(db: () => Future[DefaultDB]) {
+class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._
-  val logger: Logger = Logger(classOf[MongoUserStatsDao])
+  val logger: Logger = Logger(classOf[UserStatDao])
 
   // database collections
-  private def importsColl(): Future[BSONCollection] = db().map(_ collection "imports")
-  private def marksColl(): Future[BSONCollection] = db().map(_ collection "entries")
+  private def importsColl(): Future[BSONCollection] = db().map(_.collection("imports"))
+  private def marksColl(): Future[BSONCollection] = db().map(_.collection("entries"))
 
   // `imports` collection fields
   private val U_ID = "_id" // yes, the "_id" field in the `imports` collection is truly a user UUID, not an ObjectId

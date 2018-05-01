@@ -1,8 +1,11 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.services
 
 import java.util.UUID
 
-import com.hamstoo.daos.MongoHighlightDao
+import com.hamstoo.daos.HighlightDao
 import com.hamstoo.models.{Highlight, PageCoord, User}
 import com.hamstoo.models.Highlight.{PositionElement => PosElem}
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
@@ -20,8 +23,8 @@ import scala.concurrent.Future
   */
 class HighlightsIntersectionServiceTests extends FlatSpecWithMatchers with MockitoSugar with FutureHandler {
 
-  val hlightsDao: MongoHighlightDao = mock[MongoHighlightDao]
-  val hlIntersectionSvc: HighlightsIntersectionService = new HighlightsIntersectionService(hlightsDao)
+  implicit val hlightsDao: HighlightDao = mock[HighlightDao]
+  val hlIntersectionSvc: HighlightsIntersectionService = new HighlightsIntersectionService
 
   val paths: Seq[String] = for {i <- 0 to 9} yield s"html/body/p$i"
 

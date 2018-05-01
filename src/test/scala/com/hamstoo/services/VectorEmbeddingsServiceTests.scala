@@ -6,7 +6,7 @@ package com.hamstoo.services
 import java.util.Locale
 
 import com.google.inject.{Guice, Injector}
-import com.hamstoo.daos.MongoVectorsDao
+import com.hamstoo.daos.WordVectorDao
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingsService.WordMass
@@ -36,7 +36,7 @@ class VectorEmbeddingsServiceTests
     override def configure(): Unit = {
       super.configure()
       bind[WSClient].toInstance(AhcWSClient())
-      bind[MongoVectorsDao].toInstance(vectorsDao)
+      bind[WordVectorDao].toInstance(vectorsDao)
     }
   })
 

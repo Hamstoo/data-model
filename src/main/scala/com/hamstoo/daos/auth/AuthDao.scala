@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos.auth
 
 import com.hamstoo.models.User._
@@ -11,8 +14,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.bson.BSONDocument
 
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
@@ -20,13 +22,13 @@ import scala.reflect.runtime.universe._
   * That class define functionality for daos that works with subtypes of AuthInfo,
   * like OAuth1Info, OAuth2Info, PasswordInfo.
   */
-abstract class MongoAuthDao[A <: AuthInfo: ClassTag: TypeTag](db: () => Future[DefaultDB])
+abstract class AuthDao[A <: AuthInfo: ClassTag: TypeTag](implicit db: () => Future[DefaultDB], ec: ExecutionContext)
                                                                       extends DelegableAuthInfoDAO[A] {
 
   import com.hamstoo.models.Profile._
   import com.hamstoo.utils._
 
-  val logger: Logger
+  val logger: Logger = Logger(getClass)
   protected def dbColl(): Future[BSONCollection] = db().map(_.collection("users"))
 
   /**

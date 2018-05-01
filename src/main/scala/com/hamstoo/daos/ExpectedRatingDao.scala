@@ -1,6 +1,9 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
-import com.github.dwickern.macros.NameOf._
+import com.google.inject.Inject
 import com.hamstoo.models.Mark.ExpectedRating
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -16,15 +19,15 @@ import scala.concurrent.{Await, Future}
   * Data access object for MongoDB `eratings` collection.
   * @param db  Future[DefaultDB] database connection returning function.
   */
-class MongoExpectedRatingDao(db: () => Future[DefaultDB])
-  extends MongoReprEngineProductDao[ExpectedRating]("expected rating", db) {
+class ExpectedRatingDao @Inject()(implicit db: () => Future[DefaultDB])
+    extends ReprEngineProductDao[ExpectedRating]("expected rating") {
 
   import com.hamstoo.utils._
   import com.hamstoo.models.Mark.{ID, TIMETHRU}
 
-  val logger: Logger = Logger(classOf[MongoExpectedRatingDao])
+  val logger: Logger = Logger(classOf[ExpectedRatingDao])
 
-  override def dbColl(): Future[BSONCollection] = db().map(_ collection "eratings")
+  override def dbColl(): Future[BSONCollection] = db().map(_.collection("eratings"))
 
   // ensure indexes
   private val indxs: Map[String, Index] =

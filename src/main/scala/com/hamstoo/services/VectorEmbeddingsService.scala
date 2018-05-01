@@ -4,7 +4,7 @@ import java.util.Locale
 
 import breeze.linalg.{DenseMatrix, DenseVector, svd}
 import com.google.inject.Inject
-import com.hamstoo.daos.MongoRepresentationDao.{CONTENT_WGT, KWORDS_WGT}
+import com.hamstoo.daos.RepresentationDao.{CONTENT_WGT, KWORDS_WGT}
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation.{Vec, VecEnum, _}
 import com.hamstoo.utils

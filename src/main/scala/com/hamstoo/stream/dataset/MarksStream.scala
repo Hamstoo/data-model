@@ -8,7 +8,7 @@ import java.util.UUID
 import akka.stream.Materializer
 import com.google.inject.Inject
 import com.google.inject.name.Named
-import com.hamstoo.daos.{MongoMarksDao, MongoRepresentationDao, MongoUserDao}
+import com.hamstoo.daos.{MarkDao, RepresentationDao, UserDao}
 import com.hamstoo.models._
 import com.hamstoo.services.IDFModel
 import com.hamstoo.stream._
@@ -28,9 +28,9 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
                              mbSearchUserId: MarksStream.SearchUserIdOptional,
                              labels: MarksStream.SearchLabelsOptional)
                             (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext,
-                             marksDao: MongoMarksDao,
-                             reprDao: MongoRepresentationDao,
-                             userDao: MongoUserDao,
+                             marksDao: MarkDao,
+                             reprDao: RepresentationDao,
+                             userDao: UserDao,
                              idfModel: IDFModel)
     extends PreloadSource[MSearchable]((700 days).toMillis) {
 
@@ -118,7 +118,7 @@ object MarksStream {
     * a linear Seq, so don't think you can just change it to be an Iterable--i.e. a Set won't work!
     */
   def filterAuthorizedRead(ms: Seq[MSearchable], callingUserId: UUID)
-                          (implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Seq[MSearchable]] =
+                          (implicit userDao: UserDao, ec: ExecutionContext): Future[Seq[MSearchable]] =
     Future.sequence(ms.map { _.isAuthorizedRead(User(callingUserId))(userDao, implicitly) })
       .map { auths =>
         val filtered = ms.zip(auths).filter(_._2).map(_._1)

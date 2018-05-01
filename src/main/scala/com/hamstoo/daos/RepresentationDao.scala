@@ -1,7 +1,11 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
+import com.google.inject.Inject
 import com.hamstoo.models.Representation._
-import com.hamstoo.models.{Representation, RSearchable}
+import com.hamstoo.models.{RSearchable, Representation}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -13,7 +17,7 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
 
-object MongoRepresentationDao {
+object RepresentationDao {
 
   // Mongo `text` index weights, `othtext` has implicit weight of 1 (also used as vector weights)
   val CONTENT_WGT = 8
@@ -25,14 +29,14 @@ object MongoRepresentationDao {
   * Data access object for MongoDB `representations` collection.
   * @param db  Future[DefaultDB] database connection returning function.
   */
-class MongoRepresentationDao(db: () => Future[DefaultDB])
-    extends MongoReprEngineProductDao[Representation]("representation", db) {
+class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
+    extends ReprEngineProductDao[Representation]("representation") {
 
-  import MongoRepresentationDao._
+  import RepresentationDao._
   import com.hamstoo.models.Mark.{ID, SCORE, TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
 
-  val logger: Logger = Logger(classOf[MongoRepresentationDao])
+  val logger: Logger = Logger(classOf[RepresentationDao])
 
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "representations")
 

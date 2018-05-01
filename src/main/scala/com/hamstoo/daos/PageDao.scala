@@ -1,8 +1,12 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.nio.file.Files
 import java.util.UUID
 
+import com.google.inject.Inject
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models._
 import play.api.Logger
@@ -21,12 +25,13 @@ import scala.concurrent.duration._
   * then moved over to the Reprs upon Representation computation, but now we just have them in their own
   * collection with references pointing in every which direction.
   */
-class MongoPagesDao(db: () => Future[DefaultDB])
-                   (implicit marksDao: MongoMarksDao, ex: ExecutionContext) {
+class PageDao @Inject()(implicit db: () => Future[DefaultDB],
+                        marksDao: MarkDao,
+                        ec: ExecutionContext) {
 
   import com.hamstoo.utils._
   import com.hamstoo.models.Page._
-  val logger: Logger = Logger(classOf[MongoPagesDao])
+  val logger: Logger = Logger(classOf[PageDao])
 
   private val dbColl: () => Future[BSONCollection] = () => db().map(_.collection("pages"))
 

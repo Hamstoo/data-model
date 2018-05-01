@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import com.hamstoo.models.ReprEngineProduct
@@ -15,9 +18,10 @@ import scala.concurrent.{ExecutionContext, Future}
   * @param ec   execution context
   * @tparam T   this type param must be subtype of Annotations and have defined BSONDocument handler
   */
-abstract class MongoReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandler]
-                                        (name: String, db: () => Future[DefaultDB])
-                                        (implicit ec: ExecutionContext) {
+abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandler]
+                                   (name: String)
+                                   (implicit db: () => Future[DefaultDB],
+                                    ec: ExecutionContext) {
 
   import com.hamstoo.models.Mark.{ID, TIMEFROM, TIMETHRU}
 
