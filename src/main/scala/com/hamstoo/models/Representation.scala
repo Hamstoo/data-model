@@ -262,6 +262,9 @@ object Representation extends BSONHandlers {
     def beta(x: Vec): Double = (vec covar x) / x.variance
 
     def l2Normalize: Vec = vec / vec.l2Norm
+
+    def argmin: Int = if (vec.isEmpty) -1 else vec.zipWithIndex.minBy(_._1)._2
+    def argmax: Int = if (vec.isEmpty) -1 else vec.zipWithIndex.maxBy(_._1)._2
   }
 
   /**
