@@ -356,29 +356,29 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     }
   }
 
-  def retrieveUsername(
-                       userId: UUID,
-                       prefix: String,
-                       visibilityLevel: Int = SharedWith.Level.PRIVATE): Future[Seq[String]] = {
-    if (visibilityLevel == SharedWith.Level.PRIVATE) {
-      // simple search by username prefix for sharing purposes, does not apply any filters or validation
-
-      for {
-        c <- dbColl()
-
-        sel = d :~
-          // check if username exists to skip empty usernames if data migration wasn't successfull,
-          UNAMELOWx -> (d :~ "$exists" -> 1) :~
-          // 'i' flag is case insensitive https://docs.moqngodb.com/manual/reference/operator/query/regex/
-          UNAMELOWx -> BSONRegex(".*" + prefix.toLowerCase + ".*", "i")
-
-        users <- c.find(sel)
-          .sort(d :~ UNAMELOWx -> 1).coll[User, Seq]()
-          .map(_.collect {
-            case u: User if u.id != userId && u.userData.username.isDefined =>
-              u.userData.username.get
-          })
-      } yield users
-    } else retrieveRecentSharees(userId)
-  }
+//  def retrieveUsername(
+//                       userId: UUID,
+//                       prefix: String,
+//                       visibilityLevel: Int = SharedWith.Level.PRIVATE): Future[Seq[String]] = {
+//    if (visibilityLevel == SharedWith.Level.PRIVATE) {
+//      // simple search by username prefix for sharing purposes, does not apply any filters or validation
+//
+//      for {
+//        c <- dbColl()
+//
+//        sel = d :~
+//          // check if username exists to skip empty usernames if data migration wasn't successfull,
+//          UNAMELOWx -> (d :~ "$exists" -> 1) :~
+//          // 'i' flag is case insensitive https://docs.moqngodb.com/manual/reference/operator/query/regex/
+//          UNAMELOWx -> BSONRegex(".*" + prefix.toLowerCase + ".*", "i")
+//
+//        users <- c.find(sel)
+//          .sort(d :~ UNAMELOWx -> 1).coll[User, Seq]()
+//          .map(_.collect {
+//            case u: User if u.id != userId && u.userData.username.isDefined =>
+//              u.userData.username.get
+//          })
+//      } yield users
+//    } else retrieveRecentSharees(userId)
+//  }
 }

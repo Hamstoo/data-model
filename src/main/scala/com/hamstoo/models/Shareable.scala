@@ -99,6 +99,7 @@ case class SharedWith(readOnly/* it can be named just read */: Option[ShareGroup
 
 object SharedWith {
 
+  // TODO: move to better enums
   /** Enumeration of sharing levels. */
   object Level extends Enumeration {
 
