@@ -8,8 +8,6 @@ import com.hamstoo.utils
 import com.hamstoo.utils.DataInfo._
 import com.mohiva.play.silhouette.api.LoginInfo
 import org.scalatest.OptionValues
-import org.scalatest.concurrent.PatienceConfiguration.Interval
-import org.scalatest.time.{Seconds, Span}
 
 /**
   * MongoUserDaoTests
@@ -92,10 +90,10 @@ class MongoUserDaoTests
     val profile2 = Profile(loginInfo2, confirmed = false, Some(email), None, None, None)
     val newUser =  User(constructUserId(), UserData(username = Some("yuiyui")), List(profile2))
     userDao.save(newUser).futureValue shouldEqual {}
-    userDao.searchUsernamesByPrefix("yui", constructUserId(), None, true).futureValue.size shouldEqual 0
+    userDao.searchUsernamesByPrefix("yui", constructUserId(), None, hasShared = true).futureValue.size shouldEqual 0
   }
 
-  it should "(UNIT) create users and find specific users by username with `hasSharedMarks` == true and users are LISTED condition" ignore {
+  it should "(UNIT) create users and find specific users by username with `hasSharedMarks` == true and users are LISTED condition" in {
     // create a user who is owning mark
     def randomString(length: Int = 10) = utils.generateDbId(length).toString
     val s1 = randomString()
@@ -145,8 +143,9 @@ class MongoUserDaoTests
     // use another user data to find usernames who has shared mark with him
    // userDao.searchUsernamesBySuffix(uNamePrefix, true, newUser.id, Some(email)).futureValue.toList(0)
 
-    val unameLower = userDao.searchUsernamesByPrefix(uNameSuffix, newUser.id, Some(email), hasShared = true).futureValue(Interval(Span(60, Seconds))).toList(0).username.toLowerCase
-    unameLower.indexOf(uNameSuffix)  shouldEqual 10
+    userDao
+      .retrieveUsername(newUser.id, uNameSuffix, hasShared = true)
+      .futureValue should not equal Nil
   }
 
   it should "(UNIT) create users and find specific users by username with `hasSharedMarks` == true and mark being PUBLIC shared condition" in {

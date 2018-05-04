@@ -3,9 +3,8 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import akka.NotUsed
-import akka.actor.ActorSystem
-import akka.stream.{ActorMaterializer, Materializer}
-import akka.stream.scaladsl.{Sink, Source}
+import akka.stream.Materializer
+import akka.stream.scaladsl.Source
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Representation.ReprType
@@ -13,14 +12,12 @@ import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
 import com.mohiva.play.silhouette.api.exceptions.NotAuthorizedException
 import play.api.Logger
-import reactivemongo.akkastream.cursorProducer
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
-import scala.collection.mutable
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 
@@ -277,6 +274,25 @@ class MongoMarksDao(db: () => Future[DefaultDB])
       } yield label
       logger.debug(s"Successfully retrieved ${labels.size} labels: $labels")
       labels
+    }
+  }
+
+  /***
+    * Retrieve sharable marks for user
+    * @param user - user identifier
+    * @return     - seq of sharable marks
+    */
+  def retrieveShared(user: UUID): Future[Seq[Mark]] = {
+    logger.debug(s"Retrieving sharable marks for $user")
+
+    for {
+      c <- dbColl()
+      sel = d :~ SHARED_WITH -> (d :~ "$exist" -> true)
+
+      marks <- c.find(sel).coll[Mark, Seq]()
+    } yield {
+      logger.debug(s"Retrieved ${marks.size} sharable marks")
+      marks
     }
   }
 

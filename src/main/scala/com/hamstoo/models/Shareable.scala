@@ -64,7 +64,7 @@ trait Shareable {
     */
   def isAuthorizedShare(user: Option[User]): Boolean = user.exists(ownedBy(_) || isPublic)
   def isPublic: Boolean = sharedWith.exists { sw =>
-    import SharedWith.{PUBLIC_LEVELS, Level}
+    import SharedWith.{Level, PUBLIC_LEVELS}
     Seq(sw.readOnly, sw.readWrite).flatten.exists(sg => PUBLIC_LEVELS.contains(Level(sg.level)))
   }
 }
@@ -83,8 +83,8 @@ object Shareable {
 /**
   * A pair of UserGroups, one for read-only and one for read-write.
   */
-case class SharedWith(readOnly: Option[ShareGroup] = None,
-                      readWrite: Option[ShareGroup] = None,
+case class SharedWith(readOnly/* it can be named just read */: Option[ShareGroup] = None,
+                      readWrite/* and this, just edit*/: Option[ShareGroup] = None,
                       ts: TimeStamp = TIME_NOW) {
 
   /**
@@ -102,6 +102,7 @@ object SharedWith {
   /** Enumeration of sharing levels. */
   object Level extends Enumeration {
 
+    type Int = Value
     // Only the owner has access.  This is the default.
     val PRIVATE: Value = Value(0)
 
@@ -159,7 +160,7 @@ object SharedWith {
   */
 case class ShareGroup(level: Int, group: Option[ObjectId]) {
 
-  import SharedWith.{PUBLIC_LEVELS, Level}
+  import SharedWith.{Level, PUBLIC_LEVELS}
 
   /** Returns true if the given user is authorized, either via (optional) user ID or email. */
   def isAuthorized(user: Option[User])(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] =

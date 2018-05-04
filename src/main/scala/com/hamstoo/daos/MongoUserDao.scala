@@ -179,14 +179,15 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
     sharedWiths <- cMarks.find(sel, prj).coll[BSONDocument, Seq]()
 
     // traverse down through the data model hierarchy to get UserGroup IDs mapped to their most recent time stamps
-    ugIds = sharedWiths.flatMap(_.getAs[SharedWith](SHARED_WITH).map { sw =>
-      Seq(sw.readOnly, sw.readWrite).flatten.flatMap(_.group.map(_ -> sw.ts))
-    })
-    ug2TimeStamp = ugIds.flatten.groupBy(_._1).mapValues(_.map(_._2).max)
+    userGroupIds = sharedWiths
+      .flatMap(_.getAs[SharedWith](SHARED_WITH))
+      .flatMap { sw =>
+        (sw.readOnly :: sw.readWrite :: Nil).flatMap(_.flatMap(_.group))
+      }
 
     // lookup the UserGroups given their IDs ("application-level join")
     cGroup <- groupColl()
-    ugs <- cGroup.find(d :~ ID -> (d :~ "$in" -> ug2TimeStamp.keys)).coll[UserGroup, Seq]()
+    ugs <- cGroup.find(d :~ ID -> (d :~ "$in" -> userGroupIds)).coll[UserGroup, Seq]()
     shareeUserIds = ugs.flatMap(_.userIds).flatten.toSet
 
     // get all the usernames of the shared-with users ("sharees")
@@ -197,14 +198,14 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   } yield {
 
     // combine usernames and emails of shared-with people into a single collection of "sharee" strings
-    val sharee2TimeStamp = ugs.flatMap { ug =>
-      val shareeStrings = ug.emails.getOrElse(Set.empty[String]) ++
+    val sharee = ugs.flatMap { ug =>
+      ug.emails.getOrElse(Set.empty[String]) ++
                           ug.userIds.fold(Set.empty[String])(_.flatMap(shareeId2Username.get).map("@" + _))
-      shareeStrings.map(_ -> ug2TimeStamp(ug.id))
     }
 
+    sharee
     // map each sharee to its most recent usage, sort descending, and then return the most recent 50
-    sharee2TimeStamp.groupBy(_._1).mapValues(_.map(_._2).max).toSeq.sortBy(-_._2).map(_._1).take(50)
+//    sharee2TimeStamp.groupBy(_._1).mapValues(_.map(_._2).max).toSeq.sortBy(-_._2).map(_._1).take(50)
   }
 
   /** Removes user group given ID. */
@@ -358,8 +359,8 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   def retrieveUsername(
                        userId: UUID,
                        prefix: String,
-                       hasShared: Boolean = false): Future[Seq[String]] = {
-    if (!hasShared) {
+                       visibilityLevel: Int = SharedWith.Level.PRIVATE): Future[Seq[String]] = {
+    if (visibilityLevel == SharedWith.Level.PRIVATE) {
       // simple search by username prefix for sharing purposes, does not apply any filters or validation
 
       for {
@@ -378,6 +379,6 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
               u.userData.username.get
           })
       } yield users
-    } else Future.successful(Nil)
+    } else retrieveRecentSharees(userId)
   }
 }
