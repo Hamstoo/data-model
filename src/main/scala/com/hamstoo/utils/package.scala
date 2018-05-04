@@ -202,7 +202,7 @@ package object utils {
     def coalesce(ifNaN: Double): Double = if (d.isNaN) ifNaN else d
     def coalesce0(implicit ev: Numeric[Double]): Double = coalesce(ev.zero) // using Numeric typeclass
     def or0: Double = coalesce0
-    def ~=(bprecision: (Double, Double)) = bprecision match { case (b, p) => if ((d - b).abs < p) true else false }
+    def ~=(bprecision: (Double, Double)) = { val (b, p) = bprecision; (d - b).abs < p }
     def ~=(b: Double): Boolean = this.~=((b, 1e-8))
   }
 

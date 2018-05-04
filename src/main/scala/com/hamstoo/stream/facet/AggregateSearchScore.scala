@@ -30,7 +30,7 @@ class AggregateSearchScore @Inject() (semWgt: AggregateSearchScore.SemanticWeigh
 
   logger.info(f"Semantic weight: ${semWgt.value}%.2f, user-content weight: ${usrWgt.value}%.2f, ")
 
-  override val hubSource: SourceType[Double] = {
+  override val in: SourceType[Double] = {
     import com.hamstoo.stream.StreamDSL._
 
     val relevanceOption: DataStream[Option[SearchRelevance]] = searchResults("_3", classTag[Option[SearchRelevance]])
@@ -53,7 +53,7 @@ class AggregateSearchScore @Inject() (semWgt: AggregateSearchScore.SemanticWeigh
 
     value * COEF
 
-  }.source
+  }.out
 }
 
 object AggregateSearchScore {

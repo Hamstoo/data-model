@@ -20,8 +20,8 @@ import scala.reflect.{ClassTag, classTag}
   * A "facets model" is a collection of facet-computing streams.  Running the model generates a merged stream of
   * values containing all of the facets with their own labels.
   */
-class FacetsModel @Inject() (injector: Injector)
-                            (implicit clock: Clock, materializer: Materializer) {
+class FacetsModel @Inject()(injector: Injector)
+                           (implicit clock: Clock, materializer: Materializer) {
 
   import FacetsModel._
   val logger: Logger = Logger(classOf[FacetsModel])
@@ -34,7 +34,7 @@ class FacetsModel @Inject() (injector: Injector)
   def add[T <:DataStream[_] :ClassTag :TypeTag](mbName: Option[String] = None): Unit = {
 
     val name: String = mbName.getOrElse(classTag[T].runtimeClass.getSimpleName)
-    logger.info(s"Adding data stream: $name")
+    logger.debug(s"Adding data stream: $name")
     if (facets.contains(name))
       throw new Exception(s"Duplicate '$name' named facets detected")
 
@@ -71,7 +71,7 @@ class FacetsModel @Inject() (injector: Injector)
     facets.zipWithIndex.foreach { case ((name, ds), i) =>
 
       // label the source with its facet name so that we can tell them apart on the other side
-      val labeledSource = ds.source.map { data =>
+      val labeledSource = ds().map { data =>
         (name, data)
       }.named(name) // unsure if this actually has any effect
 

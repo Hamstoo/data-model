@@ -10,7 +10,7 @@ import ch.qos.logback.classic.{Logger => LogbackLogger}
 import com.google.inject.Inject
 import com.google.inject.name.Named
 import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
-import com.hamstoo.models.{MSearchable, RSearchable}
+import com.hamstoo.models.{MSearchable, RSearchable, Representation}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream._
@@ -64,8 +64,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
     new Logger(logback)
   }
 
-  override val hubSource: SourceType[typ] = repredMarks.source
-    .mapAsync(2) { dat: Datum[(MSearchable, ReprsPair)] =>
+  override val in: SourceType[typ] = repredMarks().mapAsync(2) { dat: Datum[(MSearchable, ReprsPair)] =>
 
       // unpack the pair datum
       val (mark, ReprsPair(siteReprs, userReprs)) = dat.value
@@ -80,7 +79,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
       // for database search score and again with vector cosine similarity), the silly 3.5 was chosen in order
       // to get a non-link mark (one w/out a repr) up near the top of the search results
       val mscore: Double = mark.score.getOrElse(0.0) /** MongoRepresentationDao.CONTENT_WGT*/ / cleanedQuery.length
-      logger1.trace(f"\u001b[35m${mark.id}\u001b[0m: subj='${mark.mark.subj}'")
+      logger1.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}'")
 
       // generate a single search result
       val fut = for(searchTermVecs <- fsearchTermVecs) yield {
@@ -172,6 +171,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
           // remove results with no preview/syntactic matches (unless score is really high), requires that all
           // fields (e.g. comments, highlights, inline notes) are being covered by MongoDB text search, which they
           // should be via user-content reprs' doctext
+          // TODO: "unless score is really high"--and make this dependent on 'sem' facet arg
           val mbPr = preview match {
             case pr if pr.nonEmpty => Some(pr)
             case _ if (uraw + rraw) < 1e-8 => None
@@ -325,7 +325,7 @@ object SearchResults {
     def apply(dbSearchScore: Double, rawText: String): (Int, Seq[(Double, String)]) = {
 
       val encText = encode(rawText)
-      assert(encText.length >= rawText.length)
+      assert(encText.length >= rawText.trim.length)
 
       val lowText = encText.toLowerCase(Locale.ENGLISH) // has already been `utils.parse`ed
       val query = (cleanedQuery.map(_._1) ++ cleanedPhrasesSeq).map(_.toLowerCase(Locale.ENGLISH).replace("\"", ""))
@@ -349,12 +349,11 @@ object SearchResults {
           // this reduces to 1/sqrt for each char)
           val charScore = math.sqrt(term.length.toDouble - 0.25 * nCaps) / term.length
           val nDuplicates = cleanedQuery.map(_._2).applyOrElse(j, (_: Int) => 1) // phrases won't have duplicates
-          loggerC.debug(f"'$term' at $i (nDuplicates=$nDuplicates, charScore=$charScore%.3f)")
+          loggerC.trace(f"'$term' at $i (nDuplicates=$nDuplicates, charScore=$charScore%.3f)")
           term.indices.foreach { k => tcounts(i + k) += nDuplicates * charScore }
         }
       }
 
-      loggerC.debug(s"qcounts = $qcounts")
       loggerC.trace(s"  tcounts = ${tcounts.map(x => f"$x%.2f")}")
       val nMatchedPhrases = qcounts.takeRight(cleanedPhrasesSeq.size).sum
 
@@ -404,7 +403,7 @@ object SearchResults {
         // erase this region of `smoothed` so that it is not selected in next N_SPANS loop iteration, but don't use
         // begin/end because any word with length > 1 will affect a larger range than just PREVIEW_LENGTH
         // TODO: reduce other regions of smoothed that include the same query words as just found
-        loggerC.debug(s"argmax = $amax")
+        loggerC.trace(s"argmax = $amax, max = $smoothedMax")
         loggerC.trace(s"smoothed = ${smoothed.map(x => f"$x%.2f")}")
         val pl56 = PREVIEW_LENGTH * 5 / 6
         (max(0, amax - pl56) until min(encText.length, amax + pl56)).foreach { i => smoothed.update(i, 0) }
@@ -420,7 +419,7 @@ object SearchResults {
         val ptext = (if (begin == 0) "" else "...") + emboldened.trim + (if (end == encText.length) "" else "...")
 
         // ignore duplicates
-        if (previewTexts.forall(_._2 != ptext))
+        if (previewTexts.forall(x => Representation.editSimilarity(x._2, ptext) < 0.8))
           previewTexts += smoothedMax -> ptext
       }
 

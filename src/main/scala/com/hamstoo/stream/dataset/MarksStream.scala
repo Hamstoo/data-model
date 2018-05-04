@@ -23,26 +23,24 @@ import scala.concurrent.{ExecutionContext, Future}
   * A stream of marks, sourced from a user's search, though search terms are not required.
   */
 @com.google.inject.Singleton
-class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUserId.typ,
-                             @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
-                             mbSearchUserId: MarksStream.SearchUserIdOptional,
-                             labels: MarksStream.SearchLabelsOptional)
-                            (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext,
-                             marksDao: MarkDao,
-                             reprDao: RepresentationDao,
-                             userDao: UserDao,
-                             idfModel: IDFModel)
+class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUserId.typ,
+                            @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
+                            mbSearchUserId: MarksStream.SearchUserIdOptional,
+                            labels: MarksStream.SearchLabelsOptional)
+                           (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext,
+                            markDao: MarkDao,
+                            reprDao: RepresentationDao,
+                            userDao: UserDao,
+                            idfModel: IDFModel)
     extends PreloadSource[MSearchable]((700 days).toMillis) {
 
   import MarksStream._
-  //override val logger: Logger = MarksStream.logger // causes a NullPointerException (kws: NPE)
-  val logger1: Logger = MarksStream.logger
 
   val searchUserId: UUID = mbSearchUserId.value.getOrElse(callingUserId)
   val tags: Set[String] = labels.value
 
   /** PreloadSource interface.  `begin` should be inclusive and `end`, exclusive. */
-  override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[MSearchable]]] = {
+  override def preload(begin: TimeStamp, end: TimeStamp): PreloadType[MSearchable] = {
 
     // unpack query words/counts/vecs (which there may none of)
     val mbCleanedQuery = mbQuery2Vecs.map(_._1)
@@ -53,19 +51,19 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
 
     // Mongo Text Index search (e.g. includes stemming) over `entries` collection (and filter results by labels)
     val fscoredMs = mbQuerySeq.mapOrEmptyFuture { w =>
-      marksDao.search(Set(searchUserId), w, begin = Some(begin), end = Some(end))
+      markDao.search(Set(searchUserId), w, begin = Some(begin), end = Some(end))
         .map(_.toSeq.filter(_.hasTags(tags))).flatMap(filterAuthorizedRead(_, callingUserId))
     }
 
     // every single mark with an existing representation
-    val funscoredMs = marksDao.retrieveRepred(searchUserId, tags = tags, begin = Some(begin), end = Some(end))
+    val funscoredMs = markDao.retrieveRepred(searchUserId, tags = tags, begin = Some(begin), end = Some(end))
                         .flatMap(filterAuthorizedRead(_, callingUserId))
 
     for {
       // candidate referenced marks (i.e. marks that aren't owned by the calling user)
-      id2Ref <- marksDao.retrieveRefed(callingUserId, begin = Some(begin), end = Some(end))
-      candidateRefs <- marksDao.retrieveInsecureSeq(id2Ref.keys.toSeq, begin = Some(begin), end = Some(end))
-        .map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
+      id2Ref <- markDao.retrieveRefed(callingUserId, begin = Some(begin), end = Some(end))
+      candidateRefs <- markDao.retrieveInsecureSeq(id2Ref.keys.toSeq, begin = Some(begin), end = Some(end))
+                         .map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
 
       // don't show the calling user marks that were shared to the search user (i.e. that the search user doesn't own)
       refUserIds = if (searchUserId == callingUserId) candidateRefs.map(_.userId).toSet else Set(searchUserId)
@@ -74,7 +72,7 @@ class MarksStream @Inject() (@Named(CallingUserId.name) callingUserId: CallingUs
       // perform MongoDB Text Index search over referenced marks (i.e. marks owned by other users) and then impose
       // any rating or label changes this user has made on top of those references
       fscoredRefs = mbQuerySeq.mapOrEmptyFuture { w =>
-        marksDao.search(refUserIds, w, ids = refMarkIds).map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
+        markDao.search(refUserIds, w, ids = refMarkIds).map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
       }
 
       // "candidates" are ALL of the marks viewable to the callingUser (with the appropriate labels), which will
