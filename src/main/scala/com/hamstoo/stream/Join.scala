@@ -74,7 +74,7 @@ object Join {
                         pairwise: Pairwiser[A0, A1] = DEFAULT_PAIRWISE[A0, A1] _,
                         expireAfter: Duration = DEFAULT_EXPIRE_AFTER): imp.Repr[Datum[O]] = {
 
-      logger.info(s"Joining streams: '${streamName(imp)}' and '${streamName(that)}'")
+      logger.debug(s"Joining streams: '${streamName(imp)}' and '${streamName(that)}'")
       imp.via(joinWithGraph(that)(joiner, pairwise, expireAfter))
     }
 

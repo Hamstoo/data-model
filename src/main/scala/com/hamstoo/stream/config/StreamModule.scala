@@ -60,7 +60,7 @@ class StreamModule extends BaseModule {
     */
   @Provides @Singleton
   def provideStreamInjector(injector: Injector): WrappedInjector = {
-    logger.info(s"Stream injector: ${injector.hashCode}")
+    logger.debug(s"Stream injector: ${injector.hashCode}")
     Some(injector)
   }
 }

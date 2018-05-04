@@ -61,7 +61,7 @@ class ClockTests
       }
     }
 
-    val fut: Future[Int] = TestSource().source
+    val fut: Future[Int] = TestSource().out
       .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.sourceTime.tfmt} / ${e.value.dt.getDayOfMonth}"); e }
       .runWith(
         Sink.fold[Int, Datum[TimeStamp]](0) { case (agg, d) => agg + d.value.dt.getDayOfMonth }
@@ -96,7 +96,7 @@ class ClockTests
       }.named("TestThrottledSource")
     }
 
-    val fut: Future[Int] = TestSource().source
+    val fut: Future[Int] = TestSource().out
       .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.sourceTime.tfmt} / ${e.value.dt.getDayOfMonth}"); e }
       .runWith(
         Sink.fold[Int, Datum[TimeStamp]](0) { case (agg, d) => agg + d.value.dt.getDayOfMonth }

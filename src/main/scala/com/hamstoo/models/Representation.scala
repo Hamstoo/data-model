@@ -2,7 +2,6 @@ package com.hamstoo.models
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.daos.MarkDao
-import com.hamstoo.models.Representation.VecEnum
 import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.similarity.LevenshteinDistance
 import reactivemongo.bson.{BSONDocumentHandler, Macros}

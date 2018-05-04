@@ -47,7 +47,7 @@ case class Clock @Inject() (@Named(ClockBegin.name) begin: ClockBegin.typ,
   }
 
   /** Source derived from an iterator, not a range, for one so that intervals may eventually be made irregular. */
-  override protected val hubSource: Source[Tick, NotUsed] = Source.fromIterator { () =>
+  override protected val in: Source[Tick, NotUsed] = Source.fromIterator { () =>
 
     new Iterator[Tick] {
       var currentTime: TimeStamp = begin
