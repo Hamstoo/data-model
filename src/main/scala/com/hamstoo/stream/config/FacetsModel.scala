@@ -26,7 +26,7 @@ class FacetsModel @Inject()(injector: Injector)
 
   import FacetsModel._
   val logger: Logger = Logger(classOf[FacetsModel])
-  logger.info(s"Constructing model: ${classOf[FacetsModel].getName}")
+  logger.debug(s"Constructing model: ${classOf[FacetsModel].getName}")
 
   // a set of all the facets/statistics/metrics to be computed by this model
   protected val facets = mutable.Map.empty[String, DataStream[_]]
