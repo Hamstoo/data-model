@@ -37,6 +37,7 @@ object Dependencies {
     "net.sourceforge.htmlunit" % "htmlunit" % "2.28",
     //"org.typelevel" %% "spire" % "0.15.0",
     "com.google.inject" % "guice" % "4.2.0",
-    "net.codingwell" %% "scala-guice" % "4.1.1"
+    "net.codingwell" %% "scala-guice" % "4.1.1",
+    "com.beachape" %% "enumeratum" % "1.5.13"
   )
 }

@@ -5,8 +5,10 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.daos.MongoUserDao
 import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import enumeratum.values.{IntEnum, IntEnumEntry}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
+import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.hashing
 
@@ -99,6 +101,16 @@ case class SharedWith(readOnly/* it can be named just read */: Option[ShareGroup
 
 object SharedWith {
 
+  sealed abstract class ShareWithLevel(val value: Int) extends IntEnumEntry
+
+  object Level0 extends IntEnum[ShareWithLevel] {
+    val values: immutable.IndexedSeq[ShareWithLevel] = findValues
+
+    case object PRIVATE extends ShareWithLevel(0)
+    case object LISTED extends ShareWithLevel(1)
+    case object LOGGED_IN extends ShareWithLevel(2)
+    case object PUBLIC extends ShareWithLevel(3)
+  }
   // TODO: move to better enums
   /** Enumeration of sharing levels. */
   object Level extends Enumeration {

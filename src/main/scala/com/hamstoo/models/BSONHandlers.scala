@@ -3,6 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import akka.util.ByteString
+import com.hamstoo.models.SharedWith.ShareWithLevel
 import org.joda.time.DateTime
 import reactivemongo.bson.{BSONBinary, BSONHandler, BSONInteger, BSONLong, BSONString, Subtype}
 
@@ -21,6 +22,6 @@ trait BSONHandlers {
     BSONHandler[BSONString, UUID](UUID fromString _.value, BSONString apply _.toString)
   implicit val dateTimeBsonHandler: BSONHandler[BSONLong, DateTime] =
     BSONHandler[BSONLong, DateTime](b => new DateTime(b.value), BSONLong apply _.getMillis)
-  implicit val sharedWithLevelValueHandler: BSONHandler[BSONInteger, SharedWith.Level.Value] =
-    BSONHandler[BSONInteger, SharedWith.Level.Value](b => SharedWith.Level(b.value), BSONInteger apply _.id)
+  implicit val sharedWithLevelValueHandler: BSONHandler[BSONInteger, ShareWithLevel] =
+    BSONHandler[BSONInteger, ShareWithLevel](b => SharedWith.Level0.withValue(b.value), BSONInteger apply _.value)
 }
