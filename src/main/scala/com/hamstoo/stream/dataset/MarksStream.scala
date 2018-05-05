@@ -27,7 +27,8 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
                             @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
                             mbSearchUserId: MarksStream.SearchUserIdOptional,
                             labels: MarksStream.SearchLabelsOptional)
-                           (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext,
+                           (implicit clock: Clock,
+                            mat: Materializer,
                             markDao: MarkDao,
                             reprDao: RepresentationDao,
                             userDao: UserDao,

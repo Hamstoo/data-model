@@ -41,8 +41,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
                             @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
                             logLevel: LogLevelOptional.typ)
                            (implicit clock: Clock,
-                            materializer: Materializer,
-                            ec: ExecutionContext,
+                            mat: Materializer,
                             reprDao: RepresentationDao)
     extends PreloadObserver[MSearchable, ReprsPair](marksStream) {
 
@@ -131,8 +130,8 @@ class ReprsStream @Inject()(marksStream: MarksStream,
   * Represented marks stream as the representations by themselves aren't that useful, are they?
   */
 @Singleton
-class RepredMarks @Inject() (marks: MarksStream, reprs: ReprsStream)
-                            (implicit materializer: Materializer)
+class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
+                           (implicit mat: Materializer)
     extends DataStream[RepredMarks.typ] {
 
   import RepredMarks._

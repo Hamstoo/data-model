@@ -25,7 +25,7 @@ import scala.concurrent.duration._
 class Recency @Inject() (facetArg: Recency.Arg,
                          now: Recency.CurrentTimeOptional,
                          marks: MarksStream)
-                        (implicit m: Materializer)
+                        (implicit mat: Materializer)
     extends DataStream[Double] {
 
   import Recency._

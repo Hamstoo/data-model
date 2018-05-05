@@ -24,9 +24,12 @@ import scala.concurrent.duration._
   *                     [https://doc.akka.io/japi/akka/current/akka/stream/scaladsl/BroadcastHub.html]
   */
 abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
-                             (implicit materializer: Materializer) {
+                             (implicit mat: Materializer) {
 
   val logger = Logger(getClass)
+
+  // nearly every concrete implementation of this class will require an implicit ExecutionContext
+  implicit val ec: ExecutionContext = mat.executionContext
 
   // don't even try mentioning T anywhere in this type definition, more at the link
   //   https://stackoverflow.com/questions/33458782/scala-type-members-variance
@@ -79,7 +82,7 @@ object DataStream {
   * @tparam T The type of data being streamed.
   */
 abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
-                                (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
+                                (implicit clock: Clock, mat: Materializer)
     extends DataStream[T](bufferSize) {
 
   //override val logger = Logger(classOf[PreloadSource[T]])
@@ -198,6 +201,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
 
       // should only need a single thread b/c data must arrive sequentially per the clock anyway,
       // the end time of the KnownData window will be that of the most recent tick (brought here by statefulMapConcat)
+      // (changing this from mapAsync(1) to 2 or 4 or 8 doesn't seem to have any effect)
       .mapAsync(1) { w: KnownData =>
         if (logger.isDebugEnabled) logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) $w")
         w.buffer.map { buf =>
@@ -218,7 +222,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
   * @tparam O The type of data being streamed (O)ut.
   */
 abstract class PreloadObserver[-I, +O](subject: PreloadSource[I], bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
-                                      (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
+                                      (implicit clock: Clock, materializer: Materializer)
     extends PreloadSource[O](subject.loadInterval, bufferSize) {
 
   // don't forget to observe the subject, which is the whole reason why we're here
@@ -247,7 +251,7 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I], bufferSize: In
   * the doling out of its data such that it never gets ahead of a Clock.
   */
 abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
-                                 (implicit clock: Clock, materializer: Materializer, ec: ExecutionContext)
+                                 (implicit clock: Clock, materializer: Materializer)
     extends DataStream[T](bufferSize) {
 
   override val logger = Logger(classOf[ThrottledSource[T]])

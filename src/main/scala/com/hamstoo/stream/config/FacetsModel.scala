@@ -4,8 +4,9 @@
 package com.hamstoo.stream.config
 
 import akka.NotUsed
+import akka.event.Logging
 import akka.stream.scaladsl.{GraphDSL, Merge, Sink, Source}
-import akka.stream.{Materializer, SourceShape}
+import akka.stream.{Attributes, Materializer, SourceShape}
 import com.google.inject.{Inject, Injector, Singleton}
 import com.hamstoo.stream.facet.{AggregateSearchScore, Recency, SearchResults}
 import com.hamstoo.stream.{Clock, DataStream}
@@ -21,7 +22,7 @@ import scala.reflect.{ClassTag, classTag}
   * values containing all of the facets with their own labels.
   */
 class FacetsModel @Inject()(injector: Injector)
-                           (implicit clock: Clock, materializer: Materializer) {
+                           (implicit clock: Clock, mat: Materializer) {
 
   import FacetsModel._
   val logger: Logger = Logger(classOf[FacetsModel])
@@ -53,16 +54,22 @@ class FacetsModel @Inject()(injector: Injector)
     */
   def run[T](sink: Sink[OutType, Future[T]]): Future[T] = {
 
+    // these actually do work, you just have to manually insert `.log("msg")` steps into the stream graph
+    // (note `withAttributes` is commented out below)
+    val attrs = Attributes.logLevels(onElement = Logging.DebugLevel,
+                                     onFinish  = Logging.DebugLevel,
+                                     onFailure = Logging.DebugLevel)
+
     // simultaneously allow the facets to start producing data (it's safer to start the clock after materialization
     // because of weird buffer effects and such)
-    val result = source.runWith(sink)
+    val result = out/*.withAttributes(attrs)*/.runWith(sink)
     clock.start()
 
     result
   }
 
   /** Wire up the model by merging all the individual facets, but don't run it, and don't start the clock. */
-  def source: Source[OutType, NotUsed] = Source.fromGraph(GraphDSL.create() { implicit b =>
+  def out: Source[OutType, NotUsed] = Source.fromGraph(GraphDSL.create() { implicit b =>
     import GraphDSL.Implicits._
 
     val merge = b.add(Merge[OutType](facets.size))
@@ -88,8 +95,8 @@ object FacetsModel {
 
   /** Factory function to construct a default FacetsModel. */
   @Singleton
-  case class Default @Inject() (injector: Injector, clock: Clock, materializer: Materializer)
-      extends FacetsModel(injector)(clock, materializer) {
+  case class Default @Inject()(injector: Injector, clock: Clock, mat: Materializer)
+      extends FacetsModel(injector)(clock, mat) {
 
     // An injected instance of a stream can only be reused (singleton) if its defined inside a type (e.g. see Recency).
     // But eventually (perhaps) we can automatically generate new types (e.g. add[classOf[Recency] + 2]) or lookup
