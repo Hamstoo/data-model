@@ -25,7 +25,7 @@ import scala.concurrent.{Await, Promise}
 case class Clock @Inject() (@Named(ClockBegin.name) begin: ClockBegin.typ,
                             @Named(ClockEnd.name) end: ClockEnd.typ,
                             @Named(ClockInterval.name) interval: ClockInterval.typ)
-                           (implicit materializer: Materializer) extends DataStream[TimeStamp] {
+                           (implicit mat: Materializer) extends DataStream[TimeStamp] {
 
   override val logger = Logger(classOf[Clock])
 

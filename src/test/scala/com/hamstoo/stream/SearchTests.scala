@@ -28,27 +28,24 @@ class SearchTests
 
   "Previewer" should "preview" in {
     val previewer = SearchResults.Previewer("\"has survived\" lorem ipsum",
-                                            Seq("has", "survived", "lorem", "ipsum").map((_, 1)))
+                                            Seq("has", "survived", "lorem", "ipsum").map((_, 1)), "")
     val preview = previewer.apply(1.0, loremIpsum)
 
-    val s0 = "<b>Lorem</b> <b>ipsum</b> is simply dummy text of the printing and typesetting industry. <b>Lorem</b> <b>Ipsum</b> <b>has</b> been the indus..."
-    val s1 = """...publishing software like Aldus PageMaker
+    val s0 = """...top publishing software like Aldus PageMaker
                |including versions of <b>Lorem</b> <b>Ipsum</b>.""".stripMargin
-    val s2 = """...ok a galley of type and scrambled it to
-               |make a type specimen book. It <b>has survived</b> not only five centuries, but also the leap into electronic
-               |typesett...""".stripMargin
+    val s1 = "<b>Lorem</b> <b>ipsum</b> is simply dummy text of the printing and typesetting industry...."
 
-    preview._2 shouldEqual Seq(0.08915434439506159 -> s0, 0.08559738886488251 -> s1, 0.08006528105138398 -> s2)
+    preview._2 shouldEqual Seq(0.1351258672497609 -> s0, 0.09582645080109109 -> s1)
   }
 
   it should "not return previews from a single word more than once" in {
-    val previewer = SearchResults.Previewer("centuries", Seq("centuries").map((_, 1)))
+    val previewer = SearchResults.Previewer("centuries", Seq("centuries").map((_, 1)), "")
     val preview = previewer.apply(1.0, loremIpsum)
 
-    val s0 = """...rambled it to
+    val s0 = """...ype and scrambled it to
                |make a type specimen book. It has survived not only five <b>centuries</b>, but also the leap into electronic
-               |typesetting, remaining essentially...""".stripMargin
+               |typesetting, remaining e...""".stripMargin
 
-    preview._2 shouldEqual Seq(0.02996577625672251 -> s0)
+    preview._2 shouldEqual Seq(0.01904761904761905 -> s0)
   }
 }

@@ -16,6 +16,7 @@ import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream._
 import com.hamstoo.stream.dataset.{QueryResult, RepredMarks, ReprsPair}
 import com.hamstoo.utils
+import com.hamstoo.utils.TimeStamp
 import org.slf4j.LoggerFactory
 import play.api.Logger
 
@@ -48,7 +49,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
                               @Named(Query2VecsOptional.name) query2Vecs: Query2VecsType,
                               repredMarks: RepredMarks,
                               logLevel: LogLevelOptional.typ)
-                             (implicit materializer: Materializer, ec: ExecutionContext,
+                             (implicit mat: Materializer,
                               idfModel: IDFModel)
     extends DataStream[SearchResults.typ] {
 
@@ -64,129 +65,137 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
     new Logger(logback)
   }
 
-  override val in: SourceType[typ] = repredMarks().mapAsync(2) { dat: Datum[(MSearchable, ReprsPair)] =>
+  // get uniquified `cleanedQSeq` and (future) vectors for all terms in search query `fsearchTermVecs`
+  private lazy val (cleanedQuery, fsearchTermVecs) = query2Vecs
+  private lazy val cleanedQSeq = cleanedQuery.map(_._1)
 
-      // unpack the pair datum
-      val (mark, ReprsPair(siteReprs, userReprs)) = dat.value
+  override val in: SourceType[typ] = repredMarks().mapAsync(16) { dat: Datum[(MSearchable, ReprsPair)] =>
 
-      // get uniquified `cleanedQSeq` and (future) vectors for all terms in search query `fsearchTermVecs`
-      val (cleanedQuery, fsearchTermVecs) = query2Vecs
-      val cleanedQSeq = cleanedQuery.map(_._1)
+    // unpack the pair datum
+    val (mark, ReprsPair(siteReprs, userReprs)) = dat.value
 
-      // the `marks` collection includes the users own input (assuming the user chose to provide any input
-      // in the first place) so it should be weighted pretty high if a word match is found, the fuzzy reasoning
-      // behind why it is squared is because the representations collection is also incorporated twice (once
-      // for database search score and again with vector cosine similarity), the silly 3.5 was chosen in order
-      // to get a non-link mark (one w/out a repr) up near the top of the search results
-      val mscore: Double = mark.score.getOrElse(0.0) /** MongoRepresentationDao.CONTENT_WGT*/ / cleanedQuery.length
-      logger1.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}'")
+    // the `marks` collection includes the users own input (assuming the user chose to provide any input
+    // in the first place) so it should be weighted pretty high if a word match is found, the fuzzy reasoning
+    // behind why it is squared is because the representations collection is also incorporated twice (once
+    // for database search score and again with vector cosine similarity), the silly 3.5 was chosen in order
+    // to get a non-link mark (one w/out a repr) up near the top of the search results
+    val mscore: Double = mark.score.getOrElse(0.0) /** MongoRepresentationDao.CONTENT_WGT*/ / cleanedQuery.length
 
-      // generate a single search result
-      val fut = for(searchTermVecs <- fsearchTermVecs) yield {
+    // generate a single search result
+    val fut = for(searchTermVecs <- fsearchTermVecs) yield {
 
-        // compute scores aggregated across all search terms
-        val (rscore, rsim, rText, rTermText) = searchTerms2Scores("R", mark.id, siteReprs, searchTermVecs)
-        val (uscore, usim, uText, uTermText) = searchTerms2Scores("U", mark.id, userReprs, searchTermVecs, nWordsMult = 100)
+      val startTime: TimeStamp = System.currentTimeMillis()
 
-        // semantic relevances
-        val rsem = math.exp(rsim.getOrElse(0.0))
-        val usem = math.exp(usim.getOrElse(0.0))
+      // compute scores aggregated across all search terms
+      val (rscore, rsim, rText, rTermText) = searchTerms2Scores("R", mark.id, siteReprs, searchTermVecs)
+      val (uscore, usim, uText, uTermText) = searchTerms2Scores("U", mark.id, userReprs, searchTermVecs, nWordsMult = 100)
 
-        // raw (syntactic?) relevances
-        val uraw0 = math.max(uscore, 0.0) + math.max(mscore, 0.0)
-        val rraw0 = math.max(rscore, 0.0)
+      // semantic relevances
+      val rsem = math.exp(rsim.getOrElse(0.0))
+      val usem = math.exp(usim.getOrElse(0.0))
 
-        val previewer = Previewer(rawQuery, cleanedQuery)
-        val utext = utils.parse(mark.mark.comment.getOrElse(""))
-        val rtext = utils.parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
-        val (uPhraseBoost, uPreview) = previewer(uraw0, utext)
-        val (rPhraseBoost, rPreview) = previewer(rraw0, rtext)
+      // raw (syntactic?) relevances
+      val uraw0 = math.max(uscore, 0.0) + math.max(mscore, 0.0)
+      val rraw0 = math.max(rscore, 0.0)
 
-        val uraw = uraw0 + uPhraseBoost
-        val rraw = rraw0 + rPhraseBoost
-        val preview: String = (uPreview ++ rPreview).sortBy(-_._1).take(N_SPANS).map(_._2).mkString("<br>")
+      val previewer = Previewer(rawQuery, cleanedQuery, mark.id)
+      val utext = utils.parse(mark.mark.comment.getOrElse(""))
+      val rtext = utils.parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
 
-        // aggregated
-        val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
-        val rAggregate = rsem + rraw
-        val mAggregate = usem + uraw
-        logger1.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
+      val t0: TimeStamp = System.currentTimeMillis()
+      val (uPhraseBoost, uPreview) = previewer(uraw0, utext)
+      val (rPhraseBoost, rPreview) = previewer(rraw0, rtext)
+      val t1: TimeStamp = System.currentTimeMillis()
+      logger1.trace(f"Previewer[total] for ${mark.id} in ${(t1 - t0) / 1e3}%.3f seconds")
 
-        // divy up the relevance into named buckets
-        val mbRelevance = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
-          case (true, true, true) => // this first case shouldn't ever really happen
-            Some(SearchRelevance(mscore + isdefBonus, 0, 0, 0))
+      val uraw = uraw0 + uPhraseBoost
+      val rraw = rraw0 + rPhraseBoost
+      val preview: String = (uPreview ++ rPreview).sortBy(-_._1).take(N_SPANS).map(_._2).mkString("<br>")
 
-          case (true, false, _) => // this second case will occur for non-URL marks
-            Some(SearchRelevance(      uraw * 1.6 + isdefBonus, usem * 1.6, 0, 0))
+      // aggregated
+      val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
+      val rAggregate = rsem + rraw
+      val mAggregate = usem + uraw
+      logger1.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
 
-          case (false, true, _) => // this case will occur for old-school bookmarks without any user content
-            Some(SearchRelevance(0, 0, rraw * 1.4 + isdefBonus, rsem * 1.4))
+      // divy up the relevance into named buckets
+      val mbRelevance = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
+        case (true, true, true) => // this first case shouldn't ever really happen
+          Some(SearchRelevance(mscore + isdefBonus, 0, 0, 0))
 
-          case (false, false, _) => // this case should fire for most marks--those with URLs
+        case (true, false, _) => // this second case will occur for non-URL marks
+          Some(SearchRelevance(      uraw * 1.6 + isdefBonus, usem * 1.6, 0, 0))
 
-            // maybe want to do max(0, cosine)?  or incorporate antonyms and compute cosine(query-antonyms)?
-            // because antonyms may be highly correlated with their opposites given similar surrounding words
-            Some(SearchRelevance(uraw + Seq(mscore, uscore).count(_ > 1e-10), usem,
-                                 rraw + Seq(rscore        ).count(_ > 1e-10), rsem))
+        case (false, true, _) => // this case will occur for old-school bookmarks without any user content
+          Some(SearchRelevance(0, 0, rraw * 1.4 + isdefBonus, rsem * 1.4))
 
-          case (_, _, false) => None
-        }
+        case (false, false, _) => // this case should fire for most marks--those with URLs
 
-        val aggregateScore = mbRelevance.map(_.sum)
+          // maybe want to do max(0, cosine)?  or incorporate antonyms and compute cosine(query-antonyms)?
+          // because antonyms may be highly correlated with their opposites given similar surrounding words
+          Some(SearchRelevance(uraw + Seq(mscore, uscore).count(_ > 1e-10), usem,
+                               rraw + Seq(rscore        ).count(_ > 1e-10), rsem))
 
-        // generate text and return values
-        val mbPv = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
-          case (true, true, true) => // this first case shouldn't ever really happen
-            val sc = mark.score.getOrElse(Double.NaN)
-            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
-              f"Raw marks database search score: <b>$sc%.2f</b> (phrase=$uPhraseBoost)"
-            Some(s"$scoreText<br>")
-
-          case (true, false, _) => // this second case will occur for non-URL marks
-            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
-              f"User content similarity: <b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
-              f"Database search scores: M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b> (phrase=$uPhraseBoost)"
-            Some(s"$scoreText<br>U-similarities: $uTermText&nbsp; $uText<br>")
-
-          case (false, true, _) => // this case will occur for old-school bookmarks without any user content
-            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
-              f"URL content similarity: <b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, " +
-              f"Database search scores: R=<b>$rscore%.2f</b> (phrase=$rPhraseBoost)"
-            Some(s"$scoreText<br>R-similarities: $rTermText&nbsp; $rText<br>")
-
-          case (false, false, _) => // this case should fire for most marks--those with URLs
-            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
-              f"Similarities: R=<b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, U=<b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
-              f"Database search scores: R=<b>$rscore%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b> (phrase=$rPhraseBoost & $uPhraseBoost)"
-            Some(s"$scoreText<br>" + s"R-similarities: $rTermText&nbsp; $rText<br>" +
-                                     s"U-similarities: $uTermText&nbsp; $uText<br>")
-
-          case (_, _, false) => None
-
-        }
-
-        mbPv.flatMap { pv =>
-
-          // remove results with no preview/syntactic matches (unless score is really high), requires that all
-          // fields (e.g. comments, highlights, inline notes) are being covered by MongoDB text search, which they
-          // should be via user-content reprs' doctext
-          // TODO: "unless score is really high"--and make this dependent on 'sem' facet arg
-          val mbPr = preview match {
-            case pr if pr.nonEmpty => Some(pr)
-            case _ if (uraw + rraw) < 1e-8 => None
-            case _ =>
-              def withDots(s: String): String = if (s.length < PREVIEW_LENGTH) s else s"${s.take(PREVIEW_LENGTH)}..."
-              Some(Seq(rtext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))
-          }
-
-          mbPr.map { pr => (mark, (if (logger1.isDebugEnabled) pv else "") + pr, mbRelevance) }
-        }
+        case (_, _, false) => None
       }
 
-      fut.map { _.map(dat.withValue) }
+      val aggregateScore = mbRelevance.map(_.sum)
 
-    }.mapConcat(_.to[immutable.Iterable]) // a.k.a. flatten
+      // generate text and return values
+      val mbPv = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
+        case (true, true, true) => // this first case shouldn't ever really happen
+          val sc = mark.score.getOrElse(Double.NaN)
+          val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+            f"Raw marks database search score: <b>$sc%.2f</b> (phrase=$uPhraseBoost)"
+          Some(s"$scoreText<br>")
+
+        case (true, false, _) => // this second case will occur for non-URL marks
+          val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+            f"User content similarity: <b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
+            f"Database search scores: M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b> (phrase=$uPhraseBoost)"
+          Some(s"$scoreText<br>U-similarities: $uTermText&nbsp; $uText<br>")
+
+        case (false, true, _) => // this case will occur for old-school bookmarks without any user content
+          val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+            f"URL content similarity: <b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, " +
+            f"Database search scores: R=<b>$rscore%.2f</b> (phrase=$rPhraseBoost)"
+          Some(s"$scoreText<br>R-similarities: $rTermText&nbsp; $rText<br>")
+
+        case (false, false, _) => // this case should fire for most marks--those with URLs
+          val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+            f"Similarities: R=<b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, U=<b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
+            f"Database search scores: R=<b>$rscore%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b> (phrase=$rPhraseBoost & $uPhraseBoost)"
+          Some(s"$scoreText<br>" + s"R-similarities: $rTermText&nbsp; $rText<br>" +
+                                   s"U-similarities: $uTermText&nbsp; $uText<br>")
+
+        case (_, _, false) => None
+
+      }
+
+      val endTime: TimeStamp = System.currentTimeMillis()
+      logger1.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}' in ${(endTime - startTime) / 1e3}%.3f seconds")
+
+      mbPv.flatMap { pv =>
+
+        // remove results with no preview/syntactic matches (unless score is really high), requires that all
+        // fields (e.g. comments, highlights, inline notes) are being covered by MongoDB text search, which they
+        // should be via user-content reprs' doctext
+        // TODO: "unless score is really high"--and make this dependent on 'sem' facet arg
+        val mbPr = preview match {
+          case pr if pr.nonEmpty => Some(pr)
+          case _ if (uraw + rraw) < 1e-8 => None
+          case _ =>
+            def withDots(s: String): String = if (s.length < PREVIEW_LENGTH) s else s"${s.take(PREVIEW_LENGTH)}..."
+            Some(Seq(rtext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))
+        }
+
+        mbPr.map { pr => (mark, (if (logger1.isDebugEnabled) pv else "") + pr, mbRelevance) }
+      }
+    }
+
+    fut.map { _.map(dat.withValue) }
+
+  }.mapConcat(_.to[immutable.Iterable]) // a.k.a. flatten
     .asInstanceOf[SourceType[typ]] // see "BIG NOTE" on JoinWithable
 
   /**
@@ -308,7 +317,7 @@ object SearchResults {
     * @param cleanedQuery0  Individual query words with their counts in the query string.  Also lowercase'ized, and
     *                       cleaned of some punctuation as performed by VectorEmbeddingsService.query2Vecs.
     */
-  case class Previewer(rawQuery: String, cleanedQuery0: Seq[(String, Int)]) {
+  case class Previewer(rawQuery: String, cleanedQuery0: Seq[(String, Int)], markId: String) {
 
     // necessary because of `applyOrElse` below
     private val cleanedQuery = cleanedQuery0.toIndexedSeq
@@ -322,7 +331,10 @@ object SearchResults {
       * @param dbSearchScore  Indicator of whether there _should_ be matching words to find.
       * @param rawText        Raw text which should already have been `utils.parsed`ed.
       */
-    def apply(dbSearchScore: Double, rawText: String): (Int, Seq[(Double, String)]) = {
+    def apply(dbSearchScore: Double, rawText: String): (Int, Seq[(Double, String)]) =
+      if (rawText.isEmpty) (0, Seq.empty[(Double, String)]) else applyInner(dbSearchScore, rawText)
+
+    private def applyInner(dbSearchScore: Double, rawText: String): (Int, Seq[(Double, String)]) = {
 
       val encText = encode(rawText)
       assert(encText.length >= rawText.trim.length)
@@ -330,45 +342,74 @@ object SearchResults {
       val lowText = encText.toLowerCase(Locale.ENGLISH) // has already been `utils.parse`ed
       val query = (cleanedQuery.map(_._1) ++ cleanedPhrasesSeq).map(_.toLowerCase(Locale.ENGLISH).replace("\"", ""))
 
-      val qcounts = mutable.ArrayBuffer.fill[Int](query.size)(0) // used for boosting search scores for phrases
-      val tcounts = mutable.ArrayBuffer.fill[Double](lowText.length)(0) // used to locate dense term regions in text
+      val qcounts = mutable.ArrayBuffer.fill[Int](query.size)(0) // for boosting search scores for phrases
+      val tcountsUncmp = mutable.ArrayBuffer.fill[Double](lowText.length)(0) // to locate dense term regions in text
+
+      var startTime = System.currentTimeMillis
+
+      val preproc: IndexedSeq[(IndexedSeq[(Char, Int)], Int)] = query.map(_.zipWithIndex).zipWithIndex
 
       // for each substring of `text` that follows whitespace, look for query words/phrases/terms
-      for(i <- lowText.indices; (term, j) <- query.zipWithIndex) yield {
-        if ((i == 0 || lowText(i - 1).isWhitespace) &&
-            term.zipWithIndex.forall { case (ch, k) => lowText.isDefinedAt(i + k) && ch == lowText(i + k) }) {
+      // TODO: these first 2 variation lines are NOT THREADSAFE (but how _much_ does it really matter in this case?)
+      preproc.par.foreach { case (term, j) => // 1.399 or 1.332 seconds
+      //lowText.indices.par.foreach { i => // 1.482 seconds
+        for(i <- lowText.indices/*; (term, j) <- preproc*/) yield { // 1.583 seconds
+          if ((i == 0 || lowText(i - 1).isWhitespace) &&
+              term.forall { case (ch, k) => lowText.isDefinedAt(i + k) && ch == lowText(i + k) }) {
+// TODO: try view/force or "lazy find" like in Join
+            qcounts(j) += 1
 
-          qcounts(j) += 1
+            // compute term score (for sorting purposes) as sqrt(term.length) but penalize capital letters a little
+            val encTerm = encText.slice(i, i + term.length)
+            val nCaps = capitalRgx.findAllIn(encTerm).length
 
-          // compute term score (for sorting purposes) as sqrt(term.length) but penalize capital letters a little
-          val encTerm = encText.slice(i, i + term.length)
-          val nCaps = capitalRgx.findAllIn(encTerm).length
-
-          // this is effectively dividing by sqrt(term.length) twice, once to convert from a whole-word score
-          // to a char score and then again to counter the x^2 kernel below (consider this: if nCaps is 0, then
-          // this reduces to 1/sqrt for each char)
-          val charScore = math.sqrt(term.length.toDouble - 0.25 * nCaps) / term.length
-          val nDuplicates = cleanedQuery.map(_._2).applyOrElse(j, (_: Int) => 1) // phrases won't have duplicates
-          loggerC.trace(f"'$term' at $i (nDuplicates=$nDuplicates, charScore=$charScore%.3f)")
-          term.indices.foreach { k => tcounts(i + k) += nDuplicates * charScore }
+            // this is effectively dividing by sqrt(term.length) twice, once to convert from a whole-word score
+            // to a char score and then again to counter the x^2 kernel below (consider this: if nCaps is 0, then
+            // this reduces to 1/sqrt for each char)
+            val charScore = math.sqrt(term.length.toDouble - 0.25 * nCaps) / term.length
+            val nDuplicates = cleanedQuery.map(_._2).applyOrElse(j, (_: Int) => 1) // phrases won't have duplicates
+            loggerC.trace(f"'$term' at $i (nDuplicates=$nDuplicates, charScore=$charScore%.3f)")
+            term.indices.foreach { k => tcountsUncmp(i + k) += nDuplicates * charScore }
+          }
         }
       }
 
-      loggerC.trace(s"  tcounts = ${tcounts.map(x => f"$x%.2f")}")
+// TODO: at this point we know there's a match, so we could return a Future from here on and so not have to wait
+
+// TODO: another thin we could do would be to only compute previews for the top 20 marks similar to not rendering them all
+
+      var endTime = System.currentTimeMillis
+      loggerC.trace(f"Previewer[0] $markId (${rawText.length}) in ${(endTime - startTime) / 1e3}%.3f seconds")
+
+      // compress tcounts b/c if you don't things are realllllyyy slllloooowwwwww (this value has quadratic effect
+      // and so 30 will reduce a 20000-char string from 1 second down to around 1 millisecond)
+      val COMPRESSION = 30
+      val tcountsCmp = tcountsUncmp.zipWithIndex.groupBy(_._2 / COMPRESSION).toSeq.sortBy(_._1).map(_._2.map(_._1).mean)
+
+      loggerC.trace(s"  tcountsCmp = ${tcountsCmp.map(x => f"$x%.2f")}")
       val nMatchedPhrases = qcounts.takeRight(cleanedPhrasesSeq.size).sum
 
       // smooth tcounts using an upside down parabola
-      import math.{abs, max, min, pow} // e.g. if PREVIEW_LENGTH is 7, increase it to 8
-      val previewLengthEven = PREVIEW_LENGTH + (PREVIEW_LENGTH % 2) // make it even to make the logic easier below
-      val xmid = previewLengthEven / 2 // e.g. 4
-      val ymax = pow(xmid, 2)
-      val kernelUnscaled = (0 to previewLengthEven).map { x => 1 - pow(abs(x - xmid), 2) / ymax } // e.g. length = 9
-      val kernel = kernelUnscaled / kernelUnscaled.sum
+      import math.{abs, max, min, pow}
       import com.hamstoo.utils.ExtendedDouble
-      assert((kernel.head ~= 0.0) && (kernel.last ~= 0.0) && (kernel.sum ~= 1.0) && (kernelUnscaled(xmid) ~= 1.0))
+      val (kernel, kernelUnscaled, xmid, prvLenCmp) = {
+        val prvLenCmp0: Int = PREVIEW_LENGTH / COMPRESSION + 2 // add 2 so that we can remove leading/trailing 0s
+        val prvLenEven = prvLenCmp0 + (prvLenCmp0 % 2) // make it even to make the logic easier below
+        val xmid0 = prvLenEven / 2
+        val ymax = pow(xmid0, 2)
+        val krnUnscaled0 = (0 to prvLenEven).map { x => 1 - pow(abs(x - xmid0), 2) / ymax } // e.g. length = 9
+        val krn0 = krnUnscaled0 / krnUnscaled0.sum
+        assert((krn0.head ~= 0.0) && (krn0.last ~= 0.0) && (krn0.sum ~= 1.0) && (krnUnscaled0(xmid0) ~= 1.0))
 
-      val len = tcounts.length
-      val smoothedImmutable = for(i <- tcounts.indices) yield {
+        // remove leading/trailing 0s to speed things up
+        (krn0.tail.init, krnUnscaled0.tail.init, xmid0 - 1, prvLenCmp0 - 2)
+      }
+
+      startTime = System.currentTimeMillis
+
+      // this loop takes forever w/out compression, and the par/seq helps a bit too
+      val len = tcountsCmp.length
+      val smoothedImmutableCmp = tcountsCmp.indices.par.map { i =>
         val begin = max(0, i - xmid)
         val end = min(len, i + xmid + 1) // add 1 b/c ends are always exclusive
 
@@ -378,35 +419,38 @@ object SearchResults {
         assert(end - begin + bTrunc + eTrunc == kernel.length)
 
         val kernel_i = kernelUnscaled.slice(bTrunc, kernelUnscaled.length - eTrunc) // if truncs are 0, same as `kernel`
-        tcounts.slice(begin, end) dot (kernel_i / kernel_i.sum)
-      }
+        tcountsCmp.slice(begin, end) dot (kernel_i / kernel_i.sum)
+      }.seq
 
-      val smoothed = mutable.ArrayBuffer(smoothedImmutable: _*)
+      endTime = System.currentTimeMillis
+      loggerC.trace(f"Previewer[1] $markId (${rawText.length}) in ${(endTime - startTime) / 1e3}%.3f seconds")
+      val smoothedCmp = mutable.ArrayBuffer(smoothedImmutableCmp: _*)
 
       // this mutable is used to prevent duplicates but still allow stopping when enough have been found
       val previewTexts = mutable.ArrayBuffer.empty[(Double, String)]
 
       // TODO: score earlier snippets higher?
       while(previewTexts.length < N_SPANS && {
-        val amax = smoothed.argmax
-        amax > 0 || !(smoothed.sum ~= 0) // either there aren't any words to bold, or we already exhausted them all
+        val amaxCmp = smoothedCmp.argmax
+        amaxCmp > 0 || !(smoothedCmp.sum ~= 0) // either there aren't any words to bold, or we already exhausted them all
       }) {
-        val amax = smoothed.argmax
-        val smoothedMax = smoothed(amax)
+        val amaxCmp = smoothedCmp.argmax
+        val amax = amaxCmp * COMPRESSION
+        val smoothedMax = smoothedCmp(amaxCmp)
 
         // create a preview snippet around amax as a midpoint
         val begin = max(0, amax - PREVIEW_LENGTH / 2)
         val end = min(encText.length, amax + PREVIEW_LENGTH / 2)
         val snippet = encText.slice(begin, end)
-        val scounts = tcounts.slice(begin, end) // be sure to not use smoothed here, we need binary 0/nonzero values
+        val scounts = tcountsUncmp.slice(begin, end) // be sure to not use smoothed here, we need binary 0/nonzero values
 
         // erase this region of `smoothed` so that it is not selected in next N_SPANS loop iteration, but don't use
         // begin/end because any word with length > 1 will affect a larger range than just PREVIEW_LENGTH
         // TODO: reduce other regions of smoothed that include the same query words as just found
-        loggerC.trace(s"argmax = $amax, max = $smoothedMax")
-        loggerC.trace(s"smoothed = ${smoothed.map(x => f"$x%.2f")}")
-        val pl56 = PREVIEW_LENGTH * 5 / 6
-        (max(0, amax - pl56) until min(encText.length, amax + pl56)).foreach { i => smoothed.update(i, 0) }
+        loggerC.trace(s"argmax(${COMPRESSION}x compressed) = $amaxCmp, max = $smoothedMax")
+        loggerC.trace(s"smoothedCmp = ${smoothedCmp.map(x => f"$x%.2f")}")
+        val pl2 = prvLenCmp * 2
+        (max(0, amaxCmp - pl2) until min(smoothedCmp.length, amaxCmp + pl2)).foreach { i => smoothedCmp.update(i, 0) }
 
         // this will embolden consecutive words, but not the spaces between them, which is kinda silly, but who cares
         var isOpen = false
@@ -429,7 +473,7 @@ object SearchResults {
         // try harder to find something if there should be something to find (i.e. if dbSearchScore > 0)
         val prfxQuery = cleanedQuery.filter(_._1.length > MIN_PREFIX_LENGTH).map(kv => (kv._1.init, kv._2))
         if ((dbSearchScore ~= 0.0) || prfxQuery.isEmpty) previewTexts else {
-          val recursivePreviewTexts = Previewer("", prfxQuery)(dbSearchScore, rawText)._2
+          val recursivePreviewTexts = Previewer("", prfxQuery, markId+"-r")(dbSearchScore, rawText)._2
           if (recursivePreviewTexts.isEmpty) previewTexts else recursivePreviewTexts
         }
       })

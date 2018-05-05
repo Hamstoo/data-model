@@ -23,7 +23,7 @@ import scala.reflect.classTag
 class AggregateSearchScore @Inject() (semWgt: AggregateSearchScore.SemanticWeight,
                                       usrWgt: AggregateSearchScore.UserContentWeight,
                                       searchResults: SearchResults)
-                                     (implicit m: Materializer)
+                                     (implicit mat: Materializer)
     extends DataStream[Double] {
 
   import AggregateSearchScore._
