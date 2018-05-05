@@ -1,7 +1,11 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.google.inject.Inject
 import com.hamstoo.models.{Highlight, PageCoord}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -14,14 +18,15 @@ import scala.concurrent.duration._
 /**
   * Data access object for highlights.
   */
-class MongoHighlightDao(db: () => Future[DefaultDB])
-                       (implicit marksDao: MongoMarksDao, userDao: MongoUserDao, pagesDao: MongoPagesDao)
-                                            extends MongoAnnotationDao[Highlight]("highlight", db) {
+class HighlightDao @Inject()(implicit db: () => Future[DefaultDB],
+                             marksDao: MarkDao,
+                             userDao: UserDao,
+                             pagesDao: PageDao) extends AnnotationDao[Highlight]("highlight") {
 
   import com.hamstoo.models.Highlight._
   import com.hamstoo.utils._
 
-  override val logger = Logger(classOf[MongoHighlightDao])
+  override val logger = Logger(classOf[HighlightDao])
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "highlights")
 
   Await.result(dbColl() map (_.indexesManager ensure indxs), 345 seconds)

@@ -1,7 +1,13 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.google.inject.Inject
+import com.hamstoo.models.User._
+import com.hamstoo.models.{Mark, Profile, Shareable, SharedWith, User, UserGroup}
 import com.hamstoo.models.SharedWith.Level
 import com.hamstoo.models._
 import com.mohiva.play.silhouette.api.LoginInfo
@@ -12,21 +18,21 @@ import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.{BSONArray, BSONDocument, BSONRegex, BSONString}
+import reactivemongo.bson.BSONDocument
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
-object MongoUserDao {
+object UserDao {
   var migrateData: Boolean = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
 }
 
 /**
-  * Data access object for user accounts.
+  * Data access object for user accounts.  Note that this class extends IdentityService.
   */
-class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
+class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentityService[User] {
 
-  val logger: Logger = Logger(classOf[MongoUserDao])
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}
   import com.hamstoo.models.ShareGroup.{GROUP, LEVEL}
   import com.hamstoo.models.Shareable.{READONLYx, READWRITEx, SHARED_WITH, USR}
@@ -43,6 +49,8 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   val usersFoundCollUserName: String = "$" + usersFoundCollName + "." + UNAMEx
   val entriesFoundCollUserId: String = entriesFoundCollName + "." + USR
   val usersFoundCollUserNameLower: String = "$" + usersFoundCollName + "." + UNAMELOWx
+
+  val logger: Logger = Logger(classOf[UserDao])
 
   // get the "users" collection (in the future); the `map` is `Future.map`
   // http://reactivemongo.org/releases/0.12/api/#reactivemongo.api.DefaultDB
@@ -216,7 +224,7 @@ class MongoUserDao(db: () => Future[DefaultDB]) extends IdentityService[User] {
   } yield ()
 
 
-  /** 
+  /**
     * Search users by prefix for autosuggest for two cases:
     *   1. if requred to check all users - for sharing purposes
     *   2. if required to check only users with public marks - for marks search purposes

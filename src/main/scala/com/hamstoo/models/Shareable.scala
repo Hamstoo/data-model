@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.daos.MongoUserDao
+import com.hamstoo.daos.UserDao
 import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import enumeratum.values.{IntEnum, IntEnumEntry}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
@@ -43,7 +43,7 @@ trait Shareable {
     *   3. User's ID is included in this Shareable's `sharedWith`
     */
   def isAuthorizedRead(user: Option[User])
-                      (implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] = for {
+                      (implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] = for {
     aw <- isAuthorizedWrite(user) // no ownership check necessary here; isAuthorizedWrite will check
     ar <- if (aw) Future.successful(true) else { sharedWith match {
       case Some(SharedWith(Some(sgRO), _, _)) => sgRO.isAuthorized(user)
@@ -52,7 +52,7 @@ trait Shareable {
   } yield ar
 
   def isAuthorizedWrite(user: Option[User])
-                       (implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] = for {
+                       (implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] = for {
     ob <- Future.successful(user.exists(ownedBy))
     aw <- if (ob) Future.successful(true) else { sharedWith match {
       case Some(SharedWith(_, Some(sgRW), _)) => sgRW.isAuthorized(user)
@@ -93,7 +93,7 @@ case class SharedWith(readOnly/* it can be named just read */: Option[ShareGroup
     * Returns the union of all of the email addresses from either UserGroup, both those that are found in
     * the profiles of the groups' userIds and those in the groups' emails.
     */
-  def emails(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Set[String]] = {
+  def emails(implicit userDao: UserDao, ec: ExecutionContext): Future[Set[String]] = {
     val futs = Seq(readOnly, readWrite).map { sg => UserGroup.retrieve(sg.flatMap(_.group)) }
     for (ro <- futs.head; rw <- futs(1); emails <- SharedWith.emails(ro, rw)) yield emails
   }
@@ -149,7 +149,7 @@ object SharedWith {
     * the profiles of the groups' userIds and those in the groups' emails.
     */
   def emails(readOnly: Option[UserGroup], readWrite: Option[UserGroup])
-            (implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Set[String]] = {
+            (implicit userDao: UserDao, ec: ExecutionContext): Future[Set[String]] = {
     import UserGroup.ExtendedOptionSet
 
     val userIds = (readOnly.flatMap(_.userIds) union readWrite.flatMap(_.userIds)).getOrElse(Set.empty[UUID])
@@ -176,7 +176,7 @@ case class ShareGroup(level: Int, group: Option[ObjectId]) {
   import SharedWith.{Level, PUBLIC_LEVELS}
 
   /** Returns true if the given user is authorized, either via (optional) user ID or email. */
-  def isAuthorized(user: Option[User])(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] =
+  def isAuthorized(user: Option[User])(implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] =
     PUBLIC_LEVELS.get(Level(level)).fold {
       // defer to the "listed" users in the group
       UserGroup.retrieve(group).flatMap(_.fold(Future.successful(false))(_.isAuthorized(user)))
@@ -186,7 +186,7 @@ case class ShareGroup(level: Int, group: Option[ObjectId]) {
     * Greater than (>) indicates that a ShareGroup dominates (i.e. is shared with strictly more people than)
     * another ShareGroup.
     */
-  def >(other: ShareGroup)(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] =
+  def >(other: ShareGroup)(implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] =
     if (level > other.level) Future.successful(true)
     else if (Level(level) == Level.LISTED && Level(other.level) == Level.LISTED) {
       val futs = Seq(group, other.group).map(UserGroup.retrieve) // calling these `retrieve`s inside a for-
@@ -196,7 +196,7 @@ case class ShareGroup(level: Int, group: Option[ObjectId]) {
       }
     } else Future.successful(false)
 
-  def >=(other: ShareGroup)(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] =
+  def >=(other: ShareGroup)(implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] =
     if (this == other) Future.successful(true) else this > other
 }
 
@@ -245,7 +245,7 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
   protected def isAuthorizedEmail(email: String): Boolean = emails.exists(_.contains(email))
 
   /** Returns true if the given user is authorized, either via (optional) user ID or email. */
-  def isAuthorized(user: Option[User])(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Boolean] = {
+  def isAuthorized(user: Option[User])(implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] = {
 
     // isAuthorizedUserId(user.map(_.id)) || user.exists(_.emails.exists(isAuthorizedEmail))
     if (isAuthorizedUserId(user.map(_.id))) Future.successful(true) else {
@@ -276,7 +276,7 @@ object UserGroup extends BSONHandlers {
   case class SharedObj(id: ObjectId, ts: TimeStamp)
 
   /** Query the database for a UserGroup given its ID. */
-  def retrieve(opt: Option[ObjectId])(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[Option[UserGroup]] =
+  def retrieve(opt: Option[ObjectId])(implicit userDao: UserDao, ec: ExecutionContext): Future[Option[UserGroup]] =
     opt.fold(Future.successful(Option.empty[UserGroup]))(userDao.retrieveGroup)
 
   implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]

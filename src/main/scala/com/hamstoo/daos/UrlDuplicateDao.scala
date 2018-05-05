@@ -1,7 +1,11 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.google.inject.Inject
 import com.hamstoo.models.Mark.{URLPRFX, USRPRFX, _}
 import com.hamstoo.models.UrlDuplicate
 import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedString, ExtendedWriteResult, ObjectId, d}
@@ -20,9 +24,9 @@ import scala.concurrent.{Await, ExecutionContext, Future}
   * are used when marking a page to determine if a page with the same content has already been marked, in which
   * case the marks will be merged.
   */
-class MongoUrlDuplicatesDao(db: () => Future[DefaultDB])(implicit e: ExecutionContext) {
+class UrlDuplicateDao @Inject()(implicit db: () => Future[DefaultDB], ec: ExecutionContext) {
 
-  val logger: Logger = Logger(classOf[MongoUrlDuplicatesDao])
+  val logger: Logger = Logger(classOf[UrlDuplicateDao])
 
   private val dupsIndxs: Map[String, Index] =
     Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
@@ -66,7 +70,7 @@ class MongoUrlDuplicatesDao(db: () => Future[DefaultDB])(implicit e: ExecutionCo
     urlDup
   }
 
-  /** Retrieve duplicates for user. */
+  /** Retrieve duplicates for user.  Same prefix-search-then-filter implementation as ImageDao.retrieve.*/
   def retrieve(userId: UUID, url: String): Future[Set[UrlDuplicate]] = for {
     c <- dbColl()
     _ = logger.debug(s"Retrieving URL duplicates for $userId, URL: $url")

@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import com.hamstoo.models.Representation.ReprType
@@ -12,7 +15,7 @@ import org.scalatest.OptionValues
 /**
   * MongoUserDaoTests
   */
-class MongoUserDaoTests
+class UserDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler

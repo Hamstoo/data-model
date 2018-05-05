@@ -3,17 +3,15 @@
  */
 package com.hamstoo.stream.dataset
 
-import akka.NotUsed
 import akka.stream.Materializer
-import akka.stream.scaladsl.Source
 import ch.qos.logback.classic.{Logger => LogbackLogger}
 import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
-import com.hamstoo.daos.MongoRepresentationDao
+import com.hamstoo.daos.RepresentationDao
 import com.hamstoo.models.{MSearchable, RSearchable}
 import com.hamstoo.stream._
 import com.hamstoo.utils.ExtendedTimeStamp
-import org.slf4j.{LoggerFactory, Logger => Slf4jLogger}
+import org.slf4j.LoggerFactory
 import play.api.Logger
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -39,12 +37,13 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
   * @param marksStream   Representations will be streamed for this stream of marks.
   */
 @Singleton
-class ReprsStream @Inject() (marksStream: MarksStream,
-                             @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
-                             logLevel: LogLevelOptional.typ)
-                            (implicit materializer: Materializer, ec: ExecutionContext,
-                             reprDao: MongoRepresentationDao)
-    extends DataStream[ReprsPair]() {
+class ReprsStream @Inject()(marksStream: MarksStream,
+                            @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
+                            logLevel: LogLevelOptional.typ)
+                           (implicit clock: Clock,
+                            mat: Materializer,
+                            reprDao: RepresentationDao)
+    extends PreloadObserver[MSearchable, ReprsPair](marksStream) {
 
   // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples
 
@@ -57,60 +56,72 @@ class ReprsStream @Inject() (marksStream: MarksStream,
     new Logger(logback)
   }
 
+  // unpack query words/counts/vecs (which there may none of)
+  private lazy val mbCleanedQuery = mbQuery2Vecs.map(_._1)
+  private lazy val mbQuerySeq = mbCleanedQuery.map(_.map(_._1))
+  private lazy val cleanedQuery = mbCleanedQuery.getOrElse(Seq(("", 0)))
+
   /** Maps the stream of marks to their reprs. */
-  override val hubSource: Source[Datum[ReprsPair], NotUsed] = marksStream().mapAsync(4) { dat =>
+  override def observerPreload(subjectData: PreloadType[MSearchable]): PreloadType[ReprsPair] = {
+    subjectData.flatMap { data =>
 
-    // unpack query words/counts/vecs (which there may none of)
-    val mbCleanedQuery = mbQuery2Vecs.map(_._1)
-    val mbQuerySeq = mbCleanedQuery.map(_.map(_._1))
-    val cleanedQuery = mbCleanedQuery.getOrElse(Seq(("", 0)))
+      val marks = data.map(_.value)
+      val primaryReprIds = marks.map(_.primaryRepr) // .getOrElse("") already applied
+      val usrContentReprIds = marks.map(_.userContentRepr.getOrElse(""))
+      val reprIds = (primaryReprIds ++ usrContentReprIds).filter(_.nonEmpty).toSet
 
-    val mark = dat.value
-    val primaryReprId = mark.primaryRepr // .getOrElse("") already applied
-    val usrContentReprId = mark.userContentRepr.getOrElse("")
-    val reprIds = Set(primaryReprId, usrContentReprId).filter(_.nonEmpty)
+      val approxBegin = if (marks.isEmpty) 0L else marks.map(_.timeFrom).min
+      val approxEnd   = if (marks.isEmpty) 0L else marks.map(_.timeFrom).max
+      logger.info(s"Performing ReprsStream.observerPreload between ${approxBegin.tfmt} and ${approxEnd.tfmt} for ${marks.size} marks, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, and ${reprIds.size} reprIds")
 
-    // run a separate MongoDB Text Index search over `representations` collection for each query word
-    val fscoredReprs = mbQuerySeq.mapOrEmptyFuture(reprDao.search(reprIds, _)).flatMap { seqOfMaps =>
+      // run a separate MongoDB Text Index search over `representations` collection for each query word
+      val fscoredReprs = mbQuerySeq.mapOrEmptyFuture(reprDao.search(reprIds, _)).flatMap { seqOfMaps =>
 
-      // if there aren't any query words (or mbQuerySeq.isEmpty) then instead run a simple `retrieve` w/out searching
-      if (seqOfMaps.isEmpty) reprDao.retrieve(reprIds).map(oneMap => Seq(oneMap)) else Future.successful(seqOfMaps)
-    }
+        // if there aren't any query words (or mbQuerySeq.isEmpty) then instead run a simple `retrieve` w/out searching
+        if (seqOfMaps.isEmpty) reprDao.retrieve(reprIds).map(oneMap => Seq(oneMap)) else Future.successful(seqOfMaps)
+      }
 
-    // also get any reprs that might have been excluded by the above search (we can compute vector similarities
-    // to these but we'll have to use the entries/marks collection's Text Index score to rank them)
-    // TODO: maybe use the representations collection's Text Index score and drop the marks collection's Text Index?
-    val funscoredReprs = reprDao.retrieve(reprIds)
+      // also get any reprs that might have been excluded by the above search (we can compute vector similarities
+      // to these but we'll have to use the entries/marks collection's Text Index score to rank them)
+      // TODO: maybe use the representations collection's Text Index score and drop the marks collection's Text Index?
+      val funscoredReprs = reprDao.retrieve(reprIds)
 
-    for(scoredReprs <- fscoredReprs; unscoredReprs <- funscoredReprs) yield {
+      for(scoredReprs <- fscoredReprs; unscoredReprs <- funscoredReprs) yield {
+        data.map { dat =>
 
-      // each element of `scoredReprs` contains a collection of representations for the respective word in
-      // `cleanedQuery`, so zip them together, pull out the requested reprId, and multiply the MongoDB search
-      // scores `dbScore` by the query word counts `q._2`
-      def searchTermReprs(rOrU: String, reprId: String): Seq[QueryResult] =
+          val mark = dat.value
+          val primaryReprId = mark.primaryRepr
+          val usrContentReprId = mark.userContentRepr.getOrElse("")
 
-        // both of these must contain at least 1 element
-        cleanedQuery.view.zip(scoredReprs).map { case (q, scoredReprsForThisWord) =>
+          // each element of `scoredReprs` contains a collection of representations for the respective word in
+          // `cleanedQuery`, so zip them together, pull out the requested reprId, and multiply the MongoDB search
+          // scores `dbScore` by the query word counts `q._2`
+          def searchTermReprs(rOrU: String, reprId: String): Seq[QueryResult] =
 
-          // only use unscored repr if a scored repr was not found by MongoDB Text Index search
-          lazy val mbUnscored = unscoredReprs.get(reprId)
-          val mbR = scoredReprsForThisWord.get(reprId).orElse(mbUnscored)
-          val dbScore = mbR.flatMap(_.score).getOrElse(0.0)
+            // both of these must contain at least 1 element
+            cleanedQuery.view.zip(scoredReprs).map { case (q, scoredReprsForThisWord) =>
 
-          def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
-          logger1.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
+              // only use unscored repr if a scored repr was not found by MongoDB Text Index search
+              lazy val mbUnscored = unscoredReprs.get(reprId)
+              val mbR = scoredReprsForThisWord.get(reprId).orElse(mbUnscored)
+              val dbScore = mbR.flatMap(_.score).getOrElse(0.0)
 
-          QueryResult(q._1, mbR, dbScore, q._2)
-        }.force
+              def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
+              logger1.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
 
-      val siteReprs = searchTermReprs("R", primaryReprId)    // website-content representations
-      val userReprs = searchTermReprs("U", usrContentReprId) //    user-content representations
+              QueryResult(q._1, mbR, dbScore, q._2)
+            }.force
 
-      // technically we should update knownTime here to the time of repr computation, but it's not really important
-      // in this case b/c what we really want is "time that this data could have been known"
-      val d = dat.withValue(ReprsPair(siteReprs, userReprs))
-      logger1.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
-      d
+          val siteReprs = searchTermReprs("R", primaryReprId)    // website-content representations
+          val userReprs = searchTermReprs("U", usrContentReprId) //    user-content representations
+
+          // technically we should update knownTime here to the time of repr computation, but it's not really important
+          // in this case b/c what we really want is "time that this data could have been known"
+          val d = dat.withValue(ReprsPair(siteReprs, userReprs))
+          logger1.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
+          d
+        }
+      }
     }
   }
 }
@@ -119,10 +130,17 @@ class ReprsStream @Inject() (marksStream: MarksStream,
   * Represented marks stream as the representations by themselves aren't that useful, are they?
   */
 @Singleton
-class RepredMarks @Inject() (marks: MarksStream, reprs: ReprsStream)
-                            (implicit materializer: Materializer)
-    extends DataStream[(MSearchable, ReprsPair)] {
+class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
+                           (implicit mat: Materializer)
+    extends DataStream[RepredMarks.typ] {
 
+  import RepredMarks._
+
+  // see comment on JoinWithable as to why the cast is necessary here
   import com.hamstoo.stream.Join.JoinWithable
-  override def hubSource: SourceType = marks().joinWith(reprs()) { case x => x }.asInstanceOf[SourceType]
+  override def in: SourceType[typ] = marks().joinWith(reprs()) { case x => x }.asInstanceOf[SourceType[typ]]
+}
+
+object RepredMarks {
+  type typ = (MSearchable, ReprsPair)
 }

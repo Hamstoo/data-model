@@ -4,7 +4,7 @@ import java.util.Locale
 
 import breeze.linalg.{DenseMatrix, DenseVector, svd}
 import com.google.inject.Inject
-import com.hamstoo.daos.MongoRepresentationDao.{CONTENT_WGT, KWORDS_WGT}
+import com.hamstoo.daos.RepresentationDao.{CONTENT_WGT, KWORDS_WGT}
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation.{Vec, VecEnum, _}
 import com.hamstoo.utils
@@ -459,7 +459,7 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
   def query2Vecs(query: String): Query2VecsType = {
 
     // don't use a Set here, allow words to be specified more than once as a potential way for users to tailor queries
-    val cleanedQuery: WordCountsType = utils.tokenize(utils.parse(query))
+    val cleanedQuery: WordCountsType = utils.tokenize(utils.parse(query).replaceAll("\"", ""))
       .filter(_.nonEmpty)
       .flatMap(termRgx.findFirstMatchIn)
       .map(_.group(1).replaceAll("’", "'").replaceAll(s"($spcrRgx)+", ""))

@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.daos.MongoUserDao
+import com.hamstoo.daos.UserDao
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
@@ -70,7 +70,7 @@ case class UserData(
   usernameLower = username.map(_.toLowerCase) // impossible to set any other way
 
   /** Assign a username consisting of first/last name and a random number. */
-  def assignUsername()(implicit userDao: MongoUserDao, ec: ExecutionContext): Future[UserData] = {
+  def assignUsername()(implicit userDao: UserDao, ec: ExecutionContext): Future[UserData] = {
     val startWith = firstName.getOrElse("") + lastName.getOrElse("") match {
       case User.VALID_USERNAME(alpha, _) => alpha
       case _ => Random.alphanumeric.take(6).mkString.toLowerCase

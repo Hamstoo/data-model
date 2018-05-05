@@ -75,7 +75,7 @@ class RepresentationTests extends FlatSpecWithMatchers {
   it should "(UNIT) be kurt-able" in {
     val randGen = new Random(0)
     val v: Vec = (0 until 1000).map(_ => randGen.nextGaussian)
-    v.kurt shouldEqual 2.95 +- 2.96 // normal distribution should be 3.0
+    v.kurt shouldEqual 2.95 +- 0.01 // normal distribution should be 3.0
     v0.kurt shouldEqual 0.666667 +- 1e-5
   }
 

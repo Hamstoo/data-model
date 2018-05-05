@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos.auth
 
 import com.hamstoo.test.env.MongoEnvironment
@@ -8,7 +11,7 @@ import org.scalatest.OptionValues
 /**
   * CRUD Unit tests for class MongoOAuth1InfoDao
   */
-class MongoAuth1InfoDaoTests
+class Auth1InfoDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler

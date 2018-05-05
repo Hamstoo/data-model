@@ -4,7 +4,7 @@ import java.util.Locale
 
 import com.google.inject.name.Named
 import com.google.inject.Inject
-import com.hamstoo.daos.MongoVectorsDao
+import com.hamstoo.daos.WordVectorDao
 import com.hamstoo.models.Representation.Vec
 import play.api.Logger
 import play.api.libs.ws._
@@ -33,7 +33,7 @@ object Vectorizer {
   */
 @com.google.inject.Singleton
 class Vectorizer @Inject() (httpClient: WSClient,
-                            vectorsDao: MongoVectorsDao,
+                            vectorsDao: WordVectorDao,
                             @Named("vectors.link") vectorsLink: String) {
 
   import Vectorizer._

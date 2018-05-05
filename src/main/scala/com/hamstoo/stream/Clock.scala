@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.stream
 
 import akka.NotUsed
@@ -22,7 +25,7 @@ import scala.concurrent.{Await, Promise}
 case class Clock @Inject() (@Named(ClockBegin.name) begin: ClockBegin.typ,
                             @Named(ClockEnd.name) end: ClockEnd.typ,
                             @Named(ClockInterval.name) interval: ClockInterval.typ)
-                           (implicit materializer: Materializer) extends DataStream[TimeStamp] {
+                           (implicit mat: Materializer) extends DataStream[TimeStamp] {
 
   override val logger = Logger(classOf[Clock])
 
@@ -44,7 +47,7 @@ case class Clock @Inject() (@Named(ClockBegin.name) begin: ClockBegin.typ,
   }
 
   /** Source derived from an iterator, not a range, for one so that intervals may eventually be made irregular. */
-  override protected val hubSource: Source[Tick, NotUsed] = Source.fromIterator { () =>
+  override protected val in: Source[Tick, NotUsed] = Source.fromIterator { () =>
 
     new Iterator[Tick] {
       var currentTime: TimeStamp = begin

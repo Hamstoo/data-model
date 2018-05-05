@@ -25,7 +25,7 @@ class StreamModule extends BaseModule {
   /** Configure optional default values. */
   override def configure(): Unit = {
     super.configure()
-    logger.info(s"Configuring module: ${classOf[StreamModule].getName}")
+    logger.debug(s"Configuring module: ${classOf[StreamModule].getName}")
 
     // see, using this method of declaring optional defaults requires StreamModule to know about them
     LogLevelOptional ?= None
@@ -60,7 +60,7 @@ class StreamModule extends BaseModule {
     */
   @Provides @Singleton
   def provideStreamInjector(injector: Injector): WrappedInjector = {
-    logger.info(s"Stream injector: ${injector.hashCode}")
+    logger.debug(s"Stream injector: ${injector.hashCode}")
     Some(injector)
   }
 }

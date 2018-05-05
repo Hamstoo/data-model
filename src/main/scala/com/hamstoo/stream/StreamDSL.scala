@@ -8,6 +8,8 @@ import com.hamstoo.models.MarkData
 import com.hamstoo.stream.Join.JoinWithable
 import com.hamstoo.utils.TimeStamp
 import play.api.Logger
+
+import scala.collection.{Traversable, immutable}
 //import spire.algebra.NRoot
 
 import scala.reflect.{ClassTag, classTag}
@@ -16,6 +18,18 @@ import scala.reflect.{ClassTag, classTag}
   * The DataStream DSL.
   */
 object StreamDSL {
+
+  /** DSL for DataStreams of collection types. */
+  implicit class StreamColDSL[T](private val s: DataStream[Traversable[T]]) extends AnyVal {
+
+    /** DataStreams of Traversables can be flattened. */
+    def flatten(implicit m: Materializer): DataStream[T] = new DataStream[T] {
+      override def in: SourceType[T] = s().mapConcat { d: Datum[Traversable[T]] =>
+        val values: Traversable[T] = d.value
+        values.map { v: T => d.withValue[T](v) }.to[immutable.Iterable]
+      }
+    }
+  }
 
   /**
     * Operations between pairs of DataStreams.
@@ -27,7 +41,7 @@ object StreamDSL {
 
     /** Map a stream of Datum[A]s to Datum[O]s. */
     def map[O](f: A => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
-      override def hubSource: SourceType = s().map(_.mapValue(f))
+      override def in: SourceType[O] = s().map(_.mapValue(f))
     }
 
     /** This really shouldn't be part of the interface, so just pass `ev.m` explicitly when necessary. */
@@ -56,7 +70,7 @@ object StreamDSL {
 
     /** Invoke JoinWithable.joinWith on the provided streams. */
     def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
-      override def hubSource: SourceType = s().joinWith(that())(op).asInstanceOf[SourceType]
+      override val in: SourceType[O] = s().joinWith(that())(op).asInstanceOf[SourceType[O]]
     }
 
     /** The `{ case x => x }` actually does serve a purpose; it unpacks x into a 2-tuple, which `identity` cannot do. */

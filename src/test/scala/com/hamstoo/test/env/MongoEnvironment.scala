@@ -1,8 +1,11 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.test.env
 
 import com.github.simplyscala.{MongoEmbedDatabase, MongodProps}
 import com.hamstoo.daos._
-import com.hamstoo.daos.auth.{MongoOAuth1InfoDao, MongoOAuth2InfoDao, MongoPasswordInfoDao}
+import com.hamstoo.daos.auth.{OAuth1InfoDao, OAuth2InfoDao, PasswordInfoDao}
 import com.hamstoo.services.HighlightsIntersectionService
 import com.hamstoo.utils.getDbConnection
 import de.flapdoodle.embed.mongo.distribution.Version
@@ -36,10 +39,10 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   lazy val fongo: MongodProps = mongoStart(mongoPort, mongoVersion)
 
   override def beforeAll(): Unit = {
-    println(s"Starting MongoDB:$mongoVersion instance on port: $mongoPort")
+    println(s"Starting MongoDB:$mongoVersion instance on port: ${DataInfo.mongoPort}")
     fongo // start fake mongodb
     Thread.sleep(1000) // delay to successful start
-    dbConn = Some(getDbConnection(dbUri))
+    dbConn = Some(getDbConnection(DataInfo.config.getString("mongodb.uri")))
   }
 
   override def afterAll(): Unit = shutdownMongo()
@@ -57,7 +60,7 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   var dbConn: Option[(MongoConnection, String)] = None // made this a var to prevent usage of it before `beforeAll` is called
 
   // this (lightweight) function is called every time a DAO method is invoked
-  lazy val db: () => Future[DefaultDB] = () => {
+  lazy implicit val db: () => Future[DefaultDB] = () => {
     if (dbConn.isEmpty)
       throw new Exception("dbConn cannot be used before beforeAll is called")
     dbConn.get._1.database(dbConn.get._2)
@@ -66,22 +69,22 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   // for defining custom query, only for tests purpose
   def coll(name: String): Future[BSONCollection] = db().map(_ collection name)
 
-
-  lazy val statsDao = new MongoUserStatsDao(db)
-  lazy implicit val userDao = new MongoUserDao(db)
-  lazy implicit val urlDuplicatesDao = new MongoUrlDuplicatesDao(db)
-  lazy implicit val marksDao = new MongoMarksDao(db)
-  lazy implicit val pagesDao = new MongoPagesDao(db)
-  lazy val notesDao = new MongoInlineNoteDao(db)
-  lazy val hlightsDao = new MongoHighlightDao(db)
-  lazy val reprsDao = new MongoRepresentationDao(db)
-  lazy val eratingsDao = new MongoExpectedRatingDao(db)
-  lazy val vectorsDao = new MongoVectorsDao(db)
-  lazy val auth1Dao = new MongoOAuth1InfoDao(db)
-  lazy val auth2Dao = new MongoOAuth2InfoDao(db)
-  lazy val passDao = new MongoPasswordInfoDao(db)
-  lazy val searchDao = new MongoSearchStatsDao(db)
-  lazy val tokenDao = new MongoUserTokenDao(db)
+  // could instead use an injector here, but implementing that would involve work, and this code would look the same
+  lazy val statsDao = new UserStatDao
+  lazy implicit val userDao = new UserDao
+  lazy implicit val urlDuplicatesDao = new UrlDuplicateDao
+  lazy implicit val marksDao = new MarkDao
+  lazy implicit val pagesDao = new PageDao
+  lazy implicit val hlightsDao = new HighlightDao
+  lazy val notesDao = new InlineNoteDao
+  lazy val reprsDao = new RepresentationDao
+  lazy val eratingsDao = new ExpectedRatingDao
+  lazy val vectorsDao = new WordVectorDao
+  lazy val auth1Dao = new OAuth1InfoDao
+  lazy val auth2Dao = new OAuth2InfoDao
+  lazy val passDao = new PasswordInfoDao
+  lazy val searchDao = new SearchStatDao
+  lazy val tokenDao = new UserTokenDao
   lazy val hlIntersectionSvc = new HighlightsIntersectionService(hlightsDao)
   lazy val userSuggDao = new UserSuggestionDao(db)
 }

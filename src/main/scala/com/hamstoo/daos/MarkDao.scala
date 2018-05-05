@@ -1,8 +1,14 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
 
 import akka.NotUsed
+import akka.stream.Materializer
+import akka.stream.scaladsl.Source
+import com.google.inject.Inject
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import com.hamstoo.models.Mark._
@@ -21,20 +27,20 @@ import reactivemongo.bson._
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
 
-object MongoMarksDao {
+object MarkDao {
   var migrateData: Boolean = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
 }
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
   */
-class MongoMarksDao(db: () => Future[DefaultDB])
-                   (implicit userDao: MongoUserDao,
-                    urlDuplicatesDao: MongoUrlDuplicatesDao,
-                    ex: ExecutionContext) {
+class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
+                        userDao: UserDao,
+                        urlDuplicatesDao: UrlDuplicateDao,
+                        ec: ExecutionContext) {
 
   import com.hamstoo.utils._
-  val logger: Logger = Logger(classOf[MongoMarksDao])
+  val logger: Logger = Logger(classOf[MarkDao])
 
   val collName: String = "entries"
   private val dbColl: () => Future[BSONCollection] = () => db().map(_ collection collName)
@@ -102,10 +108,11 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * @return          None if no such mark is found.
     */
   def retrieveInsecure(id: ObjectId, timeFrom: Option[TimeStamp] = None): Future[Option[Mark]] =
-    retrieveInsecureSeq(id :: Nil, timeFrom = timeFrom).map(_.headOption)
+    // note that the `n = 1` here may have no effect, see the "batch size" comment in ExtendedQB.coll
+    retrieveInsecureSeq(id :: Nil, timeFrom = timeFrom, n = 1).map(_.headOption)
 
   /** Retrieves a list of marks by IDs, ignoring user authorization permissions. */
-  def retrieveInsecureSeq(ids: Seq[ObjectId], timeFrom: Option[TimeStamp] = None,
+  def retrieveInsecureSeq(ids: Seq[ObjectId], timeFrom: Option[TimeStamp] = None, n: Int = -1,
                           begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[Mark]] = {
     logger.debug(s"Retrieving (insecure) ${ids.size} marks (timeFrom=${timeFrom.map(_.tfmt)}, begin=${begin.map(_.tfmt)}, end=${end.map(_.tfmt)}); first, at most, 5: ${ids.take(5)}")
     for {
@@ -115,7 +122,7 @@ class MongoMarksDao(db: () => Future[DefaultDB])
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
 
-      seq <- c.find(d :~ sel).coll[Mark, Seq]()
+      seq <- c.find(d :~ sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq](n = n)
     } yield {
       logger.debug(s"Retrieved (insecure) ${seq.size} marks; first, at most, 5: ${seq.take(5).map(_.id)}")
       seq
@@ -163,6 +170,19 @@ class MongoMarksDao(db: () => Future[DefaultDB])
   /** Retrieves the original creation time of a mark. */
   def retrieveCreationTime(id: String): Future[Option[TimeStamp]] =
     retrieveInsecureHist(id).map(_.lastOption.map(_.timeFrom))
+
+  /** If a current mark can't be found, then look for a merged mark that might have subsumed it. */
+  def retrieveInsecureOrSubsumed(id: ObjectId): Future[Option[Mark]] = for {
+    m0 <- retrieveInsecure(id)
+
+    // if a current mark can't be found, then look for a merged mark that might have subsumed it
+    m1 <- if (m0.isDefined) Future.successful(m0) else for {
+      retiredMarks <- retrieveInsecureHist(id)
+      _ = logger.debug(s"Unable to find mark $id; searching merged/retired marks: ${retiredMarks.flatMap(_.mergeId)}")
+      mrgId = retiredMarks.headOption.flatMap(_.mergeId)
+      m1 <- if (mrgId.isDefined) retrieveInsecure(mrgId.get) else Future.successful(None)
+    } yield m1
+  } yield m1
 
   /**
     * Retrieves a current mark by user and URL, None if not found.  This is used in the Chrome extension via the
@@ -490,8 +510,8 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     * TODO: This method should be moved into a MongoShareableDao class, similar to MongoAnnotationDao.
     */
   def updateSharedWith(m: Mark, nSharedTo: Int,
-                       readOnly : Option[(SharedWith.Level.Value, Option[UserGroup])],
-                       readWrite: Option[(SharedWith.Level.Value, Option[UserGroup])]): Future[Mark] = {
+                       readOnly : (SharedWith.Level.Value, Option[UserGroup]),
+                       readWrite: (SharedWith.Level.Value, Option[UserGroup])): Future[Mark] = {
     logger.debug(s"Sharing mark ${m.id} with $readOnly and $readWrite")
     val ts = TIME_NOW // use the same time stamp everywhere
     val so = Some(UserGroup.SharedObj(m.id, ts))
@@ -501,10 +521,10 @@ class MongoMarksDao(db: () => Future[DefaultDB])
     for {
       // these can return different id'ed groups than were passed in (run these sequentially so that if they're the
       // same only one instance will be written to the database)
-      ro <- saveGroup(readOnly .flatMap(_._2))
-      rw <- saveGroup(readWrite.flatMap(_._2))
-      sw = SharedWith(readOnly  = readOnly .flatMap(x => ShareGroup.xapply(x._1, ro)),
-                      readWrite = readWrite.flatMap(x => ShareGroup.xapply(x._1, rw)), ts = ts)
+      ro <- saveGroup(readOnly ._2)
+      rw <- saveGroup(readWrite._2)
+      sw = SharedWith(readOnly  = ShareGroup.xapply(readOnly ._1, ro),
+                      readWrite = ShareGroup.xapply(readWrite._1, rw), ts = ts)
 
       // this isn't exactly right as it's double counting any previously shared-with emails
       //nSharedTo <- sw.emails.map(_.size)

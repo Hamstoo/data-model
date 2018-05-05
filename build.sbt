@@ -6,13 +6,16 @@ import scala.sys.process.Process
 
 name := "data-model"
 
-// We're no longer doing anything with -SNAPSHOT versions.  If you're working in a branch where you want to
-// temporarily put -SNAPSHOT in the version file so that your artifacts (may) get overwritten each time you
-// push, then knock yourself out.  But note it's unclear that Artifactory, as currently configured, allows
-// for the automatic overwriting of such JAR files; and also, circle.yml caches the ~/.ivy2 directory of previous
-// builds so you'll probably have to "Rebuild without cache" anyway for the new JAR to take effect.
+// Note that TravisCI (and as was formerly the case with CircleCI) caches the ~/.ivy2 directory of previous builds,
+// so even if you're using a -SNAPSHOT build which will overwrite the artifacts at Artifactory, you'll still have
+// to manually delete the cache of whichever project is referencing data-model to get it to pick up the new artifacts.
+// The `git rev-parse` command below returns weird branch names, "HEAD" and "undefined", in TravisCI.  More here:
+//   https://graysonkoonce.com/getting-the-current-branch-name-during-a-pull-request-in-travis-ci/
 version := {
-  val branch = Process("git rev-parse --abbrev-ref HEAD").lineStream.head
+  val gitbranch = Process("git rev-parse --abbrev-ref HEAD").lineStream.head
+  val branch = scala.util.Try(sys.env( // the below "false" will never be "true", rather it will be the PR# o/w
+    if (sys.env("TRAVIS_PULL_REQUEST") == "false") "TRAVIS_BRANCH" else "TRAVIS_PULL_REQUEST_BRANCH"
+  )).getOrElse(gitbranch)
   Source.fromFile("VERSION").getLines find (_ => true) map { l =>
     (if (branch == "master") "" else branch + "-") + l.trim
   } getOrElse "latest"

@@ -15,7 +15,7 @@ import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
-import scala.collection.mutable
+import scala.collection.{TraversableLike, mutable}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -194,7 +194,11 @@ package object utils {
       */
     def binaryPrefix: mutable.WrappedArray[Byte] = s.getBytes.take(URL_PREFIX_LENGTH)
 
-    def binPrfxComplement: String = s.substring(0, URL_PREFIX_COMPLEMENT_LENGTH)
+    def binPrfxComplement: String = s.take(URL_PREFIX_COMPLEMENT_LENGTH)
+  }
+
+  implicit class ExtendedBytes(private val ary: Array[Byte]) extends AnyVal {
+    def binaryPrefix: mutable.WrappedArray[Byte] = ary.take(URL_PREFIX_LENGTH)
   }
 
   /**
@@ -206,6 +210,8 @@ package object utils {
     def coalesce(ifNaN: Double): Double = if (d.isNaN) ifNaN else d
     def coalesce0(implicit ev: Numeric[Double]): Double = coalesce(ev.zero) // using Numeric typeclass
     def or0: Double = coalesce0
+    def ~=(bprecision: (Double, Double)) = { val (b, p) = bprecision; (d - b).abs < p }
+    def ~=(b: Double): Boolean = this.~=((b, 1e-8))
   }
 
   /**

@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import com.hamstoo.models.{MarkData, Representation}
@@ -10,7 +13,7 @@ import scala.util.Random
 /**
   * MongoRepresentationDao tests.
   */
-class MongoRepresentationDaoTests
+class RepresentationDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment
     with FutureHandler {
