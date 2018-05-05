@@ -17,7 +17,7 @@ abstract class Dao(collName: String, clazz: Class[_])(implicit ex: ExecutionCont
   val logger: Logger = Logger(clazz)
 
   /** Return fresh collection instance */
-  final def coll: () => Future[BSONCollection] =
+  final def dbColl: () => Future[BSONCollection] =
     () => db().map(_.collection(collName))
 
 

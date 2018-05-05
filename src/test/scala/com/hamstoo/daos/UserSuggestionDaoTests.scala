@@ -8,7 +8,7 @@ import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.DataInfo._
 import org.scalatest.OptionValues
 
-class MongoUserSuggestionDaoTests
+class UserSuggestionDaoTests
   extends FlatSpecWithMatchers
     with FutureHandler
     with OptionValues

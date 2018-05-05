@@ -9,15 +9,12 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import com.google.inject.Inject
-import akka.stream.Materializer
-import akka.stream.scaladsl.Source
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
 import com.mohiva.play.silhouette.api.exceptions.NotAuthorizedException
-import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
@@ -34,16 +31,13 @@ object MarkDao {
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
   */
-class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
+class MarkDao @Inject()(implicit val db: () => Future[DefaultDB],
                         userDao: UserDao,
                         urlDuplicatesDao: UrlDuplicateDao,
-                        ec: ExecutionContext) {
+                        ec: ExecutionContext) extends Dao("entries", classOf[MarkDao]) {
 
   import com.hamstoo.utils._
-  val logger: Logger = Logger(classOf[MarkDao])
 
-  val collName: String = "entries"
-  private val dbColl: () => Future[BSONCollection] = () => db().map(_ collection collName)
   private def reprsColl(): Future[BSONCollection] = db().map(_ collection "representations")
   private def pagesColl(): Future[BSONCollection] = db().map(_ collection "pages")
 

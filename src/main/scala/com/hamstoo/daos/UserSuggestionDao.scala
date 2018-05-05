@@ -2,6 +2,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.google.inject.Inject
 import com.hamstoo.models.SharedWith.ShareWithLevel
 import com.hamstoo.models.UserSuggestion
 import com.hamstoo.models.UserSuggestion._
@@ -17,7 +18,8 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 /***
   * Provide methods for operation with username-suggestion collection
   */
-class UserSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: ExecutionContext)
+class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB],
+                                  ec: ExecutionContext)
   extends Dao("user-suggestion", classOf[UserSuggestionDao]) {
 
 
@@ -27,7 +29,7 @@ class UserSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: ExecutionC
       Index(US_USERNAME -> Ascending :: Nil, unique = true) % s"bin-$US_USERNAME-1-uniq" ::
       Index(US_EMAIL -> Ascending :: Nil, unique = true) % s"bin-$US_EMAIL-1-uniq" :: Nil toMap
   
-  Await.result(coll().map(_.indexesManager.ensure(indxs)), 389 seconds)
+  Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 389 seconds)
 
   /***
     * Insert new user suggestion to collection
@@ -37,7 +39,7 @@ class UserSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: ExecutionC
   def insert(us: UserSuggestion): Future[UserSuggestion] = {
     logger.debug(s"Inserting new user suggestion for user: ${us.uuid}")
     for {
-      c <- coll()
+      c <- dbColl()
       insRes <- c.insert(us)
       _ <- insRes.failIfError
     } yield {
@@ -82,7 +84,7 @@ class UserSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: ExecutionC
     logger.debug(s"Retrieving suggestion for $uuid by prefix: {$prefix}")
 
     for {
-      c <- coll()
+      c <- dbColl()
 
       // check by share level
       byLevel = d :~ US_LEVEL -> level
@@ -115,7 +117,7 @@ class UserSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: ExecutionC
     logger.debug(s"Retrieving user suggestion by $fieldName for user: $uuid")
 
     for {
-      c <- coll()
+      c <- dbColl()
       optSugg <- c.find(regexMatcher(fieldName, prefix)).one[UserSuggestion]
     } yield {
       logger.debug(s"$optSugg was retrieved")

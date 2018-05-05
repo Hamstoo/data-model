@@ -7,7 +7,6 @@ import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.{UserData, _}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
-import com.hamstoo.utils
 import com.hamstoo.utils.DataInfo._
 import com.mohiva.play.silhouette.api.LoginInfo
 import org.scalatest.OptionValues
@@ -170,7 +169,7 @@ class UserDaoTests
     marksDao.insert(m1).futureValue shouldEqual m1
 
     // change mark to be public
-    marksDao.updateSharedWith(m1, 1, Some((SharedWith.Level.PUBLIC, None)), Some((SharedWith.Level.PUBLIC, None ))).
+    marksDao.updateSharedWith(m1, 1, (SharedWith.Level.PUBLIC, Option.empty[UserGroup]), (SharedWith.Level.PUBLIC, Option.empty[UserGroup])).
       futureValue.id shouldEqual m1.id
 
     // look for usernames of users who has public marks
