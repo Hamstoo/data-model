@@ -3,27 +3,38 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.hamstoo.models.SharedWith.ShareWithLevel
-import com.hamstoo.models.{BSONHandlers, SharedWith}
+import com.hamstoo.models.UserSuggestion
+import com.hamstoo.models.UserSuggestion._
 import com.hamstoo.utils._
 import reactivemongo.api.DefaultDB
-import reactivemongo.bson.{BSONArray, BSONDocument, BSONDocumentHandler, BSONRegex, Macros}
+import reactivemongo.api.indexes.Index
+import reactivemongo.api.indexes.IndexType.Ascending
+import reactivemongo.bson.{BSONArray, BSONDocument, BSONRegex}
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration._
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 /***
   * Provide methods for operation with username-suggestion collection
   */
-class UsernameSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: ExecutionContext)
-  extends Dao("user-suggestion", classOf[UsernameSuggestionDao]) {
+class UserSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: ExecutionContext)
+  extends Dao("user-suggestion", classOf[UserSuggestionDao]) {
 
-  import UsernameSuggestionDao._
+
+  // indexes with names for this mongo collection
+  private val indxs: Map[String, Index] =
+    Index(US_CREATED -> Ascending :: Nil) % s"bin-$US_CREATED-1" :: 
+      Index(US_USERNAME -> Ascending :: Nil, unique = true) % s"bin-$US_USERNAME-1-uniq" ::
+      Index(US_EMAIL -> Ascending :: Nil, unique = true) % s"bin-$US_EMAIL-1-uniq" :: Nil toMap
+  
+  Await.result(coll().map(_.indexesManager.ensure(indxs)), 389 seconds)
 
   /***
     * Insert new user suggestion to collection
     * @param us - user suggestion that must be inserted
     * @return   - inserted user suggestion
     */
-  def insert(us: UsernameSuggestion): Future[UsernameSuggestion] = {
+  def insert(us: UserSuggestion): Future[UserSuggestion] = {
     logger.debug(s"Inserting new user suggestion for user: ${us.uuid}")
     for {
       c <- coll()
@@ -41,7 +52,7 @@ class UsernameSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: Execut
     * @param prefix - search prefix
     * @return       - optional user suggestion
     */
-  def retrieveByUsername(uuid: UUID, prefix: String): Future[Option[UsernameSuggestion]] =
+  def retrieveByUsername(uuid: UUID, prefix: String): Future[Option[UserSuggestion]] =
     retrieve(uuid, prefix, US_USERNAME)
 
   /***
@@ -50,7 +61,7 @@ class UsernameSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: Execut
     * @param prefix - search prefix
     * @return       - optional user suggestion
     */
-  def retrieveByEmail(uuid: UUID, prefix: String): Future[Option[UsernameSuggestion]] =
+  def retrieveByEmail(uuid: UUID, prefix: String): Future[Option[UserSuggestion]] =
     retrieve(uuid, prefix, US_EMAIL)
 
 
@@ -67,7 +78,7 @@ class UsernameSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: Execut
                           prefix: String,
                           level: ShareWithLevel,
                           offset: Int = 0,
-                          limit: Int = 20): Future[Seq[UsernameSuggestion]] = {
+                          limit: Int = 20): Future[Seq[UserSuggestion]] = {
     logger.debug(s"Retrieving suggestion for $uuid by prefix: {$prefix}")
 
     for {
@@ -83,7 +94,9 @@ class UsernameSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: Execut
       byEmail = regexMatcher(US_EMAIL, prefix)
 
       sel = d :~ "$and" -> BSONArray(byLevel, d :~ "$or" -> BSONArray(byUsername, byEmail))
-      suggs <- c.find(sel).pagColl[UsernameSuggestion, Seq](offset, limit)
+      suggs <- c.find(sel)
+        .sort(d :~ US_CREATED -> 1)
+        .pagColl[UserSuggestion, Seq](offset, limit)
     } yield {
       logger.debug(s"${suggs.size} user suggestion was retrieved for user: $uuid")
       suggs
@@ -98,12 +111,12 @@ class UsernameSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: Execut
     * @return          - user suggestion, if exist.
     */
   // should be add level parameter here?
-  private def retrieve(uuid: UUID, prefix: String, fieldName: String): Future[Option[UsernameSuggestion]] = {
+  private def retrieve(uuid: UUID, prefix: String, fieldName: String): Future[Option[UserSuggestion]] = {
     logger.debug(s"Retrieving user suggestion by $fieldName for user: $uuid")
 
     for {
       c <- coll()
-      optSugg <- c.find(regexMatcher(fieldName, prefix)).one[UsernameSuggestion]
+      optSugg <- c.find(regexMatcher(fieldName, prefix)).one[UserSuggestion]
     } yield {
       logger.debug(s"$optSugg was retrieved")
       optSugg
@@ -123,33 +136,4 @@ class UsernameSuggestionDao(val db: () => Future[DefaultDB])(implicit ex: Execut
       // 'i' flag is case insensitive https://docs.moqngodb.com/manual/reference/operator/query/regex/
       fieldName -> BSONRegex(".*" + prefix.toLowerCase + ".*", "i")
   }
-}
-
-object UsernameSuggestionDao extends BSONHandlers {
-
-  import com.github.dwickern.macros.NameOf._
-
-  type SharedLevel = SharedWith.Level.Value
-
-  /***
-    * Store user suggestion information
-    * @param uuid     - user that made share
-    * @param username - to whom username share was made
-    * @param email    - to whom email share was made
-    * @param level    - share level
-    */
-  case class UsernameSuggestion(uuid: UUID,
-                                username: Option[String],
-                                email: Option[String],
-                                level: ShareWithLevel = SharedWith.Level0.PRIVATE,
-                                created: TimeStamp = TIME_NOW)
-
-  val US_UUID: String = nameOf[UsernameSuggestion](_.uuid)
-  val US_USERNAME: String = nameOf[UsernameSuggestion](_.username)
-  val US_EMAIL: String = nameOf[UsernameSuggestion](_.email)
-  val US_LEVEL: String = nameOf[UsernameSuggestion](_.level)
-  val US_CREATED: String = nameOf[UsernameSuggestion](_.created)
-
-  implicit val fmt: BSONDocumentHandler[UsernameSuggestion] =
-    Macros.handler[UsernameSuggestion]
 }

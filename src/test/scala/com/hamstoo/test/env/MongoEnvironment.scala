@@ -83,4 +83,5 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   lazy val searchDao = new MongoSearchStatsDao(db)
   lazy val tokenDao = new MongoUserTokenDao(db)
   lazy val hlIntersectionSvc = new HighlightsIntersectionService(hlightsDao)
+  lazy val userSuggDao = new UserSuggestionDao(db)
 }
