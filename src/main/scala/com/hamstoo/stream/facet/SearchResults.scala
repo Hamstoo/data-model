@@ -173,7 +173,9 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
       }
 
       val endTime: TimeStamp = System.currentTimeMillis()
-      logger1.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}' in ${(endTime - startTime) / 1e3}%.3f seconds")
+      val elapsed = (endTime - startTime) / 1e3
+      if (elapsed > 0.1)
+        logger1.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}' in $elapsed%.3f seconds")
 
       mbPv.flatMap { pv =>
 
@@ -353,7 +355,7 @@ object SearchResults {
       // TODO: these first 2 variation lines are NOT THREADSAFE (but how _much_ does it really matter in this case?)
       preproc.par.foreach { case (term, j) => // 1.399 or 1.332 seconds
       //lowText.indices.par.foreach { i => // 1.482 seconds
-        for(i <- lowText.indices/*; (term, j) <- preproc*/) yield { // 1.583 seconds
+        for(i <- lowText.indices/*; (term, j) <- preproc*/) yield { // 1.583 seconds (for 15 marks total search time)
           if ((i == 0 || lowText(i - 1).isWhitespace) &&
               term.forall { case (ch, k) => lowText.isDefinedAt(i + k) && ch == lowText(i + k) }) {
 // TODO: try view/force or "lazy find" like in Join
@@ -368,7 +370,7 @@ object SearchResults {
             // this reduces to 1/sqrt for each char)
             val charScore = math.sqrt(term.length.toDouble - 0.25 * nCaps) / term.length
             val nDuplicates = cleanedQuery.map(_._2).applyOrElse(j, (_: Int) => 1) // phrases won't have duplicates
-            loggerC.trace(f"'$term' at $i (nDuplicates=$nDuplicates, charScore=$charScore%.3f)")
+            loggerC.trace(f"'${term.map(_._1).mkString("")}' at $i (nDuplicates=$nDuplicates, charScore=$charScore%.3f)")
             term.indices.foreach { k => tcountsUncmp(i + k) += nDuplicates * charScore }
           }
         }
@@ -376,7 +378,7 @@ object SearchResults {
 
 // TODO: at this point we know there's a match, so we could return a Future from here on and so not have to wait
 
-// TODO: another thin we could do would be to only compute previews for the top 20 marks similar to not rendering them all
+// TODO: another thing we could do would be to only compute previews for the top 20 marks similar to not rendering them all
 
       var endTime = System.currentTimeMillis
       loggerC.trace(f"Previewer[0] $markId (${rawText.length}) in ${(endTime - startTime) / 1e3}%.3f seconds")
@@ -386,7 +388,7 @@ object SearchResults {
       val COMPRESSION = 30
       val tcountsCmp = tcountsUncmp.zipWithIndex.groupBy(_._2 / COMPRESSION).toSeq.sortBy(_._1).map(_._2.map(_._1).mean)
 
-      loggerC.trace(s"  tcountsCmp = ${tcountsCmp.map(x => f"$x%.2f")}")
+      loggerC.trace(s"tcountsCmp: ${tcountsCmp.map(x => f"$x%.2f")}")
       val nMatchedPhrases = qcounts.takeRight(cleanedPhrasesSeq.size).sum
 
       // smooth tcounts using an upside down parabola
@@ -405,6 +407,7 @@ object SearchResults {
         (krn0.tail.init, krnUnscaled0.tail.init, xmid0 - 1, prvLenCmp0 - 2)
       }
 
+      loggerC.trace(s"kernel: ${kernel.map(x => f"$x%.2f")}")
       startTime = System.currentTimeMillis
 
       // this loop takes forever w/out compression, and the par/seq helps a bit too
@@ -445,12 +448,13 @@ object SearchResults {
         val scounts = tcountsUncmp.slice(begin, end) // be sure to not use smoothed here, we need binary 0/nonzero values
 
         // erase this region of `smoothed` so that it is not selected in next N_SPANS loop iteration, but don't use
-        // begin/end because any word with length > 1 will affect a larger range than just PREVIEW_LENGTH
+        // begin & end because any word with length > 1 will affect a larger range than just PREVIEW_LENGTH (so rather
+        // than multiplying prvLenCmp by 1/2 we expand it a bit to 5/6--or a 1/3 increase on either end)
         // TODO: reduce other regions of smoothed that include the same query words as just found
-        loggerC.trace(s"argmax(${COMPRESSION}x compressed) = $amaxCmp, max = $smoothedMax")
-        loggerC.trace(s"smoothedCmp = ${smoothedCmp.map(x => f"$x%.2f")}")
-        val pl2 = prvLenCmp * 2
-        (max(0, amaxCmp - pl2) until min(smoothedCmp.length, amaxCmp + pl2)).foreach { i => smoothedCmp.update(i, 0) }
+        val plX = prvLenCmp * 5 / 6
+        loggerC.trace(f"argmax (${COMPRESSION}x compressed) = $amaxCmp, max = $smoothedMax%.3f, plX = $plX")
+        loggerC.trace(s"smoothedCmp: ${smoothedCmp.map(x => f"$x%.2f")}")
+        (max(0, amaxCmp - plX) until min(smoothedCmp.length, amaxCmp + plX)).foreach { i => smoothedCmp.update(i, 0) }
 
         // this will embolden consecutive words, but not the spaces between them, which is kinda silly, but who cares
         var isOpen = false

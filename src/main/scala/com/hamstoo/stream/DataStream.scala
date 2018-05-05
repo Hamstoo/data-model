@@ -85,8 +85,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
                                 (implicit clock: Clock, mat: Materializer)
     extends DataStream[T](bufferSize) {
 
-  //override val logger = Logger(classOf[PreloadSource[T]])
-  logger.info(s"Constructing ${getClass.getSimpleName} (loadInterval=${loadInterval.toDays})")
+  logger.debug(s"Constructing ${getClass.getSimpleName} (loadInterval=${loadInterval.toDays})")
 
   /** Pre-load a *future* block of data from the data source.  `begin` should be inclusive and `end`, exclusive. */
   type PreloadCollectionType[+TT] = Traversable[Datum[TT]]

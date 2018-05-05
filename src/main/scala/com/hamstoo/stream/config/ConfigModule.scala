@@ -21,7 +21,7 @@ case class ConfigModule(config: Config) extends BaseModule {
     * `bind` to specify each binding."
     */
   override def configure(): Unit = {
-    logger.info(s"Configuring module: ${classOf[ConfigModule].getName}")
+    logger.debug(s"Configuring module: ${classOf[ConfigModule].getName}")
     bindConfigParams[String]("idfs.resource", "vectors.link", "mongodb.uri")
     IDFModel.ResourcePathOptional ?= None
   }

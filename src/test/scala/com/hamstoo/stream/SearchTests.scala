@@ -31,21 +31,24 @@ class SearchTests
                                             Seq("has", "survived", "lorem", "ipsum").map((_, 1)), "")
     val preview = previewer.apply(1.0, loremIpsum)
 
-    val s0 = """...top publishing software like Aldus PageMaker
-               |including versions of <b>Lorem</b> <b>Ipsum</b>.""".stripMargin
-    val s1 = "<b>Lorem</b> <b>ipsum</b> is simply dummy text of the printing and typesetting industry...."
+    preview._2.head._1 shouldEqual 0.1351 +- 0.0001
+    preview._2(1)._1 shouldEqual 0.0958 +- 0.0001
+    preview._2(2)._1 shouldEqual 0.0509 +- 0.0001
 
-    preview._2 shouldEqual Seq(0.1351258672497609 -> s0, 0.09582645080109109 -> s1)
+    preview._2.head._2 shouldEqual """...top publishing software like Aldus PageMaker
+                                     |including versions of <b>Lorem</b> <b>Ipsum</b>.""".stripMargin
+    preview._2(1)._2 shouldEqual """<b>Lorem</b> <b>ipsum</b> is simply dummy text of the printing and typesetting industry....""".stripMargin
+    preview._2(2)._2 shouldEqual """...own printer took a galley of type and scrambled it to
+                                   |make a type specimen book. It <b>has survived</b> not only five centuries, but also the leap into elect...""".stripMargin
   }
 
   it should "not return previews from a single word more than once" in {
     val previewer = SearchResults.Previewer("centuries", Seq("centuries").map((_, 1)), "")
     val preview = previewer.apply(1.0, loremIpsum)
 
-    val s0 = """...ype and scrambled it to
-               |make a type specimen book. It has survived not only five <b>centuries</b>, but also the leap into electronic
-               |typesetting, remaining e...""".stripMargin
-
-    preview._2 shouldEqual Seq(0.01904761904761905 -> s0)
+    preview._2.head._1 shouldEqual 0.0190 +- 0.0001
+    preview._2.head._2 shouldEqual """...ype and scrambled it to
+                                     |make a type specimen book. It has survived not only five <b>centuries</b>, but also the leap into electronic
+                                     |typesetting, remaining e...""".stripMargin
   }
 }

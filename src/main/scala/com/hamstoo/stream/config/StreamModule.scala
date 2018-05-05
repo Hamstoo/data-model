@@ -25,7 +25,7 @@ class StreamModule extends BaseModule {
   /** Configure optional default values. */
   override def configure(): Unit = {
     super.configure()
-    logger.info(s"Configuring module: ${classOf[StreamModule].getName}")
+    logger.debug(s"Configuring module: ${classOf[StreamModule].getName}")
 
     // see, using this method of declaring optional defaults requires StreamModule to know about them
     LogLevelOptional ?= None
