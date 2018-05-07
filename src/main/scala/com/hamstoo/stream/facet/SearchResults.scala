@@ -67,7 +67,9 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
   private lazy val (cleanedQuery, fsearchTermVecs) = query2Vecs
   private lazy val cleanedQSeq = cleanedQuery.map(_._1)
 
-  override val in: SourceType[typ] = repredMarks().mapAsync(16) { dat: Datum[(MSearchable, ReprsPair)] =>
+  // repredMarks will arrive according to time, but search results don't need to be ordered after here because we
+  // re-order them later anyway, so just forward them on to the next downstream consumer as soon as they're complete
+  override val in: SourceType[typ] = repredMarks().mapAsyncUnordered(16) { dat: Datum[(MSearchable, ReprsPair)] =>
 
     // unpack the pair datum
     val (mark, ReprsPair(siteReprs, userReprs)) = dat.value
@@ -175,7 +177,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
       val endTime: TimeStamp = System.currentTimeMillis()
       val elapsed = (endTime - startTime) / 1e3
       if (elapsed > 0.1)
-        loggerI.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}' in $elapsed%.3f seconds")
+        loggerI.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}, textLen=${utext.length + rtext.length}' in $elapsed%.3f seconds")
 
       mbPv.flatMap { pv =>
 
