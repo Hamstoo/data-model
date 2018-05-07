@@ -20,21 +20,28 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
   }
 
   it should "(UNIT) markdown" in {
-    val a = MarkData("", None, None, None, Some("* a lonely list item"), None)
+    val a = withComment("* a lonely list item")
     a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
-    val b = a.copy(comment = Some("hello markdown link conversion text [I'm an inline-kinda link](https://www.google.com)"))
+    val b = withComment("hello markdown link conversion text [I'm an inline-kinda link](https://www.google.com)")
     b.commentEncoded.get shouldEqual "<p>hello markdown link conversion text " +
       "<a href=\"https://www.google.com\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
       "I'm an inline-kinda link</a></p>"
   }
 
   it should "(UNIT) strikethrough (issue #316)" in {
-    val c = MarkData("", None, None, None, Some("BEFORE~~strikethrough~~then~~another~~AFTER"), None)
+    val c = withComment("BEFORE~~strikethrough~~then~~another~~AFTER")
     c.commentEncoded.get shouldEqual "<p>BEFORE<del>strikethrough</del>then<del>another</del>AFTER</p>"
-    val d = MarkData("", None, None, None, Some("~~strikethrough~~"), None)
+    val d = withComment("~~strikethrough~~")
     d.commentEncoded.get shouldEqual "<p><del>strikethrough</del></p>"
-    val e = MarkData("", None, None, None, Some("~~not struck ~~"), None)
+    val e = withComment("~~not struck ~~")
     e.commentEncoded.get shouldEqual "<p>~~not struck ~~</p>" // no good b/c of the space after the 'k'
+  }
+
+  it should "(UNIT) image" in {
+    val f = withComment("![filename](http://www.fillmurray.com/100/100)")
+    f.commentEncoded.get shouldEqual "<p><img src=\"http://www.fillmurray.com/100/100\" alt=\"filename\"></p>"
+    val g = withComment("text<img align=\"right\" width=\"100\" height=\"100\" src=\"http://www.fillmurray.com/100/100\">text")
+    g.commentEncoded.get shouldEqual "<p>text<img align=\"right\" width=\"100\" height=\"100\" src=\"http://www.fillmurray.com/100/100\">text</p>"
   }
 
   val domainLink = "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'"
@@ -42,7 +49,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
   val ipLink1 = "https://234.234.234:80/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'"
 
   it should "(UNIT) markdown should detect embedded domain link" in {
-    val orig = emptyMarkData.copy(comment = Some("hello " + StringEscapeUtils.unescapeHtml4(domainLink)))
+    val orig = withComment("hello " + StringEscapeUtils.unescapeHtml4(domainLink))
     val parsed = "<p>hello <a href=\"" + StringEscapeUtils.escapeHtml4(domainLink) +
       "\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
       StringEscapeUtils.escapeHtml4(domainLink) + "</a></p>"
@@ -50,7 +57,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
   }
 
   it should "(UNIT) markdown should detect embedded IP link" in {
-    val orig = emptyMarkData.copy(comment = Some("hello " + StringEscapeUtils.unescapeHtml4(ipLink0)))
+    val orig = withComment("hello " + StringEscapeUtils.unescapeHtml4(ipLink0))
     val parsed = "<p>hello <a href=\"" + StringEscapeUtils.escapeHtml4(ipLink0) +
       "\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
       StringEscapeUtils.escapeHtml4(ipLink0) + "</a></p>"
@@ -76,8 +83,8 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
   }
 
   it should "(UNIT) skip and whitelist <a> tagged link in function `commentEncoded`" in {
-    val orig = emptyMarkData.copy(comment = Some("hello " +
-      StringEscapeUtils.unescapeHtml4("<a href=\"https://www.google.com\">I'm an inline-kinda link</a>")))
+    val orig = withComment("hello " +
+      StringEscapeUtils.unescapeHtml4("<a href=\"https://www.google.com\">I'm an inline-kinda link</a>"))
     val parsed = "<p>hello <a href=\"" + StringEscapeUtils.escapeHtml4("https://www.google.com") +
       "\" rel=\"nofollow noopener noreferrer\" target=\"_blank\">" +
       StringEscapeUtils.escapeHtml4("I'm an inline-kinda link") + "</a></p>"
@@ -86,7 +93,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
 
   it should "(UNIT) try to prevent XSS attacks" in {
     // https://www.owasp.org/index.php/XSS_Filter_Evasion_Cheat_Sheet
-    val a = MarkData("", None, None, None, Some("<SCRIPT SRC=http://xss.rocks/xss.js></SCRIPT>"), None)
+    val a = withComment("<SCRIPT SRC=http://xss.rocks/xss.js></SCRIPT>")
     a.commentEncoded.get shouldEqual ""
     val b = a.copy(comment = Some("<IMG SRC=JaVaScRiPt:alert('XSS')>"))
     b.commentEncoded.get shouldEqual "<p><img></p>"
