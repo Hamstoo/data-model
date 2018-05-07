@@ -14,7 +14,7 @@ import com.hamstoo.utils.ExtendedTimeStamp
 import org.slf4j.LoggerFactory
 import play.api.Logger
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 
 /**
@@ -47,11 +47,11 @@ class ReprsStream @Inject()(marksStream: MarksStream,
 
   // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples
 
-  // set logging level for this ReprsStream *instance*
+  // set logging level for this ReprsStream *instance* (change prefix w/ "I" to prevent modifying the other logger)
   // "Note that you can also tell logback to periodically scan your config file"
   // https://stackoverflow.com/questions/3837801/how-to-change-root-logging-level-programmatically
-  val logger1: Logger = {
-    val logback = LoggerFactory.getLogger(classOf[ReprsStream].getName.stripSuffix("$")).asInstanceOf[LogbackLogger]
+  val loggerI: Logger = {
+    val logback = LoggerFactory.getLogger("I" + classOf[ReprsStream].getName).asInstanceOf[LogbackLogger]
     logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
     new Logger(logback)
   }
@@ -107,7 +107,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
               val dbScore = mbR.flatMap(_.score).getOrElse(0.0)
 
               def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
-              logger1.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
+              loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
 
               QueryResult(q._1, mbR, dbScore, q._2)
             }.force
@@ -118,7 +118,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
           // technically we should update knownTime here to the time of repr computation, but it's not really important
           // in this case b/c what we really want is "time that this data could have been known"
           val d = dat.withValue(ReprsPair(siteReprs, userReprs))
-          logger1.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
+          loggerI.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
           d
         }
       }

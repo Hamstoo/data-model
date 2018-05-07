@@ -15,13 +15,11 @@ import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream._
 import com.hamstoo.stream.dataset.{QueryResult, RepredMarks, ReprsPair}
-import com.hamstoo.utils
-import com.hamstoo.utils.TimeStamp
+import com.hamstoo.utils.{ExtendedDouble, TimeStamp, parse}
 import org.slf4j.LoggerFactory
 import play.api.Logger
 
 import scala.collection.{immutable, mutable}
-import scala.concurrent.ExecutionContext
 import scala.util.matching.Regex
 
 /**
@@ -58,9 +56,9 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
 
   import SearchResults._
 
-  // set logging level for this QuerySimilarities *instance*
-  val logger1: Logger = {
-    val logback = LoggerFactory.getLogger(classOf[SearchResults].getName.stripSuffix("$")).asInstanceOf[LogbackLogger]
+  // set logging level for this SearchResults *instance* (change prefix w/ "I" to prevent modifying the other logger)
+  val loggerI: Logger = {
+    val logback = LoggerFactory.getLogger("I" + classOf[SearchResults].getName).asInstanceOf[LogbackLogger]
     logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
     new Logger(logback)
   }
@@ -99,14 +97,14 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
       val rraw0 = math.max(rscore, 0.0)
 
       val previewer = Previewer(rawQuery, cleanedQuery, mark.id)
-      val utext = utils.parse(mark.mark.comment.getOrElse(""))
-      val rtext = utils.parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
+      val utext = parse(mark.mark.comment.getOrElse(""))
+      val rtext = parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
 
       val t0: TimeStamp = System.currentTimeMillis()
       val (uPhraseBoost, uPreview) = previewer(uraw0, utext)
       val (rPhraseBoost, rPreview) = previewer(rraw0, rtext)
       val t1: TimeStamp = System.currentTimeMillis()
-      logger1.trace(f"Previewer[total] for ${mark.id} in ${(t1 - t0) / 1e3}%.3f seconds")
+      logger.debug(f"Previewer[total] for ${mark.id} in ${(t1 - t0) / 1e3}%.3f seconds")
 
       val uraw = uraw0 + uPhraseBoost
       val rraw = rraw0 + rPhraseBoost
@@ -116,7 +114,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
       val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
       val rAggregate = rsem + rraw
       val mAggregate = usem + uraw
-      logger1.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
+      loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
 
       // divy up the relevance into named buckets
       val mbRelevance = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
@@ -175,7 +173,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
       val endTime: TimeStamp = System.currentTimeMillis()
       val elapsed = (endTime - startTime) / 1e3
       if (elapsed > 0.1)
-        logger1.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}' in $elapsed%.3f seconds")
+        loggerI.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}' in $elapsed%.3f seconds")
 
       mbPv.flatMap { pv =>
 
@@ -185,13 +183,14 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
         // TODO: "unless score is really high"--and make this dependent on 'sem' facet arg
         val mbPr = preview match {
           case pr if pr.nonEmpty => Some(pr)
-          case _ if (uraw + rraw) < 1e-8 => None
+          case _ if (uraw.coalesce0 + rraw.coalesce0) < 1e-8 => None
           case _ =>
+            logger.info(s"Missing preview text for ${mark.id} $uraw $rraw")
             def withDots(s: String): String = if (s.length < PREVIEW_LENGTH) s else s"${s.take(PREVIEW_LENGTH)}..."
             Some(Seq(rtext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))
         }
 
-        mbPr.map { pr => (mark, (if (logger1.isDebugEnabled) pv else "") + pr, mbRelevance) }
+        mbPr.map { pr => (mark, (if (loggerI.isDebugEnabled) pv else "") + pr, mbRelevance) }
       }
     }
 
@@ -231,10 +230,10 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
       import com.hamstoo.services.VectorEmbeddingsService.bm25Tf
       def bm25(qr: QueryResult): (Double, Double, Int) = {
 
-        if (logger1.isTraceEnabled) {
+        if (loggerI.isTraceEnabled) {
           val owm = searchTermVecs.find(_.word == qr.qword) // same documentSimilarity calculation as below
           val mu = owm.map(wm => VecSvc.documentSimilarity(wm.scaledVec, docVecs.map(kv => VecEnum.withName(kv._1) -> kv._2))).getOrElse(Double.NaN)
-          logger1.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim(${qr.qword}): idf=${idfModel.transform(qr.qword)}%.2f bm25=${bm25Tf(qr.dbScore, nWords)}%.2f sim=$mu%.2f")
+          loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim(${qr.qword}): idf=${idfModel.transform(qr.qword)}%.2f bm25=${bm25Tf(qr.dbScore, nWords)}%.2f sim=$mu%.2f")
         }
 
         (idfModel.transform(qr.qword), bm25Tf(qr.dbScore, nWords), qr.count)
@@ -277,7 +276,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
         Some(weightedSum / idfs.sum)
       }
 
-      logger1.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim: wsim=${similarity.getOrElse(Double.NaN)}%.2f wscore=$score%.2f (s0=$score0%.2f s2=$score2%.2f nWords=$nWords nScores=${searchTermScores.length})")
+      loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim: wsim=${similarity.getOrElse(Double.NaN)}%.2f wscore=$score%.2f (s0=$score0%.2f s2=$score2%.2f nWords=$nWords nScores=${searchTermScores.length})")
 
       // debugging
       var extraText = ""
@@ -301,7 +300,7 @@ object SearchResults {
 
   type typ = (MSearchable, String, Option[SearchRelevance])
 
-  val loggerC = Logger(getClass)
+  val logger = Logger(getClass)
 
   // capital letter regular expression (TODO: https://github.com/Hamstoo/hamstoo/issues/68)
   val capitalRgx: Regex = s"[A-Z]".r.unanchored
@@ -326,7 +325,7 @@ object SearchResults {
 
     // consecutive pairs of double quotes demarcate phrases
     val cleanedPhrasesSeq: Seq[String] = rawQuery.split("\\\"").zipWithIndex
-                                           .collect { case (phrase, i) if i % 2 == 1 => utils.parse(phrase) }
+                                           .collect { case (phrase, i) if i % 2 == 1 => parse(phrase) }
 
     /**
       * Generates the HTML preview of the text with emboldened query words.
@@ -370,7 +369,7 @@ object SearchResults {
             // this reduces to 1/sqrt for each char)
             val charScore = math.sqrt(term.length.toDouble - 0.25 * nCaps) / term.length
             val nDuplicates = cleanedQuery.map(_._2).applyOrElse(j, (_: Int) => 1) // phrases won't have duplicates
-            loggerC.trace(f"'${term.map(_._1).mkString("")}' at $i (nDuplicates=$nDuplicates, charScore=$charScore%.3f)")
+            logger.trace(f"'${term.map(_._1).mkString("")}' at $i (nDuplicates=$nDuplicates, charScore=$charScore%.3f)")
             term.indices.foreach { k => tcountsUncmp(i + k) += nDuplicates * charScore }
           }
         }
@@ -381,19 +380,18 @@ object SearchResults {
 // TODO: another thing we could do would be to only compute previews for the top 20 marks similar to not rendering them all
 
       var endTime = System.currentTimeMillis
-      loggerC.trace(f"Previewer[0] $markId (${rawText.length}) in ${(endTime - startTime) / 1e3}%.3f seconds")
+      logger.debug(f"Previewer[0] $markId (${rawText.length}) in ${(endTime - startTime) / 1e3}%.3f seconds")
 
       // compress tcounts b/c if you don't things are realllllyyy slllloooowwwwww (this value has quadratic effect
       // and so 30 will reduce a 20000-char string from 1 second down to around 1 millisecond)
       val COMPRESSION = 30
       val tcountsCmp = tcountsUncmp.zipWithIndex.groupBy(_._2 / COMPRESSION).toSeq.sortBy(_._1).map(_._2.map(_._1).mean)
 
-      loggerC.trace(s"tcountsCmp: ${tcountsCmp.map(x => f"$x%.2f")}")
+      logger.trace(s"tcountsCmp: ${tcountsCmp.map(x => f"$x%.2f")}")
       val nMatchedPhrases = qcounts.takeRight(cleanedPhrasesSeq.size).sum
 
       // smooth tcounts using an upside down parabola
       import math.{abs, max, min, pow}
-      import com.hamstoo.utils.ExtendedDouble
       val (kernel, kernelUnscaled, xmid, prvLenCmp) = {
         val prvLenCmp0: Int = PREVIEW_LENGTH / COMPRESSION + 2 // add 2 so that we can remove leading/trailing 0s
         val prvLenEven = prvLenCmp0 + (prvLenCmp0 % 2) // make it even to make the logic easier below
@@ -407,7 +405,7 @@ object SearchResults {
         (krn0.tail.init, krnUnscaled0.tail.init, xmid0 - 1, prvLenCmp0 - 2)
       }
 
-      loggerC.trace(s"kernel: ${kernel.map(x => f"$x%.2f")}")
+      logger.trace(s"kernel: ${kernel.map(x => f"$x%.2f")}")
       startTime = System.currentTimeMillis
 
       // this loop takes forever w/out compression, and the par/seq helps a bit too
@@ -426,7 +424,7 @@ object SearchResults {
       }.seq
 
       endTime = System.currentTimeMillis
-      loggerC.trace(f"Previewer[1] $markId (${rawText.length}) in ${(endTime - startTime) / 1e3}%.3f seconds")
+      logger.debug(f"Previewer[1] $markId (${rawText.length}) in ${(endTime - startTime) / 1e3}%.3f seconds")
       val smoothedCmp = mutable.ArrayBuffer(smoothedImmutableCmp: _*)
 
       // this mutable is used to prevent duplicates but still allow stopping when enough have been found
@@ -452,8 +450,8 @@ object SearchResults {
         // than multiplying prvLenCmp by 1/2 we expand it a bit to 5/6--or a 1/3 increase on either end)
         // TODO: reduce other regions of smoothed that include the same query words as just found
         val plX = prvLenCmp * 5 / 6
-        loggerC.trace(f"argmax (${COMPRESSION}x compressed) = $amaxCmp, max = $smoothedMax%.3f, plX = $plX")
-        loggerC.trace(s"smoothedCmp: ${smoothedCmp.map(x => f"$x%.2f")}")
+        logger.trace(f"argmax (${COMPRESSION}x compressed) = $amaxCmp, max = $smoothedMax%.3f, plX = $plX")
+        logger.trace(s"smoothedCmp: ${smoothedCmp.map(x => f"$x%.2f")}")
         (max(0, amaxCmp - plX) until min(smoothedCmp.length, amaxCmp + plX)).foreach { i => smoothedCmp.update(i, 0) }
 
         // this will embolden consecutive words, but not the spaces between them, which is kinda silly, but who cares
