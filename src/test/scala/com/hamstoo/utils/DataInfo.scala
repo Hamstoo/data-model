@@ -64,4 +64,5 @@ object DataInfo {
     </html>"""
 
   val emptyMarkData = MarkData("", None, None, None, None, None)
+  def withComment(comment: String, init: MarkData = emptyMarkData): MarkData = init.copy(comment = Some(comment))
 }
