@@ -92,17 +92,19 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
       val rsem = math.exp(rsim.getOrElse(0.0))
       val usem = math.exp(usim.getOrElse(0.0))
 
-      // raw (syntactic?) relevances
-      val uraw0 = math.max(uscore, 0.0) + math.max(mscore, 0.0)
+      // raw (syntactic?) relevances; coalesce0 means that we defer to mscore for isNaN'ness below if uscore is NaN
+      val uraw0 = math.max(uscore, 0.0).coalesce0 + math.max(mscore, 0.0)
       val rraw0 = math.max(rscore, 0.0)
 
       val previewer = Previewer(rawQuery, cleanedQuery, mark.id)
       val utext = parse(mark.mark.comment.getOrElse(""))
       val rtext = parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
 
+      val disablePreviewText = false
+      val disabledPreview = (0, Seq.empty[(Double, String)])
       val t0: TimeStamp = System.currentTimeMillis()
-      val (uPhraseBoost, uPreview) = previewer(uraw0, utext)
-      val (rPhraseBoost, rPreview) = previewer(rraw0, rtext)
+      val (uPhraseBoost, uPreview) = if (disablePreviewText) disabledPreview else previewer(uraw0, utext)
+      val (rPhraseBoost, rPreview) = if (disablePreviewText) disabledPreview else previewer(rraw0, rtext)
       val t1: TimeStamp = System.currentTimeMillis()
       logger.debug(f"Previewer[total] for ${mark.id} in ${(t1 - t0) / 1e3}%.3f seconds")
 
@@ -182,10 +184,9 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
         // should be via user-content reprs' doctext
         // TODO: "unless score is really high"--and make this dependent on 'sem' facet arg
         val mbPr = preview match {
-          case pr if pr.nonEmpty => Some(pr)
+          case pr if pr.nonEmpty || disablePreviewText => Some(pr)
           case _ if (uraw.coalesce0 + rraw.coalesce0) < 1e-8 => None
           case _ =>
-            logger.info(s"Missing preview text for ${mark.id} $uraw $rraw")
             def withDots(s: String): String = if (s.length < PREVIEW_LENGTH) s else s"${s.take(PREVIEW_LENGTH)}..."
             Some(Seq(rtext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))
         }
@@ -333,7 +334,7 @@ object SearchResults {
       * @param rawText        Raw text which should already have been `utils.parsed`ed.
       */
     def apply(dbSearchScore: Double, rawText: String): (Int, Seq[(Double, String)]) =
-      if (rawText.isEmpty) (0, Seq.empty[(Double, String)]) else applyInner(dbSearchScore, rawText)
+      if (rawText.isEmpty) (0, Seq.empty[(Double, String)]) else applyInner(dbSearchScore, rawText.take(50000))
 
     private def applyInner(dbSearchScore: Double, rawText: String): (Int, Seq[(Double, String)]) = {
 

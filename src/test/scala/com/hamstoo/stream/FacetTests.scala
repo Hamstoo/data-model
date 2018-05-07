@@ -43,9 +43,7 @@ class FacetTests
         agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
       }
 
-    // (2.63 + 3.1 + 2.1 + 1.91 + 1.77) * 1.4 =~ 16.13
-    // (2.63 + 3.1 + 2.1 + 1.91       ) * 1.4 =~ 13.65 (with `if (i != nMarks - 1)` enabled below)
-    x shouldBe (13.65 +- 0.01)
+    x shouldBe (39.55 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
@@ -55,8 +53,7 @@ class FacetTests
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] => agg + d.value } }
 
-    // this value is 4x the SearchResults value
-    x / AggregateSearchScore.COEF shouldBe (54.61 +- 0.01)
+    x / AggregateSearchScore.COEF shouldBe (39.01 +- 0.01)
   }
 
   it should "compute Recency" in {
@@ -92,7 +89,7 @@ class FacetTests
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
       val r = baseRepr.copy(id = s"r_${ts.Gs}", vectors = vs)
       val ri = ReprInfo(r.id, ReprType.PUBLIC)
-      val m = Mark(userId, s"m_${ts.Gs}", MarkData("", None), reprs = Seq(ri), timeFrom = ts)
+      val m = Mark(userId, s"m_${ts.Gs}", MarkData(query, None), reprs = Seq(ri), timeFrom = ts)
       logger.info(s"\033[37m$m\033[0m")
       Await.result(marksDao.insert(m), 8 seconds)
       if (i != nMarks - 1) Await.result(reprsDao.insert(r), 8 seconds) // skip one at the end for a better test of Join
