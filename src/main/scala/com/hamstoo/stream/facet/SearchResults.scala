@@ -106,7 +106,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
       val (uPhraseBoost, uPreview) = if (disablePreviewText) disabledPreview else previewer(uraw0, utext)
       val (rPhraseBoost, rPreview) = if (disablePreviewText) disabledPreview else previewer(rraw0, rtext)
       val t1: TimeStamp = System.currentTimeMillis()
-      logger.debug(f"Previewer[total] for ${mark.id} in ${(t1 - t0) / 1e3}%.3f seconds")
+      logger.debug(f"Previewer[total] for ${mark.id} in ${t1 - t0} ms")
 
       val uraw = uraw0 + uPhraseBoost
       val rraw = rraw0 + rPhraseBoost
@@ -331,157 +331,177 @@ object SearchResults {
     /**
       * Generates the HTML preview of the text with emboldened query words.
       * @param dbSearchScore  Indicator of whether there _should_ be matching words to find.
-      * @param rawText        Raw text which should already have been `utils.parsed`ed.
+      * @param rawText0       Raw text which should already have been `utils.parsed`ed.
       */
-    def apply(dbSearchScore: Double, rawText: String): (Int, Seq[(Double, String)]) =
-      if (rawText.isEmpty) (0, Seq.empty[(Double, String)]) else applyInner(dbSearchScore, rawText.take(50000))
+    def apply(dbSearchScore: Double, rawText0: String): (Int, Seq[(Double, String)]) = {
+      if (rawText0.isEmpty) (0, Seq.empty[(Double, String)]) else {
 
-    private def applyInner(dbSearchScore: Double, rawText: String): (Int, Seq[(Double, String)]) = {
+        val rawText = rawText0.take(50000)
+        var startTime = System.currentTimeMillis
 
-      val encText = encode(rawText)
-      assert(encText.length >= rawText.trim.length)
+        val encText = encode(rawText)
+        assert(encText.length >= rawText.trim.length)
 
-      val lowText = encText.toLowerCase(Locale.ENGLISH) // has already been `utils.parse`ed
-      val query = (cleanedQuery.map(_._1) ++ cleanedPhrasesSeq).map(_.toLowerCase(Locale.ENGLISH).replace("\"", ""))
+        val lowText = encText.toLowerCase(Locale.ENGLISH) // has already been `utils.parse`ed
+        val query = (cleanedQuery.map(_._1) ++ cleanedPhrasesSeq).map(_.toLowerCase(Locale.ENGLISH).replace("\"", ""))
 
-      val qcounts = mutable.ArrayBuffer.fill[Int](query.size)(0) // for boosting search scores for phrases
-      val tcountsUncmp = mutable.ArrayBuffer.fill[Double](lowText.length)(0) // to locate dense term regions in text
+        val qcounts = mutable.ArrayBuffer.fill[Int](query.size)(0) // for boosting search scores for phrases
+        val tcountsUncmp = mutable.ArrayBuffer.fill[Double](lowText.length)(0) // to locate dense term regions in text
 
-      var startTime = System.currentTimeMillis
+        var endTime = System.currentTimeMillis
+        logger.trace(f"Previewer[a] $markId in ${endTime - startTime} ms") // 15 ms
+        startTime = System.currentTimeMillis
 
-      val preproc: IndexedSeq[(IndexedSeq[(Char, Int)], Int)] = query.map(_.zipWithIndex).zipWithIndex
+        val preproc: IndexedSeq[(IndexedSeq[(Char, Int)], Int)] = query.map(_.zipWithIndex).zipWithIndex
+        val lenUncmp = lowText.length
 
-      // for each substring of `text` that follows whitespace, look for query words/phrases/terms
-      // TODO: these first 2 variation lines are NOT THREADSAFE (but how _much_ does it really matter in this case?)
-      preproc.par.foreach { case (term, j) => // 1.399 or 1.332 seconds
-      //lowText.indices.par.foreach { i => // 1.482 seconds
-        for(i <- lowText.indices/*; (term, j) <- preproc*/) yield { // 1.583 seconds (for 15 marks total search time)
-          if ((i == 0 || lowText(i - 1).isWhitespace) &&
-              term.forall { case (ch, k) => lowText.isDefinedAt(i + k) && ch == lowText(i + k) }) {
-// TODO: try view/force or "lazy find" like in Join
-            qcounts(j) += 1
+        // for each substring of `text` that follows whitespace, look for query words/phrases/terms
+        // TODO: these first 2 variation lines are NOT THREADSAFE (but how _much_ does it really matter in this case?)
+        preproc.par.foreach { case (term, j) => // 1.399 or 1.332 seconds
+        //lowText.indices.par.foreach { i => // 1.482 seconds
+          for(i <- lowText.indices/*; (term, j) <- preproc*/) yield { // 1.583 seconds (for 15 marks total search time)
 
-            // compute term score (for sorting purposes) as sqrt(term.length) but penalize capital letters a little
-            val encTerm = encText.slice(i, i + term.length)
-            val nCaps = capitalRgx.findAllIn(encTerm).length
+            if ((i == 0 || lowText(i - 1).isWhitespace) &&
+                term.forall { case (ch, k) => i + k < lenUncmp && ch == lowText(i + k) }) {
+              qcounts(j) += 1
 
-            // this is effectively dividing by sqrt(term.length) twice, once to convert from a whole-word score
-            // to a char score and then again to counter the x^2 kernel below (consider this: if nCaps is 0, then
-            // this reduces to 1/sqrt for each char)
-            val charScore = math.sqrt(term.length.toDouble - 0.25 * nCaps) / term.length
-            val nDuplicates = cleanedQuery.map(_._2).applyOrElse(j, (_: Int) => 1) // phrases won't have duplicates
-            logger.trace(f"'${term.map(_._1).mkString("")}' at $i (nDuplicates=$nDuplicates, charScore=$charScore%.3f)")
-            term.indices.foreach { k => tcountsUncmp(i + k) += nDuplicates * charScore }
+              // compute term score (for sorting purposes) as sqrt(term.length) but penalize capital letters a little
+              val encTerm = encText.slice(i, i + term.length)
+              val nCaps = capitalRgx.findAllIn(encTerm).length
+
+              // this is effectively dividing by sqrt(term.length) twice, once to convert from a whole-word score
+              // to a char score and then again to counter the x^2 kernel below (consider this: if nCaps is 0, then
+              // this reduces to 1/sqrt for each char)
+              val charScore = math.sqrt(term.length.toDouble - 0.25 * nCaps) / term.length
+              val nDuplicates = cleanedQuery.map(_._2).applyOrElse(j, (_: Int) => 1) // phrases won't have duplicates
+              logger.trace(f"'${term.map(_._1).mkString("")}' at $i (nDuplicates=$nDuplicates, charScore=$charScore%.3f)")
+              term.indices.foreach { k => tcountsUncmp(i + k) += nDuplicates * charScore }
+            }
           }
         }
-      }
 
-// TODO: at this point we know there's a match, so we could return a Future from here on and so not have to wait
+  // TODO: at this point we know there's a match, so we could return a Future from here on and so not have to wait
 
-// TODO: another thing we could do would be to only compute previews for the top 20 marks similar to not rendering them all
+  // TODO: another thing we could do would be to only compute previews for the top 20 marks similar to not rendering them all
 
-      var endTime = System.currentTimeMillis
-      logger.debug(f"Previewer[0] $markId (${rawText.length}) in ${(endTime - startTime) / 1e3}%.3f seconds")
+        endTime = System.currentTimeMillis
+        logger.debug(f"Previewer[0] $markId (${rawText.length}) in ${endTime - startTime} ms") // 14 ms
+        startTime = System.currentTimeMillis
 
-      // compress tcounts b/c if you don't things are realllllyyy slllloooowwwwww (this value has quadratic effect
-      // and so 30 will reduce a 20000-char string from 1 second down to around 1 millisecond)
-      val COMPRESSION = 30
-      val tcountsCmp = tcountsUncmp.zipWithIndex.groupBy(_._2 / COMPRESSION).toSeq.sortBy(_._1).map(_._2.map(_._1).mean)
+        // compress tcounts b/c if you don't things are realllllyyy slllloooowwwwww (this value has quadratic effect
+        // and so 30 will reduce a 20000-char string from 1 second down to around 1 millisecond)
+        val COMPRESSION = 30
+        //val tcountsCmp = tcountsUncmp.zipWithIndex.groupBy(_._2 / COMPRESSION).toSeq.sortBy(_._1).map(_._2.map(_._1).mean) // 25 ms
+        import math.{abs, max, min, pow}
+        val tcountsCmp = (0 until lenUncmp by COMPRESSION).map { i0: Int => // 3 ms
+            val i1 = min(lenUncmp, i0 + COMPRESSION)
+            tcountsUncmp.slice(i0, i1).mean
+          }
 
-      logger.trace(s"tcountsCmp: ${tcountsCmp.map(x => f"$x%.2f")}")
-      val nMatchedPhrases = qcounts.takeRight(cleanedPhrasesSeq.size).sum
+        endTime = System.currentTimeMillis
+        logger.trace(f"Previewer[b] $markId (${rawText.length}) in ${endTime - startTime} ms") // 3 ms
+        startTime = System.currentTimeMillis
 
-      // smooth tcounts using an upside down parabola
-      import math.{abs, max, min, pow}
-      val (kernel, kernelUnscaled, xmid, prvLenCmp) = {
-        val prvLenCmp0: Int = PREVIEW_LENGTH / COMPRESSION + 2 // add 2 so that we can remove leading/trailing 0s
-        val prvLenEven = prvLenCmp0 + (prvLenCmp0 % 2) // make it even to make the logic easier below
-        val xmid0 = prvLenEven / 2
-        val ymax = pow(xmid0, 2)
-        val krnUnscaled0 = (0 to prvLenEven).map { x => 1 - pow(abs(x - xmid0), 2) / ymax } // e.g. length = 9
-        val krn0 = krnUnscaled0 / krnUnscaled0.sum
-        assert((krn0.head ~= 0.0) && (krn0.last ~= 0.0) && (krn0.sum ~= 1.0) && (krnUnscaled0(xmid0) ~= 1.0))
+        logger.trace(s"tcountsCmp: ${tcountsCmp.map(x => f"$x%.2f")}")
+        val nMatchedPhrases = qcounts.takeRight(cleanedPhrasesSeq.size).sum
 
-        // remove leading/trailing 0s to speed things up
-        (krn0.tail.init, krnUnscaled0.tail.init, xmid0 - 1, prvLenCmp0 - 2)
-      }
+        // smooth tcounts using an upside down parabola
+        val (kernel, kernelUnscaled, xmid, prvLenCmp) = {
+          val prvLenCmp0: Int = PREVIEW_LENGTH / COMPRESSION + 2 // add 2 so that we can remove leading/trailing 0s
+          val prvLenEven = prvLenCmp0 + (prvLenCmp0 % 2) // make it even to make the logic easier below
+          val xmid0 = prvLenEven / 2
+          val ymax = pow(xmid0, 2)
+          val krnUnscaled0 = (0 to prvLenEven).map { x => 1 - pow(abs(x - xmid0), 2) / ymax } // e.g. length = 9
+          val krn0 = krnUnscaled0 / krnUnscaled0.sum
+          assert((krn0.head ~= 0.0) && (krn0.last ~= 0.0) && (krn0.sum ~= 1.0) && (krnUnscaled0(xmid0) ~= 1.0))
 
-      logger.trace(s"kernel: ${kernel.map(x => f"$x%.2f")}")
-      startTime = System.currentTimeMillis
-
-      // this loop takes forever w/out compression, and the par/seq helps a bit too
-      val len = tcountsCmp.length
-      val smoothedImmutableCmp = tcountsCmp.indices.par.map { i =>
-        val begin = max(0, i - xmid)
-        val end = min(len, i + xmid + 1) // add 1 b/c ends are always exclusive
-
-        // truncate the kernel if towards the beginning or end of the text
-        val bTrunc = if (      i     > xmid) 0 else xmid -        i
-        val eTrunc = if (len - i - 1 > xmid) 0 else xmid - (len - i - 1) // would be nice if Scala supported negative i
-        assert(end - begin + bTrunc + eTrunc == kernel.length)
-
-        val kernel_i = kernelUnscaled.slice(bTrunc, kernelUnscaled.length - eTrunc) // if truncs are 0, same as `kernel`
-        tcountsCmp.slice(begin, end) dot (kernel_i / kernel_i.sum)
-      }.seq
-
-      endTime = System.currentTimeMillis
-      logger.debug(f"Previewer[1] $markId (${rawText.length}) in ${(endTime - startTime) / 1e3}%.3f seconds")
-      val smoothedCmp = mutable.ArrayBuffer(smoothedImmutableCmp: _*)
-
-      // this mutable is used to prevent duplicates but still allow stopping when enough have been found
-      val previewTexts = mutable.ArrayBuffer.empty[(Double, String)]
-
-      // TODO: score earlier snippets higher?
-      while(previewTexts.length < N_SPANS && {
-        val amaxCmp = smoothedCmp.argmax
-        amaxCmp > 0 || !(smoothedCmp.sum ~= 0) // either there aren't any words to bold, or we already exhausted them all
-      }) {
-        val amaxCmp = smoothedCmp.argmax
-        val amax = amaxCmp * COMPRESSION
-        val smoothedMax = smoothedCmp(amaxCmp)
-
-        // create a preview snippet around amax as a midpoint
-        val begin = max(0, amax - PREVIEW_LENGTH / 2)
-        val end = min(encText.length, amax + PREVIEW_LENGTH / 2)
-        val snippet = encText.slice(begin, end)
-        val scounts = tcountsUncmp.slice(begin, end) // be sure to not use smoothed here, we need binary 0/nonzero values
-
-        // erase this region of `smoothed` so that it is not selected in next N_SPANS loop iteration, but don't use
-        // begin & end because any word with length > 1 will affect a larger range than just PREVIEW_LENGTH (so rather
-        // than multiplying prvLenCmp by 1/2 we expand it a bit to 5/6--or a 1/3 increase on either end)
-        // TODO: reduce other regions of smoothed that include the same query words as just found
-        val plX = prvLenCmp * 5 / 6
-        logger.trace(f"argmax (${COMPRESSION}x compressed) = $amaxCmp, max = $smoothedMax%.3f, plX = $plX")
-        logger.trace(s"smoothedCmp: ${smoothedCmp.map(x => f"$x%.2f")}")
-        (max(0, amaxCmp - plX) until min(smoothedCmp.length, amaxCmp + plX)).foreach { i => smoothedCmp.update(i, 0) }
-
-        // this will embolden consecutive words, but not the spaces between them, which is kinda silly, but who cares
-        var isOpen = false
-        val emboldened = snippet.zip(scounts).map {
-          case (ch, n) if n >  1e-8 && !isOpen => { isOpen = true ;  "<b>" } + ch // start bolding
-          case (ch, n) if n <= 1e-8 &&  isOpen => { isOpen = false; "</b>" } + ch //  stop bolding
-          case (ch, _) => ch
-        }.mkString("") + (if (isOpen) "</b>" else "")
-
-        val ptext = (if (begin == 0) "" else "...") + emboldened.trim + (if (end == encText.length) "" else "...")
-
-        // ignore duplicates
-        if (previewTexts.forall(x => Representation.editSimilarity(x._2, ptext) < 0.8))
-          previewTexts += smoothedMax -> ptext
-      }
-
-      // return number of matched phrases from first recursive iteration no matter what
-      (nMatchedPhrases, if (previewTexts.nonEmpty) previewTexts else {
-
-        // try harder to find something if there should be something to find (i.e. if dbSearchScore > 0)
-        val prfxQuery = cleanedQuery.filter(_._1.length > MIN_PREFIX_LENGTH).map(kv => (kv._1.init, kv._2))
-        if ((dbSearchScore ~= 0.0) || prfxQuery.isEmpty) previewTexts else {
-          val recursivePreviewTexts = Previewer("", prfxQuery, markId+"-r")(dbSearchScore, rawText)._2
-          if (recursivePreviewTexts.isEmpty) previewTexts else recursivePreviewTexts
+          // remove leading/trailing 0s to speed things up
+          (krn0.tail.init, krnUnscaled0.tail.init, xmid0 - 1, prvLenCmp0 - 2)
         }
-      })
 
-      // IDEA: incremental runtime recompilation of dynamically typed languages as information is learned about runtime values (security?)
+        endTime = System.currentTimeMillis
+        logger.trace(s"kernel: ${kernel.map(x => f"$x%.2f")}")
+        logger.trace(f"Previewer[c] $markId in ${endTime - startTime} ms") // 1 ms
+        startTime = System.currentTimeMillis
+
+        // this loop takes forever w/out compression, and the par/seq helps a bit too
+        val lenCmp = tcountsCmp.length
+        val smoothedImmutableCmp = tcountsCmp.indices.par.map { i =>
+          val begin = max(0, i - xmid)
+          val end = min(lenCmp, i + xmid + 1) // add 1 b/c ends are always exclusive
+
+          // truncate the kernel if towards the beginning or end of the text
+          val bTrunc = if (         i     > xmid) 0 else xmid -           i
+          val eTrunc = if (lenCmp - i - 1 > xmid) 0 else xmid - (lenCmp - i - 1) // would be nice if Scala supported negative i
+          assert(end - begin + bTrunc + eTrunc == kernel.length)
+
+          val kernel_i = kernelUnscaled.slice(bTrunc, kernelUnscaled.length - eTrunc) // if truncs are 0, same as `kernel`
+          tcountsCmp.slice(begin, end) dot (kernel_i / kernel_i.sum)
+        }.seq
+
+        endTime = System.currentTimeMillis
+        logger.debug(f"Previewer[1] $markId (${rawText.length}) in ${endTime - startTime} ms") // 25 ms
+        startTime = System.currentTimeMillis
+        val smoothedCmp = mutable.ArrayBuffer(smoothedImmutableCmp: _*)
+
+        // this mutable is used to prevent duplicates but still allow stopping when enough have been found
+        val previewTexts = mutable.ArrayBuffer.empty[(Double, String)]
+
+        // TODO: score earlier snippets higher?
+        while(previewTexts.length < N_SPANS && {
+          val amaxCmp = smoothedCmp.argmax
+          amaxCmp > 0 || !(smoothedCmp.sum ~= 0) // either there aren't any words to bold, or we already exhausted them all
+        }) {
+          val amaxCmp = smoothedCmp.argmax
+          val amax = amaxCmp * COMPRESSION
+          val smoothedMax = smoothedCmp(amaxCmp)
+
+          // create a preview snippet around amax as a midpoint
+          val begin = max(0, amax - PREVIEW_LENGTH / 2)
+          val end = min(encText.length, amax + PREVIEW_LENGTH / 2)
+          val snippet = encText.slice(begin, end)
+          val scounts = tcountsUncmp.slice(begin, end) // be sure to not use smoothed here, we need binary 0/nonzero values
+
+          // erase this region of `smoothed` so that it is not selected in next N_SPANS loop iteration, but don't use
+          // begin & end because any word with length > 1 will affect a larger range than just PREVIEW_LENGTH (so rather
+          // than multiplying prvLenCmp by 1/2 we expand it a bit to 5/6--or a 1/3 increase on either end)
+          // TODO: reduce other regions of smoothed that include the same query words as just found
+          val plX = prvLenCmp * 5 / 6
+          logger.trace(f"argmax (${COMPRESSION}x compressed) = $amaxCmp, max = $smoothedMax%.3f, plX = $plX")
+          logger.trace(s"smoothedCmp: ${smoothedCmp.map(x => f"$x%.2f")}")
+          (max(0, amaxCmp - plX) until min(smoothedCmp.length, amaxCmp + plX)).foreach { i => smoothedCmp.update(i, 0) }
+
+          // this will embolden consecutive words, but not the spaces between them, which is kinda silly, but who cares
+          var isOpen = false
+          val emboldened = snippet.zip(scounts).map {
+            case (ch, n) if n >  1e-8 && !isOpen => { isOpen = true ;  "<b>" } + ch // enbolden
+            case (ch, n) if n <= 1e-8 &&  isOpen => { isOpen = false; "</b>" } + ch // debolden
+            case (ch, _) => ch
+          }.mkString("") + (if (isOpen) "</b>" else "")
+
+          val ptext = (if (begin == 0) "" else "...") + emboldened.trim + (if (end == encText.length) "" else "...")
+
+          // ignore duplicates
+          if (previewTexts.forall(x => Representation.editSimilarity(x._2, ptext) < 0.8))
+            previewTexts += smoothedMax -> ptext
+        }
+
+        endTime = System.currentTimeMillis
+        logger.trace(f"Previewer[d] $markId in ${endTime - startTime} ms") // 1 ms
+
+        // return number of matched phrases from first recursive iteration no matter what
+        (nMatchedPhrases, if (previewTexts.nonEmpty) previewTexts else {
+
+          // try harder to find something if there should be something to find (i.e. if dbSearchScore > 0)
+          val prfxQuery = cleanedQuery.filter(_._1.length > MIN_PREFIX_LENGTH).map(kv => (kv._1.init, kv._2))
+          if ((dbSearchScore ~= 0.0) || prfxQuery.isEmpty) previewTexts else {
+            val recursivePreviewTexts = Previewer("", prfxQuery, markId+"-r")(dbSearchScore, rawText)._2
+            if (recursivePreviewTexts.isEmpty) previewTexts else recursivePreviewTexts
+          }
+        })
+
+        // IDEA: incremental runtime recompilation of dynamically typed languages as information is learned about runtime values (security?)
+      }
     }
   }
 }
