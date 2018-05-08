@@ -15,11 +15,12 @@ import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream._
 import com.hamstoo.stream.dataset.{QueryResult, RepredMarks, ReprsPair}
-import com.hamstoo.utils.{ExtendedDouble, TimeStamp, parse}
+import com.hamstoo.utils.{DurationMils, ExtendedDouble, TimeStamp, parse}
 import org.slf4j.LoggerFactory
 import play.api.Logger
 
 import scala.collection.{immutable, mutable}
+import scala.concurrent.duration._
 import scala.util.matching.Regex
 
 /**
@@ -62,6 +63,12 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
     logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
     new Logger(logback)
   }
+
+  // SearchResults can end up being out of order per the mapAsyncUnordered below so we take a guess at by how much
+  // here and if we lose any along the way it's not the end of the world (note that the degree to which they're
+  // out of order has nothing to do with either the clock.interval or the preloadInterval of the dependency
+  // streams as both of those values are irrelevant at this point in the stream graph)
+  override val joinExpiration: DurationMils = (365 days).toMillis
 
   // get uniquified `cleanedQSeq` and (future) vectors for all terms in search query `fsearchTermVecs`
   private lazy val (cleanedQuery, fsearchTermVecs) = query2Vecs
@@ -186,9 +193,14 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
         // should be via user-content reprs' doctext
         // TODO: "unless score is really high"--and make this dependent on 'sem' facet arg
         val mbPr = preview match {
-          case pr if pr.nonEmpty || disablePreviewText => Some(pr)
-          case _ if (uraw.coalesce0 + rraw.coalesce0) < 1e-8 => None
+          case pr if pr.nonEmpty || disablePreviewText =>
+            logger.debug(s"Including mark ${mark.id} in search results; has preview text")
+            Some(pr)
+          case _ if (uraw.coalesce0 + rraw.coalesce0) < 1e-8 =>
+            logger.debug(s"Excluding mark ${mark.id} from search results; no preview text")
+            None
           case _ =>
+            logger.debug(s"Including mark ${mark.id} in search results; has database text matches")
             def withDots(s: String): String = if (s.length < PREVIEW_LENGTH) s else s"${s.take(PREVIEW_LENGTH)}..."
             Some(Seq(rtext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))
         }

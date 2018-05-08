@@ -3,7 +3,7 @@ package com.hamstoo.stream
 import akka.stream.scaladsl.{FlowOps, GraphDSL}
 import akka.stream.{Attributes, FanInShape2, FlowShape, Graph, Inlet, Outlet, SourceShape}
 import akka.stream.stage.{GraphStage, GraphStageLogic, InHandler, OutHandler}
-import com.hamstoo.utils.{ExtendedTimeStamp, TimeStamp}
+import com.hamstoo.utils.{DurationMils, ExtendedTimeStamp, TimeStamp}
 import play.api.Logger
 
 import scala.annotation.unchecked.uncheckedVariance
@@ -39,7 +39,7 @@ object Join {
     */
   def apply[A0, A1, O](joiner: (A0, A1) => O,
                        pairwise: Join.Pairwiser[A0, A1] = DEFAULT_PAIRWISE[A0, A1] _,
-                       expireAfter: Duration = DEFAULT_EXPIRE_AFTER): Join2[A0, A1, O] =
+                       expireAfter: DurationMils = DEFAULT_EXPIRE_AFTER): Join2[A0, A1, O] =
     new Join2(joiner, pairwise, expireAfter)
 
   /**
@@ -72,7 +72,7 @@ object Join {
     def joinWith[A1, O](that: Graph[SourceShape[Datum[A1]], _])
                        (joiner: (A0, A1) => O,
                         pairwise: Pairwiser[A0, A1] = DEFAULT_PAIRWISE[A0, A1] _,
-                        expireAfter: Duration = DEFAULT_EXPIRE_AFTER): imp.Repr[Datum[O]] = {
+                        expireAfter: DurationMils = DEFAULT_EXPIRE_AFTER): imp.Repr[Datum[O]] = {
 
       logger.debug(s"Joining streams: '${streamName(imp)}' and '${streamName(that)}'")
       imp.via(joinWithGraph(that)(joiner, pairwise, expireAfter))
@@ -83,7 +83,7 @@ object Join {
                           (that: Graph[SourceShape[Datum[A1]], M])
                           (joiner: (A0, A1) => O,
                            pairwise: Pairwiser[A0, A1] = DEFAULT_PAIRWISE[A0, A1] _,
-                           expireAfter: Duration = DEFAULT_EXPIRE_AFTER):
+                           expireAfter: DurationMils = DEFAULT_EXPIRE_AFTER):
                                  Graph[  FlowShape[Datum[A0] @uncheckedVariance, Datum[O]], M] =
       GraphDSL.create(that) { implicit b => that_ =>
         import akka.stream.scaladsl.GraphDSL.Implicits._
@@ -94,7 +94,7 @@ object Join {
   }
 
   /** Default `expireAfter` duration. */
-  val DEFAULT_EXPIRE_AFTER: Duration = 0 seconds
+  val DEFAULT_EXPIRE_AFTER: DurationMils = (0 seconds).toMillis
 
   /** Like Budweiser, but more pairy. */
   type Pairwiser[A0, A1] = (Datum[A0], Datum[A1]) => Option[Pairwised[A0, A1]]
@@ -132,7 +132,7 @@ object Join {
   */
 class Join2[A0, A1, O](val joiner: (A0, A1) => O,
                        val pairwise: Join.Pairwiser[A0, A1] = Join.DEFAULT_PAIRWISE[A0, A1] _,
-                       expireAfter: Duration = Join.DEFAULT_EXPIRE_AFTER)
+                       expireAfter: DurationMils = Join.DEFAULT_EXPIRE_AFTER)
     extends GraphStage[FanInShape2[Datum[A0], Datum[A1], Datum[O]]] {
 
   val logger: Logger = Join.logger
@@ -171,7 +171,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
       override def compare(oth: Watermark): Int = if (t_k != oth.t_k) t_k.compare(oth.t_k) else t_s.compare(oth.t_s)
       override def toString: String = s"(${t_k.Gs},${t_s.Gs})"
       def updated(d_k: TimeStamp, d_s: TimeStamp): Watermark =
-        Watermark(math.max(t_k, d_k - expireAfter.toMillis), math.max(t_s, d_s))
+        Watermark(math.max(t_k, d_k - expireAfter), math.max(t_s, d_s))
     }
 
     // high watermark timestamps for each input
@@ -183,6 +183,11 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
     var willShutDown0 = false
     var willShutDown1 = false
 
+    private def completeJoin(n: String): Unit = {
+      logger.trace(s"completeJoin($n): sz0=${joinable0.size}, sz1=${joinable1.size}")
+      completeStage()
+    }
+
     /** This function implements the equivalent of this line `if (pending == 0) pushAll()` of ZipWith. */
     private def pushOneMaybe(): Unit = {
 
@@ -192,7 +197,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
       //val sz0 = (joinable0.size, joinable1.size)
       Seq(joinable0, joinable1).foreach(_.retain(_.knownTime >= math.min(watermark0.t_k, watermark1.t_k)))
       //val sz1 = (joinable0.size, joinable1.size)
-      //if (sz0 != sz1) logger.trace(s"Sizes: $sz0 -> $sz1")
+      //if (sz0 != sz1) logger.warn(s"Sizes: $sz0 -> $sz1")
 
       // find a single joinable pair, if one exists and the out port is pushable (the view/headOption combo makes this
       // operate like a lazy find that stops iterating as soon as it finds a match)
@@ -200,13 +205,14 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         joinable1.view.flatMap { case d1: Datum[A1] => pairwise(d0, d1).map((d0, d1, _)) }.headOption
       }.headOption
 
+      val rnd = if (logger.isTraceEnabled) f"${math.abs(scala.util.Random.nextInt()) % 100}%03d" else ""
       pushable.foreach { case (d0, d1, Join.Pairwised(paired, consumed0, consumed1)) =>
 
         // convert each value from an (A0, A1) pair to an O
         val joined = paired.withValue(joiner(paired.value._1, paired.value._2))
 
         // push to consumer, which should pull again from this materialized Join instance, if ready
-        logger.trace(s"  pushing: $d0 + $d1 = $joined, consumed=${(consumed0, consumed1)}")
+        logger.trace(s"  pushing($rnd): $d0 + $d1 = $joined, consumed=${(consumed0, consumed1)}")
         push(out, joined)
 
         // cleanup to ensure we don't perform the same join again in the future (i.e. remove one or both of the joinees)
@@ -225,20 +231,22 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
       // update: switched from a single willShutDown to two so that if in1 finishes we can still pull from in0
       // if it's behind giving it a chance to catch up to whatever's already in the joinable1 buffer (and vice versa)
-      val b0 = !hasBeenPulled(in0) && !isAvailable(in0)
-      val b1 = !hasBeenPulled(in1) && !isAvailable(in1)
+      // update2: we cannot simply pull whichever port can be pulled as that could cause one of the streams to get
+      // too far ahead (as would happen with a ThrottledSource, which is tested for in ClockTests.scala)
+      val b0 = !hasBeenPulled(in0) && !isAvailable(in0) && !willShutDown0
+      val b1 = !hasBeenPulled(in1) && !isAvailable(in1) && !willShutDown1
       if (watermark0 > watermark1) {
-        if (willShutDown1) completeStage() else if (pushable.isEmpty) { // else wait for next onPull
+        if (willShutDown1) completeJoin("1/" + rnd) else if (pushable.isEmpty) { // else wait for next onPull
           logger.trace(s"pull(in1[$b1]): $watermark0 > $watermark1")
           if (b1) pull(in1)
         }
       } else if (watermark0 < watermark1) {
-        if (willShutDown0) completeStage() else if (pushable.isEmpty) { // else wait for next onPull
+        if (willShutDown0) completeJoin("0/" + rnd) else if (pushable.isEmpty) { // else wait for next onPull
           logger.trace(s"pull(in0[$b0]): $watermark0 < $watermark1")
           if (b0) pull(in0)
         }
       } else {
-        if (willShutDown0 || willShutDown1) completeStage() else if (pushable.isEmpty) { // else wait for next onPull
+        if (willShutDown0 && willShutDown1) completeJoin("X/" + rnd) else if (pushable.isEmpty) { // else wait for next onPull
           logger.trace(s"pull(in0[$b0] & in1[$b1]): $watermark0 == $watermark1")
           if (b0) pull(in0)
           if (b1) pull(in1)
@@ -264,8 +272,8 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
       /** onUpstreamFinish of port in0 is triggered by a pull(in0) when upstream has been exhausted. */
       override def onUpstreamFinish(): Unit = {
-        logger.trace(s"onUpstreamFinish0: if (${!isAvailable(in0)} && $watermark1 > $watermark0)...")
-        if (!isAvailable(in0) && (watermark1 > watermark0 || willShutDown1)) completeStage()
+        logger.trace(s"onUpstreamFinish0 (sz=${joinable0.size}&${joinable1.size}): if (${!isAvailable(in0)} && $watermark1 > $watermark0 || $willShutDown1)...")
+        if (!isAvailable(in0) && (watermark1 > watermark0 || willShutDown1)) completeJoin("0")
         willShutDown0 = true
       }
     })
@@ -282,8 +290,8 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
       }
 
       override def onUpstreamFinish(): Unit = {
-        logger.trace(s"onUpstreamFinish1: if (${!isAvailable(in1)} && $watermark0 > $watermark1)...")
-        if (!isAvailable(in1) && (watermark0 > watermark1 || willShutDown0)) completeStage()
+        logger.trace(s"onUpstreamFinish1 (sz=${joinable0.size}&${joinable1.size}): if (${!isAvailable(in1)} && $watermark0 > $watermark1 || $willShutDown0)...")
+        if (!isAvailable(in1) && (watermark0 > watermark1 || willShutDown0)) completeJoin("1")
         willShutDown1 = true
       }
     })

@@ -73,7 +73,7 @@ class ClockTests
     x shouldEqual 173
   }
 
-  it should "throttle a ThrottledSource" in {
+  it should "throttle a ThrottledSource (with 4 Datums between each clock tick)" in {
 
     // changing these (including interval) will affect results b/c it changes the effective time range the clock covers
     val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis

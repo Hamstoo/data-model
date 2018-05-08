@@ -6,7 +6,7 @@ package com.hamstoo.stream
 import akka.stream.Materializer
 import com.hamstoo.models.MarkData
 import com.hamstoo.stream.Join.JoinWithable
-import com.hamstoo.utils.TimeStamp
+import com.hamstoo.utils.{DurationMils, TimeStamp}
 import play.api.Logger
 
 import scala.collection.{Traversable, immutable}
@@ -20,15 +20,17 @@ import scala.reflect.{ClassTag, classTag}
 object StreamDSL {
 
   /** DSL for DataStreams of collection types. */
-  implicit class StreamColDSL[T](private val s: DataStream[Traversable[T]]) extends AnyVal {
+  implicit class CollectionStreamDSL[T](private val s: DataStream[Traversable[T]]) extends AnyVal {
 
     /** DataStreams of Traversables can be flattened. */
-    def flatten(implicit m: Materializer): DataStream[T] = new DataStream[T] {
-      override def in: SourceType[T] = s().mapConcat { d: Datum[Traversable[T]] =>
-        val values: Traversable[T] = d.value
-        values.map { v: T => d.withValue[T](v) }.to[immutable.Iterable]
+    def flatten(implicit m: Materializer): DataStream[T] =
+      new DataStream[T] {
+        override val joinExpiration: DurationMils = s.joinExpiration // pass this value up through the dependency tree
+        override def in: SourceType[T] = s().mapConcat { d: Datum[Traversable[T]] =>
+          val values: Traversable[T] = d.value
+          values.map { v: T => d.withValue[T](v) }.to[immutable.Iterable]
+        }
       }
-    }
   }
 
   /**
@@ -39,10 +41,15 @@ object StreamDSL {
     */
   implicit class StreamDSL[A](private val s: DataStream[A]) extends AnyVal {
 
-    /** Map a stream of Datum[A]s to Datum[O]s. */
-    def map[O](f: A => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
-      override def in: SourceType[O] = s().map(_.mapValue(f))
-    }
+    /**
+      * Map a stream of Datum[A]s to Datum[O]s.  Nearly all of the other implicit methods in this class go through
+      * here or `join`, which is evident from their constructions of `new DataStream[O]`s.
+      */
+    def map[O](f: A => O)(implicit m: Materializer): DataStream[O] =
+      new DataStream[O] {
+        override val joinExpiration: DurationMils = s.joinExpiration // pass this value up through the dependency tree
+        override def in: SourceType[O] = s().map(_.mapValue(f))
+      }
 
     /** This really shouldn't be part of the interface, so just pass `ev.m` explicitly when necessary. */
     //def mapI[O](f: A => O)(implicit ev: Implicits[_, _]): DataStream[O] = s.map(f)(ev.m)
@@ -68,13 +75,17 @@ object StreamDSL {
     def mark(implicit ev: ClassTag[A], m: Materializer) = s("mark", classTag[MarkData])
     def rating(implicit ev: ClassTag[A], m: Materializer) = s("rating", classTag[Option[Double]])
 
-    /** Invoke JoinWithable.joinWith on the provided streams. */
-    def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
-      override val in: SourceType[O] = s().joinWith(that())(op).asInstanceOf[SourceType[O]]
-    }
+    /** Invoke JoinWithable.joinWith on the provided streams.  Also see comment on `map`. */
+    def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] =
+      new DataStream[O] {
+        override val joinExpiration: DurationMils = math.max(s.joinExpiration, that.joinExpiration)
+        override val in: SourceType[O] = s().joinWith(that())(joiner = op,
+                                                              expireAfter = joinExpiration).asInstanceOf[SourceType[O]]
+      }
 
     /** The `{ case x => x }` actually does serve a purpose; it unpacks x into a 2-tuple, which `identity` cannot do. */
-    def pair[B](that: DataStream[B])(implicit m: Materializer): DataStream[(A, B)] = s.join(that) { case x => x }
+    def pair[B](that: DataStream[B])(implicit m: Materializer): DataStream[(A, B)] =
+      s.join(that) { case x => x }
 
     /** Binary operations between pairs of DataStreams (via typeclasses). */
     // TODO: why couldn't we use `that: DataStream[B]` here?  how would we select the proper `ev`?

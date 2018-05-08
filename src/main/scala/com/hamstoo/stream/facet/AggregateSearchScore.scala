@@ -20,10 +20,10 @@ import scala.reflect.classTag
   * @param searchResults  Search results data stream.
   */
 @Singleton
-class AggregateSearchScore @Inject() (semWgt: AggregateSearchScore.SemanticWeight,
-                                      usrWgt: AggregateSearchScore.UserContentWeight,
-                                      searchResults: SearchResults)
-                                     (implicit mat: Materializer)
+class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight,
+                                     usrWgt: AggregateSearchScore.UserContentWeight,
+                                     searchResults: SearchResults)
+                                    (implicit mat: Materializer)
     extends DataStream[Double] {
 
   import AggregateSearchScore._
