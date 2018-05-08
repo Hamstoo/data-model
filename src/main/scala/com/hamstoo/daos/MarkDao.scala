@@ -191,28 +191,33 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     * new browser tab, and if it is deemed to be a duplicate of an existing mark, then show star as orange and display
     * highlights/notes.
     */
-  def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = {
-    logger.debug(s"Retrieving marks by URL $url and user $user")
-    for {
-      // find set of URLs that contain duplicate content to the one requested
-      setDups <- urlDuplicatesDao.retrieve(user, url)
-      urls = Set(url).union(setDups.flatMap(_.dups))
+  def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = for {
+    _ <- Future.unit
+    _ = logger.debug(s"Retrieving marks by URL $url and user $user")
 
-      // find all marks with those URL prefixes
-      c <- dbColl()
-      prfxIn = d :~ "$in" -> urls.map(_.binaryPrefix)
-      seq <- c.find(d :~ USR -> user :~ URLPRFX -> prfxIn :~ curnt).coll[Mark, Seq]()
+    oth = if (url.startsWith("https://")) url.replaceFirst("https://", "http://")
+          else if (url.startsWith("http://")) url.replaceFirst("http://", "https://")
+          else "f8g34bkw1z"
 
-    } yield {
+    // find set of URLs that contain duplicate content to the one requested
+    (f0, f1) = (urlDuplicatesDao.retrieve(user, url), urlDuplicatesDao.retrieve(user, oth))
+    setDups0 <- f0; setDups1 <- f1
+    urls = Set(url, oth).union(setDups0.flatMap(_.dups)).union(setDups1.flatMap(_.dups))
 
-      // filter/find down to a single (optional) mark, but first look for a (current, i.e. no mergeId) mark with the
-      // original URL (which corrects for erroneous URL dups, issue #325)
-      val mbMark = seq.find(_.mark.url.contains(url))
-        .orElse(seq.find(_.mark.url.exists(urls.contains)))
+    // find all marks with those URL prefixes
+    c <- dbColl()
+    prfxIn = d :~ "$in" -> urls.map(_.binaryPrefix)
+    seq <- c.find(d :~ USR -> user :~ URLPRFX -> prfxIn :~ curnt).coll[Mark, Seq]()
 
-      logger.debug(s"$mbMark mark was successfully retrieved")
-      mbMark
-    }
+  } yield {
+
+    // filter/find down to a single (optional) mark, but first look for a (current, i.e. no mergeId) mark with the
+    // original URL (which corrects for erroneous URL dups, issue #325)
+    val mbMark = seq.find(_.mark.url.contains(url))
+      .orElse(seq.find(_.mark.url.exists(urls.contains)))
+
+    logger.debug(s"$mbMark mark was successfully retrieved")
+    mbMark
   }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
