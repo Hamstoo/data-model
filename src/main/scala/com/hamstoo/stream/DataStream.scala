@@ -7,7 +7,7 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.{BroadcastHub, Sink, Source, SourceQueue}
 import com.hamstoo.stream.Tick.{ExtendedTick, Tick}
-import com.hamstoo.stream.Join.{JoinWithable, Pairwised}
+import com.hamstoo.stream.Join.{DEFAULT_EXPIRE_AFTER, JoinWithable, Pairwised}
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
 import play.api.Logger
 
@@ -56,6 +56,13 @@ abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
 
   /** Shortcut to the source.  Think of a DataStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
   def apply(): SourceType[T] = this.out
+
+  /**
+    * Unordered data streams may want/need to override this so that `Join`s with them behave correctly.  It is here
+    * in the base class so that it can be passed down through the "dependency tree"/"stream graph" via StreamDSL, but
+    * perhaps there's a better way to pass along this value (with implicits?) that I haven't thought of.
+    */
+  val joinExpiration: DurationMils = DEFAULT_EXPIRE_AFTER
 }
 
 object DataStream {

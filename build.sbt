@@ -17,7 +17,10 @@ version := {
     if (sys.env("TRAVIS_PULL_REQUEST") == "false") "TRAVIS_BRANCH" else "TRAVIS_PULL_REQUEST_BRANCH"
   )).getOrElse(gitbranch)
   Source.fromFile("VERSION").getLines find (_ => true) map { l =>
-    (if (branch == "master") "" else branch + "-") + l.trim
+    (if (branch == "master" || branch == "HEAD") {
+      if (branch == "HEAD") sLog.value.warn("\u001b[35mBuilding detached `HEAD` as if it were `master`\u001b[0m")
+      ""
+    } else branch + "-") + l.trim
   } getOrElse "latest"
 }
 scalaVersion := "2.12.3"

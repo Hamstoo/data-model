@@ -107,7 +107,7 @@ class DataStreamTests
 
     // see comment on JoinWithable as to why the cast is necessary here
     val source: Source[Datum[Int], NotUsed] =
-      src0.joinWith(src1)((a, b) => a * 100 + b, expireAfter = expireAfter millis).asInstanceOf[src0.Repr[Datum[Int]]]
+      src0.joinWith(src1)((a, b) => a * 100 + b, expireAfter = expireAfter).asInstanceOf[src0.Repr[Datum[Int]]]
 
     val foldSink = Sink.fold[Int, Int](0) { (a, b) =>
       logger.info(s"Log sink: $a + $b")
