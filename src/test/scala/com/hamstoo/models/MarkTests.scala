@@ -42,6 +42,10 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
     f.commentEncoded.get shouldEqual "<p><img src=\"http://www.fillmurray.com/100/100\" alt=\"filename\"></p>"
     val g = withComment("text<img align=\"right\" width=\"100\" height=\"100\" src=\"http://www.fillmurray.com/100/100\">text")
     g.commentEncoded.get shouldEqual "<p>text<img align=\"right\" width=\"100\" height=\"100\" src=\"http://www.fillmurray.com/100/100\">text</p>"
+
+    // should change `src` to `http-src` (and ends up swapping attr order b/c it removes and re-inserts)
+    val h = withComment("<img src=\"http://localhost/api/v1/marks/img/skFnwYt41402bNtF\" alt=\"1525871490532\">")
+    h.commentEncoded.get shouldEqual "<img alt=\"1525871490532\" http-src=\"http://localhost/api/v1/marks/img/skFnwYt41402bNtF\">"
   }
 
   val domainLink = "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'"
