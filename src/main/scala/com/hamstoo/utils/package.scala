@@ -93,8 +93,11 @@ package object utils {
   }
 
   /** Used by backend: AuthController and MarksController. */
-  def endpoint2Link(endpoint: Call)(implicit request: Request[Any]): String = httpHost + endpoint
-  def httpHost(implicit request: Request[Any]): String = s"http${if (request.secure) "s" else ""}://${request.host}"
+  def endpoint2Link(endpoint: Call, forceSecure: Boolean = false)(implicit request: Request[_]): String =
+    httpHost(forceSecure) + endpoint
+  def httpHost(forceSecure: Boolean)(implicit request: Request[_]): String =
+    s"http${if (request.secure || forceSecure) "s" else ""}://${request.host}"
+  def httpHost(implicit request: Request[_]): String = httpHost(forceSecure = false)
 
   /** Extended ReactiveMongo QueryBuilder */
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
