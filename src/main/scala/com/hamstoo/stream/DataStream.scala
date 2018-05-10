@@ -74,7 +74,7 @@ object DataStream {
   //   [https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely]
   // update: changing this from 1 to 16 may have a big (positive) effect
   //   [http://blog.colinbreck.com/maximizing-throughput-for-akka-streams]
-  val DEFAULT_BUFFER_SIZE = 16 // [PERFORMANCE]
+  val DEFAULT_BUFFER_SIZE = 1 // [PERFORMANCE]
 }
 
 /**
