@@ -134,7 +134,7 @@ object MarkData {
     .addTags("hr") // horizontal rule
     .addTags("del").addTags("s") // strikethrough
     .addTags("div").addAttributes("div", "style") // to allow text-align and such
-    .addAttributes("img", "http-src")
+    .addAttributes("img", "http-src", "style")
     .addEnforcedAttribute("a", "rel", "nofollow noopener noreferrer") // https://medium.com/@jitbit/target-blank-the-most-underestimated-vulnerability-ever-96e328301f4c
     .addEnforcedAttribute("a", "target", "_blank")
 
