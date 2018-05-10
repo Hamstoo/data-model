@@ -45,7 +45,7 @@ abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
     */
   final lazy val out: SourceType[T] = {
     assert(in != null) // this assertion will fail if `source` is not `lazy`
-    logger.debug(s"Materializing ${getClass.getSimpleName} BroadcastHub")
+    logger.info(s"Materializing ${getClass.getSimpleName} BroadcastHub")
 
     // "This Source [hub] can be materialized an arbitrary number of times, where each of the new materializations
     // will receive their elements from the original [in]."
@@ -74,7 +74,20 @@ object DataStream {
   //   [https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely]
   // update: changing this from 1 to 16 may have a big (positive) effect
   //   [http://blog.colinbreck.com/maximizing-throughput-for-akka-streams]
-  val DEFAULT_BUFFER_SIZE = 1 // [PERFORMANCE]
+  val DEFAULT_BUFFER_SIZE = 16 // [PERFORMANCE]
+
+  // 1. clock.out.map(...)
+  // 2. clock's BroadcastHub is materialized
+  // 3. the materialized BroadcastHub source waits for consumers
+  // 4. in the meantime, the BroadcastHub fills its buffer from the clock
+  // 5. if the buffer is bigger than the number of clock ticks, the clock gets fully consumed
+  // 6. the BroadcastHub gets a signal to shutdown
+  // 7. no consumers get any data
+
+  // but isn't this exactly why we wait to start the clock???
+
+  // using the same components as Join, perhaps we can lazily delay the materialization of the BroadcastHub
+  // or maybe we can artifically backpressure the (clock's or all) BroadcastHub until all consumers have been attached
 }
 
 /**
@@ -199,7 +212,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
   /** Groups preloaded data into clock tick intervals and throttles it to the pace of the ticks. */
   override protected val in: SourceType[T] = {
 
-    clock.out
+    clock.out.map { e => logger.info(s"PreloadSource (${getClass.getName}): $e"); e }
 
       // flow ticks through the PreloadFactory which preloads (probably) big chucks of future data but then
       // only allows (probably) smaller chunks of known data to pass at each tick
@@ -297,6 +310,7 @@ abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SI
     def joiner(v: T, t: TimeStamp): T = v
 
     // throttle the `throttlee` with the clock (see comment on JoinWithable as to why the cast is necessary here)
-    JoinWithable(throttlee).joinWith(clock.out)(joiner, pairwise).asInstanceOf[SourceType[T]]
+    val clockStream = clock.out.map { e => logger.info(s"ThrottledSource (${getClass.getName}): $e"); e }
+    JoinWithable(throttlee).joinWith(clockStream)(joiner, pairwise).asInstanceOf[SourceType[T]]
   }
 }

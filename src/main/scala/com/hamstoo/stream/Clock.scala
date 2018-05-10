@@ -25,7 +25,7 @@ case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
                            @Named(ClockEnd.name) end: ClockEnd.typ,
                            @Named(ClockInterval.name) interval: ClockInterval.typ)
                           (implicit mat: Materializer)
-    extends DataStream[TimeStamp](bufferSize = 1) { // should include `.async` below if bufferSize > 1 [PERFORMANCE]
+    extends DataStream[TimeStamp] { // should include `.async` below if bufferSize > 1 [PERFORMANCE]
 
   override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.tfmt}, ${interval.dfmt})"
   logger.info(s"Constructing $this")
@@ -73,5 +73,5 @@ case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
         Tick(r)
       }
     }
-  }.named("Clock").async // [PERFORMANCE]
+  }.named("Clock").map { e => logger.info(s"Clock: $e"); e }.async // [PERFORMANCE]
 }
