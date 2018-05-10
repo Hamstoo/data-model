@@ -20,7 +20,7 @@ import scala.concurrent.duration._
   *
   * @param bufferSize "Buffer size used by the producer. Gives an upper bound on how "far" from each other two
   *                   concurrent consumers can be in terms of element. If this buffer is full, the producer
-  *                   is backpressured. Must be a power of two and less than 4096."
+  *                   is backpressured. Must be a power of 2 and less than 4096."
   *                     [https://doc.akka.io/japi/akka/current/akka/stream/scaladsl/BroadcastHub.html]
   */
 abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
@@ -49,9 +49,10 @@ abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
 
     // "This Source [hub] can be materialized an arbitrary number of times, where each of the new materializations
     // will receive their elements from the original [in]."
-    val hub = in.runWith(BroadcastHub.sink(bufferSize = bufferSize))
+    val hub = in.runWith(BroadcastHub.sink(bufferSize = bufferSize)) // upper bound on how far two consumers can be [PERFORMANCE]
 
     hub.named(getClass.getSimpleName)
+      //.async // overkill? [PERFORMANCE]
   }
 
   /** Shortcut to the source.  Think of a DataStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
@@ -71,7 +72,9 @@ object DataStream {
   // the producer before any flows/sinks are attached to the materialized hub the producer will stop
   // and the dependent flows/sinks won't ever have a chance to backpressure
   //   [https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely]
-  val DEFAULT_BUFFER_SIZE = 1
+  // update: changing this from 1 to 16 may have a big (positive) effect
+  //   [http://blog.colinbreck.com/maximizing-throughput-for-akka-streams]
+  val DEFAULT_BUFFER_SIZE = 16 // [PERFORMANCE]
 }
 
 /**
@@ -217,6 +220,11 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
 
       // convert to an immutable
       .mapConcat(immutable.Iterable(_: _*))
+
+      // allocate each PreloadSource its own Actor (http://blog.colinbreck.com/maximizing-throughput-for-akka-streams/)
+      // there won't be many of these and they'll all typically be doing IO,
+      // just have to make sure the clock doesn't slow them down
+      .async // [PERFORMANCE]
   }
 }
 
@@ -260,7 +268,6 @@ abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SI
                                  (implicit clock: Clock, materializer: Materializer)
     extends DataStream[T](bufferSize) {
 
-  override val logger = Logger(classOf[ThrottledSource[T]])
   logger.info(s"Constructing ${getClass.getSimpleName}")
 
   /**
@@ -290,6 +297,6 @@ abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SI
     def joiner(v: T, t: TimeStamp): T = v
 
     // throttle the `throttlee` with the clock (see comment on JoinWithable as to why the cast is necessary here)
-    JoinWithable(throttlee).joinWith(clock())(joiner, pairwise).asInstanceOf[SourceType[T]]
+    JoinWithable(throttlee).joinWith(clock.out)(joiner, pairwise).asInstanceOf[SourceType[T]]
   }
 }

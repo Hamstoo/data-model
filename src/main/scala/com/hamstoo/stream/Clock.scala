@@ -10,7 +10,6 @@ import com.google.inject.name.Named
 import com.google.inject.Inject
 import com.hamstoo.stream.Tick.Tick
 import com.hamstoo.utils.{ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
-import play.api.Logger
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Promise}
@@ -22,12 +21,11 @@ import scala.concurrent.{Await, Promise}
   * TODO:   increment/decrement-named methods (to handle irregular intervals involving weekends and months and such)
   */
 @com.google.inject.Singleton
-case class Clock @Inject() (@Named(ClockBegin.name) begin: ClockBegin.typ,
-                            @Named(ClockEnd.name) end: ClockEnd.typ,
-                            @Named(ClockInterval.name) interval: ClockInterval.typ)
-                           (implicit mat: Materializer) extends DataStream[TimeStamp] {
-
-  override val logger = Logger(classOf[Clock])
+case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
+                           @Named(ClockEnd.name) end: ClockEnd.typ,
+                           @Named(ClockInterval.name) interval: ClockInterval.typ)
+                          (implicit mat: Materializer)
+    extends DataStream[TimeStamp] { // should include `.async` below if bufferSize > 1 [PERFORMANCE]
 
   override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.tfmt}, ${interval.dfmt})"
   logger.info(s"Constructing $this")
@@ -75,5 +73,5 @@ case class Clock @Inject() (@Named(ClockBegin.name) begin: ClockBegin.typ,
         Tick(r)
       }
     }
-  }.named("Clock")
+  }.named("Clock").async // [PERFORMANCE]
 }
