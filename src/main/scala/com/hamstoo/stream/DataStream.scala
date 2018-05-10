@@ -68,9 +68,9 @@ abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
 
 object DataStream {
 
-  // we use a default of 1 because there appears to be a bug in BroadcastHub where if the buffer consumes
-  // the producer before any flows/sinks are attached to the materialized hub the producer will stop
-  // and the dependent flows/sinks won't ever have a chance to backpressure
+  // we use a default of 1 because there appears to be a bug in BroadcastHub where if the buffer consumes the
+  // producer before any flows/sinks are attached to the materialized hub the producer will stop and the
+  // dependent flows/sinks won't ever have a chance to backpressure (which is a problem for the clock especially!)
   //   [https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely]
   // update: changing this from 1 to 16 may have a big (positive) effect
   //   [http://blog.colinbreck.com/maximizing-throughput-for-akka-streams]
