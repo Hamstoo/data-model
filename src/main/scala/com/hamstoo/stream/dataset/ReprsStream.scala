@@ -43,7 +43,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
                            (implicit clock: Clock,
                             mat: Materializer,
                             reprDao: RepresentationDao)
-    extends PreloadObserver[MSearchable, ReprsPair](marksStream) {
+    extends PreloadObserver[MSearchable, ReprsPair](marksStream) { // bufferSize [PERFORMANCE]
 
   // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples
 

@@ -48,6 +48,9 @@ object StreamDSL {
     def map[O](f: A => O)(implicit m: Materializer): DataStream[O] =
       new DataStream[O] {
         override val joinExpiration: DurationMils = s.joinExpiration // pass this value up through the dependency tree
+
+        // TODO: Every time this happens a new BroadcastHub is born.  Should we instead only create the BroadcastHub
+        // TODO:   if/when a DataStream gets "mapped from"/"attached to" more than once? [PERFORMANCE]
         override def in: SourceType[O] = s().map(_.mapValue(f))
       }
 
