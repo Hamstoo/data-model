@@ -177,7 +177,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
       (firstPreloadEnd until lastPreloadEnd.get by loadInterval).foreach { end_i =>
 
         // these calls to `preload` be executed in parallel, but the buffer appending won't be
-        logger.debug(s"(\033[2m${PreloadSource.this.getClass.getSimpleName}\033[0m) knownDataFor: ${ts.tfmt}, preload begin: [${(end_i - loadInterval).tfmt}, ${end_i.tfmt})")
+        logger.info(s"(\033[2m${PreloadSource.this.getClass.getSimpleName}\033[0m) knownDataFor: ${ts.tfmt}, preload begin: [${(end_i - loadInterval).tfmt}, ${end_i.tfmt})")
 
         val batch = preload(end_i - loadInterval, end_i)
         observers.offer(batch) // notify observers
@@ -212,7 +212,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
   /** Groups preloaded data into clock tick intervals and throttles it to the pace of the ticks. */
   override protected val in: SourceType[T] = {
 
-    clock.out.map { e => logger.info(s"PreloadSource (${getClass.getName}): $e"); e }
+    clock.out.map { e => logger.info(s"PreloadSource: $e"); e }
 
       // flow ticks through the PreloadFactory which preloads (probably) big chucks of future data but then
       // only allows (probably) smaller chunks of known data to pass at each tick
@@ -221,17 +221,20 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
         tick => immutable.Iterable(factory.knownDataFor(tick)) // lambda function called once per tick
       }
 
-      // should only need a single thread b/c data must arrive sequentially per the clock anyway,
+      // should only need a single thread b/c knownDataFor batches must arrive sequentially per the clock anyway,
       // the end time of the KnownData window will be that of the most recent tick (brought here by statefulMapConcat)
       // (changing this from mapAsync(1) to 2 or 4 or 8 doesn't seem to have any effect)
       .mapAsync(1) { w: KnownData =>
-        if (logger.isDebugEnabled) logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) $w")
+        logger.info(s"(\033[2m${getClass.getSimpleName}\033[0m) $w")
         w.buffer.map { buf =>
-          buf.toSeq.sorted(Ordering[ABV]).map(d => d.copy(knownTime = w.end))
+          buf.toSeq.sorted(Ordering[ABV]).map { d =>
+            logger.info(s"(\033[2m${getClass.getSimpleName}\033[0m) Element: ${d.sourceTime.dfmt}, ${d.id}")
+            d.copy(knownTime = w.end)
+          }
         }
       }
 
-      // convert to an immutable
+      // mapConcat (a.k.a. flatMap) requires an immutable
       .mapConcat(immutable.Iterable(_: _*))
 
       // allocate each PreloadSource its own Actor (http://blog.colinbreck.com/maximizing-throughput-for-akka-streams/)
@@ -265,8 +268,12 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I], bufferSize: In
   }
 
   /** Override the typical `preload` implementation with one that waits on the head of the cache queue. */
-  override def preload(begin: TimeStamp, end: TimeStamp): PreloadType[O] =
-    queue.head.future.map { x => queue.dequeue(); x } // 3. observerPreload's Future completes and immediately dequeued
+  override def preload(begin: TimeStamp, end: TimeStamp): PreloadType[O] = {
+    logger.info(s"Commence PreloadObserver wait (${begin.dfmt} to ${end.dfmt})")
+    queue.head.future.map { x =>
+      logger.info(s"PreloadObserver wait complete (${begin.dfmt} to ${end.dfmt})")
+      queue.dequeue(); x } // 3. observerPreload's Future completes and immediately dequeued
+  }
 
   /** Abstract analogue of PreloadSource.preload for a PreloadObserver. */
   def observerPreload(subjectData: PreloadType[I]): PreloadType[O]

@@ -139,6 +139,7 @@ class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
   // see comment on JoinWithable as to why the cast is necessary here
   import com.hamstoo.stream.Join.JoinWithable
   override def in: SourceType[typ] = marks().joinWith(reprs()) { case x => x }.asInstanceOf[SourceType[typ]]
+    .map { e => import com.hamstoo.utils._; logger.info(s"${e.sourceTime.dfmt}"); e }
 }
 
 object RepredMarks {
