@@ -179,6 +179,8 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
         // these calls to `preload` be executed in parallel, but the buffer appending won't be
         logger.info(s"(\033[2m${PreloadSource.this.getClass.getSimpleName}\033[0m) knownDataFor: ${ts.tfmt}, preload begin: [${(end_i - loadInterval).tfmt}, ${end_i.tfmt})")
 
+        // `preload` returns a Future, but it--the Future--immediately gets pushed to observers (rather than waiting)
+        // so we can be sure that they get pushed onto the observers' queues in order
         val batch = preload(end_i - loadInterval, end_i)
         observers.offer(batch) // notify observers
         buffer = buffer :+ batch
@@ -225,10 +227,10 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
       // the end time of the KnownData window will be that of the most recent tick (brought here by statefulMapConcat)
       // (changing this from mapAsync(1) to 2 or 4 or 8 doesn't seem to have any effect)
       .mapAsync(1) { w: KnownData =>
-        logger.info(s"(\033[2m${getClass.getSimpleName}\033[0m) $w")
         w.buffer.map { buf =>
+          logger.info(s"(\033[2m${getClass.getSimpleName}\033[0m) $w, n=${buf.size}")
           buf.toSeq.sorted(Ordering[ABV]).map { d =>
-            logger.info(s"(\033[2m${getClass.getSimpleName}\033[0m) Element: ${d.sourceTime.dfmt}, ${d.id}")
+            logger.info(s"(\033[2m${getClass.getSimpleName}\033[0m) Element: ${d.sourceTime.tfmt}, ${d.id}")
             d.copy(knownTime = w.end)
           }
         }
@@ -269,9 +271,9 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I], bufferSize: In
 
   /** Override the typical `preload` implementation with one that waits on the head of the cache queue. */
   override def preload(begin: TimeStamp, end: TimeStamp): PreloadType[O] = {
-    logger.info(s"Commence PreloadObserver wait (${begin.dfmt} to ${end.dfmt})")
+    logger.info(s"Commence PreloadObserver wait (${begin.tfmt} to ${end.tfmt})")
     queue.head.future.map { x =>
-      logger.info(s"PreloadObserver wait complete (${begin.dfmt} to ${end.dfmt})")
+      logger.info(s"PreloadObserver wait complete (${begin.tfmt} to ${end.tfmt})")
       queue.dequeue(); x } // 3. observerPreload's Future completes and immediately dequeued
   }
 
