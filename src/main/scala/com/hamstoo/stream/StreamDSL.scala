@@ -47,6 +47,11 @@ object StreamDSL {
       */
     def map[O](f: A => O)(implicit m: Materializer): DataStream[O] =
       new DataStream[O] {
+
+        // TODO: downstream consumers of this DataStream will need to know that their data may arrive out of
+        // TODO:   order if joinExpiration was set larger to accommodate a mapAsyncUnordered
+        // TODO: perhaps mapAsyncUnordered is not the right way to improve efficiency then but rather
+        // TODO:   the insertion of async boundaries and utilization of buffers
         override val joinExpiration: DurationMils = s.joinExpiration // pass this value up through the dependency tree
 
         // TODO: Every time this happens a new BroadcastHub is born.  Should we instead only create the BroadcastHub
