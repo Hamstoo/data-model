@@ -23,14 +23,15 @@ object StreamDSL {
   implicit class CollectionStreamDSL[T](private val s: DataStream[Traversable[T]]) extends AnyVal {
 
     /** DataStreams of Traversables can be flattened. */
-    def flatten(implicit m: Materializer): DataStream[T] =
+    def flatten(implicit m: Materializer): DataStream[T] = {
+      implicit val mbJoinExpiration: Option[DurationMils] = Some(s.joinExpiration) // pass this up through dep. tree
       new DataStream[T] {
-        override val joinExpiration: DurationMils = s.joinExpiration // pass this value up through the dependency tree
         override def in: SourceType[T] = s().mapConcat { d: Datum[Traversable[T]] =>
           val values: Traversable[T] = d.value
           values.map { v: T => d.withValue[T](v) }.to[immutable.Iterable]
         }
       }
+    }
   }
 
   /**
@@ -45,19 +46,21 @@ object StreamDSL {
       * Map a stream of Datum[A]s to Datum[O]s.  Nearly all of the other implicit methods in this class go through
       * here or `join`, which is evident from their constructions of `new DataStream[O]`s.
       */
-    def map[O](f: A => O)(implicit m: Materializer): DataStream[O] =
-      new DataStream[O] {
+    def map[O](f: A => O)(implicit m: Materializer): DataStream[O] = {
 
-        // TODO: downstream consumers of this DataStream will need to know that their data may arrive out of
-        // TODO:   order if joinExpiration was set larger to accommodate a mapAsyncUnordered
-        // TODO: perhaps mapAsyncUnordered is not the right way to improve efficiency then but rather
-        // TODO:   the insertion of async boundaries and utilization of buffers
-        override val joinExpiration: DurationMils = s.joinExpiration // pass this value up through the dependency tree
+      // TODO: downstream consumers of this DataStream will need to know that their data may arrive out of
+      // TODO:   order if joinExpiration was set larger to accommodate a mapAsyncUnordered
+      // TODO: perhaps mapAsyncUnordered is not the right way to improve efficiency then but rather
+      // TODO:   the insertion of async boundaries and utilization of buffers
+      implicit val mbJoinExpiration: Option[DurationMils] = Some(s.joinExpiration)
+
+      new DataStream[O] {
 
         // TODO: Every time this happens a new BroadcastHub is born.  Should we instead only create the BroadcastHub
         // TODO:   if/when a DataStream gets "mapped from"/"attached to" more than once? [PERFORMANCE]
         override def in: SourceType[O] = s().map(_.mapValue(f))
       }
+    }
 
     /** This really shouldn't be part of the interface, so just pass `ev.m` explicitly when necessary. */
     //def mapI[O](f: A => O)(implicit ev: Implicits[_, _]): DataStream[O] = s.map(f)(ev.m)
@@ -84,12 +87,13 @@ object StreamDSL {
     def rating(implicit ev: ClassTag[A], m: Materializer) = s("rating", classTag[Option[Double]])
 
     /** Invoke JoinWithable.joinWith on the provided streams.  Also see comment on `map`. */
-    def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] =
+    def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] = {
+      implicit val mbJoinExpiration: Option[DurationMils] = Some(math.max(s.joinExpiration, that.joinExpiration))
       new DataStream[O] {
-        override val joinExpiration: DurationMils = math.max(s.joinExpiration, that.joinExpiration)
         override val in: SourceType[O] = s().joinWith(that())(joiner = op,
                                                               expireAfter = joinExpiration).asInstanceOf[SourceType[O]]
       }
+    }
 
     /** The `{ case x => x }` actually does serve a purpose; it unpacks x into a 2-tuple, which `identity` cannot do. */
     def pair[B](that: DataStream[B])(implicit m: Materializer): DataStream[(A, B)] =

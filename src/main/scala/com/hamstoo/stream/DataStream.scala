@@ -24,7 +24,8 @@ import scala.concurrent.duration._
   *                     [https://doc.akka.io/japi/akka/current/akka/stream/scaladsl/BroadcastHub.html]
   */
 abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
-                             (implicit mat: Materializer) {
+                             (implicit mat: Materializer,
+                              mbJoinExpiration: Option[DurationMils] = None) {
 
   val logger = Logger(getClass)
 
@@ -33,6 +34,7 @@ abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
 
   // don't even try mentioning T anywhere in this type definition, more at the link
   //   https://stackoverflow.com/questions/33458782/scala-type-members-variance
+  // TODO: try using @uncheckedVariance here instead (as it is used in Join.scala)
   type SourceType[+TT] = Source[Datum[TT], NotUsed]
 
   /** Abstract Akka Source (input port) to be defined by implementation. */
@@ -45,7 +47,7 @@ abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
     */
   final lazy val out: SourceType[T] = {
     assert(in != null) // this assertion will fail if `source` is not `lazy`
-    logger.info(s"Materializing ${getClass.getSimpleName} BroadcastHub")
+    logger.info(s"Materializing ${getClass.getSimpleName} BroadcastHub (with joinExpiration ${joinExpiration.dfmt})")
 
     // "This Source [hub] can be materialized an arbitrary number of times, where each of the new materializations
     // will receive their elements from the original [in]."
@@ -63,7 +65,7 @@ abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
     * in the base class so that it can be passed down through the "dependency tree"/"stream graph" via StreamDSL, but
     * perhaps there's a better way to pass along this value (with implicits?) that I haven't thought of.
     */
-  val joinExpiration: DurationMils = DEFAULT_EXPIRE_AFTER
+  val joinExpiration: DurationMils = mbJoinExpiration.getOrElse(DEFAULT_EXPIRE_AFTER)
 }
 
 object DataStream {
