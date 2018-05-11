@@ -135,10 +135,15 @@ class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
     extends DataStream[RepredMarks.typ] {
 
   import RepredMarks._
-
-  // see comment on JoinWithable as to why the cast is necessary here
   import com.hamstoo.stream.Join.JoinWithable
-  override def in: SourceType[typ] = marks().joinWith(reprs()) { case x => x }.asInstanceOf[SourceType[typ]]
+
+  // TODO: `joinWith` needs to take an implicit expireAfter, but it needs to get it from marks and reprs BEFORE
+  // TODO:   their `.apply` methods are called converting them from DataStreams to regular Akka Streams
+  // TODO:   so how do we pluck such an implicit out of think air?  (1) have an implicit conversion from a pair
+  // TODO:   of DataStreams?  (2) attach (duck punch) an implicit expireAfter to the Akka Stream returned by `apply`
+  // TODO:   by making joinWith operate on an ExtendedGraph or via a typeclass?
+  override def in: SourceType[typ] = marks().joinWith(reprs()) { case x => x }
+    .asInstanceOf[SourceType[typ]] // see comment on JoinWithable as to why this cast is necessary
     .map { e => import com.hamstoo.utils._; logger.info(s"${e.sourceTime.tfmt}"); e }
 }
 

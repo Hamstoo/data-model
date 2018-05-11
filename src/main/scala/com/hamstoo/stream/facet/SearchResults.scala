@@ -76,7 +76,9 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
 
   // repredMarks will arrive according to time, but search results don't need to be ordered after here because we
   // re-order them later anyway, so just forward them on to the next downstream consumer as soon as they're complete
-  override val in: SourceType[typ] = repredMarks().mapAsyncUnordered(16) { dat: Datum[(MSearchable, ReprsPair)] =>
+  override val in: SourceType[typ] = repredMarks()
+    .map { e => import com.hamstoo.utils._; logger.info(s"repredMarks.out: ${e.sourceTime.tfmt}"); e }
+    .mapAsyncUnordered(16) { dat: Datum[(MSearchable, ReprsPair)] =>
 
     // unpack the pair datum
     val (mark, ReprsPair(siteReprs, userReprs)) = dat.value
