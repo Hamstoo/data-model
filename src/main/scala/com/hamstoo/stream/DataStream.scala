@@ -4,7 +4,7 @@
 package com.hamstoo.stream
 
 import akka.NotUsed
-import akka.stream.Materializer
+import akka.stream.{Materializer, OverflowStrategy}
 import akka.stream.scaladsl.{BroadcastHub, Sink, Source, SourceQueue}
 import com.hamstoo.stream.Tick.{ExtendedTick, Tick}
 import com.hamstoo.stream.Join.{DEFAULT_EXPIRE_AFTER, JoinWithable, Pairwised}
@@ -55,6 +55,7 @@ abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
 
     hub.named(getClass.getSimpleName)
       //.async // overkill? [PERFORMANCE]
+      .buffer(bufferSize, OverflowStrategy.backpressure) // [PERFORMANCE] "behavior can be tweaked" [https://doc.akka.io/docs/akka/current/stream/stream-dynamic.html]
   }
 
   /** Shortcut to the source.  Think of a DataStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
@@ -77,6 +78,7 @@ object DataStream {
   // update: changing this from 1 to 16 may have a big (positive) effect
   //   [http://blog.colinbreck.com/maximizing-throughput-for-akka-streams]
   val DEFAULT_BUFFER_SIZE = 16 // [PERFORMANCE]
+  val DEFAULT_PRELOAD_BUFFER_SIZE = 1024
 
   // 1. clock.out.map(...)
   // 2. clock's BroadcastHub is materialized
@@ -106,7 +108,7 @@ object DataStream {
   *                     [https://doc.akka.io/japi/akka/current/akka/stream/scaladsl/BroadcastHub.html]
   * @tparam T The type of data being streamed.
   */
-abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
+abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int = DataStream.DEFAULT_PRELOAD_BUFFER_SIZE)
                                 (implicit clock: Clock, mat: Materializer)
     extends DataStream[T](bufferSize) {
 
@@ -244,7 +246,10 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils, bufferSize: Int
       // allocate each PreloadSource its own Actor (http://blog.colinbreck.com/maximizing-throughput-for-akka-streams/)
       // there won't be many of these and they'll all typically be doing IO,
       // just have to make sure the clock doesn't slow them down
-      .async // [PERFORMANCE]
+      //.async // [PERFORMANCE]
+      // update: maybe the `.async` doesn't do anything because there's already a BroadcastHub, although this buffer
+      // should keep the source flowing (as long as the clock keeps flowing)
+      //.buffer(1024, OverflowStrategy.backpressure)
   }
 }
 
