@@ -53,7 +53,7 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
 
     value * COEF
 
-  }.out
+  }.out.map { e => import com.hamstoo.utils._; logger.info(s"${e.sourceTime.tfmt}"); e }
 }
 
 object AggregateSearchScore {

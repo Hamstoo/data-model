@@ -213,6 +213,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
 
   }.mapConcat(_.to[immutable.Iterable]) // a.k.a. flatten
     .asInstanceOf[SourceType[typ]] // see "BIG NOTE" on JoinWithable
+    .map { e => import com.hamstoo.utils._; logger.info(s"${e.sourceTime.tfmt}"); e }
 
   /**
     * Convert a list of reprs, one for each search term, into a weighted average MongoDB Text Index search score
