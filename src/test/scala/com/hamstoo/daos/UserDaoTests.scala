@@ -46,11 +46,11 @@ class UserDaoTests
   }
 
   it should "(UNIT) retrieve user by email" in {
-    userDao.retrieve(email).futureValue.get shouldEqual user
+    userDao.retrieveByEmail(email).futureValue.get shouldEqual user
   }
 
   it should "(UNIT) retrieve user by UUID" in {
-    userDao.retrieve(user.id).futureValue.get shouldEqual user
+    userDao.retrieveById(user.id).futureValue.get shouldEqual user
   }
 
   it should "(UNIT) link profile to user" in {
@@ -79,7 +79,7 @@ class UserDaoTests
 
   it should "(UNIT) delete user" in {
     userDao.delete(user.id).futureValue shouldEqual {}
-    userDao.retrieve(user.id).futureValue shouldEqual None
+    userDao.retrieveById(user.id).futureValue shouldEqual None
   }
 
 //  it should "(UNIT) create user and find him by username with `hasSharedMarks` == false condition" in {

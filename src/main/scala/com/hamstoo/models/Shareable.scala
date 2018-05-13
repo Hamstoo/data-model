@@ -130,6 +130,8 @@ object SharedWith {
     // This instance exemplifies why isAuthorized takes an Option; even userId=None will be granted authorization.
     val PUBLIC: Value = Value(3)
 
+    final def optValue(i: scala.Int): Option[Value] = values.find(_.id == i)
+
     // https://stackoverflow.com/questions/24851677/reactivemongo-how-to-write-macros-handler-to-enumeration-object
 //    implicit val enumReads: Reads[Level] = EnumUtils.enumReads(Level)
 //    implicit def enumWrites: Writes[Level] = EnumUtils.enumWrites
@@ -157,7 +159,7 @@ object SharedWith {
 
     // convert userIds into a set of email addresses (which could be empty)
     val futUserEmails: Future[Set[String]] = for {
-      optUsers <- Future.sequence(userIds.map(userDao.retrieve))
+      optUsers <- Future.sequence(userIds.map(userDao.retrieveById))
     } yield optUsers.flatten.flatMap(_.profiles.flatMap(_.email))
 
     futUserEmails.map(_.union(rawEmails))
@@ -256,7 +258,7 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
         case None => Future.successful(false)
         case Some(u) =>
           if (u.emails.nonEmpty) Future.successful(u.emails.exists(isAuthorizedEmail))
-          else userDao.retrieve(u.id).map(_.fold(false)(_.emails.exists(isAuthorizedEmail)))
+          else userDao.retrieveById(u.id).map(_.fold(false)(_.emails.exists(isAuthorizedEmail)))
       }
     }
   }

@@ -6,10 +6,8 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.google.inject.Inject
-import com.hamstoo.models.User._
-import com.hamstoo.models.{Mark, Profile, Shareable, SharedWith, User, UserGroup}
 import com.hamstoo.models.SharedWith.Level
-import com.hamstoo.models._
+import com.hamstoo.models.{Mark, Profile, Shareable, SharedWith, User, UserGroup, _}
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.api.services.IdentityService
 import play.api.Logger
@@ -18,7 +16,6 @@ import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.{BSONArray, BSONDocument, BSONRegex, BSONString}
-import reactivemongo.bson.BSONDocument
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -94,16 +91,18 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
     dbColl().flatMap(_.find(d :~ PLINFOx -> loginInfo).one[User])
 
   /** Retrieves user account data by user id. */
-  def retrieve(userId: UUID): Future[Option[User]] =
-    dbColl().flatMap(_.find(d :~ ID -> userId.toString).one[User])
+  def retrieveById(userId: UUID): Future[Option[User]] = retrieve(ID, userId.toString)
 
   /** Retrieves user account data by email. */
-  def retrieve(email: String): Future[Option[User]] =
-    dbColl().flatMap(_.find(d :~ PEMAILx -> email).one[User])
+  def retrieveByEmail(email: String): Future[Option[User]] = retrieve(PEMAILx, email)
 
   /** Retrieves user account data by username. */
   def retrieveByUsername(username: String): Future[Option[User]] =
-    dbColl().flatMap(_.find(d :~ UNAMELOWx -> username.toLowerCase).one[User])
+    retrieve(UNAMELOWx, username.toLowerCase)
+
+  private def retrieve(fieldName: String, fieldValue: String): Future[Option[User]] =
+    dbColl().flatMap(_.find(d :~ fieldName -> fieldValue).one[User])
+
 
   /** Attaches provided `Profile` to user account by user id. */
   def link(userId: UUID, profile: Profile): Future[User] = for {

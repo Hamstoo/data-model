@@ -30,13 +30,32 @@ class UserSuggestionDaoTests
     userSuggDao.retrieve(uuid, None, email).futureValue.value shouldEqual us1
   }
 
-  it should "increase count of shares" in {
-    userSuggDao.save(us0).futureValue shouldEqual us0.copy(count = 2)
-    userSuggDao.retrieve(uuid, Some("bimbo"), None).futureValue.value.count shouldEqual 2
+  it should "update time of shares" in {
+    userSuggDao.save(us0).futureValue.created should be > us0.created
+    userSuggDao.retrieve(uuid, Some("bimbo"), None).futureValue.value.created should be > us0.created
+  }
+
+  it should "find by username" in {
+    userSuggDao
+      .findByUsername(uuid, "bi")
+      .futureValue
+      .value
+      .id shouldEqual us0.id
+  }
+
+  it should "find by email" in {
+    userSuggDao
+      .findByEmail(uuid, "bi")
+      .futureValue
+      .value
+      .id shouldEqual us1.id
   }
 
   it should "retrieve by username prefix" in {
-    userSuggDao.findSuggestions(uuid, "bi").futureValue.map(_.id) shouldEqual Seq(us0, us1).map(_.id)
+    userSuggDao
+      .findSuggestions(uuid, "bi")
+      .futureValue
+      .map(_.id) shouldEqual Seq(us0, us1).map(_.id)
   }
 
 }
