@@ -65,7 +65,7 @@ class Recency @Inject() (facetArg: Recency.Arg,
       (0.5 pow nHalfLifes) * COEF
 
     }
-  }.out
+  }.out.map { e => import com.hamstoo.utils._; logger.info(s"${e.sourceTime.tfmt}"); e }
 }
 
 object Recency {

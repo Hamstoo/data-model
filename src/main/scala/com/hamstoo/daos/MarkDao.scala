@@ -41,7 +41,10 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   val logger: Logger = Logger(classOf[MarkDao])
 
   val collName: String = "entries"
-  private val dbColl: () => Future[BSONCollection] = () => db().map(_ collection collName)
+  private val dbColl: () => Future[BSONCollection] = () => db().map { db =>
+    logger.info(s"DB: [${Integer.toHexString(db.connection.hashCode)}]")
+    db
+  }.map(_ collection collName)
   private def reprsColl(): Future[BSONCollection] = db().map(_ collection "representations")
   private def pagesColl(): Future[BSONCollection] = db().map(_ collection "pages")
 
@@ -112,7 +115,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   /** Retrieves a list of marks by IDs, ignoring user authorization permissions. */
   def retrieveInsecureSeq(ids: Seq[ObjectId], timeFrom: Option[TimeStamp] = None, n: Int = -1,
                           begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving (insecure) ${ids.size} marks (timeFrom=${timeFrom.map(_.tfmt)}, begin=${begin.map(_.tfmt)}, end=${end.map(_.tfmt)}); first, at most, 5: ${ids.take(5)}")
+    logger.info(s"Retrieving (insecure) ${ids.size} marks (timeFrom=${timeFrom.map(_.tfmt)}, begin=${begin.map(_.tfmt)}, end=${end.map(_.tfmt)}); first, at most, 5: ${ids.take(5)}")
     for {
       c <- dbColl()
       sel = d :~ ID -> (d :~ "$in" -> ids) :~
@@ -122,7 +125,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
       seq <- c.find(d :~ sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq](n = n)
     } yield {
-      logger.debug(s"Retrieved (insecure) ${seq.size} marks; first, at most, 5: ${seq.take(5).map(_.id)}")
+      logger.info(s"Retrieved (insecure) ${seq.size} marks; first, at most, 5: ${seq.take(5).map(_.id)}")
       seq
     }
   }
@@ -241,7 +244,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     */
   def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String],
                      begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[MSearchable]] = {
-    logger.debug(s"Retrieving represented marks for user $user and tags $tags")
+    logger.info(s"Retrieving represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
 
@@ -257,7 +260,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
       seq <- c.find(sel).coll[MSearchable, Seq]()
     } yield {
-      logger.debug(s"${seq.size} represented marks were successfully retrieved")
+      logger.info(s"${seq.size} represented marks were successfully retrieved")
       seq.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
@@ -269,7 +272,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     */
   def retrieveRefed(user: UUID, begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):
                                                                             Future[Map[ObjectId, MarkRef]] = {
-    logger.debug(s"Retrieving referenced marks for user $user")
+    logger.info(s"Retrieving referenced marks for user $user")
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ REFIDx -> (d :~ "$exists" -> true) :~ curnt :~
@@ -277,7 +280,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
       seq <- c.find(sel).coll[MSearchable, Seq]()
     } yield {
-      logger.debug(s"${seq.size} referenced marks were successfully retrieved")
+      logger.info(s"${seq.size} referenced marks were successfully retrieved")
       seq//.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) } // no longer returning Marks, so no need to cleanRanges
         .map(m => m.markRef.get.markId -> m.markRef.get).toMap
     }
@@ -316,7 +319,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
     val which = if (users.nonEmpty) s"for ${users.size} users (first, at most, 5: ${users.take(5)}) with ${ids.size}"
                 else s"with ${ids.size} IDs (first, at most, 5: ${ids.take(5)})"
-    logger.debug(s"Searching for marks $which by text query '$query' between ${begin.map(_.tfmt)} and ${end.map(_.tfmt)}")
+    logger.info(s"Searching for marks $which by text query '$query' between ${begin.map(_.tfmt)} and ${end.map(_.tfmt)}")
 
     // this projection doesn't have any effect without this selection
     val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
@@ -341,7 +344,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
         dbColl().flatMap(_.find(sel, searchScoreProjection).coll[MSearchable, Seq]())
       }
     }.map(_.flatten).map { set =>
-      logger.debug(s"Search retrieved ${set.size} marks")
+      logger.info(s"Search retrieved ${set.size} marks")
       set.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
     }
   }

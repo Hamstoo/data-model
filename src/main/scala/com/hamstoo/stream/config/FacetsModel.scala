@@ -78,9 +78,10 @@ class FacetsModel @Inject()(injector: Injector)
     facets.zipWithIndex.foreach { case ((name, ds), i) =>
 
       // label the source with its facet name so that we can tell them apart on the other side
-      val labeledSource = ds().map { data =>
+      val labeledSource = ds().map { e => import com.hamstoo.utils._; logger.info(s"(\033[2m${name}\033[0m) ${e.sourceTime.tfmt}"); e }.map { data =>
         (name, data)
-      }.named(name) // unsure if this actually has any effect
+      }.async  // unsure if this actually has any effect
+        .named(name)
 
       labeledSource ~> merge.in(i)
     }

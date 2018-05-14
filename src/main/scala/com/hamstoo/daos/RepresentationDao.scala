@@ -12,9 +12,8 @@ import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 
 object RepresentationDao {
@@ -29,7 +28,8 @@ object RepresentationDao {
   * Data access object for MongoDB `representations` collection.
   * @param db  Future[DefaultDB] database connection returning function.
   */
-class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
+class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB],
+                                  ec: ExecutionContext)
     extends ReprEngineProductDao[Representation]("representation") {
 
   import RepresentationDao._
@@ -38,7 +38,10 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
 
   val logger: Logger = Logger(classOf[RepresentationDao])
 
-  override def dbColl(): Future[BSONCollection] = db().map(_ collection "representations")
+  override def dbColl(): Future[BSONCollection] = db().map { db =>
+    logger.info(s"DB: [${Integer.toHexString(db.connection.hashCode)}]")
+    db
+  }.map(_ collection "representations")
 
   // Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
   // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
@@ -68,7 +71,7 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
     */
   def search(ids: Set[ObjectId], query: String): Future[Map[String, RSearchable]] = for {
     c <- dbColl()
-    _ = logger.debug(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
+    _ = logger.info(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
 
     // this Future.sequence the only way I can think of to lookup documents via their IDs prior to a Text Index search
     seq <- Future.sequence { ids.map { id =>
@@ -84,5 +87,9 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
 
       c.find(sel :~ searchScoreSelection, searchScoreProjection).one[RSearchable]
     }}
-  } yield seq.flatten.map { repr => repr.id -> repr }.toMap
+  } yield {
+    val flat = seq.flatten
+    logger.info(s"Done searching with query '$query'; found ${flat.size} reprs given ${ids.size} IDs")
+    flat.map { repr => repr.id -> repr }.toMap
+  }
 }
