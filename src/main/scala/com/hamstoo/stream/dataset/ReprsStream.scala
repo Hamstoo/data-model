@@ -62,10 +62,10 @@ class ReprsStream @Inject()(marksStream: MarksStream,
   private lazy val cleanedQuery = mbCleanedQuery.getOrElse(Seq(("", 0)))
 
   /** Maps the stream of marks to their reprs. */
-  override def observerPreload(subjectData: PreloadType[MSearchable]): PreloadType[ReprsPair] = {
-    subjectData.flatMap { data =>
+  override def observerPreload(fSubjectData: PreloadType[MSearchable]): PreloadType[ReprsPair] = {
+    fSubjectData.flatMap { subjectData =>
 
-      val marks = data.map(_.value)
+      val marks = subjectData.map(_.value)
       val primaryReprIds = marks.map(_.primaryRepr) // .getOrElse("") already applied
       val usrContentReprIds = marks.map(_.userContentRepr.getOrElse(""))
       val reprIds = (primaryReprIds ++ usrContentReprIds).filter(_.nonEmpty).toSet
@@ -86,8 +86,13 @@ class ReprsStream @Inject()(marksStream: MarksStream,
       // TODO: maybe use the representations collection's Text Index score and drop the marks collection's Text Index?
       val funscoredReprs = reprDao.retrieve(reprIds)
 
+      logger.info(s"Performing ReprsStream.observerPreload 2")
+
       for(scoredReprs <- fscoredReprs; unscoredReprs <- funscoredReprs) yield {
-        data.map { dat =>
+
+        logger.info("Begin mapping data")
+
+        val mapped = subjectData.map { dat =>
 
           val mark = dat.value
           val primaryReprId = mark.primaryRepr
@@ -121,6 +126,9 @@ class ReprsStream @Inject()(marksStream: MarksStream,
           loggerI.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
           d
         }
+
+        logger.info("Done mapping data")
+        mapped
       }
     }
   }
@@ -141,7 +149,8 @@ class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
   // TODO:   their `.apply` methods are called converting them from DataStreams to regular Akka Streams
   // TODO:   so how do we pluck such an implicit out of think air?  (1) have an implicit conversion from a pair
   // TODO:   of DataStreams?  (2) attach (duck punch) an implicit expireAfter to the Akka Stream returned by `apply`
-  // TODO:   by making joinWith operate on an ExtendedGraph or via a typeclass?
+  // TODO:   by making joinWith operate on an ExtendedGraph or via a typeclass?  (3) or joinWith just (simply)
+  // TODO:   needs to operate on DataStreams, rather than their output ports?
   override def in: SourceType[typ] = marks().joinWith(reprs()) { case x => x }
     .asInstanceOf[SourceType[typ]] // see comment on JoinWithable as to why this cast is necessary
     .map { e => import com.hamstoo.utils._; logger.info(s"${e.sourceTime.tfmt}"); e }

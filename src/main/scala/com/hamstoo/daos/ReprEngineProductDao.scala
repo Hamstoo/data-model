@@ -97,12 +97,12 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
   /** Given a set of representation IDs, return a mapping from ID to instance. */
   def retrieve(ids: Set[String]): Future[Map[String, T]] = for {
     c <- dbColl()
-    _ = logger.debug(s"Retrieving ${name}s (first 5): ${ids.take(5)}")
+    _ = logger.info(s"Retrieving ${name}s (first 5): ${ids.take(5)}")
     seq <- c.find(d :~ ID -> (d :~ "$in" -> ids) :~ curnt).coll[T, Seq]()
-
-  } yield seq.map { repr => repr.id -> repr }.toMap/*(breakOut[Seq[ExpectedRating],
-                                                               (String, ExpectedRating),
-                                                               Map[String, ExpectedRating]])*/
+  } yield {
+    logger.info(s"Retrieved ${seq.size} ${name}s given ${ids.size} IDs")
+    seq.map { repr => repr.id -> repr }.toMap
+  }
 
   /** Retrieves all representations, including previous versions, by ID. */
   def retrieveAll(id: String): Future[Seq[T]] = for {

@@ -25,8 +25,8 @@ case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
                            @Named(ClockEnd.name) end: ClockEnd.typ,
                            @Named(ClockInterval.name) interval: ClockInterval.typ)
                           (implicit mat: Materializer)
-    extends DataStream[TimeStamp](bufferSize = 1) {
-  // Clock must have a buffer > 1 so that streams don't all wait for each other, which can happen in Join [PERFORMANCE]
+    extends DataStream[TimeStamp](bufferSize = 1/*, asyncBoundary = true*/) {
+      // Clock must have a buffer=1 so that BroadcastHub's buffer doesn't consume the entire thing [PERFORMANCE]
 
   override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.tfmt}, ${interval.dfmt})"
   logger.info(s"Constructing $this")
@@ -74,5 +74,5 @@ case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
         Tick(r)
       }
     }                       // no need for `.async` here as BroadcastHub will take care of that (and Clock's buffer)
-  }.named("Clock").map { e => logger.info(s"Clock: $e"); e }//.async // [PERFORMANCE]
+  }.named("Clock").map { e => logger.info(s"Clock: $e"); e }.async // [PERFORMANCE]
 }

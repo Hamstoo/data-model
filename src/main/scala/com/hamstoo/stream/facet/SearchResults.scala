@@ -13,13 +13,15 @@ import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
 import com.hamstoo.models.{MSearchable, RSearchable, Representation}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
+import com.hamstoo.stream.DataStream.JoinExpiration
 import com.hamstoo.stream._
 import com.hamstoo.stream.dataset.{QueryResult, RepredMarks, ReprsPair}
 import com.hamstoo.utils.{DurationMils, ExtendedDouble, TimeStamp, parse}
 import org.slf4j.LoggerFactory
 import play.api.Logger
 
-import scala.collection.{immutable, mutable}
+import scala.annotation.tailrec
+import scala.collection.{breakOut, immutable, mutable}
 import scala.concurrent.duration._
 import scala.util.matching.Regex
 
@@ -68,7 +70,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
   // here and if we lose any along the way it's not the end of the world (note that the degree to which they're
   // out of order has nothing to do with either the clock.interval or the preloadInterval of the dependency
   // streams as both of those values are irrelevant at this point in the stream graph)
-  override val joinExpiration: DurationMils = (365 days).toMillis
+  override val joinExpiration: JoinExpiration = JoinExpiration((365 days).toMillis)
 
   // get uniquified `cleanedQSeq` and (future) vectors for all terms in search query `fsearchTermVecs`
   private lazy val (cleanedQuery, fsearchTermVecs) = query2Vecs
@@ -78,7 +80,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
   // re-order them later anyway, so just forward them on to the next downstream consumer as soon as they're complete
   override val in: SourceType[typ] = repredMarks()
     .map { e => import com.hamstoo.utils._; logger.info(s"repredMarks.out: ${e.sourceTime.tfmt}"); e }
-    .mapAsyncUnordered(16) { dat: Datum[(MSearchable, ReprsPair)] =>
+    .mapAsyncUnordered(64) { dat: Datum[(MSearchable, ReprsPair)] =>
 
     // unpack the pair datum
     val (mark, ReprsPair(siteReprs, userReprs)) = dat.value
@@ -111,7 +113,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
       val utext = parse(mark.mark.comment.getOrElse(""))
       val rtext = parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
 
-      val disablePreviewText = false
+      val disablePreviewText = true
       val disabledPreview = (0, Seq.empty[(Double, String)])
       val t0: TimeStamp = System.currentTimeMillis()
       val (uPhraseBoost, uPreview) = if (disablePreviewText) disabledPreview else previewer(uraw0, utext)
@@ -350,7 +352,7 @@ object SearchResults {
       * @param dbSearchScore  Indicator of whether there _should_ be matching words to find.
       * @param rawText0       Raw text which should already have been `utils.parsed`ed.
       */
-    def apply(dbSearchScore: Double, rawText0: String): (Int, Seq[(Double, String)]) = {
+    /*def apply(dbSearchScore: Double, rawText0: String): (Int, Seq[(Double, String)]) = {
       if (rawText0.isEmpty) (0, Seq.empty[(Double, String)]) else {
 
         val rawText = rawText0.take(50000)
@@ -518,6 +520,142 @@ object SearchResults {
         })
 
         // IDEA: incremental runtime recompilation of dynamically typed languages as information is learned about runtime values (security?)
+      }
+    }*/
+
+
+    /** Find all occurrences of any of q: Seq[String] in s: String and return a list of indexes of the occurrences. */
+    @scala.annotation.tailrec
+    private def findAll(s: String, q: Seq[String], shift: Int, is: Seq[(Int, Int)]): (Seq[(Int, Int)]) = {
+      val mbTpl = (for {w <- q if w.nonEmpty} yield (s indexOf w, w.length)).filter(_._1 != -1).sortBy(_._1).headOption
+      if (mbTpl.isEmpty) is else {
+        val (i, l) = mbTpl.get
+        val step = i + l
+        val nshift = shift + step
+        findAll(s drop step, q, nshift, is :+ (shift + i, nshift))
+      }
+    }
+
+    /** Merge all adjacent indexes. */
+    @scala.annotation.tailrec
+    private def glueAll(is: Seq[(Int, Int)], js: Seq[(Int, Int)]): Seq[(Int, Int)] =
+      if (is.size < 2) is ++ js
+      else {
+        val t = is.tail
+        val (i11, i12) = is.head
+        val (i21, i22) = t.head
+        if (i21 - i12 < 2) glueAll((i11, i22) +: t.tail, js) else glueAll(t, is.head +: js)
+      }
+
+    /** Get up to 20 first spans of max length 160 with indexes in them. */
+    private def groupAll(
+                          is: Seq[(Int, Int)],
+                          ks: Seq[((Int, Int), Seq[(Int, Int)])]): Seq[((Int, Int), Seq[(Int, Int)])] =
+      if (is.isEmpty || ks.size == 20) ks else if (is.size == 1) (is.head -> is) +: ks else {
+        val i1 = is.head._1
+        val t = is.tail
+        val n = t takeWhile (_._2 - i1 < PREVIEW_LENGTH + 1)
+        if (n.isEmpty) groupAll(t, (is.head -> (is.head :: Nil)) +: ks)
+        else groupAll(t drop n.size, ((i1, n.last._2) -> glueAll(is.head +: n, Nil)) +: ks)
+      }
+
+    /** Function for bold text html tags insertion around query terms occurrences. */
+    private def formatSnippet(encPreview: String)(tup: ((Int, Int), Seq[(Int, Int)])): (Double, String) = tup match {
+      // `i1` and `i2` are the beginning and end of the group of words to embolden,
+      // `is` is a sequence of all of the individual words in the group to embolden
+      case ((i1, i2), is) =>
+        val m = (PREVIEW_LENGTH - (i2 - i1)) / 2 // number of chars before & after this group
+      val start = math.max(0, i1 - m) // center the group in the PREVIEW_LENGTH window
+      val end = math.min(encPreview.length, i2 + m)
+
+        // recursively embolden query words
+        @tailrec
+        def embolden(s: String, is: Seq[(Int, Int)], score: Double = 0.0): (Double, String) = {
+          if (is.isEmpty) (score, s)
+          else {
+            // compute word score (for sorting purposes) as sqrt(word.length) but penalize capital letters a little
+            val word = s.substring(is.head._1, is.head._2)
+            val nCaps = capitalRgx.findAllIn(word).length
+            val wordScore = math.sqrt(word.length.toDouble - 0.25 * nCaps)
+
+            // this requires `is` in reverse order so that the patching doesn't affect later offsets
+            val patched = s.patch(is.head._2, "</b>", 0).patch(is.head._1, "<b>", 0)
+            embolden(patched, is.tail, score + wordScore)
+          }
+        }
+
+        // substring and adjust indices to match for this evidence
+        val substrPreview = encPreview.slice(start, end)
+        val isShifted = is.map(tup => tup._1 - start -> (tup._2 - start))
+        val (score, str) = embolden(substrPreview, isShifted)
+        (score, s"...$str...")
+    }
+
+    /** Generates the HTML preview of the text with emboldened query words. */
+    def apply(dbSearchScore: Double, rawText0: String): (Int, Seq[(Double, String)]) = {
+    //def preview(text: String, querySeq: Seq[String]): String = {
+
+      val querySeq = cleanedQuery.map(_._1)
+
+      // Function for html tags encoding (use StringEscapeUtils.escapeHtml4 here instead?)
+      val encode: String => String = _ replace("<", "&#60;") replace(">", "&#62;") trim
+      val encText = encode(rawText0)
+
+      def boundFindAll(querySeq: Seq[String]): Seq[(Int, Int)] =
+        findAll(encText.toLowerCase, querySeq.map(encode(_).toLowerCase.replace("\"", "")), 0, Nil)
+
+      @tailrec
+      def wordsToBold(ps: Map[String, Int], words: Seq[(Int, Int)]): Seq[(Int, Int)] = {
+
+        // look for prefixes if no full query words were found, this came about when the word "psychology" was
+        // searched for and a document containing the word "psychological" was returned by Mongo
+        if (words.nonEmpty) words else {
+
+          // so if the query is "soft anarchy" then our sorted list on iteration #1 is [(anarchy, 7), (soft, 4)] and
+          // we end up searching for "anarch" in the text, on iteration #2: [(anarch, 7*(6/7)^2=5.14), (soft, 4)],
+          // #3: [(soft, 4), (anarc, 7*(5/7)^2=3.57)], #4: [(anarc, 7*(5/7)^2=3.57), (sof, 4*(3/4)^2=2.25))] ....
+          val hd = ps.toSeq.sortBy { case (t1, t2) =>
+            t2 * Math.pow(t2.toDouble / t1.length, 2) * (if (t2 < MIN_PREFIX_LENGTH) 0 else 1)
+          }(Ordering.Double.reverse).head
+
+          // shorten the prefix by a single char
+          val newLen = hd._2 - 1
+
+          val filtered: Seq[(Int, Int)] = for {
+            // search for the prefix in the text
+            tup@(s, e) <- boundFindAll(hd._1.take(newLen) :: Nil)
+
+            // our current implementation is based on `words` being empty, but it could just as easily be based
+            // on it being less than a certain size, so filter any words that we've already found
+            if !words.exists { case (t1, t2) => s >= t1 && e <= t2 }
+          } yield tup
+
+          // infinite loop can occur if prefixes are allowed to get down to 0 length
+          val psUpdated = ps.updated(hd._1, newLen)
+          if (!psUpdated.exists(_._2 >= MIN_PREFIX_LENGTH)) words ++ filtered
+          else wordsToBold(psUpdated, words ++ filtered)
+        }
+      }
+
+      val embolded: Seq[(Int, Int)] =
+        wordsToBold(querySeq.map(w => w -> w.length)(breakOut), boundFindAll(querySeq))
+
+      // the first (Int, Int) element of this sequence of tuples is the full range of text in which each group of
+      // wordsToBold falls, the second Seq[(Int, Int)] element is a sequence of the individual words in this group
+      val grouped: Seq[((Int, Int), Seq[(Int, Int)])] = groupAll(embolded, Nil)
+
+      // TODO: is it possible to do phrase search in mongo?
+      if (grouped.isEmpty) {
+        if (encText.isEmpty) (0, Seq((0, encText)))
+        else if (encText.length < PREVIEW_LENGTH) (0, Seq((0, encText)))
+        else (0, Seq((0, s"${encText take PREVIEW_LENGTH}...")))
+      }
+      else {
+        // score earlier snippets higher (`grouped` is in reverse order)
+        (0, grouped.map(formatSnippet(encText))
+          .zipWithIndex.map { case ((score, str), i) => (score * math.sqrt(i + 1), str) }
+          .sortBy(-_._1)
+          .take(N_SPANS))
       }
     }
   }

@@ -51,7 +51,7 @@ class FacetTests
     val facetName = classOf[AggregateSearchScore].getSimpleName
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
-      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] => agg + d.value } }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
 
     x / AggregateSearchScore.COEF shouldBe (39.01 +- 0.01)
   }
@@ -61,7 +61,7 @@ class FacetTests
     val facetName = classOf[Recency].getSimpleName
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
-      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] => agg + d.value } }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
 
     // see data-model/docs/RecencyTest.xlsx for an independent calculation of this value
     x / Recency.COEF shouldBe (4.54 +- 0.01)

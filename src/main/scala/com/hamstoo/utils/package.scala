@@ -63,8 +63,8 @@ package object utils {
     *  instantiated more than once."
     *    [http://reactivemongo.org/releases/0.12/documentation/tutorial/connect-database.html]
     *
-    * @param uri        The database server's URI.
-    * @param nAttempts  The default database name.
+    * @param uri        The database server's URI (which should include a database name).
+    * @param nAttempts  Number of failed attempts before giving up and throwing an exception.
     */
   @tailrec
   final def getDbConnection(uri: String, nAttempts: Int = 5): (MongoConnection, String) = {
