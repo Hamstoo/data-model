@@ -225,7 +225,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
 
       fut.map { _.map(dat.withValue) }
 
-    }.mapConcat(_.to[immutable.Iterable]) // a.k.a. flatten
+    }.mapConcat(_.to[immutable.Iterable]) // a.k.a. flatten (remove Nones)
       .asInstanceOf[SourceType[typ]] // see "BIG NOTE" on JoinWithable
       .map { e => logger.debug(s"${e.sourceTime.tfmt}"); e }
 
