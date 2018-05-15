@@ -46,7 +46,7 @@ class ClockTests
     implicit val ec: ExecutionContext = system.dispatcher
     case class TestSource() extends PreloadSource[TimeStamp](preloadInterval.toMillis) {
       //override val logger = Logger(classOf[TestSource]) // this line causes a NPE for some reason
-      override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[TimeStamp]]] = Future {
+      override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Seq[Datum[TimeStamp]]] = Future {
 
         // must snapBegin, o/w DataSource's preloadInterval can affect the results, which it should not
         val dataInterval = (12 hours).toMillis

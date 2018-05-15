@@ -142,7 +142,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
   logger.debug(s"Constructing ${getClass.getSimpleName} (loadInterval=${loadInterval.toDays})")
 
   /** Pre-load a *future* block of data from the data source.  `begin` should be inclusive and `end`, exclusive. */
-  type PreloadCollectionType[+TT] = Traversable[Datum[TT]]
+  type PreloadCollectionType[+TT] = immutable.Seq[Datum[TT]]
   type PreloadType[+TT] = Future[PreloadCollectionType[TT]]
   protected def preload(begin: TimeStamp, end: TimeStamp): PreloadType[T]
 
@@ -209,7 +209,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       // 2 reasons: (1) we don't want a lot of concurrent database contention and (2) PreloadObserver.preload
       // always waits on the head of its queue (though this won't have much effect in practice because most
       // consecutive preloads occur during subsequent calls to knownDataFor)
-      var batch: PreloadType[_] = Future.successful(Traversable.empty[Datum[T]])
+      var batch: PreloadType[_] = Future.successful(immutable.Seq.empty[Datum[T]])
 
       // update the preload buffer by preloading new data
       (firstPreloadEnd until lastPreloadEnd.get by loadInterval).foreach { end_i =>
@@ -246,11 +246,11 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       }
 
       // distribute the buffer data to the OpenGroup
-      val ftickBuffer = fpartitionedBuffer.map(_._1)
+      val ftickBuffer = fpartitionedBuffer.map(_._1.to[immutable.Seq])
       val preloadWindow = new KnownData(window.begin, window.end, ftickBuffer)
 
       // if there are any remaining, undistributed (future) data, put them into `buffer` for the next go-around
-      buffer = Seq(fpartitionedBuffer.map(_._2.filter(_.knownTime > window.end)))
+      buffer = Seq(fpartitionedBuffer.map(_._2.filter(_.knownTime > window.end).to[immutable.Seq]))
 
       preloadWindow
     }
@@ -287,7 +287,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       }
 
       // mapConcat (a.k.a. flatMap) requires an immutable
-      .mapConcat(immutable.Iterable(_: _*))
+      .mapConcat(identity)
 
       // allocate each PreloadSource its own Actor (http://blog.colinbreck.com/maximizing-throughput-for-akka-streams/)
       // there won't be many of these and they'll all typically be doing IO,
