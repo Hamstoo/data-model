@@ -10,6 +10,7 @@ import akka.stream.{Attributes, Materializer, SourceShape}
 import com.google.inject.{Inject, Injector, Singleton}
 import com.hamstoo.stream.facet.{AggregateSearchScore, Recency, SearchResults}
 import com.hamstoo.stream.{Clock, DataStream}
+import com.hamstoo.utils.ExtendedTimeStamp
 import play.api.Logger
 
 import scala.collection.mutable
@@ -78,9 +79,9 @@ class FacetsModel @Inject()(injector: Injector)
     facets.zipWithIndex.foreach { case ((name, ds), i) =>
 
       // label the source with its facet name so that we can tell them apart on the other side
-      val labeledSource = ds().map { e => import com.hamstoo.utils._; logger.info(s"(\033[2m${name}\033[0m) ${e.sourceTime.tfmt}"); e }.map { data =>
-        (name, data)
-      }.async  // unsure if this actually has any effect
+      val labeledSource = ds()
+        .map { e => logger.debug(s"(\033[2m${name}\033[0m) ${e.sourceTime.tfmt}"); e }
+        .map { data => (name, data) }
         .named(name)
 
       labeledSource ~> merge.in(i)

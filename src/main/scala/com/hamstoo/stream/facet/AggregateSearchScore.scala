@@ -5,8 +5,8 @@ package com.hamstoo.stream.facet
 
 import akka.stream.Materializer
 import com.google.inject.{Inject, Singleton}
-//import com.hamstoo.stream.DataStream.DisableBroadcast
 import com.hamstoo.stream.{DataStream, OptionalInjectId}
+import com.hamstoo.utils.ExtendedTimeStamp
 
 import math.{max, min}
 import scala.reflect.classTag
@@ -33,7 +33,6 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
 
   override val in: SourceType[Double] = {
     import com.hamstoo.stream.StreamDSL._
-    //implicit val disableBroadcast: DisableBroadcast = DisableBroadcast(x = true)
 
     val relevanceOption: DataStream[Option[SearchRelevance]] = searchResults("_3", classTag[Option[SearchRelevance]])
     val relevance: DataStream[SearchRelevance] = relevanceOption.map(Option.option2Iterable).flatten
@@ -55,7 +54,7 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
 
     value * COEF
 
-  }.out.map { e => import com.hamstoo.utils._; logger.info(s"${e.sourceTime.tfmt}"); e }
+  }.out.map { e => logger.debug(s"${e.sourceTime.tfmt}"); e }
 }
 
 object AggregateSearchScore {

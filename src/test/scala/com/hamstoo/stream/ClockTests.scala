@@ -73,8 +73,6 @@ class ClockTests
     x shouldEqual 173
   }
 
-  // TODO: is this test nondeterministic now that the clock's bufferSize is > 1 (and `.async`)?
-  //       (see comment on DataStream.DEFAULT_BUFFER_SIZE)
   it should "throttle a ThrottledSource (with 4 Datums between each clock tick)" in {
 
     // changing these (including interval) will affect results b/c it changes the effective time range the clock covers

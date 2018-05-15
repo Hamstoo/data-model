@@ -41,10 +41,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   val logger: Logger = Logger(classOf[MarkDao])
 
   val collName: String = "entries"
-  private val dbColl: () => Future[BSONCollection] = () => db().map { db =>
-    logger.info(s"DB: [${Integer.toHexString(db.connection.hashCode)}]")
-    db
-  }.map(_ collection collName)
+  private val dbColl: () => Future[BSONCollection] = () => db().map(_ collection collName)
   private def reprsColl(): Future[BSONCollection] = db().map(_ collection "representations")
   private def pagesColl(): Future[BSONCollection] = db().map(_ collection "pages")
 
@@ -115,7 +112,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   /** Retrieves a list of marks by IDs, ignoring user authorization permissions. */
   def retrieveInsecureSeq(ids: Seq[ObjectId], timeFrom: Option[TimeStamp] = None, n: Int = -1,
                           begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[Mark]] = {
-    logger.info(s"Retrieving (insecure) ${ids.size} marks (timeFrom=${timeFrom.map(_.tfmt)}, begin=${begin.map(_.tfmt)}, end=${end.map(_.tfmt)}); first, at most, 5: ${ids.take(5)}")
+    logger.debug(s"Retrieving (insecure) ${ids.size} marks (timeFrom=${timeFrom.map(_.tfmt)}, begin=${begin.map(_.tfmt)}, end=${end.map(_.tfmt)}); first, at most, 5: ${ids.take(5)}")
     for {
       c <- dbColl()
       sel = d :~ ID -> (d :~ "$in" -> ids) :~
@@ -125,7 +122,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
       seq <- c.find(d :~ sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq](n = n)
     } yield {
-      logger.info(s"Retrieved (insecure) ${seq.size} marks; first, at most, 5: ${seq.take(5).map(_.id)}")
+      logger.debug(s"Retrieved (insecure) ${seq.size} marks; first, at most, 5: ${seq.take(5).map(_.id)}")
       seq
     }
   }
@@ -244,7 +241,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     */
   def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String],
                      begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[MSearchable]] = {
-    logger.info(s"Retrieving represented marks for user $user and tags $tags")
+    logger.debug(s"Retrieving represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
 
@@ -260,7 +257,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
       seq <- c.find(sel).coll[MSearchable, Seq]()
     } yield {
-      logger.info(s"${seq.size} represented marks were successfully retrieved")
+      logger.debug(s"${seq.size} represented marks were successfully retrieved")
       seq.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
@@ -272,7 +269,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     */
   def retrieveRefed(user: UUID, begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):
                                                                             Future[Map[ObjectId, MarkRef]] = {
-    logger.info(s"Retrieving referenced marks for user $user")
+    logger.debug(s"Retrieving referenced marks for user $user")
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ REFIDx -> (d :~ "$exists" -> true) :~ curnt :~
@@ -280,7 +277,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
       seq <- c.find(sel).coll[MSearchable, Seq]()
     } yield {
-      logger.info(s"${seq.size} referenced marks were successfully retrieved")
+      logger.debug(s"${seq.size} referenced marks were successfully retrieved")
       seq//.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) } // no longer returning Marks, so no need to cleanRanges
         .map(m => m.markRef.get.markId -> m.markRef.get).toMap
     }
@@ -317,35 +314,36 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
              begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):
                                                                         Future[Set[MSearchable]] = {
 
-    val which = if (users.nonEmpty) s"for ${users.size} users (first, at most, 5: ${users.take(5)}) with ${ids.size}"
-                else s"with ${ids.size} IDs (first, at most, 5: ${ids.take(5)})"
-    logger.info(s"Searching for marks $which by text query '$query' between ${begin.map(_.tfmt)} and ${end.map(_.tfmt)}")
+    val which = s"for ${users.size} users (first, at most, 5: ${users.take(5)})" + (if (ids.isEmpty) "" else s", ${ids.size} IDs")
+    logger.debug(s"Searching for marks $which by text query '$query' between ${begin.map(_.tfmt)} and ${end.map(_.tfmt)}")
+    if (users.isEmpty) Future.successful(Set.empty[MSearchable]) else {
 
-    // this projection doesn't have any effect without this selection
-    val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
-    val searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
+      // this projection doesn't have any effect without this selection
+      val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
+      val searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
-    // it appears that `$in` is not an "equality match condition" as mentioned in the MongoDB Text Index
-    // documentation, using it here (rather than Future.sequence) generates the following database error:
-    // "planner returned error: failed to use text index to satisfy $text query (if text index is compound,
-    // are equality predicates given for all prefix fields?)"
-    //val sel = d :~ USR -> (d :~ "$in" -> users) :~ curnt
+      // it appears that `$in` is not an "equality match condition" as mentioned in the MongoDB Text Index
+      // documentation, using it here (rather than Future.sequence) generates the following database error:
+      // "planner returned error: failed to use text index to satisfy $text query (if text index is compound,
+      // are equality predicates given for all prefix fields?)"
+      //val sel = d :~ USR -> (d :~ "$in" -> users) :~ curnt
 
-    // be sure to call dbColl() separately for each element of the following sequence to ensure asynchronous execution
-    Future.sequence {
-      users.map { u =>
+      // be sure to call dbColl() separately for each element of the following sequence to ensure asynchronous execution
+      Future.sequence {
+        users.map { u =>
 
-        val sel = d :~ USR -> u :~ curnt :~
-                       begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
-                       end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts)) :~
-                       searchScoreSelection :~
-                       (if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids))
+          val sel = d :~ USR -> u :~ curnt :~
+                         begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
+                         end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts)) :~
+                         searchScoreSelection :~
+                         (if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids))
 
-        dbColl().flatMap(_.find(sel, searchScoreProjection).coll[MSearchable, Seq]())
+          dbColl().flatMap(_.find(sel, searchScoreProjection).coll[MSearchable, Seq]())
+        }
+      }.map(_.flatten).map { set =>
+        logger.debug(s"Search retrieved ${set.size} marks")
+        set.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
       }
-    }.map(_.flatten).map { set =>
-      logger.info(s"Search retrieved ${set.size} marks")
-      set.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 

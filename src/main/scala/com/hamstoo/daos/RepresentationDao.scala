@@ -36,12 +36,7 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB],
   import com.hamstoo.models.Mark.{ID, SCORE, TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
 
-  val logger: Logger = Logger(classOf[RepresentationDao])
-
-  override def dbColl(): Future[BSONCollection] = db().map { db =>
-    logger.info(s"DB: [${Integer.toHexString(db.connection.hashCode)}]")
-    db
-  }.map(_ collection "representations")
+  override def dbColl(): Future[BSONCollection] = db().map(_ collection "representations")
 
   // Ensure that mongo collection has proper `text` index for relevant fields. Note that (apparently) the
   // weights must be integers, and if there's any error in how they're specified the index is silently ignored.
@@ -71,7 +66,7 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB],
     */
   def search(ids: Set[ObjectId], query: String): Future[Map[String, RSearchable]] = for {
     c <- dbColl()
-    _ = logger.info(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
+    _ = logger.debug(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
 
     // this Future.sequence the only way I can think of to lookup documents via their IDs prior to a Text Index search
     seq <- Future.sequence { ids.map { id =>
@@ -89,7 +84,7 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB],
     }}
   } yield {
     val flat = seq.flatten
-    logger.info(s"Done searching with query '$query'; found ${flat.size} reprs given ${ids.size} IDs")
+    logger.debug(s"Done searching with query '$query'; found ${flat.size} reprs given ${ids.size} IDs")
     flat.map { repr => repr.id -> repr }.toMap
   }
 }

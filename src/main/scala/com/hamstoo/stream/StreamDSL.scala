@@ -5,7 +5,7 @@ package com.hamstoo.stream
 
 import akka.stream.Materializer
 import com.hamstoo.models.MarkData
-import com.hamstoo.stream.DataStream.{/*DisableBroadcast => DisBr,*/ JoinExpiration}
+import com.hamstoo.stream.DataStream.JoinExpiration
 import com.hamstoo.stream.Join.JoinWithable
 import com.hamstoo.utils.TimeStamp
 import play.api.Logger
@@ -24,7 +24,7 @@ object StreamDSL {
   implicit class CollectionStreamDSL[T](private val s: DataStream[Traversable[T]]) extends AnyVal {
 
     /** DataStreams of Traversables can be flattened. */
-    def flatten(implicit m: Materializer/*, disBr: DisBr = DisBr()*/): DataStream[T] = {
+    def flatten(implicit m: Materializer): DataStream[T] = {
       implicit val jexp: JoinExpiration = s.joinExpiration // pass this up through the dependency tree/graph
       new DataStream[T] {
         override def in: SourceType[T] = s().mapConcat { d: Datum[Traversable[T]] =>
@@ -47,18 +47,15 @@ object StreamDSL {
       * Map a stream of Datum[A]s to Datum[O]s.  Nearly all of the other implicit methods in this class go through
       * here, `join`, or `flatten`, which is evident from their (unique to them) constructions of `new DataStream[O]`s.
       */
-    def map[O](f: A => O)(implicit m: Materializer/*, disBr: DisBr = DisBr()*/): DataStream[O] = {
+    def map[O](f: A => O)(implicit m: Materializer): DataStream[O] = {
 
-      // TODO: downstream consumers of this DataStream will need to know that their data may arrive out of
-      // TODO:   order if joinExpiration was set larger to accommodate a mapAsyncUnordered
-      // TODO: perhaps mapAsyncUnordered is not the right way to improve efficiency then but rather
-      // TODO:   the insertion of async boundaries and utilization of buffers
+      // downstream consumers of this DataStream will need to know that their data may arrive out of
+      // order if joinExpiration was set larger to accommodate a mapAsyncUnordered
       implicit val jexp: JoinExpiration = s.joinExpiration
 
       new DataStream[O] {
 
-        // TODO: Every time this happens a new BroadcastHub is born.  Should we instead only create the BroadcastHub
-        // TODO:   if/when a DataStream gets "mapped from"/"attached to" more than once? [PERFORMANCE]
+        // every time this happens a new BroadcastHub is born, though it doesn't seem to affect performance
         override def in: SourceType[O] = s().map(_.mapValue(f))
       }
     }
@@ -67,11 +64,11 @@ object StreamDSL {
     //def mapI[O](f: A => O)(implicit ev: Implicits[_, _]): DataStream[O] = s.map(f)(ev.m)
 
     /** Map Datum values to one of their fields (as Doubles). */
-    def apply(fieldName: String)(implicit ev: ClassTag[A], m: Materializer/*, disBr: DisBr = DisBr()*/): DataStream[Double] =
+    def apply(fieldName: String)(implicit ev: ClassTag[A], m: Materializer): DataStream[Double] =
       s(fieldName, classTag[Double])
 
     /** Map Datum values to one of their fields (as instances of specified `asTyp` type). */
-    def apply[T](fieldName: String, asTyp: ClassTag[T])(implicit ev: ClassTag[A], m: Materializer/*, disBr: DisBr = DisBr()*/): DataStream[T] = {
+    def apply[T](fieldName: String, asTyp: ClassTag[T])(implicit ev: ClassTag[A], m: Materializer): DataStream[T] = {
       implicit val ctT: ClassTag[T] = asTyp // used in call to `as` below
       val getter = classTag[A].runtimeClass.getDeclaredMethod(fieldName)
       //val getter = typeTag[A].mirror.runtimeClass(typeTag[A].tpe).getDeclaredMethod(fieldName) // https://stackoverflow.com/questions/11494788/how-to-create-a-typetag-manually/11495793#11495793
@@ -82,13 +79,13 @@ object StreamDSL {
     }
 
     /** Should we enumerate a few common fields like this? */
-    def timeFrom(implicit ev: ClassTag[A], m: Materializer/*, disBr: DisBr = DisBr()*/) = s("timeFrom", classTag[TimeStamp])
-    def timeThru(implicit ev: ClassTag[A], m: Materializer/*, disBr: DisBr = DisBr()*/) = s("timeThru", classTag[TimeStamp])
-    def mark(implicit ev: ClassTag[A], m: Materializer/*, disBr: DisBr = DisBr()*/) = s("mark", classTag[MarkData])
-    def rating(implicit ev: ClassTag[A], m: Materializer/*, disBr: DisBr = DisBr()*/) = s("rating", classTag[Option[Double]])
+    def timeFrom(implicit ev: ClassTag[A], m: Materializer) = s("timeFrom", classTag[TimeStamp])
+    def timeThru(implicit ev: ClassTag[A], m: Materializer) = s("timeThru", classTag[TimeStamp])
+    def mark(implicit ev: ClassTag[A], m: Materializer) = s("mark", classTag[MarkData])
+    def rating(implicit ev: ClassTag[A], m: Materializer) = s("rating", classTag[Option[Double]])
 
     /** Invoke JoinWithable.joinWith on the provided streams.  Also see comment on `map`. */
-    def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer/*, disBr: DisBr = DisBr()*/): DataStream[O] = {
+    def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] = {
       implicit val jexp: JoinExpiration = JoinExpiration(math.max(s.joinExpiration.x, that.joinExpiration.x))
       new DataStream[O] {
         override val in: SourceType[O] = s().joinWith(that())(joiner = op,
@@ -97,16 +94,16 @@ object StreamDSL {
     }
 
     /** The `{ case x => x }` actually does serve a purpose; it unpacks x into a 2-tuple, which `identity` cannot do. */
-    def pair[B](that: DataStream[B])(implicit m: Materializer/*, disBr: DisBr = DisBr()*/): DataStream[(A, B)] =
+    def pair[B](that: DataStream[B])(implicit m: Materializer): DataStream[(A, B)] =
       s.join(that) { case x => x }
 
     /** Binary operations between pairs of DataStreams (via typeclasses). */
     // TODO: why couldn't we use `that: DataStream[B]` here?  how would we select the proper `ev`?
-    def +(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer/*, disBr: DisBr = DisBr()*/) = s.join(that)(ev.plus)
-    def -(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer/*, disBr: DisBr = DisBr()*/) = s.join(that)(ev.minus)
-    def *(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer/*, disBr: DisBr = DisBr()*/) = s.join(that)(ev.times)
-    def /(that: DataStream[A])(implicit ev: Fractional[A], m: Materializer/*, disBr: DisBr = DisBr()*/) = s.join(that)(ev.div)
-    def pow(that: DataStream[A])(implicit ev: Powable[A], m: Materializer/*, disBr: DisBr = DisBr()*/) = s.join(that)(ev.fpow)
+    def +(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer) = s.join(that)(ev.plus)
+    def -(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer) = s.join(that)(ev.minus)
+    def *(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer) = s.join(that)(ev.times)
+    def /(that: DataStream[A])(implicit ev: Fractional[A], m: Materializer) = s.join(that)(ev.div)
+    def pow(that: DataStream[A])(implicit ev: Powable[A], m: Materializer) = s.join(that)(ev.fpow)
 
     /** Binary operations between a LHS DataStream and a RHS numeric constant. */
     def +[C](c: C)(implicit ev: Implicits[C, A]) = s.map(ev.nm1.plus(_, c.as[A]))(ev.m)
@@ -146,12 +143,12 @@ object StreamDSL {
     */
   @scala.annotation.implicitNotFound(msg = "No StreamDSL.Implicits available for [${_0}, ${_1}]")
   case class Implicits[_0, _1](ct0: ClassTag[_0], ct1: ClassTag[_1], nm0: Numeric[_0], nm1: Numeric[_1],
-                               m: Materializer/*, disBr: DisBr = DisBr()*/)
+                               m: Materializer)
 
   /** `implicit` Implicits factory function. */
   implicit def implicits[_0, _1](implicit ct0: ClassTag[_0], ct1: ClassTag[_1], nm0: Numeric[_0], nm1: Numeric[_1],
-                                 m: Materializer/*, disBr: DisBr = DisBr()*/): Implicits[_0, _1] =
-    Implicits(ct0, ct1, nm0, nm1, m/*, disBr*/)
+                                 m: Materializer): Implicits[_0, _1] =
+    Implicits(ct0, ct1, nm0, nm1, m)
 
   /**
     * In this ridiculous class, the only allowable way to call asInstance[T] is on the unboxed/primitive version

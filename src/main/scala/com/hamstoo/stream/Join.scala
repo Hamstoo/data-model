@@ -212,6 +212,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         val joined = paired.withValue(joiner(paired.value._1, paired.value._2))
 
         // push to consumer, which should pull again from this materialized Join instance, if ready
+        //logger.debug(s"  pushing: ${joined.sourceTime.tfmt}, ${joined.id}, consumed=${(consumed0, consumed1)}")
         logger.trace(s"  pushing($rnd): $d0 + $d1 = $joined, consumed=${(consumed0, consumed1)}")
         push(out, joined)
 

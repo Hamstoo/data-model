@@ -25,8 +25,6 @@ class ExpectedRatingDao @Inject()(implicit db: () => Future[DefaultDB])
   import com.hamstoo.utils._
   import com.hamstoo.models.Mark.{ID, TIMETHRU}
 
-  val logger: Logger = Logger(classOf[ExpectedRatingDao])
-
   override def dbColl(): Future[BSONCollection] = db().map(_.collection("eratings"))
 
   // ensure indexes
