@@ -10,7 +10,7 @@ import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.RepresentationDao
 import com.hamstoo.models.{MSearchable, RSearchable}
 import com.hamstoo.stream._
-import com.hamstoo.utils.ExtendedTimeStamp
+import com.hamstoo.utils.{ExtendedTimeStamp, TimeStamp}
 import org.slf4j.LoggerFactory
 import play.api.Logger
 
@@ -43,7 +43,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
                            (implicit clock: Clock,
                             mat: Materializer,
                             reprDao: RepresentationDao)
-    extends PreloadObserver[MSearchable, ReprsPair](marksStream) { // bufferSize [PERFORMANCE]
+    extends PreloadObserver[MSearchable, ReprsPair](subject = marksStream/*, asyncConsumerBoundary = true*/) {
 
   // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples
 
@@ -62,7 +62,8 @@ class ReprsStream @Inject()(marksStream: MarksStream,
   private lazy val cleanedQuery = mbCleanedQuery.getOrElse(Seq(("", 0)))
 
   /** Maps the stream of marks to their reprs. */
-  override def observerPreload(fSubjectData: PreloadType[MSearchable]): PreloadType[ReprsPair] = {
+  override def observerPreload(fSubjectData: PreloadType[MSearchable], begin: TimeStamp, end: TimeStamp):
+                                                                                        PreloadType[ReprsPair] = {
     fSubjectData.flatMap { subjectData =>
 
       val marks = subjectData.map(_.value)
@@ -70,9 +71,9 @@ class ReprsStream @Inject()(marksStream: MarksStream,
       val usrContentReprIds = marks.map(_.userContentRepr.getOrElse(""))
       val reprIds = (primaryReprIds ++ usrContentReprIds).filter(_.nonEmpty).toSet
 
-      val approxBegin = if (marks.isEmpty) 0L else marks.map(_.timeFrom).min
-      val approxEnd   = if (marks.isEmpty) 0L else marks.map(_.timeFrom).max
-      logger.info(s"Performing ReprsStream.observerPreload between ${approxBegin.tfmt} and ${approxEnd.tfmt} for ${marks.size} marks, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, and ${reprIds.size} reprIds")
+      //val approxBegin = if (marks.isEmpty) 0L else marks.map(_.timeFrom).min
+      //val approxEnd   = if (marks.isEmpty) 0L else marks.map(_.timeFrom).max
+      logger.info(s"Performing ReprsStream.observerPreload between ${begin.tfmt} and ${end.tfmt} for ${marks.size} marks, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, and ${reprIds.size} reprIds")
 
       // run a separate MongoDB Text Index search over `representations` collection for each query word
       val fscoredReprs = mbQuerySeq.mapOrEmptyFuture(reprDao.search(reprIds, _)).flatMap { seqOfMaps =>
@@ -86,13 +87,8 @@ class ReprsStream @Inject()(marksStream: MarksStream,
       // TODO: maybe use the representations collection's Text Index score and drop the marks collection's Text Index?
       val funscoredReprs = reprDao.retrieve(reprIds)
 
-      logger.info(s"Performing ReprsStream.observerPreload 2")
-
       for(scoredReprs <- fscoredReprs; unscoredReprs <- funscoredReprs) yield {
-
-        logger.info("Begin mapping data")
-
-        val mapped = subjectData.map { dat =>
+        subjectData.map { dat =>
 
           val mark = dat.value
           val primaryReprId = mark.primaryRepr
@@ -126,9 +122,6 @@ class ReprsStream @Inject()(marksStream: MarksStream,
           loggerI.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
           d
         }
-
-        logger.info("Done mapping data")
-        mapped
       }
     }
   }
@@ -147,13 +140,13 @@ class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
 
   // TODO: `joinWith` needs to take an implicit expireAfter, but it needs to get it from marks and reprs BEFORE
   // TODO:   their `.apply` methods are called converting them from DataStreams to regular Akka Streams
-  // TODO:   so how do we pluck such an implicit out of think air?  (1) have an implicit conversion from a pair
+  // TODO:   so how do we pluck such an implicit out of thin air?  (1) have an implicit conversion from a pair
   // TODO:   of DataStreams?  (2) attach (duck punch) an implicit expireAfter to the Akka Stream returned by `apply`
-  // TODO:   by making joinWith operate on an ExtendedGraph or via a typeclass?  (3) or joinWith just (simply)
+  // TODO:   by making joinWith operate on an ExtendedGraph implicit class or via a typeclass?  (3) or joinWith just
   // TODO:   needs to operate on DataStreams, rather than their output ports?
   override def in: SourceType[typ] = marks().joinWith(reprs()) { case x => x }
     .asInstanceOf[SourceType[typ]] // see comment on JoinWithable as to why this cast is necessary
-    .map { e => import com.hamstoo.utils._; logger.info(s"${e.sourceTime.tfmt}"); e }
+    .map { e => logger.debug(s"${e.sourceTime.tfmt}"); e }
 }
 
 object RepredMarks {

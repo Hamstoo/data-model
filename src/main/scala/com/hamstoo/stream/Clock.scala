@@ -25,8 +25,13 @@ case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
                            @Named(ClockEnd.name) end: ClockEnd.typ,
                            @Named(ClockInterval.name) interval: ClockInterval.typ)
                           (implicit mat: Materializer)
-    extends DataStream[TimeStamp](bufferSize = 1/*, asyncBoundary = true*/) {
-      // Clock must have a buffer=1 so that BroadcastHub's buffer doesn't consume the entire thing [PERFORMANCE]
+
+    extends DataStream[TimeStamp](bufferSize = 1/*, asyncConsumerBoundary = true*/) {
+      // we use 1 here because there appears to be a bug in BroadcastHub where if the buffer consumes the
+      // producer before any flows/sinks are attached to the materialized hub the producer will stop and the
+      // dependent flows/sinks won't ever have a chance to backpressure (which is a problem for the clock especially!)
+      //   [https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely]
+
 
   override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.tfmt}, ${interval.dfmt})"
   logger.info(s"Constructing $this")
@@ -73,6 +78,6 @@ case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
         currentTime += interval
         Tick(r)
       }
-    }                       // no need for `.async` here as BroadcastHub will take care of that (and Clock's buffer)
-  }.named("Clock").map { e => logger.info(s"Clock: $e"); e }.async // [PERFORMANCE]
+    }
+  }.named("Clock")
 }

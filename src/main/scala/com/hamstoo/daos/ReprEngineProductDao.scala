@@ -25,7 +25,7 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
 
   import com.hamstoo.models.Mark.{ID, TIMEFROM, TIMETHRU}
 
-  val logger: Logger
+  val logger = Logger(getClass)
 
   def dbColl(): Future[BSONCollection]
 
@@ -97,10 +97,10 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
   /** Given a set of representation IDs, return a mapping from ID to instance. */
   def retrieve(ids: Set[String]): Future[Map[String, T]] = for {
     c <- dbColl()
-    _ = logger.info(s"Retrieving ${name}s (first 5): ${ids.take(5)}")
+    _ = logger.debug(s"Retrieving ${name}s (first 5): ${ids.take(5)}")
     seq <- c.find(d :~ ID -> (d :~ "$in" -> ids) :~ curnt).coll[T, Seq]()
   } yield {
-    logger.info(s"Retrieved ${seq.size} ${name}s given ${ids.size} IDs")
+    logger.debug(s"Retrieved ${seq.size} ${name}s given ${ids.size} IDs")
     seq.map { repr => repr.id -> repr }.toMap
   }
 

@@ -7,7 +7,7 @@ import akka.stream.Materializer
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.stream.{DataStream, OptionalInjectId}
 import com.hamstoo.stream.dataset.MarksStream
-import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, TimeStamp}
+import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
 import org.joda.time.DateTime
 
 import math.{abs, log, pow}
@@ -65,7 +65,7 @@ class Recency @Inject() (facetArg: Recency.Arg,
       (0.5 pow nHalfLifes) * COEF
 
     }
-  }.out.map { e => import com.hamstoo.utils._; logger.info(s"${e.sourceTime.tfmt}"); e }
+  }.out.map { e => logger.debug(s"${e.sourceTime.tfmt}"); e }
 }
 
 object Recency {
