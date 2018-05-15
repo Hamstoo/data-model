@@ -8,12 +8,12 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 /***
   * Store user suggestion information
-  * @param uuid     - user that made share
-  * @param username - to whom username share was made
-  * @param email    - to whom email share was made
+  * @param uuid        - user that made share
+  * @param username    - to whom username share was made
+  * @param email       - to whom email share was made
   * @param pubVisible  - is this suggestion is publicly visible
   * @param pubEditable - is this suggestion is publicly editable
-  * @param id       - document identifier
+  * @param id          - document identifier
   */
 case class UserSuggestion(uuid: UUID,
                           username: Option[String],
@@ -23,6 +23,10 @@ case class UserSuggestion(uuid: UUID,
                           created: TimeStamp,
                           id: ObjectId = generateDbId(Mark.ID_LENGTH)) {
   def identifier: String = username.getOrElse(email.get)
+
+  def equal(other: UserSuggestion): Boolean = {
+    this.username == other.username && this.email == other.email
+  }
 }
 
 object UserSuggestion extends BSONHandlers {
