@@ -5,12 +5,11 @@ package com.hamstoo.stream
 
 import akka.stream.Materializer
 import com.hamstoo.models.MarkData
-import com.hamstoo.stream.DataStream.JoinExpiration
 import com.hamstoo.stream.Join.JoinWithable
 import com.hamstoo.utils.TimeStamp
 import play.api.Logger
 
-import scala.collection.{Traversable, immutable}
+import scala.collection.Traversable
 //import spire.algebra.NRoot
 
 import scala.reflect.{ClassTag, classTag}
@@ -19,21 +18,6 @@ import scala.reflect.{ClassTag, classTag}
   * The DataStream DSL.
   */
 object StreamDSL {
-
-  /** DSL for DataStreams of collection types. */
-  implicit class CollectionStreamDSL[T](private val s: DataStream[Traversable[T]]) extends AnyVal {
-
-    /** DataStreams of Traversables can be flattened. */
-    def flatten(implicit m: Materializer): DataStream[T] = {
-      implicit val jexp: JoinExpiration = s.joinExpiration // pass this up through the dependency tree/graph
-      new DataStream[T] {
-        override def in: SourceType[T] = s().mapConcat { d: Datum[Traversable[T]] =>
-          val values: Traversable[T] = d.value
-          values.map { v: T => d.withValue[T](v) }.to[immutable.Iterable]
-        }
-      }
-    }
-  }
 
   /**
     * Operations between pairs of DataStreams.
@@ -44,19 +28,26 @@ object StreamDSL {
   implicit class StreamDSL[A](private val s: DataStream[A]) extends AnyVal {
 
     /**
-      * Map a stream of Datum[A]s to Datum[O]s.  Nearly all of the other implicit methods in this class go through
+      * Map a stream of Data[A]s to Data[O]s.  Nearly all of the other implicit methods in this class go through
       * here, `join`, or `flatten`, which is evident from their (unique to them) constructions of `new DataStream[O]`s.
       */
-    def map[O](f: A => O)(implicit m: Materializer): DataStream[O] = {
+    def map[O](f: A => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
 
-      // downstream consumers of this DataStream will need to know that their data may arrive out of
-      // order if joinExpiration was set larger to accommodate a mapAsyncUnordered
-      implicit val jexp: JoinExpiration = s.joinExpiration
+      // every time this happens (an angel gets its wings) a new BroadcastHub is born, though it doesn't seem to
+      // affect performance
+      override val in: SourceType = s().map(_.map(_.mapValue(f)))
+    }
 
-      new DataStream[O] {
-
-        // every time this happens a new BroadcastHub is born, though it doesn't seem to affect performance
-        override def in: SourceType[O] = s().map(_.mapValue(f))
+    /** Remove Nones, for example. */
+    def flatten[O](implicit m: Materializer): DataStream[O] = new DataStream[O] {
+      override val in: SourceType = s().map { d =>
+        d.flatMap { e =>
+          val trav: Traversable[O] = e.value match {
+            case mb: Option[O] @unchecked => Option.option2Iterable(mb)
+            case _ => e.value.asInstanceOf[Traversable[O]]
+          }
+          trav.map(e.withValue)
+        }
       }
     }
 
@@ -85,12 +76,8 @@ object StreamDSL {
     def rating(implicit ev: ClassTag[A], m: Materializer) = s("rating", classTag[Option[Double]])
 
     /** Invoke JoinWithable.joinWith on the provided streams.  Also see comment on `map`. */
-    def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] = {
-      implicit val jexp: JoinExpiration = JoinExpiration(math.max(s.joinExpiration.x, that.joinExpiration.x))
-      new DataStream[O] {
-        override val in: SourceType[O] = s().joinWith(that())(joiner = op,
-                                                              expireAfter = joinExpiration.x).asInstanceOf[SourceType[O]]
-      }
+    def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
+      override val in: SourceType = s().joinWith(that())(joiner = op).asInstanceOf[SourceType]
     }
 
     /** The `{ case x => x }` actually does serve a purpose; it unpacks x into a 2-tuple, which `identity` cannot do. */
@@ -145,7 +132,7 @@ object StreamDSL {
   case class Implicits[_0, _1](ct0: ClassTag[_0], ct1: ClassTag[_1], nm0: Numeric[_0], nm1: Numeric[_1],
                                m: Materializer)
 
-  /** `implicit` Implicits factory function. */
+  /** `implicit` Implicits factory function (so that they can be auto-constructed when needed). */
   implicit def implicits[_0, _1](implicit ct0: ClassTag[_0], ct1: ClassTag[_1], nm0: Numeric[_0], nm1: Numeric[_1],
                                  m: Materializer): Implicits[_0, _1] =
     Implicits(ct0, ct1, nm0, nm1, m)

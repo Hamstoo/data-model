@@ -13,16 +13,16 @@ import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
 import com.hamstoo.models.{MSearchable, RSearchable, Representation}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
-import com.hamstoo.stream.DataStream.JoinExpiration
+import com.hamstoo.stream.Data.{Data, ExtendedData}
 import com.hamstoo.stream._
 import com.hamstoo.stream.dataset.{QueryResult, RepredMarks, ReprsPair}
-import com.hamstoo.utils.{ExtendedDouble, ExtendedTimeStamp, TimeStamp, parse}
+import com.hamstoo.utils.{ExtendedDouble, ExtendedTimeStamp, TimeStamp, memoryString, parse}
 import org.slf4j.LoggerFactory
 import play.api.Logger
 
 import scala.annotation.tailrec
-import scala.collection.{breakOut, immutable, mutable}
-import scala.concurrent.duration._
+import scala.collection.{breakOut, mutable}
+import scala.concurrent.Future
 import scala.util.matching.Regex
 
 /**
@@ -69,165 +69,160 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
   // for timing profiling
   private var constructionTime: Option[TimeStamp] = Some(System.currentTimeMillis)
 
-  // SearchResults can end up being out of order per the mapAsyncUnordered below so we take a guess at by how much
-  // here and if we lose any along the way it's not the end of the world (note that the degree to which they're
-  // out of order has nothing to do with either the clock.interval or the preloadInterval of the dependency
-  // streams as both of those values are irrelevant at this point in the stream graph)
-  override val joinExpiration: JoinExpiration = JoinExpiration((365 days).toMillis)
-
   // get uniquified `cleanedQSeq` and (future) vectors for all terms in search query `fsearchTermVecs`
   private lazy val (cleanedQuery, fsearchTermVecs) = query2Vecs
   private lazy val cleanedQSeq = cleanedQuery.map(_._1)
 
   // repredMarks will arrive according to time, but search results don't need to be ordered after here because we
   // re-order them later anyway, so just forward them on to the next downstream consumer as soon as they're complete
-  override val in: SourceType[typ] = repredMarks()
-    .map { e => logger.debug(s"repredMarks.out: ${e.sourceTime.tfmt}"); e }
-    .mapAsyncUnordered(16) { dat: Datum[(MSearchable, ReprsPair)] =>
+  override val in: SourceType = repredMarks()
+    .map { d => logger.debug(s"repredMarks.out: ${d.sourceTimeMax.tfmt}"); d }
+    .mapAsync(4) { d: Data[RepredMarks.typ] =>
+      Future.sequence {
+        d.map { e: Datum[RepredMarks.typ] =>
 
-      // unpack the pair datum
-      val (mark, ReprsPair(siteReprs, userReprs)) = dat.value
+          // unpack the pair datum
+          val (mark, ReprsPair(siteReprs, userReprs)) = e.value
 
-      // the `marks` collection includes the users own input (assuming the user chose to provide any input
-      // in the first place) so it should be weighted pretty high if a word match is found, the fuzzy reasoning
-      // behind why it is squared is because the representations collection is also incorporated twice (once
-      // for database search score and again with vector cosine similarity), the silly 3.5 was chosen in order
-      // to get a non-link mark (one w/out a repr) up near the top of the search results
-      val mscore: Double = mark.score.getOrElse(0.0) /** MongoRepresentationDao.CONTENT_WGT*/ / cleanedQuery.length
+          // the `marks` collection includes the users own input (assuming the user chose to provide any input
+          // in the first place) so it should be weighted pretty high if a word match is found, the fuzzy reasoning
+          // behind why it is squared is because the representations collection is also incorporated twice (once
+          // for database search score and again with vector cosine similarity), the silly 3.5 was chosen in order
+          // to get a non-link mark (one w/out a repr) up near the top of the search results
+          val mscore: Double = mark.score.getOrElse(0.0) /** MongoRepresentationDao.CONTENT_WGT*/ / cleanedQuery.length
 
-      // generate a single search result
-      val fut = for(searchTermVecs <- fsearchTermVecs) yield {
+          // generate a single search result
+          fsearchTermVecs.map { searchTermVecs =>
 
-        val startTime: TimeStamp = System.currentTimeMillis()
-        constructionTime.foreach { t =>
-          constructionTime = None
-          logger.info(f"Time between construction and first incoming element: ${(startTime - t) / 1e3}%.3f seconds")
-        }
+            val startTime: TimeStamp = System.currentTimeMillis()
+            constructionTime.foreach { t =>
+              constructionTime = None
+              logger.info(f"Time between construction and first incoming element: ${(startTime - t) / 1e3}%.3f seconds ($memoryString)")
+            }
 
-        // compute scores aggregated across all search terms
-        val (rscore, rsim, rText, rTermText) = searchTerms2Scores("R", mark.id, siteReprs, searchTermVecs)
-        val (uscore, usim, uText, uTermText) = searchTerms2Scores("U", mark.id, userReprs, searchTermVecs, nWordsMult = 100)
+            // compute scores aggregated across all search terms
+            val (rscore, rsim, rText, rTermText) = searchTerms2Scores("R", mark.id, siteReprs, searchTermVecs)
+            val (uscore, usim, uText, uTermText) = searchTerms2Scores("U", mark.id, userReprs, searchTermVecs, nWordsMult = 100)
 
-        // semantic relevances
-        val rsem = math.exp(rsim.getOrElse(0.0))
-        val usem = math.exp(usim.getOrElse(0.0))
+            // semantic relevances
+            val rsem = math.exp(rsim.getOrElse(0.0))
+            val usem = math.exp(usim.getOrElse(0.0))
 
-        // raw (syntactic?) relevances; coalesce0 means that we defer to mscore for isNaN'ness below if uscore is NaN
-        val uraw0 = math.max(uscore, 0.0).coalesce0 + math.max(mscore, 0.0)
-        val rraw0 = math.max(rscore, 0.0)
+            // raw (syntactic?) relevances; coalesce0 means that we defer to mscore for isNaN'ness below if uscore is NaN
+            val uraw0 = math.max(uscore, 0.0).coalesce0 + math.max(mscore, 0.0)
+            val rraw0 = math.max(rscore, 0.0)
 
-        val previewer = Previewer(rawQuery, cleanedQuery, mark.id)
-        val utext = parse(mark.mark.comment.getOrElse(""))
-        val rtext = parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
+            val previewer = Previewer(rawQuery, cleanedQuery, mark.id)
+            val utext = parse(mark.mark.comment.getOrElse(""))
+            val rtext = parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
 
-        // -1 for old, 0 for none (disable it), 1 for new
-        val whichPreviewText = 1
-        val disabledPreview = (0, Seq.empty[(Double, String)])
-        val t0: TimeStamp = System.currentTimeMillis()
-        val (uPhraseBoost, uPreview) = if (whichPreviewText == 1) previewer(uraw0, utext)
-                                       else if (whichPreviewText == -1) previewer.old(uraw0, utext) else disabledPreview
-        val (rPhraseBoost, rPreview) = if (whichPreviewText == 1) previewer(rraw0, rtext)
-                                       else if (whichPreviewText == -1) previewer.old(rraw0, rtext) else disabledPreview
-        val t1: TimeStamp = System.currentTimeMillis()
-        logger.debug(f"Previewer[total] for ${mark.id} in ${t1 - t0} ms")
+            val t0: TimeStamp = System.currentTimeMillis()
+            val (uPhraseBoost, uPreview) = if (WHICH_PREVIEW_TEXT == 1) previewer(uraw0, utext)
+                                           else if (WHICH_PREVIEW_TEXT == -1) previewer.old(uraw0, utext) else DISABLED_PREVIEW
+            val (rPhraseBoost, rPreview) = if (WHICH_PREVIEW_TEXT == 1) previewer(rraw0, rtext)
+                                           else if (WHICH_PREVIEW_TEXT == -1) previewer.old(rraw0, rtext) else DISABLED_PREVIEW
+            val t1: TimeStamp = System.currentTimeMillis()
+            logger.debug(f"Previewer[total] for ${mark.id} in ${t1 - t0} ms")
 
-        val uraw = uraw0 + uPhraseBoost
-        val rraw = rraw0 + rPhraseBoost
-        val preview: String = (uPreview ++ rPreview).sortBy(-_._1).take(N_SPANS).map(_._2).mkString("<br>")
+            val uraw = uraw0 + uPhraseBoost
+            val rraw = rraw0 + rPhraseBoost
+            val preview: String = (uPreview ++ rPreview).sortBy(-_._1).take(N_SPANS).map(_._2).mkString("<br>")
 
-        // aggregated
-        val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
-        val rAggregate = rsem + rraw
-        val mAggregate = usem + uraw
-        loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
+            // aggregated
+            val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
+            val rAggregate = rsem + rraw
+            val mAggregate = usem + uraw
+            loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=$rscore%.2f/$mscore%.2f/$uscore%.2f similarity(r/u)=${rsim.getOrElse(Double.NaN)}%.2f/${usim.getOrElse(Double.NaN)}%.2f")
 
-        // divy up the relevance into named buckets
-        val mbRelevance = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
-          case (true, true, true) => // this first case shouldn't ever really happen
-            Some(SearchRelevance(mscore + isdefBonus, 0, 0, 0))
+            // divy up the relevance into named buckets
+            val mbRelevance = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
+              case (true, true, true) => // this first case shouldn't ever really happen
+                Some(SearchRelevance(mscore + isdefBonus, 0, 0, 0))
 
-          case (true, false, _) => // this second case will occur for non-URL marks
-            Some(SearchRelevance(      uraw * 1.6 + isdefBonus, usem * 1.6, 0, 0))
+              case (true, false, _) => // this second case will occur for non-URL marks
+                Some(SearchRelevance(      uraw * 1.6 + isdefBonus, usem * 1.6, 0, 0))
 
-          case (false, true, _) => // this case will occur for old-school bookmarks without any user content
-            Some(SearchRelevance(0, 0, rraw * 1.4 + isdefBonus, rsem * 1.4))
+              case (false, true, _) => // this case will occur for old-school bookmarks without any user content
+                Some(SearchRelevance(0, 0, rraw * 1.4 + isdefBonus, rsem * 1.4))
 
-          case (false, false, _) => // this case should fire for most marks--those with URLs
+              case (false, false, _) => // this case should fire for most marks--those with URLs
 
-            // maybe want to do max(0, cosine)?  or incorporate antonyms and compute cosine(query-antonyms)?
-            // because antonyms may be highly correlated with their opposites given similar surrounding words
-            Some(SearchRelevance(uraw + Seq(mscore, uscore).count(_ > 1e-10), usem,
-                                 rraw + Seq(rscore        ).count(_ > 1e-10), rsem))
+                // maybe want to do max(0, cosine)?  or incorporate antonyms and compute cosine(query-antonyms)?
+                // because antonyms may be highly correlated with their opposites given similar surrounding words
+                Some(SearchRelevance(uraw + Seq(mscore, uscore).count(_ > 1e-10), usem,
+                                     rraw + Seq(rscore        ).count(_ > 1e-10), rsem))
 
-          case (_, _, false) => None
-        }
+              case (_, _, false) => None
+            }
 
-        val aggregateScore = mbRelevance.map(_.sum)
+            val aggregateScore = mbRelevance.map(_.sum)
 
-        // generate text and return values
-        val mbPv = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
-          case (true, true, true) => // this first case shouldn't ever really happen
-            val sc = mark.score.getOrElse(Double.NaN)
-            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
-              f"Raw marks database search score: <b>$sc%.2f</b> (phrase=$uPhraseBoost)"
-            Some(s"$scoreText<br>")
+            // generate text and return values
+            val mbPv = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
+              case (true, true, true) => // this first case shouldn't ever really happen
+                val sc = mark.score.getOrElse(Double.NaN)
+                val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+                  f"Raw marks database search score: <b>$sc%.2f</b> (phrase=$uPhraseBoost)"
+                Some(s"$scoreText<br>")
 
-          case (true, false, _) => // this second case will occur for non-URL marks
-            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
-              f"User content similarity: <b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
-              f"Database search scores: M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b> (phrase=$uPhraseBoost)"
-            Some(s"$scoreText<br>U-similarities: $uTermText&nbsp; $uText<br>")
+              case (true, false, _) => // this second case will occur for non-URL marks
+                val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+                  f"User content similarity: <b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
+                  f"Database search scores: M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b> (phrase=$uPhraseBoost)"
+                Some(s"$scoreText<br>U-similarities: $uTermText&nbsp; $uText<br>")
 
-          case (false, true, _) => // this case will occur for old-school bookmarks without any user content
-            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
-              f"URL content similarity: <b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, " +
-              f"Database search scores: R=<b>$rscore%.2f</b> (phrase=$rPhraseBoost)"
-            Some(s"$scoreText<br>R-similarities: $rTermText&nbsp; $rText<br>")
+              case (false, true, _) => // this case will occur for old-school bookmarks without any user content
+                val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+                  f"URL content similarity: <b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, " +
+                  f"Database search scores: R=<b>$rscore%.2f</b> (phrase=$rPhraseBoost)"
+                Some(s"$scoreText<br>R-similarities: $rTermText&nbsp; $rText<br>")
 
-          case (false, false, _) => // this case should fire for most marks--those with URLs
-            val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
-              f"Similarities: R=<b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, U=<b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
-              f"Database search scores: R=<b>$rscore%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b> (phrase=$rPhraseBoost & $uPhraseBoost)"
-            Some(s"$scoreText<br>" + s"R-similarities: $rTermText&nbsp; $rText<br>" +
-                                     s"U-similarities: $uTermText&nbsp; $uText<br>")
+              case (false, false, _) => // this case should fire for most marks--those with URLs
+                val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
+                  f"Similarities: R=<b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, U=<b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
+                  f"Database search scores: R=<b>$rscore%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b> (phrase=$rPhraseBoost & $uPhraseBoost)"
+                Some(s"$scoreText<br>" + s"R-similarities: $rTermText&nbsp; $rText<br>" +
+                                         s"U-similarities: $uTermText&nbsp; $uText<br>")
 
-          case (_, _, false) => None
+              case (_, _, false) => None
 
-        }
+            }
 
-        val endTime: TimeStamp = System.currentTimeMillis()
-        val elapsed = (endTime - startTime) / 1e3
-        if (elapsed > 0.1)
-          loggerI.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}, textLen=${utext.length + rtext.length}' in $elapsed%.3f seconds")
+            val endTime: TimeStamp = System.currentTimeMillis()
+            val elapsed = (endTime - startTime) / 1e3
+            if (elapsed > 0.1)
+              loggerI.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}, textLen=${utext.length + rtext.length}' in $elapsed%.3f seconds")
 
-        mbPv.flatMap { pv =>
+            mbPv.flatMap { pv =>
 
-          // remove results with no preview/syntactic matches (unless score is really high), requires that all
-          // fields (e.g. comments, highlights, inline notes) are being covered by MongoDB text search, which they
-          // should be via user-content reprs' doctext
-          // TODO: "unless score is really high"--and make this dependent on 'sem' facet arg
-          val mbPr = preview match {
-            case pr if pr.nonEmpty || whichPreviewText == 0 =>
-              logger.debug(s"Including mark ${mark.id} in search results; has preview text")
-              Some(pr)
-            case _ if (uraw.coalesce0 + rraw.coalesce0) < 1e-8 =>
-              logger.debug(s"Excluding mark ${mark.id} from search results; no preview text")
-              None
-            case _ =>
-              logger.debug(s"Including mark ${mark.id} in search results; has database text matches")
-              def withDots(s: String): String = if (s.length < PREVIEW_LENGTH) s else s"${s.take(PREVIEW_LENGTH)}..."
-              Some(Seq(rtext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))
-          }
+              // remove results with no preview/syntactic matches (unless score is really high), requires that all
+              // fields (e.g. comments, highlights, inline notes) are being covered by MongoDB text search, which they
+              // should be via user-content reprs' doctext
+              // TODO: "unless score is really high"--and make this dependent on 'sem' facet arg
+              val mbPr = preview match {
+                case pr if pr.nonEmpty || WHICH_PREVIEW_TEXT == 0 =>
+                  logger.debug(s"Including mark ${mark.id} in search results; has preview text")
+                  Some(pr)
+                case _ if (uraw.coalesce0 + rraw.coalesce0) < 1e-8 =>
+                  logger.debug(s"Excluding mark ${mark.id} from search results; no preview text")
+                  None
+                case _ =>
+                  logger.debug(s"Including mark ${mark.id} in search results; has database text matches")
+                  def withDots(s: String): String = if (s.length < PREVIEW_LENGTH) s else s"${s.take(PREVIEW_LENGTH)}..."
+                  Some(Seq(rtext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))
+              }
 
-          mbPr.map { pr => (mark, (if (loggerI.isDebugEnabled) pv else "") + pr, mbRelevance) }
-        }
-      }
+              mbPr.map { pr => (mark, (if (loggerI.isDebugEnabled) pv else "") + pr, mbRelevance) }
 
-      fut.map { _.map(dat.withValue) }
+            }.map(e.withValue)
 
-    }.mapConcat(_.to[immutable.Iterable]) // a.k.a. flatten (remove Nones)
-      .asInstanceOf[SourceType[typ]] // see "BIG NOTE" on JoinWithable
-      .map { e => logger.debug(s"${e.sourceTime.tfmt}"); e }
+          } // fsearchTermVecs.map
+        } // d.map
+      } // Future.sequence
+
+    }.map(_.flatten) // remove Nones
+      .asInstanceOf[SourceType] // see "BIG NOTE" on JoinWithable
+      .map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
 
   /**
     * Convert a list of reprs, one for each search term, into a weighted average MongoDB Text Index search score
@@ -338,6 +333,8 @@ object SearchResults {
   private val PREVIEW_LENGTH = 150
   private val N_SPANS = 3
   private val MIN_PREFIX_LENGTH = 4
+  val WHICH_PREVIEW_TEXT = 1 // -1 for old, 0 for none (disable it), 1 for new
+  val DISABLED_PREVIEW = (0, Seq.empty[(Double, String)])
 
   // function for html tags encoding (use StringEscapeUtils.escapeHtml4 here instead?)
   def encode(s: String): String = s.replace("<", "&#60;").replace(">", "&#62;").trim
@@ -364,6 +361,8 @@ object SearchResults {
       */
     def apply(dbSearchScore: Double, rawText0: String): (Int, Seq[(Double, String)]) = {
       if (rawText0.isEmpty) (0, Seq.empty[(Double, String)]) else {
+
+// TODO: could we apply this algorithm in increments of 10000 chars, or use map to select local peaks rather than global peaks?
 
         val rawText = rawText0.take(50000)
         var startTime = System.currentTimeMillis
@@ -414,7 +413,7 @@ object SearchResults {
   // TODO: another thing we could do would be to only compute previews for the top 20 marks similar to not rendering them all
 
         endTime = System.currentTimeMillis
-        logger.debug(f"Previewer[0] $markId (${rawText.length}) in ${endTime - startTime} ms") // 14 ms
+        logger.debug(f"Previewer[0] $markId (${rawText.length}) in ${endTime - startTime} ms (query: $query)") // 14 ms
         startTime = System.currentTimeMillis
 
         // compress tcounts b/c if you don't things are realllllyyy slllloooowwwwww (this value has quadratic effect

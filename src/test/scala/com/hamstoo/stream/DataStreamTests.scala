@@ -7,6 +7,7 @@ import akka.{Done, NotUsed}
 import akka.actor.Cancellable
 import akka.stream._
 import akka.stream.scaladsl.{Broadcast, Flow, GraphDSL, Keep, RunnableGraph, Sink, Source, ZipWith}
+import com.hamstoo.stream.Data.Data
 import com.hamstoo.stream.Join.JoinWithable
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
@@ -100,14 +101,16 @@ class DataStreamTests
     assert(end - expireAfter < knownTime)
 
     // this test should work with either `knownTime` or `i` as last (knownTime) parameter of Datum.apply
-    def newSource(step: Int, id: EntityId, name: String): Source[Datum[Int], NotUsed] =
-      Source((expireAfter until end by step).map(i => Datum(i - expireAfter, id, i, knownTime))).named(name)
+    def newSource(step: Int, id: EntityId, name: String): Source[Data[Int], NotUsed] =
+      Source((expireAfter until end by step).map(i => Data(Datum(i - expireAfter, id, i, knownTime)))).named(name)
     val src0 = newSource(1, ReprId(s"id"), "TestJoin0")
     val src1 = newSource(4, UnitId       , "TestJoin1")
 
     // see comment on JoinWithable as to why the cast is necessary here
     val source: Source[Datum[Int], NotUsed] =
-      src0.joinWith(src1)((a, b) => a * 100 + b, expireAfter = expireAfter).asInstanceOf[src0.Repr[Datum[Int]]]
+      src0.joinWith(src1)((a, b) => a * 100 + b, expireAfter = expireAfter)
+        .asInstanceOf[src0.Repr[Data[Int]]]
+        .mapConcat(identity)
 
     val foldSink = Sink.fold[Int, Int](0) { (a, b) =>
       logger.info(s"Log sink: $a + $b")
