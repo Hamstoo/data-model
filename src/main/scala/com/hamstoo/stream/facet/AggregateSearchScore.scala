@@ -6,6 +6,7 @@ package com.hamstoo.stream.facet
 import akka.stream.Materializer
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.stream.{DataStream, OptionalInjectId}
+import com.hamstoo.stream.Data.ExtendedData
 import com.hamstoo.utils.ExtendedTimeStamp
 
 import math.{max, min}
@@ -31,11 +32,10 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
 
   logger.info(f"Semantic weight: ${semWgt.value}%.2f, user-content weight: ${usrWgt.value}%.2f, ")
 
-  override val in: SourceType[Double] = {
+  override val in: SourceType = {
     import com.hamstoo.stream.StreamDSL._
 
-    val relevanceOption: DataStream[Option[SearchRelevance]] = searchResults("_3", classTag[Option[SearchRelevance]])
-    val relevance: DataStream[SearchRelevance] = relevanceOption.map(Option.option2Iterable).flatten
+    val relevance: DataStream[SearchRelevance] = searchResults("_3", classTag[Option[SearchRelevance]]).flatten
 
     // weights along 2 spectrums (range between 0 and 2)
     val w_sem = min(max(semWgt.value, 0), 1) * 2
@@ -54,7 +54,7 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
 
     value * COEF
 
-  }.out.map { e => logger.debug(s"${e.sourceTime.tfmt}"); e }
+  }.out.map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
 }
 
 object AggregateSearchScore {

@@ -6,6 +6,7 @@ package com.hamstoo.stream.facet
 import akka.stream.Materializer
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.stream.{DataStream, OptionalInjectId}
+import com.hamstoo.stream.Data.ExtendedData
 import com.hamstoo.stream.dataset.MarksStream
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
 import org.joda.time.DateTime
@@ -22,10 +23,10 @@ import scala.concurrent.duration._
   * @param marks     Marks data source.
   */
 @Singleton
-class Recency @Inject() (facetArg: Recency.Arg,
-                         now: Recency.CurrentTimeOptional,
-                         marks: MarksStream)
-                        (implicit mat: Materializer)
+class Recency @Inject()(facetArg: Recency.Arg,
+                        now: Recency.CurrentTimeOptional,
+                        marks: MarksStream)
+                       (implicit mat: Materializer)
     extends DataStream[Double] {
 
   import Recency._
@@ -40,6 +41,7 @@ class Recency @Inject() (facetArg: Recency.Arg,
   }
 
   // see data-model/docs/RecencyTest.xlsx for calculations of these values
+  // TODO: rather than using this complicated formula, just have a fixed 2-year half life with a parameterized COEF
   val EXPONENT = 6.74
   val DIVISOR = 0.1025737151
 
@@ -49,7 +51,7 @@ class Recency @Inject() (facetArg: Recency.Arg,
 
   logger.info(s"Using a half-life of ${mbHalfLife.getOrElse(Long.MaxValue).dfmt} given arg value ${facetArg.value}")
 
-  override val in: SourceType[Double] = {
+  override val in: SourceType = {
     import com.hamstoo.stream.StreamDSL._
 
     // this doesn't compile when spire.algebra.NRoot is used in place of Powable in StreamOps, the
@@ -65,7 +67,7 @@ class Recency @Inject() (facetArg: Recency.Arg,
       (0.5 pow nHalfLifes) * COEF
 
     }
-  }.out.map { e => logger.debug(s"${e.sourceTime.tfmt}"); e }
+  }.out.map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
 }
 
 object Recency {

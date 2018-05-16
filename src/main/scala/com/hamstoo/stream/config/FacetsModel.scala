@@ -10,6 +10,7 @@ import akka.stream.{Attributes, Materializer, SourceShape}
 import com.google.inject.{Inject, Injector, Singleton}
 import com.hamstoo.stream.facet.{AggregateSearchScore, Recency, SearchResults}
 import com.hamstoo.stream.{Clock, DataStream}
+import com.hamstoo.stream.Data.{Data, ExtendedData}
 import com.hamstoo.utils.ExtendedTimeStamp
 import play.api.Logger
 
@@ -69,6 +70,13 @@ class FacetsModel @Inject()(injector: Injector)
     result
   }
 
+  /** Flatten Data batches/snapshots into individual Datum and stream out those. */
+  def flatRun[T](sink: Sink[OutType, Future[T]]): Future[T] = {
+    val result = out.mapConcat { case (name, d) => d.asInstanceOf[Data[_]].map((name, _)) }.runWith(sink)
+    clock.start()
+    result
+  }
+
   /** Wire up the model by merging all the individual facets, but don't run it, and don't start the clock. */
   def out: Source[OutType, NotUsed] = Source.fromGraph(GraphDSL.create() { implicit b =>
     import GraphDSL.Implicits._
@@ -80,8 +88,8 @@ class FacetsModel @Inject()(injector: Injector)
 
       // label the source with its facet name so that we can tell them apart on the other side
       val labeledSource = ds()
-        .map { e => logger.debug(s"(\033[2m${name}\033[0m) ${e.sourceTime.tfmt}"); e }
-        .map { data => (name, data) }
+        .map { d => logger.debug(s"(\033[2m${name}\033[0m) ${d.sourceTimeMax.tfmt}"); d }
+        .map { d => (name, d) }
         .named(name)
 
       labeledSource ~> merge.in(i)

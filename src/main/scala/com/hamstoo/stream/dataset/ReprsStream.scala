@@ -9,6 +9,7 @@ import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.RepresentationDao
 import com.hamstoo.models.{MSearchable, RSearchable}
+import com.hamstoo.stream.Data.ExtendedData
 import com.hamstoo.stream._
 import com.hamstoo.utils.{ExtendedTimeStamp, TimeStamp}
 import org.slf4j.LoggerFactory
@@ -43,7 +44,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
                            (implicit clock: Clock,
                             mat: Materializer,
                             reprDao: RepresentationDao)
-    extends PreloadObserver[MSearchable, ReprsPair](subject = marksStream/*, asyncConsumerBoundary = true*/) {
+    extends PreloadObserver[MSearchable, ReprsPair](subject = marksStream) {
 
   // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples
 
@@ -135,18 +136,11 @@ class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
                            (implicit mat: Materializer)
     extends DataStream[RepredMarks.typ] {
 
-  import RepredMarks._
   import com.hamstoo.stream.Join.JoinWithable
 
-  // TODO: `joinWith` needs to take an implicit expireAfter, but it needs to get it from marks and reprs BEFORE
-  // TODO:   their `.apply` methods are called converting them from DataStreams to regular Akka Streams
-  // TODO:   so how do we pluck such an implicit out of thin air?  (1) have an implicit conversion from a pair
-  // TODO:   of DataStreams?  (2) attach (duck punch) an implicit expireAfter to the Akka Stream returned by `apply`
-  // TODO:   by making joinWith operate on an ExtendedGraph implicit class or via a typeclass?  (3) or joinWith just
-  // TODO:   needs to operate on DataStreams, rather than their output ports?
-  override def in: SourceType[typ] = marks().joinWith(reprs()) { case x => x }
-    .asInstanceOf[SourceType[typ]] // see comment on JoinWithable as to why this cast is necessary
-    .map { e => logger.debug(s"${e.sourceTime.tfmt}"); e }
+  override val in: SourceType = marks().joinWith(reprs()) { case x => x }
+    .asInstanceOf[SourceType] // see comment on JoinWithable as to why this cast is necessary
+    .map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
 }
 
 object RepredMarks {

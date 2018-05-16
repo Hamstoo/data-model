@@ -23,7 +23,7 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
 
 /**
-  * DataStreamTests
+  * FacetTests
   */
 class FacetTests
   extends AkkaMongoEnvironment("FacetTests-ActorSystem")
@@ -155,6 +155,6 @@ class FacetTests
     // causes "[error] a.a.OneForOneStrategy - CommandError[code=11600, errmsg=interrupted at shutdown" for some reason
     //facetsModel.run(sink).futureValue
 
-    Await.result(facetsModel.run(Sink.seq), 15 seconds)
+    Await.result(facetsModel.flatRun(Sink.seq), 15 seconds)
   }
 }

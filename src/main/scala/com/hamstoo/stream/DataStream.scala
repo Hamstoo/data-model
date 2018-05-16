@@ -4,14 +4,16 @@
 package com.hamstoo.stream
 
 import akka.NotUsed
-import akka.stream.{Materializer, OverflowStrategy}
+import akka.stream.Materializer
 import akka.stream.scaladsl.{BroadcastHub, Sink, Source, SourceQueue}
-import com.hamstoo.stream.DataStream._
+import com.hamstoo.stream.DatumStream._
+import com.hamstoo.stream.Data.{Data, ExtendedData}
 import com.hamstoo.stream.Tick.{ExtendedTick, Tick}
-import com.hamstoo.stream.Join.{DEFAULT_EXPIRE_AFTER, JoinWithable, Pairwised}
+import com.hamstoo.stream.Join.{JoinWithable, Pairwised}
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
 import play.api.Logger
 
+import scala.annotation.unchecked.uncheckedVariance
 import scala.collection.{immutable, mutable}
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
@@ -34,10 +36,8 @@ import scala.concurrent.duration._
   *                        "dependency tree"/"stream graph" via StreamDSL, but perhaps there's a better way to pass
   *                        along this value (with implicits?) that I haven't thought of.
   */
-abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE,
-                              asyncConsumerBoundary: Boolean = false)
-                             (implicit mat: Materializer,
-                              val joinExpiration: JoinExpiration = JoinExpiration()) {
+abstract class DatumStream[+E](bufferSize: Int = DatumStream.DEFAULT_BUFFER_SIZE)
+                             (implicit mat: Materializer) {
 
   val logger = Logger(getClass)
 
@@ -46,23 +46,23 @@ abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE,
 
   // don't even try mentioning T anywhere in this type definition, more at the link
   //   https://stackoverflow.com/questions/33458782/scala-type-members-variance
-  // TODO: try using @uncheckedVariance here instead (as it is used in Join.scala)
-  type SourceType[+TT] = Source[Datum[TT], NotUsed]
+  // update: @uncheckedVariance to the rescue!
+  type SourceType = Source[E, NotUsed] @uncheckedVariance
 
-  /** Abstract Akka Source (input port) to be defined by implementation. */
-  protected def in: SourceType[T]
+  /** Abstract Akka Source (input port) to be defined by implementation.  Must be a `val`, not a `def`. */
+  protected val in: SourceType
 
   /**
     * This `lazy val` materializes the input port into a dynamic BroadcastHub output port, which can be wired into
     * as many Flows or Sinks as desired at runtime.
     * See also: https://doc.akka.io/docs/akka/2.5/stream/stream-dynamic.html
     */
-  final lazy val out: SourceType[T] = {
+  final lazy val out: SourceType = {
     assert(in != null) // this assertion will fail if `source` is not `lazy`
 
     // the BroadcastHub does not appear to create an asynchronous stream boundary so everything before it
     // and everything after it are all running in the same Actor
-    logger.debug(s"Materializing ${getClass.getSimpleName} BroadcastHub (joinExpiration=${joinExpiration.x.dfmt})")
+    logger.debug(s"Materializing ${getClass.getSimpleName} BroadcastHub (stream: ${streamName(in)}")
 
     // "This Source [hub] can be materialized an arbitrary number of times, where each of the new materializations
     // will receive their elements from the original [in]."
@@ -71,56 +71,31 @@ abstract class DataStream[+T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE,
     // re: async: this will/may create a separate actor for each attached consumer
     // re: buffer: "behavior can be tweaked" [https://doc.akka.io/docs/akka/current/stream/stream-dynamic.html]
     //   don't push across the async boundary until buffer is full (to make serialization more efficient)
-    (if (asyncConsumerBoundary) hub.async.buffer(bufferSize, OverflowStrategy.backpressure) else hub)
-      .named(getClass.getSimpleName) // `named` should be last, no matter what
+    //(if (asyncConsumerBoundary) hub.async.buffer(bufferSize, OverflowStrategy.backpressure) else hub)
+    hub.named(getClass.getSimpleName) // `named` should be last, no matter what
   }
 
-  /** Shortcut to the source.  Think of a DataStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
-  def apply(): SourceType[T] = this.out
+  /** Shortcut to the source.  Think of a DatumStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
+  def apply(): SourceType = this.out
 }
 
-object DataStream {
+object DatumStream {
 
   // changing this from 1 to 16 may have a (positive) effect
   //   [http://blog.colinbreck.com/maximizing-throughput-for-akka-streams]
   val DEFAULT_BUFFER_SIZE = 8
-
-
-
-
-
-
-
-  // TODO: 1. try chaining batches first (pushed to stage)
-  // while chaining batches is necessary, the problem is that consecutive mapAsync calls may also result out-of-order
-  // completions of preload, so mapAsync must really be 1
-
-  // TODO: 2. read the new article
-
-  // TODO: 3. make SearchResults a PreloadObserver (it needs to not have to wait--like Recency does not--to start processing)
-  // no, it shouldn't be a PreloadObserver, it should just stream from marks-reprs-pairs as they are preloaded, which
-  // is what streams are supposed to do in the first place
-
-  // TODO: 4. the real question is: how to get SearchResults working w/out waiting for data to flow through streams
-  // how to prioritize branches of a stream graph
-
-
-
-
-
-
-
-
-
-
-
-
-  // not using implicit Option[Long] or Boolean because it would be fairly easy to have one in scope unintentionally
-  case class JoinExpiration(x: DurationMils = DEFAULT_EXPIRE_AFTER)
+  val DEFAULT_BATCH_STREAM_BUFFER_SIZE = 1
 }
 
 /**
-  * A PreloadSource is merely a DataStream that can listen to a Clock so that it knows when to load
+  * One batch, all with same timeKnown (hopefully) at each tick.
+  */
+abstract class DataStream[+T](bufferSize: Int = DEFAULT_BATCH_STREAM_BUFFER_SIZE)
+                              (implicit mat: Materializer)
+    extends DatumStream[Data[T]](bufferSize) {}
+
+/**
+  * A PreloadSource is merely a DatumStream that can listen to a Clock so that it knows when to load
   * data from its abstract source.  It throttles its stream emissions to 1/`period` frequency.
   *
   * @param loadInterval The interval between consecutive "preloads" which will probably be much larger than
@@ -134,16 +109,14 @@ object DataStream {
   * @tparam T The type of data being streamed.
   */
 abstract class PreloadSource[+T](val loadInterval: DurationMils,
-                                 bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE,
-                                 asyncConsumerBoundary: Boolean = false)
+                                 bufferSize: Int = DEFAULT_BATCH_STREAM_BUFFER_SIZE)
                                 (implicit clock: Clock, mat: Materializer)
-    extends DataStream[T](bufferSize = bufferSize, asyncConsumerBoundary = asyncConsumerBoundary) {
+    extends DataStream[T](bufferSize) {
 
   logger.debug(s"Constructing ${getClass.getSimpleName} (loadInterval=${loadInterval.toDays})")
 
   /** Pre-load a *future* block of data from the data source.  `begin` should be inclusive and `end`, exclusive. */
-  type PreloadCollectionType[+TT] = immutable.Seq[Datum[TT]]
-  type PreloadType[+TT] = Future[PreloadCollectionType[TT]]
+  type PreloadType[+TT] = Future[Data[TT]]
   protected def preload(begin: TimeStamp, end: TimeStamp): PreloadType[T]
 
   /** PreloadSources' preloads are _subjects_ that are _observable_ by other PreloadSources' preloads. */
@@ -246,8 +219,8 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       }
 
       // distribute the buffer data to the OpenGroup
-      val ftickBuffer = fpartitionedBuffer.map(_._1.to[immutable.Seq])
-      val preloadWindow = new KnownData(window.begin, window.end, ftickBuffer)
+      val fknownBuffer = fpartitionedBuffer.map(_._1.map(_.copy(knownTime = window.end)).to[immutable.Seq])
+      val preloadWindow = new KnownData(window.begin, window.end, fknownBuffer)
 
       // if there are any remaining, undistributed (future) data, put them into `buffer` for the next go-around
       buffer = Seq(fpartitionedBuffer.map(_._2.filter(_.knownTime > window.end).to[immutable.Seq]))
@@ -257,11 +230,11 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
   }
 
   /** Groups preloaded data into clock tick intervals and throttles it to the pace of the ticks. */
-  override protected val in: SourceType[T] = {
+  override protected val in: SourceType = {
 
     clock.out
       //.async.buffer(1, OverflowStrategy.backpressure) // causes entire clock to be pulled immediately
-      .map { e => logger.info(s"PreloadSource: $e"); e }
+      .map { t => logger.info(s"PreloadSource: $t"); t }
 
       // flow ticks through the PreloadFactory which preloads (probably) big chucks of future data but then
       // only allows (probably) smaller chunks of known data to pass at each tick
@@ -277,25 +250,15 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       // order and non-concurrently so that each call waits on the correct `queue.head` and (b) there's no need
       // to overload the database with multiple concurrent calls to our preload
       .mapAsync(1) { w: KnownData =>
-        w.buffer.map { buf =>
-          logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) $w, n=${buf.size}")
-          buf.toSeq.sorted(Ordering[ABV]).map { d =>
-            logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) Element: ${d.sourceTime.tfmt}, ${d.id}")
-            d.copy(knownTime = w.end)
-          }
+          if (logger.isDebugEnabled) w.buffer.map(buf =>
+            logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) Elements: n=${buf.size}, $w"))
+          w.buffer
         }
-      }
-
-      // mapConcat (a.k.a. flatMap) requires an immutable
-      .mapConcat(identity)
 
       // allocate each PreloadSource its own Actor (http://blog.colinbreck.com/maximizing-throughput-for-akka-streams/)
-      // there won't be many of these and they'll all typically be doing IO,
-      // just have to make sure the clock doesn't slow them down
-  //    .async // [PERFORMANCE]
-      // update: maybe the `.async` doesn't do anything because there's already a BroadcastHub, although this buffer
-      //   should keep the source flowing (as long as the clock keeps flowing)
-      // update: this seems like it slows things down (considerably) by making the stream system wait until
+      // as there won't be many of these and they'll all typically be doing IO
+      //.async
+      // this seems like it slows things down (considerably) by making the stream system wait until
       //   this many elements are available before batching and pushing them across the async boundary
       //.buffer(1024, OverflowStrategy.backpressure)
   }
@@ -309,29 +272,28 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
   * @tparam O The type of data being streamed (O)ut.
   */
 abstract class PreloadObserver[-I, +O](subject: PreloadSource[I],
-                                       bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE,
-                                       asyncConsumerBoundary: Boolean = false)
+                                       bufferSize: Int = DEFAULT_BATCH_STREAM_BUFFER_SIZE)
                                       (implicit clock: Clock, materializer: Materializer)
-    extends PreloadSource[O](subject.loadInterval, bufferSize, asyncConsumerBoundary) {
+    extends PreloadSource[O](subject.loadInterval, bufferSize) {
 
   // don't forget to observe the subject, which is the whole reason why we're here
   subject.registerPreloadObserver(this)
 
   // cache of previous calls to `preloadUpdate` (using TrieMap rather than faster ConcurrentHashMap b/c the former
   // has `getOrElseUpdate`)
-  private[this] val cache = new scala.collection.concurrent.TrieMap[TimeStamp, Promise[PreloadCollectionType[O]]]
+  private[this] val cache = new scala.collection.concurrent.TrieMap[TimeStamp, Promise[Data[O]]]
 
   /** Calls to this method are triggered by the `subject` after it performs one of its own calls to `preload`. */
   def preloadUpdate(fSubjectData: PreloadType[I], begin: TimeStamp, end: TimeStamp): Unit = {
     logger.debug(s"PreloadObserver encache (${begin.tfmt} to ${end.tfmt})")
     val fut = observerPreload(fSubjectData, begin, end)
-    cache.getOrElseUpdate(end, Promise[PreloadCollectionType[O]]()).completeWith(fut)
+    cache.getOrElseUpdate(end, Promise[Data[O]]()).completeWith(fut)
   }
 
   /** Override the typical `preload` implementation with one that waits on the appropriate cache element. */
   override def preload(begin: TimeStamp, end: TimeStamp): PreloadType[O] = {
     logger.debug(s"Commence PreloadObserver wait (${begin.tfmt} to ${end.tfmt})")
-    cache.getOrElseUpdate(end, Promise[PreloadCollectionType[O]]()).future.map { x =>
+    cache.getOrElseUpdate(end, Promise[Data[O]]()).future.map { x =>
       logger.debug(s"PreloadObserver decache, wait complete (${begin.tfmt} to ${end.tfmt})")
       cache.remove(end)
       x
@@ -347,7 +309,7 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I],
   * chunked "preload buffer"--at whatever rate Akka's backpressure mechanism will allow, but then it throttles
   * the doling out of its data such that it never gets ahead of a Clock.
   */
-abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SIZE)
+abstract class ThrottledSource[T](bufferSize: Int = DEFAULT_BUFFER_SIZE)
                                  (implicit clock: Clock, materializer: Materializer)
     extends DataStream[T](bufferSize) {
 
@@ -362,24 +324,28 @@ abstract class ThrottledSource[T](bufferSize: Int = DataStream.DEFAULT_BUFFER_SI
     *   2. User-defined, domain logic buffer: throttlee.buffer(500, OverflowStrategy.backpressure)
     * [https://doc.akka.io/docs/akka/current/stream/stream-rate.html]
     */
-  def throttlee: SourceType[T]
+  def throttlee: SourceType
 
   /** Throttles data by joining it with the clock and then mapping back to itself. */
-  override protected val in: SourceType[T] = {
+  override protected val in: SourceType = {
 
     // the Join that this function uses should only have a single clock tick in its joinable1 buffer at a time, every
     // call to pushOneMaybe will either push or result in a pull from the throttlee, as soon as the throttlee's
     // watermark0 gets ahead of the clock's watermark1
 
     /** Move `d.knownTime`s up to the end of the clock window that they fall inside, just like PreloadSource. */
-    def pairwise(d: Datum[T], t: Tick): Option[Join.Pairwised[T, TimeStamp]] =
-      if (d.knownTime > t.time) None // throttlee known time must come before current clock time to be emitted
-      else Some(Pairwised(Datum((d.value, 0L), d.id, d.sourceTime, t.time), consumed0 = true)) // throttlee consumed
+    def pairwise(d: Data[T], t: immutable.Seq[Tick]): Option[Join.Pairwised[T, TimeStamp]] =
+      if (d.knownTimeMax > t.head.time)
+        None // throttlee known time must come before current clock time to be emitted
+      else Some(Pairwised(
+        d.map(e => Datum((e.value, 0L), e.id, e.sourceTime, t.head.time)),
+        consumed0 = true // throttlee (not clock tick) consumed
+      ))
 
     /** Simply ignore the 0L "value" that was paired up with each `sv.value` in `pairwise`. */
     def joiner(v: T, t: TimeStamp): T = v
 
     // throttle the `throttlee` with the clock (see comment on JoinWithable as to why the cast is necessary here)
-    JoinWithable(throttlee).joinWith(clock())(joiner, pairwise).asInstanceOf[SourceType[T]]
+    JoinWithable(throttlee).joinWith(clock().map(t => Data(t)))(joiner, pairwise).asInstanceOf[SourceType]
   }
 }
