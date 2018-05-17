@@ -122,7 +122,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
             val (rPhraseBoost, rPreview) = if (WHICH_PREVIEW_TEXT == 1) previewer(rraw0, rtext)
                                            else if (WHICH_PREVIEW_TEXT == -1) previewer.old(rraw0, rtext) else DISABLED_PREVIEW
             val t1: TimeStamp = System.currentTimeMillis()
-            logger.debug(f"Previewer[total] for ${mark.id} in ${t1 - t0} ms")
+            logger.debug(f"Previewer[total] for ${mark.id} in ${t1 - t0} ms ($memoryString)")
 
             val uraw = uraw0 + uPhraseBoost
             val rraw = rraw0 + rPhraseBoost
@@ -366,6 +366,7 @@ object SearchResults {
         // TODO: could we apply this algorithm in increments of 10000 chars, or use map to select local peaks rather than global peaks?
         val rawText = rawText0.take(MAX_PREVIEW_DOC_LENGTH)
         var startTime = System.currentTimeMillis
+        val startMem = memoryString
 
         val encText = encode(rawText)
         assert(encText.length >= rawText.trim.length)
@@ -413,7 +414,7 @@ object SearchResults {
   // TODO: another thing we could do would be to only compute previews for the top 20 marks similar to not rendering them all
 
         endTime = System.currentTimeMillis
-        logger.debug(f"Previewer[0] $markId (${rawText.length}) in ${endTime - startTime} ms (query: $query)") // 14 ms
+        logger.debug(f"Previewer[0] $markId (${rawText.length}) in ${endTime - startTime} ms ($startMem -> $memoryString)") // 14 ms
         startTime = System.currentTimeMillis
 
         // compress tcounts b/c if you don't things are realllllyyy slllloooowwwwww (this value has quadratic effect
@@ -468,7 +469,7 @@ object SearchResults {
         }.seq
 
         endTime = System.currentTimeMillis
-        logger.debug(f"Previewer[1] $markId (${rawText.length}) in ${endTime - startTime} ms") // 25 ms
+        logger.debug(f"Previewer[1] $markId (${rawText.length}) in ${endTime - startTime} ms ($memoryString)") // 25 ms
         startTime = System.currentTimeMillis
         val smoothedCmp = mutable.ArrayBuffer(smoothedImmutableCmp: _*)
 
