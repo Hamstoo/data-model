@@ -6,7 +6,7 @@ package com.hamstoo.stream
 import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.{BroadcastHub, Sink, Source, SourceQueue}
-import com.hamstoo.stream.DatumStream._
+import com.hamstoo.stream.ElemStream._
 import com.hamstoo.stream.Data.{Data, ExtendedData}
 import com.hamstoo.stream.Tick.{ExtendedTick, Tick}
 import com.hamstoo.stream.Join.{JoinWithable, Pairwised}
@@ -36,7 +36,7 @@ import scala.concurrent.duration._
   *                        "dependency tree"/"stream graph" via StreamDSL, but perhaps there's a better way to pass
   *                        along this value (with implicits?) that I haven't thought of.
   */
-abstract class DatumStream[+E](bufferSize: Int = DatumStream.DEFAULT_BUFFER_SIZE)
+abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE)
                              (implicit mat: Materializer) {
 
   val logger = Logger(getClass)
@@ -75,11 +75,11 @@ abstract class DatumStream[+E](bufferSize: Int = DatumStream.DEFAULT_BUFFER_SIZE
     hub.named(getClass.getSimpleName) // `named` should be last, no matter what
   }
 
-  /** Shortcut to the source.  Think of a DatumStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
+  /** Shortcut to the source.  Think of a ElemStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
   def apply(): SourceType = this.out
 }
 
-object DatumStream {
+object ElemStream {
 
   // changing this from 1 to 16 may have a (positive) effect
   //   [http://blog.colinbreck.com/maximizing-throughput-for-akka-streams]
@@ -91,11 +91,11 @@ object DatumStream {
   * One batch, all with same timeKnown (hopefully) at each tick.
   */
 abstract class DataStream[+T](bufferSize: Int = DEFAULT_BATCH_STREAM_BUFFER_SIZE)
-                              (implicit mat: Materializer)
-    extends DatumStream[Data[T]](bufferSize) {}
+                             (implicit mat: Materializer)
+    extends ElemStream[Data[T]](bufferSize) {}
 
 /**
-  * A PreloadSource is merely a DatumStream that can listen to a Clock so that it knows when to load
+  * A PreloadSource is merely a ElemStream that can listen to a Clock so that it knows when to load
   * data from its abstract source.  It throttles its stream emissions to 1/`period` frequency.
   *
   * @param loadInterval The interval between consecutive "preloads" which will probably be much larger than
@@ -234,7 +234,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
 
     clock.out
       //.async.buffer(1, OverflowStrategy.backpressure) // causes entire clock to be pulled immediately
-      .map { t => logger.info(s"PreloadSource: $t"); t }
+      .map { t => logger.debug(s"PreloadSource: $t"); t }
 
       // flow ticks through the PreloadFactory which preloads (probably) big chucks of future data but then
       // only allows (probably) smaller chunks of known data to pass at each tick

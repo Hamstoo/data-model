@@ -26,7 +26,7 @@ case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
                            @Named(ClockInterval.name) interval: ClockInterval.typ)
                           (implicit mat: Materializer)
 
-    extends DatumStream[Datum[TimeStamp]](bufferSize = 1) {
+    extends ElemStream[Datum[TimeStamp]](bufferSize = 1) {
       // we use 1 here because there appears to be a bug in BroadcastHub where if the buffer consumes the
       // producer before any flows/sinks are attached to the materialized hub the producer will stop and the
       // dependent flows/sinks won't ever have a chance to backpressure (which is a problem for the clock especially!)

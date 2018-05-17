@@ -330,6 +330,7 @@ object SearchResults {
   // capital letter regular expression (TODO: https://github.com/Hamstoo/hamstoo/issues/68)
   val capitalRgx: Regex = s"[A-Z]".r.unanchored
 
+  private val MAX_PREVIEW_DOC_LENGTH = 10000 // average word length is ~7 chars (including 1 space) => 1428 words
   private val PREVIEW_LENGTH = 150
   private val N_SPANS = 3
   private val MIN_PREFIX_LENGTH = 4
@@ -362,9 +363,8 @@ object SearchResults {
     def apply(dbSearchScore: Double, rawText0: String): (Int, Seq[(Double, String)]) = {
       if (rawText0.isEmpty) (0, Seq.empty[(Double, String)]) else {
 
-// TODO: could we apply this algorithm in increments of 10000 chars, or use map to select local peaks rather than global peaks?
-
-        val rawText = rawText0.take(50000)
+        // TODO: could we apply this algorithm in increments of 10000 chars, or use map to select local peaks rather than global peaks?
+        val rawText = rawText0.take(MAX_PREVIEW_DOC_LENGTH)
         var startTime = System.currentTimeMillis
 
         val encText = encode(rawText)
