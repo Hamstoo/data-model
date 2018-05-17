@@ -64,7 +64,8 @@ class FacetTests
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
 
     // see data-model/docs/RecencyTest.xlsx for an independent calculation of this value
-    x / Recency.COEF shouldBe (4.54 +- 0.01)
+    val coef = (Recency.DEFAULT - 0.5) * 40
+    x / coef shouldBe (4.12 +- 0.01)
   }
 
   // construct the stream graph but don't materialize it, let the individual tests do that

@@ -20,7 +20,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.higherKinds
-import scala.util.matching.Regex
+import scala.util.matching.{Regex, UnanchoredRegex}
 import scala.util.{Failure, Random, Success, Try}
 
 
@@ -250,8 +250,9 @@ package object utils {
   val curnt: Producer[BSONElement] = com.hamstoo.models.Mark.TIMETHRU -> INF_TIME
 
   /** A couple regexes used in `parse` but that which may also be useful elsewhere. */
-  val repeatedSpaceRgx: Regex = raw"\s{2,}".r.unanchored
-  val crlftRgx: Regex = raw"[\n\r\t]".r.unanchored
+  val rgxRepeatedSpace: Regex = raw"\s{2,}".r.unanchored
+  val rgxCRLFT: Regex = raw"[\n\r\t]".r.unanchored
+  val rgxAlpha: UnanchoredRegex = "[^a-zA-Z]".r.unanchored // TODO: https://github.com/Hamstoo/hamstoo/issues/68
 
   /**
     * Mild string parsing.  Nothing too severe here as these parsed strings are what are stored in the database
@@ -261,7 +262,7 @@ package object utils {
     * included.  This last point is part of what leads to a 418,000-word English vocabulary in which the following
     * words are all found independently: "can't", "can't", and "can't".
     */
-  def parse(s: String): String = repeatedSpaceRgx.replaceAllIn(crlftRgx.replaceAllIn(s, " "), " ").trim
+  def parse(s: String): String = rgxRepeatedSpace.replaceAllIn(rgxCRLFT.replaceAllIn(s, " "), " ").trim
 
   /**
     * `parse` should've already been applied, but use \s+ anyway, just to be safe.  Lowercase'izing to make

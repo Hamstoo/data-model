@@ -8,6 +8,7 @@ import com.google.inject.{Inject, Singleton}
 import com.google.inject.name.Named
 import com.hamstoo.services.IDFModel.ResourcePathOptional
 import com.hamstoo.stream.InjectId
+import com.hamstoo.utils
 import play.api.Logger
 import play.api.libs.json.{JsValue, Json}
 import com.hamstoo.utils.cleanly
@@ -70,15 +71,13 @@ class IDFModel @Inject() (@Named("idfs.resource") zipfileResource: String,
     maxIdf = idfs.maxBy(_._2)._2
   }
 
-  val rgxAlpha: UnanchoredRegex = "[^a-zA-Z]".r.unanchored
-
   /** Returns the IDF of the given word. */
   def transform(word: String): Double = {
     math.max(MIN_IDF, idfs.getOrElse(word, {
       // try to ignore words containing punctuation or digits by assigning them MIN_IDF, note however that this
       // will include multiple-word terms, like european_otter, which *are* processed correctly by word vec code
       word match {
-        case rgxAlpha(_*) => MIN_IDF
+        case utils.rgxAlpha(_*) => MIN_IDF
         case _ => maxIdf
       }
     }))

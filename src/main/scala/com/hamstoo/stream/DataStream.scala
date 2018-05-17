@@ -36,10 +36,12 @@ import scala.concurrent.duration._
   *                        "dependency tree"/"stream graph" via StreamDSL, but perhaps there's a better way to pass
   *                        along this value (with implicits?) that I haven't thought of.
   */
-abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE)
+abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE,
+                              mbName: Option[String] = None)
                              (implicit mat: Materializer) {
 
   val logger = Logger(getClass)
+  val name: String = mbName.getOrElse(getClass.getSimpleName)
 
   // nearly every concrete implementation of this class will require an implicit ExecutionContext
   implicit val ec: ExecutionContext = mat.executionContext
@@ -62,7 +64,7 @@ abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE)
 
     // the BroadcastHub does not appear to create an asynchronous stream boundary so everything before it
     // and everything after it are all running in the same Actor
-    logger.debug(s"Materializing ${getClass.getSimpleName} BroadcastHub (stream: ${streamName(in)}")
+    logger.debug(s"Materializing $name BroadcastHub")
 
     // "This Source [hub] can be materialized an arbitrary number of times, where each of the new materializations
     // will receive their elements from the original [in]."
@@ -72,7 +74,7 @@ abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE)
     // re: buffer: "behavior can be tweaked" [https://doc.akka.io/docs/akka/current/stream/stream-dynamic.html]
     //   don't push across the async boundary until buffer is full (to make serialization more efficient)
     //(if (asyncConsumerBoundary) hub.async.buffer(bufferSize, OverflowStrategy.backpressure) else hub)
-    hub.named(getClass.getSimpleName) // `named` should be last, no matter what
+    hub.named(name) // `named` should be last, no matter what (b/c it's what the outside world sees)
   }
 
   /** Shortcut to the source.  Think of a ElemStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
@@ -90,9 +92,10 @@ object ElemStream {
 /**
   * One batch, all with same timeKnown (hopefully) at each tick.
   */
-abstract class DataStream[+T](bufferSize: Int = DEFAULT_BATCH_STREAM_BUFFER_SIZE)
+abstract class DataStream[+T](bufferSize: Int = DEFAULT_BATCH_STREAM_BUFFER_SIZE,
+                              mbName: Option[String] = None)
                              (implicit mat: Materializer)
-    extends ElemStream[Data[T]](bufferSize) {}
+    extends ElemStream[Data[T]](bufferSize, mbName) {}
 
 /**
   * A PreloadSource is merely a ElemStream that can listen to a Clock so that it knows when to load

@@ -11,7 +11,6 @@ import com.hamstoo.stream.dataset.MarksStream
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
 import org.joda.time.DateTime
 
-import math.{abs, log, pow}
 import scala.concurrent.duration._
 
 /**
@@ -29,27 +28,20 @@ class Recency @Inject()(facetArg: Recency.Arg,
                        (implicit mat: Materializer)
     extends DataStream[Double] {
 
-  import Recency._
+  // outdated: see data-model/docs/RecencyTest.xlsx for calculations of these values
+  //val EXPONENT = 6.74
+  //val DIVISOR = 0.1025737151
 
-  // below 0.01 and above 0.99 the half-life gets very close to 0, near 0.5 it tends towards positive/negative infinity
-  val cleanedArg: Option[Double] = facetArg.value match {
-    case x if x < 0.01  => Some(0.01)
-    case x if x < 0.481 => Some(x)
-    case x if x < 0.519 => None // undefined: model will return constant 0.0
-    case x if x < 0.99  => Some(x)
-    case _              => Some(0.99)
+  // rather than using this complicated formula, just have a fixed 2-year half life with a parameterized COEF
+  val HALF_LIFE: DurationMils = 365.days.toMillis
+
+  val mbCoef: Option[Double] = facetArg.value match {
+    case x if x < 0.479 => Some((math.max(x, 0.0) - 0.5) * 40)
+    case x if x < 0.521 => None // undefined: no time preference
+    case x              => Some((math.min(x, 1.0) - 0.5) * 40)
   }
 
-  // see data-model/docs/RecencyTest.xlsx for calculations of these values
-  // TODO: rather than using this complicated formula, just have a fixed 2-year half life with a parameterized COEF
-  val EXPONENT = 6.74
-  val DIVISOR = 0.1025737151
-
-  val mbHalfLife: Option[DurationMils] = cleanedArg.map { a => {
-    (if (a < 0.5) -1 else 1) * pow(-log(abs(a - 0.5)), EXPONENT) / DIVISOR
-  }.days.toMillis }
-
-  logger.info(s"Using a half-life of ${mbHalfLife.getOrElse(Long.MaxValue).dfmt} given arg value ${facetArg.value}")
+  logger.info(f"Using a half-life of ${HALF_LIFE.dfmt} and coefficient of ${mbCoef.getOrElse(0.0)}%.2f given arg value ${facetArg.value}%.2f")
 
   override val in: SourceType = {
     import com.hamstoo.stream.StreamDSL._
@@ -60,11 +52,11 @@ class Recency @Inject()(facetArg: Recency.Arg,
     //   "could not find implicit value for parameter ev: spire.algebra.Ring[com.hamstoo.stream.DataStream[Double]]"
     //import spire.implicits._
 
-    mbHalfLife.fold(marks.map(_ => 0.0)) { halfLife =>
+    mbCoef.fold(marks.map(_ => 0.0)) { coef =>
 
       val timeSince = now.value - marks.timeFrom
-      val nHalfLifes = timeSince / halfLife // note that half-life can be negative if arg < 0.491
-      (0.5 pow nHalfLifes) * COEF
+      val nHalfLifes = timeSince / HALF_LIFE
+      (0.5 pow nHalfLifes) * coef
 
     }
   }.out.map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
@@ -72,9 +64,7 @@ class Recency @Inject()(facetArg: Recency.Arg,
 
 object Recency {
 
-  val COEF = 4.0
-
-  // 0.65 is equivalent to a 2-year (63072000017 ms) half-life
+  // 0.65 is equivalent to a coefficient of 6.0 (= 0.15 * 40)
   val DEFAULT = 0.65
 
   /** Optional half-life (input) argument for computation of Recency model.  Memories fade over time. */
