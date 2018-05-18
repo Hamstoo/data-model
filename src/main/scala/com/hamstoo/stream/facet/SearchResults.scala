@@ -111,22 +111,23 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
             // raw (syntactic?) relevances; coalesce0 means that we defer to mscore for isNaN'ness below if uscore is NaN
             val uraw0 = math.max(uscore, 0.0).coalesce0 + math.max(mscore, 0.0)
             val rraw0 = math.max(rscore, 0.0)
+            val dbscore = Seq(uscore, mscore, rscore).map(math.max(_, 0.0).coalesce0).sum
 
             val previewer = Previewer(rawQuery, cleanedQuery, mark.id)
             val utext = parse(mark.mark.comment.getOrElse(""))
             val rtext = parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
+            val urtext = utext + " " * PREVIEW_LENGTH + rtext
 
             val t0: TimeStamp = System.currentTimeMillis()
-            val (uPhraseBoost, uPreview) = if (WHICH_PREVIEW_TEXT == 1) previewer(uraw0, utext)
-                                           else if (WHICH_PREVIEW_TEXT == -1) previewer.old(uraw0, utext) else DISABLED_PREVIEW
-            val (rPhraseBoost, rPreview) = if (WHICH_PREVIEW_TEXT == 1) previewer(rraw0, rtext)
-                                           else if (WHICH_PREVIEW_TEXT == -1) previewer.old(rraw0, rtext) else DISABLED_PREVIEW
+            val (urPhraseBoost, urPreview) = if (WHICH_PREVIEW_TEXT ==  1) previewer(dbscore, urtext)
+                                        else if (WHICH_PREVIEW_TEXT == -1) previewer.old(dbscore, urtext) else DISABLED_PREVIEW
+            val (uPhraseBoost, rPhraseBoost) = (urPhraseBoost * 0.5, urPhraseBoost * 0.5)
             val t1: TimeStamp = System.currentTimeMillis()
             logger.debug(f"Previewer[total] for ${mark.id} in ${t1 - t0} ms ($memoryString)")
 
             val uraw = uraw0 + uPhraseBoost
             val rraw = rraw0 + rPhraseBoost
-            val preview: String = (uPreview ++ rPreview).sortBy(-_._1).take(N_SPANS).map(_._2).mkString("<br>")
+            val preview: String = urPreview.sortBy(-_._1).take(N_SPANS).map(_._2).mkString("<br>")
 
             // aggregated
             val isdefBonus = Seq(rscore, mscore, uscore).count(_ > 1e-10)
@@ -366,7 +367,6 @@ object SearchResults {
         // TODO: could we apply this algorithm in increments of 10000 chars, or use map to select local peaks rather than global peaks?
         val rawText = rawText0.take(MAX_PREVIEW_DOC_LENGTH)
         var startTime = System.currentTimeMillis
-        val startMem = memoryString
 
         val encText = encode(rawText)
         assert(encText.length >= rawText.trim.length)
@@ -386,7 +386,7 @@ object SearchResults {
 
         // for each substring of `text` that follows whitespace, look for query words/phrases/terms
         // TODO: these first 2 variation lines are NOT THREADSAFE (but how _much_ does it really matter in this case?)
-        preproc.par.foreach { case (term, j) => // 1.399 or 1.332 seconds
+        preproc/*.par*/.foreach { case (term, j) => // 1.399 or 1.332 seconds
         //lowText.indices.par.foreach { i => // 1.482 seconds
           for(i <- lowText.indices/*; (term, j) <- preproc*/) yield { // 1.583 seconds (for 15 marks total search time)
 
@@ -414,7 +414,7 @@ object SearchResults {
   // TODO: another thing we could do would be to only compute previews for the top 20 marks similar to not rendering them all
 
         endTime = System.currentTimeMillis
-        logger.debug(f"Previewer[0] $markId (${rawText.length}) in ${endTime - startTime} ms ($startMem -> $memoryString)") // 14 ms
+        logger.debug(f"Previewer[0] $markId (${rawText.length}) in ${endTime - startTime} ms") // 14 ms
         startTime = System.currentTimeMillis
 
         // compress tcounts b/c if you don't things are realllllyyy slllloooowwwwww (this value has quadratic effect
@@ -455,7 +455,7 @@ object SearchResults {
 
         // this loop takes forever w/out compression, and the par/seq helps a bit too
         val lenCmp = tcountsCmp.length
-        val smoothedImmutableCmp = tcountsCmp.indices.par.map { i =>
+        val smoothedImmutableCmp = tcountsCmp.indices/*.par*/.map { i =>
           val begin = max(0, i - xmid)
           val end = min(lenCmp, i + xmid + 1) // add 1 b/c ends are always exclusive
 
@@ -469,7 +469,7 @@ object SearchResults {
         }.seq
 
         endTime = System.currentTimeMillis
-        logger.debug(f"Previewer[1] $markId (${rawText.length}) in ${endTime - startTime} ms ($memoryString)") // 25 ms
+        logger.debug(f"Previewer[1] $markId (${rawText.length}) in ${endTime - startTime} ms") // 25 ms
         startTime = System.currentTimeMillis
         val smoothedCmp = mutable.ArrayBuffer(smoothedImmutableCmp: _*)
 
