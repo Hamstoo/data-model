@@ -6,15 +6,14 @@ package com.hamstoo.daos
 import com.google.inject.Inject
 import com.hamstoo.models.Representation._
 import com.hamstoo.models.{RSearchable, Representation}
-import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
-
+import scala.concurrent.{Await, Future}
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object RepresentationDao {
 
@@ -28,8 +27,7 @@ object RepresentationDao {
   * Data access object for MongoDB `representations` collection.
   * @param db  Future[DefaultDB] database connection returning function.
   */
-class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB],
-                                  ec: ExecutionContext)
+class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
     extends ReprEngineProductDao[Representation]("representation") {
 
   import RepresentationDao._
@@ -66,6 +64,7 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB],
     */
   def search(ids: Set[ObjectId], query: String): Future[Map[String, RSearchable]] = for {
     c <- dbColl()
+    t0 = System.currentTimeMillis
     _ = logger.debug(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
 
     // this Future.sequence the only way I can think of to lookup documents via their IDs prior to a Text Index search
@@ -84,7 +83,7 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB],
     }}
   } yield {
     val flat = seq.flatten
-    logger.debug(s"Done searching with query '$query'; found ${flat.size} reprs given ${ids.size} IDs")
+    logger.debug(f"Done searching with query '$query'; found ${flat.size} reprs given ${ids.size} IDs (${(System.currentTimeMillis - t0) / 1e3}%.3f seconds)")
     flat.map { repr => repr.id -> repr }.toMap
   }
 }

@@ -15,7 +15,8 @@ import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.BSONDocumentHandler
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 /**
   * This class defines base MongoDB related functionality for classes that extend the Annotation trait.
@@ -28,8 +29,7 @@ abstract class AnnotationDao[A <: Annotation: BSONDocumentHandler]
                             (implicit db: () => Future[DefaultDB],
                              marksDao: MarkDao,
                              userDao: UserDao,
-                             pagesDao: PageDao,
-                             ec: ExecutionContext)
+                             pagesDao: PageDao)
                 extends AnnotationInfo {
 
   val logger: Logger

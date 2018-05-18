@@ -23,7 +23,8 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object MarkDao {
   var migrateData: Boolean = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
@@ -31,11 +32,13 @@ object MarkDao {
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
+  *
+  * Using an implicit ExecutionContext would cause this to use Play's Akka Dispatcher, which slows down both
+  * queries to the database and stream graph execution.
   */
 class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                         userDao: UserDao,
-                        urlDuplicatesDao: UrlDuplicateDao,
-                        ec: ExecutionContext) {
+                        urlDuplicatesDao: UrlDuplicateDao) {
 
   import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MarkDao])

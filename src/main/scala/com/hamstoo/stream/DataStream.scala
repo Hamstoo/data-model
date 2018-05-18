@@ -246,12 +246,9 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
         tick => immutable.Iterable(factory.knownDataFor(tick)) // lambda function called once per tick
       }
 
-      // should only need a single thread b/c knownDataFor batches must arrive sequentially per the clock anyway,
       // the end time of the KnownData window will be that of the most recent tick (brought here by statefulMapConcat),
-      // changing this from mapAsync(1) to 2 or 4 doesn't seem to have any effect prolly b/c it's Future-fast already,
-      // update: this must stay at 1 b/c (a) if there are any PreloadObservers they need to call their preloads in
-      // order and non-concurrently so that each call waits on the correct `queue.head` and (b) there's no need
-      // to overload the database with multiple concurrent calls to our preload
+      // this should probably stay at 1 b/c there's no need to overload the database with concurrent calls to preload
+      // especially when we want the first ones to finish fastest (so that the graph execution can progress) anyway
       .mapAsync(1) { w: KnownData =>
           if (logger.isDebugEnabled) w.buffer.map(buf =>
             logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) Elements: n=${buf.size}, $w"))
@@ -264,6 +261,8 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       // this seems like it slows things down (considerably) by making the stream system wait until
       //   this many elements are available before batching and pushing them across the async boundary
       //.buffer(1024, OverflowStrategy.backpressure)
+      // update: don't add more threads than are needed, the reason the old search runs so much faster is because
+      // it uses far fewer (contentious) threads, which is also why Akka doesn't insert `.async`s by default
   }
 }
 

@@ -7,10 +7,10 @@ import com.google.inject.Inject
 import com.mohiva.play.silhouette.impl.providers.OAuth2Info
 import reactivemongo.api.DefaultDB
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 /**
   * Data access object for users' auth tokens.
   */
-class OAuth2InfoDao @Inject()(implicit db: () => Future[DefaultDB], ec: ExecutionContext) extends AuthDao[OAuth2Info] {
+class OAuth2InfoDao @Inject()(implicit db: () => Future[DefaultDB]) extends AuthDao[OAuth2Info] {
 }

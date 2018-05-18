@@ -39,7 +39,7 @@ object StreamDSL {
       }
 
     /** Remove Nones, for example. */
-    def flatten[O](implicit m: Materializer): DataStream[O] = new DataStream[O] {
+    def flatten[O](implicit m: Materializer): DataStream[O] = new DataStream[O](mbName = Some(s"${s.name}.flatten")) {
       override val in: SourceType = s().map { d =>
         d.flatMap { e =>
           val trav: Traversable[O] = e.value match {

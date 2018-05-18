@@ -33,7 +33,7 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
                             reprDao: RepresentationDao,
                             userDao: UserDao,
                             idfModel: IDFModel)
-    extends PreloadSource[MSearchable](loadInterval = (700 days).toMillis) {
+    extends PreloadSource[MSearchable](loadInterval = (183 days).toMillis) {
 
   import MarksStream._
 

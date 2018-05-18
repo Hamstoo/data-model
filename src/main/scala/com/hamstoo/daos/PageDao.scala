@@ -17,8 +17,9 @@ import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson._
 
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
+import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
   * Website page content MongoDB data access object.  These used to be stored on the Marks themselves and
@@ -26,8 +27,7 @@ import scala.concurrent.duration._
   * collection with references pointing in every which direction.
   */
 class PageDao @Inject()(implicit db: () => Future[DefaultDB],
-                        marksDao: MarkDao,
-                        ec: ExecutionContext) {
+                        marksDao: MarkDao) {
 
   import com.hamstoo.utils._
   import com.hamstoo.models.Page._
