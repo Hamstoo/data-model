@@ -101,17 +101,6 @@ case class SharedWith(readOnly/* it can be named just read */: Option[ShareGroup
 
 object SharedWith {
 
-  sealed abstract class ShareWithLevel(val value: Int) extends IntEnumEntry
-
-  object Level0 extends IntEnum[ShareWithLevel] {
-    val values: immutable.IndexedSeq[ShareWithLevel] = findValues
-
-    case object PRIVATE extends ShareWithLevel(0)
-    case object LISTED extends ShareWithLevel(1)
-    case object LOGGED_IN extends ShareWithLevel(2)
-    case object PUBLIC extends ShareWithLevel(3)
-  }
-  // TODO: move to better enums
   /** Enumeration of sharing levels. */
   object Level extends Enumeration {
 

@@ -18,27 +18,24 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
 case class UserSuggestion(uuid: UUID,
                           username: Option[String],
                           email: Option[String],
-                          pubVisible: SharedWith.Level.Value,
-                          pubEditable: SharedWith.Level.Value,
+                          pubVisible: Option[SharedWith.Level.Value],
+                          pubEditable: Option[SharedWith.Level.Value],
                           created: TimeStamp,
                           id: ObjectId = generateDbId(Mark.ID_LENGTH)) {
-  def identifier: String = username.getOrElse(email.get)
 
-  def equal(other: UserSuggestion): Boolean = {
-    this.username == other.username && this.email == other.email
-  }
+  // todo: we can add mark id, to easily removing alla suggestion be mark id and userid
+  /** suggestion identifier, username or email */
+  def identifier: String = username.getOrElse(email.get)
 }
 
 object UserSuggestion extends BSONHandlers {
 
-  /***
-    * Apply method, with injected checks
-    */
+  /** Apply method, with injected checks */
   def apply(uuid: UUID,
             username: Option[String],
             email: Option[String],
-            pubVisible: SharedWith.Level.Value = SharedWith.Level.PRIVATE,
-            pubEditable: SharedWith.Level.Value = SharedWith.Level.PRIVATE,
+            pubVisible: Option[SharedWith.Level.Value],
+            pubEditable: Option[SharedWith.Level.Value],
             created: TimeStamp = TIME_NOW,
             id: ObjectId = generateDbId(Mark.ID_LENGTH)): UserSuggestion = {
     require(username.isDefined || email.isDefined, "It should have defined email or username")

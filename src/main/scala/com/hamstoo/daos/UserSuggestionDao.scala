@@ -116,14 +116,18 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], ec: 
     * Retrieve user suggestion matching by username
     * @param uuid   - for whom
     * @param prefix - search prefix
-    * @return       - optional user suggestion
+    * @param offset - offset value, part of pagination functionality
+    * @param limit  - limit value, part of pagination functionality
+    * @return       - user suggestions
     */
   def findByUsername(
                       uuid: UUID,
                       prefix: String,
-                      pubVisible: SharedWith.Level.Value = SharedWith.Level.PRIVATE,
-                      pubEditable: SharedWith.Level.Value = SharedWith.Level.PRIVATE): Future[Option[UserSuggestion]] =
-    find(uuid, prefix, US_USERNAME, pubVisible, pubEditable)
+                      pubVisible: Option[SharedWith.Level.Value] = None,
+                      pubEditable: Option[SharedWith.Level.Value] = None,
+                      offset: Int = 0,
+                      limit: Int = 20): Future[Seq[UserSuggestion]] =
+    find(uuid, prefix, US_USERNAME, pubVisible, pubEditable, offset, limit)
 
   /***
     * Retrieve user suggestion matching by email
@@ -134,54 +138,11 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], ec: 
   def findByEmail(
                    uuid: UUID,
                    prefix: String,
-                   pubVisible: SharedWith.Level.Value = SharedWith.Level.PRIVATE,
-                   pubEditable: SharedWith.Level.Value = SharedWith.Level.PRIVATE): Future[Option[UserSuggestion]] =
-    find(uuid, prefix, US_EMAIL, pubVisible, pubEditable)
-
-
-  /***
-    * Find user suggestions for user
-    * @param uuid        - user identifier
-    * @param prefix      - searable prefix
-    * @param pubVisible  - publicly visible
-    * @param pubEditable - publicly editable
-    * @param offset      - offset value, part of pagination functionality
-    * @param limit       - limit value, part of pagination functionality
-    * @return            - user suggestions
-    */
-  def findSuggestions(
-                       uuid: UUID,
-                       prefix: String,
-                       pubVisible: SharedWith.Level.Value = SharedWith.Level.PRIVATE,
-                       pubEditable: SharedWith.Level.Value = SharedWith.Level.PRIVATE,
-                       offset: Int = 0,
-                       limit: Int = 20): Future[Seq[UserSuggestion]] = {
-    logger.debug(s"Retrieving suggestion for $uuid by prefix: {$prefix}")
-
-    for {
-      c <- dbColl()
-
-      // check by visibility
-      pubVis = d :~ US_VISIBLE -> pubVisible
-
-      // check by editability
-      pubEdi = d :~ US_EDITABLE -> pubEditable
-
-      // check username field
-      usename = regexMatcher(US_USERNAME, prefix)
-
-      // check email field
-      email = regexMatcher(US_EMAIL, prefix)
-
-      sel = d :~ "$and" -> BSONArray(pubVis :~ pubEdi, d :~ "$or" -> BSONArray(usename, email))
-      suggs <- c.find(sel)
-        .sort(d :~ US_CREATED -> -1)
-        .pagColl[UserSuggestion, Seq](offset, limit)
-    } yield {
-      logger.debug(s"${suggs.size} user suggestion was retrieved for user: $uuid")
-      suggs
-    }
-  }
+                   pubVisible: Option[SharedWith.Level.Value] = None,
+                   pubEditable: Option[SharedWith.Level.Value] = None,
+                   offset: Int = 0,
+                   limit: Int = 20): Future[Seq[UserSuggestion]] =
+    find(uuid, prefix, US_EMAIL, pubVisible, pubEditable, offset, limit)
 
   /***
     * Find user suggestion by specified field
@@ -196,17 +157,26 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], ec: 
                     uuid: UUID,
                     prefix: String,
                     fieldName: String,
-                    pubVisible: SharedWith.Level.Value,
-                    pubEditable: SharedWith.Level.Value): Future[Option[UserSuggestion]] = {
+                    pubVisible: Option[SharedWith.Level.Value],
+                    pubEditable: Option[SharedWith.Level.Value],
+                    offset: Int,
+                    limit: Int): Future[Seq[UserSuggestion]] = {
     logger.debug(s"Find user suggestion by $fieldName for user: $uuid")
 
     for {
       c <- dbColl()
-      rights = d :~ US_VISIBLE -> pubVisible :~ US_EDITABLE -> pubEditable
-      optSugg <- c.find(rights :~ regexMatcher(fieldName, prefix)).one[UserSuggestion]
+
+      sel0 = regexMatcher(fieldName, prefix)
+      sel1 = pubVisible.fold(sel0)(e => sel0 :~ US_VISIBLE -> e)
+      finalSel = pubEditable.fold(sel1)(e => sel1 :~ US_EDITABLE -> e)
+
+      suggs <- c.find(finalSel)
+        .sort(d :~ US_CREATED -> -1)
+        .pagColl[UserSuggestion, Seq](offset, limit)
+
     } yield {
-      logger.debug(s"$optSugg was retrieved")
-      optSugg
+      logger.debug(s"$suggs was retrieved")
+      suggs
     }
   }
 
