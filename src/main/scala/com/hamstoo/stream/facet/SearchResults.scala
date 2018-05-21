@@ -223,7 +223,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
 
     }.map(_.flatten) // remove Nones
       .asInstanceOf[SourceType] // see "BIG NOTE" on JoinWithable
-      .map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
+      .map { d => logger.debug(s"${d.sourceTimeMax.tfmt} (sz=${d.size})"); d }
 
   /**
     * Convert a list of reprs, one for each search term, into a weighted average MongoDB Text Index search score
