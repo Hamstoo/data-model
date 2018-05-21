@@ -54,6 +54,10 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
 
     value * COEF
 
+    // uncomment this line to see the effect of not terminating streams as the last test in FacetsTests tests for
+    // (i.e. the stream graph that's constructed does not get terminated)
+    //searchResults.map(_ => 3.0)
+
   }.out.map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
 }
 

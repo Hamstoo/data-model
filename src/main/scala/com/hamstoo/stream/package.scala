@@ -3,6 +3,7 @@
  */
 package com.hamstoo
 
+import java.net.URLDecoder
 import java.util.UUID
 
 import akka.stream.Attributes
@@ -141,12 +142,13 @@ package object stream {
       stream match {
         //case simp: Source[Data[A0], Mat] => simp.traversalBuilder.attributes.get[Attributes.Name]
         //case fimp: Flow[In, Data[A0], Mat] => fimp.traversalBuilder.attributes.get[Attributes.Name]
-        case duck: Duck[{ def attributes: Attributes }] @unchecked => duck.traversalBuilder.attributes.get[Attributes.Name]
+        case duck: Duck[{ def attributes: Attributes }] @unchecked =>
+          duck.traversalBuilder.attributes.get[Attributes.Name]
         case _ => None // make it a total function to avoid MatchErrors
       }
     }.getOrElse(None)
 
-    x.fold("<noname>")(_.n)
+    x.fold("<noname>") { attr => URLDecoder.decode(attr.n, "UTF-8") }
   }
 
   /** We need to return a Future.successful(Seq.empty[T]) in a few different places if mbQuerySeq is None. */
