@@ -18,6 +18,7 @@ import com.hamstoo.test.env.AkkaMongoEnvironment
 import com.hamstoo.utils.{DataInfo, ExtendedTimeStamp}
 import org.joda.time.DateTime
 import play.api.Logger
+import reactivemongo.api.DefaultDB
 
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
@@ -121,12 +122,9 @@ class FacetTests
         super.configure()
         logger.info(s"Configuring module: ${getClass.getName}")
 
-        // TODO: make these things (especially the DAOs) support DI as well so that these extra bindings can be removed
         classOf[ExecutionContext] := system.dispatcher
         classOf[Materializer] := materializer
-        classOf[MarkDao] := marksDao
-        classOf[RepresentationDao] := reprsDao
-        classOf[UserDao] := userDao
+        classOf[() => Future[DefaultDB]] := db
 
         //Val("clock.begin"):~ TimeStamp =~ clockBegin // alternative syntax? more like Scala?
         ClockBegin := clockBegin
