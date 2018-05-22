@@ -157,6 +157,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
             }
 
             val aggregateScore = mbRelevance.map(_.sum)
+            val usrContentRatio = if (uscore ~= 0) Double.PositiveInfinity else mscore / uscore
 
             // generate text and return values
             val mbPv = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
@@ -169,7 +170,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
               case (true, false, _) => // this second case will occur for non-URL marks
                 val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
                   f"User content similarity: <b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
-                  f"Database search scores: M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b> (phrase=$uPhraseBoost)"
+                  f"Database search scores: M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>$usrContentRatio%.2f</b> (phrase=$uPhraseBoost)"
                 Some(s"$scoreText<br>U-similarities: $uTermText&nbsp; $uText<br>")
 
               case (false, true, _) => // this case will occur for old-school bookmarks without any user content
@@ -181,7 +182,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
               case (false, false, _) => // this case should fire for most marks--those with URLs
                 val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b> (bonus=$isdefBonus), " +
                   f"Similarities: R=<b>exp(${rsim.getOrElse(Double.NaN)}%.2f)</b>, U=<b>exp(${usim.getOrElse(Double.NaN)}%.2f)</b>, " +
-                  f"Database search scores: R=<b>$rscore%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>${mscore/uscore}%.2f</b> (phrase=$rPhraseBoost & $uPhraseBoost)"
+                  f"Database search scores: R=<b>$rscore%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>$uscore%.2f</b>=<b>$usrContentRatio%.2f</b> (phrase=$rPhraseBoost & $uPhraseBoost)"
                 Some(s"$scoreText<br>" + s"R-similarities: $rTermText&nbsp; $rText<br>" +
                                          s"U-similarities: $uTermText&nbsp; $uText<br>")
 
