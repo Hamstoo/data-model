@@ -5,10 +5,8 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.daos.UserDao
 import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, generateDbId}
-import enumeratum.values.{IntEnum, IntEnumEntry}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
-import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.hashing
 
@@ -84,9 +82,15 @@ object Shareable {
 
 /**
   * A pair of UserGroups, one for read-only and one for read-write.
+  *
+  * `readOnly` and `readWrite` were chosen as field names here (rather than `view` and `edit`) because
+  * they are more clear regarding the fact that the set of users who can "read" a mark is the combined
+  * set of `readOnly` + `readWrite`.  I didn't want there to be any ambiguity as to whether `edit`
+  * included read-access, which one might think is silly, but seeing "read" explicitly written in both
+  * hopefully makes the coder think more carefully about the possibility.
   */
-case class SharedWith(readOnly/* it can be named just read */: Option[ShareGroup] = None,
-                      readWrite/* and this, just edit*/: Option[ShareGroup] = None,
+case class SharedWith(readOnly: Option[ShareGroup] = None,
+                      readWrite: Option[ShareGroup] = None,
                       ts: TimeStamp = TIME_NOW) {
 
   /**
@@ -104,7 +108,6 @@ object SharedWith {
   /** Enumeration of sharing levels. */
   object Level extends Enumeration {
 
-    type Int = Value
     // Only the owner has access.  This is the default.
     val PRIVATE: Value = Value(0)
 
@@ -119,7 +122,8 @@ object SharedWith {
     // This instance exemplifies why isAuthorized takes an Option; even userId=None will be granted authorization.
     val PUBLIC: Value = Value(3)
 
-    final def optValue(i: scala.Int): Option[Value] = values.find(_.id == i)
+    // if we really need this function, then let's call it `valueOption` to be consistent with `headOption`
+    //final def optValue(i: scala.Int): Option[Value] = values.find(_.id == i)
 
     // https://stackoverflow.com/questions/24851677/reactivemongo-how-to-write-macros-handler-to-enumeration-object
 //    implicit val enumReads: Reads[Level] = EnumUtils.enumReads(Level)

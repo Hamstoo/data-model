@@ -7,50 +7,27 @@ import com.hamstoo.utils.{ObjectId, generateDbId, _}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 /***
-  * Store user suggestion information
-  * @param uuid        - user that made share
-  * @param username    - to whom username share was made
-  * @param email       - to whom email share was made
-  * @param pubVisible  - is this suggestion is publicly visible
-  * @param pubEditable - is this suggestion is publicly editable
-  * @param id          - document identifier
+  * User suggestions for during search and when determining recent sharees during sharing.
+  * @param userId  user that made share
+  * @param sharee  to whom username share was made (email address or username) or None for completely public shares
+  * @param shareeUsername  if sharee is the email address of a user, then this field holds that user's username
+  * @param ts        timestamp, which can be updated (which is why we don't call this field `created`)
+  * @param id        document identifier
   */
-case class UserSuggestion(uuid: UUID,
-                          username: Option[String],
-                          email: Option[String],
-                          pubVisible: Option[SharedWith.Level.Value],
-                          pubEditable: Option[SharedWith.Level.Value],
-                          created: TimeStamp,
+case class UserSuggestion(userId: UUID,
+                          sharee: Option[String],
+                          shareeUsername: Option[String],
+                          ts: TimeStamp,
                           id: ObjectId = generateDbId(Mark.ID_LENGTH)) {
-
-  // todo: we can add mark id, to easily removing alla suggestion be mark id and userid
-  /** suggestion identifier, username or email */
-  def identifier: String = username.getOrElse(email.get)
 }
 
 object UserSuggestion extends BSONHandlers {
 
-  /** Apply method, with injected checks */
-  def apply(uuid: UUID,
-            username: Option[String],
-            email: Option[String],
-            pubVisible: Option[SharedWith.Level.Value],
-            pubEditable: Option[SharedWith.Level.Value],
-            created: TimeStamp = TIME_NOW,
-            id: ObjectId = generateDbId(Mark.ID_LENGTH)): UserSuggestion = {
-    require(username.isDefined || email.isDefined, "It should have defined email or username")
-    new UserSuggestion(uuid, username, email, pubVisible, pubEditable, created, id)
-  }
-
-  val US_UUID: String = nameOf[UserSuggestion](_.uuid)
-  val US_USERNAME: String = nameOf[UserSuggestion](_.username)
-  val US_EMAIL: String = nameOf[UserSuggestion](_.email)
-  val US_VISIBLE: String = nameOf[UserSuggestion](_.pubVisible)
-  val US_EDITABLE: String = nameOf[UserSuggestion](_.pubEditable)
-  val US_CREATED: String = nameOf[UserSuggestion](_.created)
+  val US_USR: String = nameOf[UserSuggestion](_.userId)
+  val US_SHAREE: String = nameOf[UserSuggestion](_.sharee)
+  val US_TIMESTAMP: String = nameOf[UserSuggestion](_.ts)
   val US_ID: String = nameOf[UserSuggestion](_.id)
 
-  implicit val fmt: BSONDocumentHandler[UserSuggestion] =
-    Macros.handler[UserSuggestion]
+  implicit val fmt: BSONDocumentHandler[UserSuggestion] = Macros.handler[UserSuggestion]
 }
 
