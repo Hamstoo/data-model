@@ -73,11 +73,8 @@ object Shareable {
   val ID: String = nameOf[Shareable](_.id)
   val USR: String = nameOf[Shareable](_.userId)
   val SHARED_WITH: String = nameOf[Shareable](_.sharedWith)
-  val READONLYx: String = SHARED_WITH + "." + nameOf[SharedWith](_.readOnly)
-  val READWRITEx: String = SHARED_WITH + "." + nameOf[SharedWith](_.readWrite)
   val N_SHARED_FROM: String = nameOf[Shareable](_.nSharedFrom)
   val N_SHARED_TO: String = nameOf[Shareable](_.nSharedTo)
-  val READONLYxLEVEL: String = READONLYx + "." +  nameOf[ShareGroup](_.level)
 }
 
 /**
@@ -197,9 +194,6 @@ case class ShareGroup(level: Int, group: Option[ObjectId]) {
 
 object ShareGroup {
 
-  val GROUP: String = nameOf[ShareGroup](_.group)
-  val LEVEL: String = nameOf[ShareGroup](_.level)
-
   /** Used by MongoMarksDao.updateSharedWith. */
   def xapply(level: SharedWith.Level.Value, ug: Option[UserGroup]): Option[ShareGroup] =
     if (level == SharedWith.Level.PRIVATE) None else Some(ShareGroup(level.id, ug.map(_.id)))
@@ -281,8 +275,6 @@ object UserGroup extends BSONHandlers {
 
   val HASH: String = nameOf[UserGroup](_.hash)
   val SHROBJS: String = nameOf[UserGroup](_.sharedObjs)
-  val SHROBJSID: String =  SHROBJS + "." + nameOf[UserGroup.SharedObj](_.id)
-  val EMAILS: String = nameOf[UserGroup](_.emails)
 
   /** Used for `emails > other.emails` above and `union` and `intersection` below. */
   implicit class ExtendedOptionSet[T](private val self: Option[Set[T]]) extends AnyVal {

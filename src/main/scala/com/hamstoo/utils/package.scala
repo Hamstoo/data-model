@@ -115,13 +115,11 @@ package object utils {
       qb/*.options(QueryOpts().batchSize(n))*/.cursor[E]().collect[C](n, Cursor.FailOnError[C[E]]())
     }
 
-    /***
-      * With embedded pagination
-      */
-    def pagColl[E, C[_] <: Iterable[_]](offset: Int = 0, limit: Int = -1)
+    /** With embedded pagination */
+/*    def pagColl[E, C[_] <: Iterable[_]](offset: Int = 0, limit: Int = -1)
                                         (implicit r: Reader[E], cbf: CanBuildFrom[C[_], E, C[E]]): Future[C[E]] = {
       qb.options(QueryOpts(skipN = offset)).cursor[E]().collect[C](limit, Cursor.FailOnError[C[E]]())
-    }
+    }*/
   }
 
   implicit class ExtendedIndex(private val i: Index) extends AnyVal {

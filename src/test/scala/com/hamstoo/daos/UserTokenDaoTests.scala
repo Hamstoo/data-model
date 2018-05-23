@@ -10,6 +10,9 @@ import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import org.scalatest.OptionValues
 
+/**
+  * UserTokenDaoTests
+  */
 class UserTokenDaoTests
   extends FlatSpecWithMatchers
     with MongoEnvironment

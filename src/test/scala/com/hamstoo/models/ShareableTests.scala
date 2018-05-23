@@ -26,6 +26,11 @@ class ShareableTests extends FlatSpecWithMatchers
     super.beforeAll()
     userDao.saveGroup(ugUserIds).futureValue
     userDao.saveGroup(ugEmails).futureValue
+
+    // required for retrieveRecentSharees test
+    marksDao.insert(mUserRead).futureValue
+    val user = User(ugUserIds.userIds.head.head, UserData(username = Some("aUsername")), List.empty[Profile])
+    userDao.save(user).futureValue
   }
 
   val sgUserIds = ShareGroup(SharedWith.Level.LISTED.id, Some(ugUserIds.id))
@@ -87,19 +92,7 @@ class ShareableTests extends FlatSpecWithMatchers
     SharedWith(Some(sgSharer), Some(sgEmails)).emails.futureValue shouldBe emails
   }
 
-  /*"ExtendedOptionUserGroup" should "(UNIT) act like a set" in {
-    import UserGroup.ExtendedOptionUserGroup
-
-    val userGroups: Map[String, Option[UserGroup]] = Map(
-      "ugUserIds" -> Some(ugUserIds),
-      "ugEmails" -> Some(ugEmails),
-      "twoUserIds" -> Some(UserGroup("twoUserIds", userIds = ugUserIds.userIds.map(_ + constructUserId()))),
-      "twoEmails" -> Some(UserGroup("twoEmails", emails = ugUserIds.emails.map(_ + "c@mail"))),
-      "none" -> None) ++
-      UserGroup.PUBLIC_USER_GROUPS.mapValues(Some(_))
-
-    for((k0, v0) <- userGroups; (k1, v1) <- userGroups) {
-      (v1 - v0).union(v0 - v1).union(v0 intersect v1).map(_.copy(id = "")) shouldBe v1.union(v0).map(_.copy(id = ""))
-    }
-  }*/
+  "UserDao" should "(UNIT) retrieve recent sharees" in {
+    userDao.retrieveRecentSharees(sharer.id).futureValue shouldBe Seq("@aUsername")
+  }
 }

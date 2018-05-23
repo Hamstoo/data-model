@@ -85,7 +85,7 @@ class MarkDaoTests
     marksDao.retrieve(uuid2).futureValue.map(_.id) shouldEqual Seq(m3.id)
   }
 
-  it should "(UNIT) retrieve by userId and URL" in {
+  it should "(UNIT) retrieve by userId and URL 1" in {
     marksDao.retrieveByUrl(url, uuid1).futureValue.get.id shouldEqual m1.id
   }
 
@@ -187,7 +187,7 @@ class MarkDaoTests
     marksDao.isDeleted(uuid1, m1.mark.url.get).futureValue shouldEqual true
   }
 
-  it should "(UNIT) retrieve by uuid and url" in {
+  it should "(UNIT) retrieve by userId and URL 2" in {
     val url1 = "https://mail.google.com/mail/u/0/#inbox/162e903e20ce4af3"
     val url2 = "https://mail.google.com/mail/u/0/#inbox/162e5aa71f6ebdff"
 

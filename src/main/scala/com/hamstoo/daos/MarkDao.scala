@@ -523,7 +523,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
     for {
       // these can return different id'ed groups than were passed in (run these sequentially so that if they're the
-      // same only one instance will be written to the database)
+      // same, then only one instance will be written to the database)
       ro <- saveGroup(readOnly ._2)
       rw <- saveGroup(readWrite._2)
       sw = SharedWith(readOnly  = ShareGroup.xapply(readOnly ._1, ro),
@@ -534,7 +534,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
       c <- dbColl()
 
-      // be sure not to select userId field here as different DB models use name that field differently: userId/usrId
+      // be sure not to select userId field here as different DB models name that field differently: userId/usrId
       sel = d :~ ID -> m.id :~ curnt
       wr <- {
         import UserGroup.sharedWithHandler

@@ -2,51 +2,67 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.hamstoo.models.{SharedWith, UserSuggestion}
+import com.hamstoo.models.{Profile, User, UserData}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.DataInfo._
+import com.mohiva.play.silhouette.api.LoginInfo
 import org.scalatest.OptionValues
 
+/**
+  * UserSuggestionDaoTests
+  */
 class UserSuggestionDaoTests
   extends FlatSpecWithMatchers
     with FutureHandler
     with OptionValues
     with MongoEnvironment {
 
-  val uuid: UUID = constructUserId()
-  val username = Some("@bimbo")
-  val email = Some("dino@gmail.com")
-  val us0 = UserSuggestion(uuid, username, None, None, Some(SharedWith.Level.PUBLIC))
-  val us1 = UserSuggestion(uuid, None, email, Some(SharedWith.Level.PUBLIC), None)
+  val userId: UUID = constructUserId()
 
-  "UserSuggestionDao" should "insert user suggestion" in {
-    userSuggDao.save(us0).futureValue shouldEqual us0
-    userSuggDao.save(us1).futureValue shouldEqual us1
+  // use the same user as owner and sharee
+  val loginInfo = LoginInfo("some-provider-id", "some-provider-key")
+  val profile = Profile(loginInfo, confirmed = false, Some("dino@gmail.com"), None, None, None)
+  val userData = UserData(username = Some("DuMbO"))
+  val user = User(userId, userData, List(profile))
+
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    userDao.save(user).futureValue
   }
 
-  it should "retrieve user suggestion by username/email" in {
-    userSuggDao.retrieve(uuid, username, None).futureValue.value shouldEqual us0
-    userSuggDao.retrieve(uuid, None, email).futureValue.value shouldEqual us1
+  def testIt(sharee: Option[String], shareeUsername: Option[String]): Unit = {
+    userSuggDao.save(userId, sharee).futureValue.shareeUsername shouldEqual shareeUsername
+    userSuggDao.searchSuggestions(userId, "du").futureValue shouldEqual Seq(userData.username.get)
+    userSuggDao.delete(userId, sharee).futureValue
+    userSuggDao.searchSuggestions(userId, "du").futureValue shouldEqual Seq()
   }
 
-  it should "update time of shares" in {
-    userSuggDao.save(us0).futureValue.created should be > us0.created
-    userSuggDao.retrieve(uuid, username, None).futureValue.value.created should be > us0.created
+  "UserSuggestionDao" should "retrieve search suggestions from public share" in {
+    testIt(None, None)
   }
 
-  it should "find by username" in {
-    userSuggDao
-      .findByUsername(uuid, "@bi")
-      .futureValue
-      .map(_.id) shouldEqual us0.id :: Nil
+  it should "retrieve search suggestions from private email sharee share" in {
+    testIt(profile.email, userData.username)
   }
 
-  it should "find by email" in {
-    userSuggDao
-      .findByEmail(uuid, "di")
-      .futureValue
-      .map(_.id) shouldEqual us1.id :: Nil
+  it should "retrieve search suggestions from private username sharee share" in {
+    testIt(userData.username, userData.username)
   }
 
+  it should "retrieve search suggestions from private lowercase username sharee share" in {
+    testIt(userData.username.map(_.toLowerCase), userData.username)
+  }
+
+  it should "update search suggestion timestamps" in {
+
+    val a = userSuggDao.save(userId, None).futureValue
+    Thread.sleep(10)
+    (userSuggDao.save(userId, None).futureValue.ts - a.ts) shouldBe >= (10L)
+
+    val b = userSuggDao.save(userId, profile.email).futureValue
+    Thread.sleep(10)
+    (userSuggDao.save(userId, profile.email).futureValue.ts - b.ts) shouldBe >= (10L)
+
+  }
 }

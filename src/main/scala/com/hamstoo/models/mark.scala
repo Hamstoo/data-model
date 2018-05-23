@@ -6,8 +6,6 @@ import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
-import com.hamstoo.models.User.UDATA // TODO: how does UDATA come from the User class if it's a field of a mark?
-import com.hamstoo.utils.{ExtendedString, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -766,6 +764,6 @@ object Mark extends BSONHandlers {
   implicit val reprRating: BSONDocumentHandler[ReprInfo] = Macros.handler[ReprInfo]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
-  implicit val idBsonHandler: BSONDocumentHandler[Id] = Macros.handler[Id] // TODO: neccessary?
-  implicit val userIdBsonHandler: BSONDocumentHandler[UserId] = Macros.handler[UserId] // TODO: neccessary?
+  //implicit val idBsonHandler: BSONDocumentHandler[Id] = Macros.handler[Id] // TODO: necessary?
+  //implicit val userIdBsonHandler: BSONDocumentHandler[UserId] = Macros.handler[UserId] // TODO: necessary?
 }

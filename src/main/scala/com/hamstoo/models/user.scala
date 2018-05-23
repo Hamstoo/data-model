@@ -80,16 +80,6 @@ case class UserData(
 }
 
 /**
-  * A stub version of User case class used for autosuggestion by username.
-  * even username: Option[String] is filtered of empty during requests, it is used here
-  * to facilitate field mappings by avoiding of option unwrapping
-  * as well
-  * This class is only used to get a projection of necessary fields from mark BSONDocument to optimize performance of db query
-  * look at https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data
-  */
-case class UserAutosuggested(id: UUID, username: String = "")
-
-/**
   * Finally, the full User object that is stored in the database for each user.  Notice that this class
   * extends Silhouette's Identity trait.
   * @param id        Unique ID.
@@ -108,7 +98,7 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
   def emails: Set[String] = profiles.filter(_.confirmed).flatMap(_.email).toSet
 
   /** Return first confirmed email address. */
-  def email: Option[String] = profiles.filter(_.confirmed).flatMap(_.email).headOption
+  //def email: Option[String] = profiles.filter(_.confirmed).flatMap(_.email).headOption
 
   /** Returns a @username or UUID if username is absent--useful for logging. */
   def usernameId: String = userData.username.fold(id.toString)("@" + _)
@@ -123,10 +113,7 @@ object User extends BSONHandlers {
 
   val ID: String = nameOf[User](_.id)
   val UDATA: String = nameOf[User](_.userData)
-  val UNAME: String = nameOf[UserData](_.username)
-  val UNAMELOW: String = nameOf[UserData](_.usernameLower)
-  val UNAMEx: String = UDATA + "." + UNAME
-  val UNAMELOWx: String = UDATA + "." + UNAMELOW
+  val UNAMELOWx: String = UDATA + "." + nameOf[UserData](_.usernameLower)
   val PROFILES: String = nameOf[User](_.profiles)
   val LINFO: String = nameOf[Profile](_.loginInfo)
   val CONF: String = nameOf[Profile](_.confirmed)
@@ -138,10 +125,4 @@ object User extends BSONHandlers {
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]
-  implicit val userAutosuggestedBsonHandler: BSONDocumentHandler[UserAutosuggested] = Macros.handler[UserAutosuggested]
-
 }
-
-
-
-

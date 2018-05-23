@@ -3,31 +3,54 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.utils.{ObjectId, generateDbId, _}
+import com.hamstoo.daos.UserDao
+import com.hamstoo.utils.{TIME_NOW, TimeStamp}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
+
 /***
-  * User suggestions for during search and when determining recent sharees during sharing.
-  * @param userId  user that made share
+  * User suggestions for during search.
+  * For determining recent sharees during sharing see UserDao.retrieveRecentSharees.
+  * 
+  * @param ownerUserId  user that made share
   * @param sharee  to whom username share was made (email address or username) or None for completely public shares
   * @param shareeUsername  if sharee is the email address of a user, then this field holds that user's username
   * @param ts        timestamp, which can be updated (which is why we don't call this field `created`)
-  * @param id        document identifier
   */
-case class UserSuggestion(userId: UUID,
+case class UserSuggestion(ownerUserId: UUID,
                           sharee: Option[String],
-                          shareeUsername: Option[String],
-                          ts: TimeStamp,
-                          id: ObjectId = generateDbId(Mark.ID_LENGTH)) {
+                          shareeUsername: Option[String] = None,
+                          ownerUsername: String = "",
+                          ts: TimeStamp = TIME_NOW) {
 }
 
 object UserSuggestion extends BSONHandlers {
 
-  val US_USR: String = nameOf[UserSuggestion](_.userId)
+  /** Construct a UserSuggestion and lookup usernames in the process. */
+  def xapply(ownerUserId: UUID, sharee: Option[String])(implicit userDao: UserDao): Future[UserSuggestion] = {
+    userDao.retrieveById(ownerUserId).map(_.flatMap(_.userData.username).getOrElse("")) flatMap { ownerUsername =>
+      sharee.fold(
+        Future.successful(new UserSuggestion(ownerUserId, None, None, ownerUsername))
+      ){ emailOrUsername =>
+        for {
+          mbUserByUsername <- userDao.retrieveByUsername(emailOrUsername)
+          mbUser <- mbUserByUsername.fold(userDao.retrieveByEmail(emailOrUsername))(u => Future.successful(Some(u)))
+        } yield {
+          new UserSuggestion(ownerUserId, sharee, mbUser.flatMap(_.userData.username), ownerUsername)
+        }
+      }
+    }
+  }
+
+  val US_OWNER_ID: String = nameOf[UserSuggestion](_.ownerUserId)
+  val US_OWNER_UNAME: String = nameOf[UserSuggestion](_.ownerUsername)
   val US_SHAREE: String = nameOf[UserSuggestion](_.sharee)
+  val US_SHAREE_UNAME: String = nameOf[UserSuggestion](_.shareeUsername)
   val US_TIMESTAMP: String = nameOf[UserSuggestion](_.ts)
-  val US_ID: String = nameOf[UserSuggestion](_.id)
 
   implicit val fmt: BSONDocumentHandler[UserSuggestion] = Macros.handler[UserSuggestion]
 }
+
 
