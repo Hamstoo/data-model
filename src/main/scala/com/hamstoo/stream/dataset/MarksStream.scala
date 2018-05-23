@@ -33,7 +33,7 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
                             reprDao: RepresentationDao,
                             userDao: UserDao,
                             idfModel: IDFModel)
-    extends PreloadSource[MSearchable]((700 days).toMillis) {
+    extends PreloadSource[MSearchable](loadInterval = (183 days).toMillis) {
 
   import MarksStream._
 
@@ -100,7 +100,7 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
       // performing filterNot rather than relying on set union because scoredMs will have not only score
       // populated but could also have different labels/rating due to MarkRef masking
       val entries = scoredMs.toSet ++ unscoredMs.filterNot(c => scoredMs.exists(_.id == c.id))
-      entries.map(m => Datum(m, MarkId(m.id), m.timeFrom))
+      entries.map(m => Datum(m, MarkId(m.id), m.timeFrom)).to[immutable.Seq]
     }
   }
 }

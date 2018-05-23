@@ -9,7 +9,7 @@ import com.hamstoo.stream.Join.JoinWithable
 import com.hamstoo.utils.TimeStamp
 import play.api.Logger
 
-import scala.collection.{Traversable, immutable}
+import scala.collection.Traversable
 //import spire.algebra.NRoot
 
 import scala.reflect.{ClassTag, classTag}
@@ -19,18 +19,6 @@ import scala.reflect.{ClassTag, classTag}
   */
 object StreamDSL {
 
-  /** DSL for DataStreams of collection types. */
-  implicit class StreamColDSL[T](private val s: DataStream[Traversable[T]]) extends AnyVal {
-
-    /** DataStreams of Traversables can be flattened. */
-    def flatten(implicit m: Materializer): DataStream[T] = new DataStream[T] {
-      override def in: SourceType[T] = s().mapConcat { d: Datum[Traversable[T]] =>
-        val values: Traversable[T] = d.value
-        values.map { v: T => d.withValue[T](v) }.to[immutable.Iterable]
-      }
-    }
-  }
-
   /**
     * Operations between pairs of DataStreams.
     *
@@ -39,9 +27,28 @@ object StreamDSL {
     */
   implicit class StreamDSL[A](private val s: DataStream[A]) extends AnyVal {
 
-    /** Map a stream of Datum[A]s to Datum[O]s. */
-    def map[O](f: A => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
-      override def in: SourceType[O] = s().map(_.mapValue(f))
+    /**
+      * Map a stream of Data[A]s to Data[O]s.  Nearly all of the other implicit methods in this class go through
+      * here, `join`, or `flatten`, which is evident from their (unique to them) constructions of `new DataStream[O]`s.
+      */
+    def map[O](f: A => O)(implicit m: Materializer, name: Option[String] = None): DataStream[O] =
+      new DataStream[O](mbName = name) {
+        // every time this happens (an angel gets its wings) a new BroadcastHub is born, though it doesn't seem to
+        // affect performance
+        override val in: SourceType = s().map(_.map(_.mapValue(f)))
+      }
+
+    /** Remove Nones, for example. */
+    def flatten[O](implicit m: Materializer): DataStream[O] = new DataStream[O](mbName = Some(s"${s.name}.flatten")) {
+      override val in: SourceType = s().map { d =>
+        d.flatMap { e =>
+          val trav: Traversable[O] = e.value match {
+            case mb: Option[O] @unchecked => Option.option2Iterable(mb)
+            case _ => e.value.asInstanceOf[Traversable[O]]
+          }
+          trav.map(e.withValue)
+        }
+      }
     }
 
     /** This really shouldn't be part of the interface, so just pass `ev.m` explicitly when necessary. */
@@ -56,6 +63,7 @@ object StreamDSL {
       implicit val ctT: ClassTag[T] = asTyp // used in call to `as` below
       val getter = classTag[A].runtimeClass.getDeclaredMethod(fieldName)
       //val getter = typeTag[A].mirror.runtimeClass(typeTag[A].tpe).getDeclaredMethod(fieldName) // https://stackoverflow.com/questions/11494788/how-to-create-a-typetag-manually/11495793#11495793
+      implicit val name: Option[String] = Some(s"${s.getClass.getSimpleName}.$fieldName")
       s.map { a =>
         val ivk: AnyRef = getter.invoke(a)
         ivk.asC[T]
@@ -68,34 +76,37 @@ object StreamDSL {
     def mark(implicit ev: ClassTag[A], m: Materializer) = s("mark", classTag[MarkData])
     def rating(implicit ev: ClassTag[A], m: Materializer) = s("rating", classTag[Option[Double]])
 
-    /** Invoke JoinWithable.joinWith on the provided streams. */
-    def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer): DataStream[O] = new DataStream[O] {
-      override val in: SourceType[O] = s().joinWith(that())(op).asInstanceOf[SourceType[O]]
-    }
+    /** Invoke JoinWithable.joinWith on the provided streams.  Also see comment on `map`. */
+    def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer, name: Option[String] = None):
+                                                                                                    DataStream[O] =
+      new DataStream[O](mbName = name) {
+        override val in: SourceType = s().joinWith(that())(joiner = op).asInstanceOf[SourceType]
+      }
 
     /** The `{ case x => x }` actually does serve a purpose; it unpacks x into a 2-tuple, which `identity` cannot do. */
-    def pair[B](that: DataStream[B])(implicit m: Materializer): DataStream[(A, B)] = s.join(that) { case x => x }
+    def pair[B](that: DataStream[B])(implicit m: Materializer): DataStream[(A, B)] =
+      s.join(that) { case x => x }
 
     /** Binary operations between pairs of DataStreams (via typeclasses). */
     // TODO: why couldn't we use `that: DataStream[B]` here?  how would we select the proper `ev`?
-    def +(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer) = s.join(that)(ev.plus)
-    def -(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer) = s.join(that)(ev.minus)
-    def *(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer) = s.join(that)(ev.times)
-    def /(that: DataStream[A])(implicit ev: Fractional[A], m: Materializer) = s.join(that)(ev.div)
-    def pow(that: DataStream[A])(implicit ev: Powable[A], m: Materializer) = s.join(that)(ev.fpow)
+    def +(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer) = s.join(that)(ev.plus)(m, Some(s"${s.name}+${that.name}"))
+    def -(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer) = s.join(that)(ev.minus)(m, Some(s"${s.name}-${that.name}"))
+    def *(that: DataStream[A])(implicit ev: Numeric[A], m: Materializer) = s.join(that)(ev.times)(m, Some(s"${s.name}*${that.name}"))
+    def /(that: DataStream[A])(implicit ev: Fractional[A], m: Materializer) = s.join(that)(ev.div)(m, Some(s"${s.name}/${that.name}"))
+    def pow(that: DataStream[A])(implicit ev: Powable[A], m: Materializer) = s.join(that)(ev.fpow)(m, Some(s"${s.name}^${that.name}"))
 
     /** Binary operations between a LHS DataStream and a RHS numeric constant. */
-    def +[C](c: C)(implicit ev: Implicits[C, A]) = s.map(ev.nm1.plus(_, c.as[A]))(ev.m)
-    def -[C](c: C)(implicit ev: Implicits[C, A]) = s.map(ev.nm1.minus(_, c.as[A]))(ev.m)
-    def *[C](c: C)(implicit ev: Implicits[C, A]) = s.map(ev.nm1.times(_, c.as[A]))(ev.m)
+    def +[C](c: C)(implicit ev: Implicits[C, A]) = s.map(ev.nm1.plus(_, c.as[A]))(ev.m, Some(s"${s.name}:+"))
+    def -[C](c: C)(implicit ev: Implicits[C, A]) = s.map(ev.nm1.minus(_, c.as[A]))(ev.m, Some(s"${s.name}:-"))
+    def *[C](c: C)(implicit ev: Implicits[C, A]) = s.map(ev.nm1.times(_, c.as[A]))(ev.m, Some(s"${s.name}:*"))
 
     // ambiguous to have both, and the first one is insufficient when DataStream numerator is non-Fractional,
     // compiler error: "could not find implicit value for parameter fr: Fractional[com.hamstoo.utils.TimeStamp]"
     //def /[C](c: C)(implicit ev: Implicits[C, A], fr: Fractional[A]) = s.map(fr.div(_, c.as[A]))
     def /[C](c: C)(implicit ev: Implicits[C, A]) =
-      s.map(a => implicitly[Fractional[Double]].div(a.asDouble(ev.ct1), c.asDouble(ev.ct0)))(ev.m)
+      s.map(a => implicitly[Fractional[Double]].div(a.asDouble(ev.ct1), c.asDouble(ev.ct0)))(ev.m, Some(s"${s.name}:/"))
 
-    def pow[C](c: C)(implicit ev: Implicits[C, A], pw: Powable[A]) = s.map(pw.fpow(_, c.as[A]))(ev.m)
+    def pow[C](c: C)(implicit ev: Implicits[C, A], pw: Powable[A]) = s.map(pw.fpow(_, c.as[A]))(ev.m, Some(s"${s.name}:^"))
   }
 
   /**
@@ -104,12 +115,12 @@ object StreamDSL {
   implicit class StreamConst[C](private val c: C) extends AnyVal {
 
     /** All of these functions return DataStream[A]s. */
-    def +[A](s: DataStream[A])(implicit ev: Implicits[C, A]) = s.map(ev.nm1.plus(c.as[A], _))(ev.m)
-    def -[A](s: DataStream[A])(implicit ev: Implicits[C, A]) = s.map(ev.nm1.minus(c.as[A], _))(ev.m)
-    def *[A](s: DataStream[A])(implicit ev: Implicits[C, A]) = s.map(ev.nm1.times(c.as[A], _))(ev.m)
+    def +[A](s: DataStream[A])(implicit ev: Implicits[C, A]) = s.map(ev.nm1.plus(c.as[A], _))(ev.m, Some(s"+:${s.name}"))
+    def -[A](s: DataStream[A])(implicit ev: Implicits[C, A]) = s.map(ev.nm1.minus(c.as[A], _))(ev.m, Some(s"-:${s.name}"))
+    def *[A](s: DataStream[A])(implicit ev: Implicits[C, A]) = s.map(ev.nm1.times(c.as[A], _))(ev.m, Some(s"*:${s.name}"))
     def /[A](s: DataStream[A])(implicit ev: Implicits[C, A]) =
-      s.map(a => implicitly[Fractional[Double]].div(c.asDouble(ev.ct0), a.asDouble(ev.ct1)))(ev.m)
-    def pow[A](s: DataStream[A])(implicit ev: Implicits[C, A], pw: Powable[A]) = s.map(pw.fpow(c.as[A], _))(ev.m)
+      s.map(a => implicitly[Fractional[Double]].div(c.asDouble(ev.ct0), a.asDouble(ev.ct1)))(ev.m, Some(s"/:${s.name}"))
+    def pow[A](s: DataStream[A])(implicit ev: Implicits[C, A], pw: Powable[A]) = s.map(pw.fpow(c.as[A], _))(ev.m, Some(s"^:${s.name}"))
   }
 
   /** See comment in Recency for why Spire's NRoot cannot be used in place of this typeclass. */
@@ -124,7 +135,7 @@ object StreamDSL {
   case class Implicits[_0, _1](ct0: ClassTag[_0], ct1: ClassTag[_1], nm0: Numeric[_0], nm1: Numeric[_1],
                                m: Materializer)
 
-  /** `implicit` Implicits factory function. */
+  /** `implicit` Implicits factory function (so that they can be auto-constructed when needed). */
   implicit def implicits[_0, _1](implicit ct0: ClassTag[_0], ct1: ClassTag[_1], nm0: Numeric[_0], nm1: Numeric[_1],
                                  m: Materializer): Implicits[_0, _1] =
     Implicits(ct0, ct1, nm0, nm1, m)

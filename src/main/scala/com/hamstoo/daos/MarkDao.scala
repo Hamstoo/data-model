@@ -22,7 +22,8 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 import reactivemongo.bson._
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object MarkDao {
   var migrateData: Boolean = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)
@@ -30,11 +31,13 @@ object MarkDao {
 
 /**
   * Data access object for MongoDB `entries` (o/w known as "marks") collection.
+  *
+  * Using an implicit ExecutionContext would cause this to use Play's Akka Dispatcher, which slows down both
+  * queries to the database and stream graph execution.
   */
-class MarkDao @Inject()(implicit val db: () => Future[DefaultDB],
+class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                         userDao: UserDao,
-                        urlDuplicatesDao: UrlDuplicateDao,
-                        ec: ExecutionContext) extends Dao("entries", classOf[MarkDao]) {
+                        urlDuplicatesDao: UrlDuplicateDao) extends Dao("entries") {
 
   import com.hamstoo.utils._
 
@@ -187,28 +190,33 @@ class MarkDao @Inject()(implicit val db: () => Future[DefaultDB],
     * new browser tab, and if it is deemed to be a duplicate of an existing mark, then show star as orange and display
     * highlights/notes.
     */
-  def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = {
-    logger.debug(s"Retrieving marks by URL $url and user $user")
-    for {
-      // find set of URLs that contain duplicate content to the one requested
-      setDups <- urlDuplicatesDao.retrieve(user, url)
-      urls = Set(url).union(setDups.flatMap(_.dups))
+  def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = for {
+    _ <- Future.unit
+    _ = logger.debug(s"Retrieving marks by URL $url and user $user")
 
-      // find all marks with those URL prefixes
-      c <- dbColl()
-      prfxIn = d :~ "$in" -> urls.map(_.binaryPrefix)
-      seq <- c.find(d :~ USR -> user :~ URLPRFX -> prfxIn :~ curnt).coll[Mark, Seq]()
+    oth = if (url.startsWith("https://")) url.replaceFirst("https://", "http://")
+          else if (url.startsWith("http://")) url.replaceFirst("http://", "https://")
+          else "f8g34bkw1z"
 
-    } yield {
+    // find set of URLs that contain duplicate content to the one requested
+    (f0, f1) = (urlDuplicatesDao.retrieve(user, url), urlDuplicatesDao.retrieve(user, oth))
+    setDups0 <- f0; setDups1 <- f1
+    urls = Set(url, oth).union(setDups0.flatMap(_.dups)).union(setDups1.flatMap(_.dups))
 
-      // filter/find down to a single (optional) mark, but first look for a (current, i.e. no mergeId) mark with the
-      // original URL (which corrects for erroneous URL dups, issue #325)
-      val mbMark = seq.find(_.mark.url.contains(url))
-        .orElse(seq.find(_.mark.url.exists(urls.contains)))
+    // find all marks with those URL prefixes
+    c <- dbColl()
+    prfxIn = d :~ "$in" -> urls.map(_.binaryPrefix)
+    seq <- c.find(d :~ USR -> user :~ URLPRFX -> prfxIn :~ curnt).coll[Mark, Seq]()
 
-      logger.debug(s"$mbMark mark was successfully retrieved")
-      mbMark
-    }
+  } yield {
+
+    // filter/find down to a single (optional) mark, but first look for a (current, i.e. no mergeId) mark with the
+    // original URL (which corrects for erroneous URL dups, issue #325)
+    val mbMark = seq.find(_.mark.url.contains(url))
+      .orElse(seq.find(_.mark.url.exists(urls.contains)))
+
+    logger.debug(s"$mbMark mark was successfully retrieved")
+    mbMark
   }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
@@ -324,35 +332,36 @@ class MarkDao @Inject()(implicit val db: () => Future[DefaultDB],
              begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):
                                                                         Future[Set[MSearchable]] = {
 
-    val which = if (users.nonEmpty) s"for ${users.size} users (first, at most, 5: ${users.take(5)}) with ${ids.size}"
-                else s"with ${ids.size} IDs (first, at most, 5: ${ids.take(5)})"
+    val which = s"for ${users.size} users (first, at most, 5: ${users.take(5)})" + (if (ids.isEmpty) "" else s", ${ids.size} IDs")
     logger.debug(s"Searching for marks $which by text query '$query' between ${begin.map(_.tfmt)} and ${end.map(_.tfmt)}")
+    if (users.isEmpty) Future.successful(Set.empty[MSearchable]) else {
 
-    // this projection doesn't have any effect without this selection
-    val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
-    val searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
+      // this projection doesn't have any effect without this selection
+      val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
+      val searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
-    // it appears that `$in` is not an "equality match condition" as mentioned in the MongoDB Text Index
-    // documentation, using it here (rather than Future.sequence) generates the following database error:
-    // "planner returned error: failed to use text index to satisfy $text query (if text index is compound,
-    // are equality predicates given for all prefix fields?)"
-    //val sel = d :~ USR -> (d :~ "$in" -> users) :~ curnt
+      // it appears that `$in` is not an "equality match condition" as mentioned in the MongoDB Text Index
+      // documentation, using it here (rather than Future.sequence) generates the following database error:
+      // "planner returned error: failed to use text index to satisfy $text query (if text index is compound,
+      // are equality predicates given for all prefix fields?)"
+      //val sel = d :~ USR -> (d :~ "$in" -> users) :~ curnt
 
-    // be sure to call dbColl() separately for each element of the following sequence to ensure asynchronous execution
-    Future.sequence {
-      users.map { u =>
+      // be sure to call dbColl() separately for each element of the following sequence to ensure asynchronous execution
+      Future.sequence {
+        users.map { u =>
 
-        val sel = d :~ USR -> u :~ curnt :~
-                       begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
-                       end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts)) :~
-                       searchScoreSelection :~
-                       (if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids))
+          val sel = d :~ USR -> u :~ curnt :~
+                         begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
+                         end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts)) :~
+                         searchScoreSelection :~
+                         (if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids))
 
-        dbColl().flatMap(_.find(sel, searchScoreProjection).coll[MSearchable, Seq]())
+          dbColl().flatMap(_.find(sel, searchScoreProjection).coll[MSearchable, Seq]())
+        }
+      }.map(_.flatten).map { set =>
+        logger.debug(s"Search retrieved ${set.size} marks")
+        set.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
       }
-    }.map(_.flatten).map { set =>
-      logger.debug(s"Search retrieved ${set.size} marks")
-      set.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 

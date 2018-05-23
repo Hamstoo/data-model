@@ -46,7 +46,7 @@ class ClockTests
     implicit val ec: ExecutionContext = system.dispatcher
     case class TestSource() extends PreloadSource[TimeStamp](preloadInterval.toMillis) {
       //override val logger = Logger(classOf[TestSource]) // this line causes a NPE for some reason
-      override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Iterable[Datum[TimeStamp]]] = Future {
+      override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Seq[Datum[TimeStamp]]] = Future {
 
         // must snapBegin, o/w DataSource's preloadInterval can affect the results, which it should not
         val dataInterval = (12 hours).toMillis
@@ -62,6 +62,7 @@ class ClockTests
     }
 
     val fut: Future[Int] = TestSource().out
+      .mapConcat(identity)
       .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.sourceTime.tfmt} / ${e.value.dt.getDayOfMonth}"); e }
       .runWith(
         Sink.fold[Int, Datum[TimeStamp]](0) { case (agg, d) => agg + d.value.dt.getDayOfMonth }
@@ -73,7 +74,7 @@ class ClockTests
     x shouldEqual 173
   }
 
-  it should "throttle a ThrottledSource" in {
+  it should "throttle a ThrottledSource (with 4 Datums between each clock tick)" in {
 
     // changing these (including interval) will affect results b/c it changes the effective time range the clock covers
     val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
@@ -85,7 +86,7 @@ class ClockTests
     case class TestSource() extends ThrottledSource[TimeStamp]() {
 
       // this doesn't work with a `val` (NPE) for some reason, but it works with `lazy val` or `def`
-      override lazy val throttlee: SourceType[TimeStamp] = Source {
+      override lazy val throttlee: SourceType = Source {
 
         // no need to snapBegin like with PreloadSource test b/c peeking outside of the class for when to start
         val dataInterval = (12 hours).toMillis
@@ -93,10 +94,13 @@ class ClockTests
         // a preload source would backup the data until the (exclusive) beginning of the tick interval before `start`,
         // so that's what we do here with `start - interval + dataInterval` to make the two test results match up
         (start - interval + dataInterval until stop by dataInterval).map { t => Datum[TimeStamp](t, MarkId("kf"), t) }
-      }.named("TestThrottledSource")
+      }
+        .map(e => Data(e)) // convert singles to batches
+        .named("TestThrottledSource")
     }
 
     val fut: Future[Int] = TestSource().out
+      .mapConcat(identity) // convert batches back to singles
       .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.sourceTime.tfmt} / ${e.value.dt.getDayOfMonth}"); e }
       .runWith(
         Sink.fold[Int, Datum[TimeStamp]](0) { case (agg, d) => agg + d.value.dt.getDayOfMonth }

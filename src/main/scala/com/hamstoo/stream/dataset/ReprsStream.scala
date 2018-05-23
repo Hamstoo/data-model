@@ -9,12 +9,13 @@ import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.RepresentationDao
 import com.hamstoo.models.{MSearchable, RSearchable}
+import com.hamstoo.stream.Data.ExtendedData
 import com.hamstoo.stream._
-import com.hamstoo.utils.ExtendedTimeStamp
+import com.hamstoo.utils.{ExtendedTimeStamp, TimeStamp}
 import org.slf4j.LoggerFactory
 import play.api.Logger
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 
 /**
@@ -43,15 +44,15 @@ class ReprsStream @Inject()(marksStream: MarksStream,
                            (implicit clock: Clock,
                             mat: Materializer,
                             reprDao: RepresentationDao)
-    extends PreloadObserver[MSearchable, ReprsPair](marksStream) {
+    extends PreloadObserver[MSearchable, ReprsPair](subject = marksStream) {
 
   // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples
 
-  // set logging level for this ReprsStream *instance*
+  // set logging level for this ReprsStream *instance* (change prefix w/ "I" to prevent modifying the other logger)
   // "Note that you can also tell logback to periodically scan your config file"
   // https://stackoverflow.com/questions/3837801/how-to-change-root-logging-level-programmatically
-  val logger1: Logger = {
-    val logback = LoggerFactory.getLogger(classOf[ReprsStream].getName.stripSuffix("$")).asInstanceOf[LogbackLogger]
+  val loggerI: Logger = {
+    val logback = LoggerFactory.getLogger("I" + classOf[ReprsStream].getName).asInstanceOf[LogbackLogger]
     logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
     new Logger(logback)
   }
@@ -62,17 +63,18 @@ class ReprsStream @Inject()(marksStream: MarksStream,
   private lazy val cleanedQuery = mbCleanedQuery.getOrElse(Seq(("", 0)))
 
   /** Maps the stream of marks to their reprs. */
-  override def observerPreload(subjectData: PreloadType[MSearchable]): PreloadType[ReprsPair] = {
-    subjectData.flatMap { data =>
+  override def observerPreload(fSubjectData: PreloadType[MSearchable], begin: TimeStamp, end: TimeStamp):
+                                                                                        PreloadType[ReprsPair] = {
+    fSubjectData.flatMap { subjectData =>
 
-      val marks = data.map(_.value)
+      val marks = subjectData.map(_.value)
       val primaryReprIds = marks.map(_.primaryRepr) // .getOrElse("") already applied
       val usrContentReprIds = marks.map(_.userContentRepr.getOrElse(""))
       val reprIds = (primaryReprIds ++ usrContentReprIds).filter(_.nonEmpty).toSet
 
-      val approxBegin = if (marks.isEmpty) 0L else marks.map(_.timeFrom).min
-      val approxEnd   = if (marks.isEmpty) 0L else marks.map(_.timeFrom).max
-      logger.info(s"Performing ReprsStream.observerPreload between ${approxBegin.tfmt} and ${approxEnd.tfmt} for ${marks.size} marks, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, and ${reprIds.size} reprIds")
+      //val approxBegin = if (marks.isEmpty) 0L else marks.map(_.timeFrom).min
+      //val approxEnd   = if (marks.isEmpty) 0L else marks.map(_.timeFrom).max
+      logger.info(s"Performing ReprsStream.observerPreload between ${begin.tfmt} and ${end.tfmt} for ${marks.size} marks, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, and ${reprIds.size} reprIds")
 
       // run a separate MongoDB Text Index search over `representations` collection for each query word
       val fscoredReprs = mbQuerySeq.mapOrEmptyFuture(reprDao.search(reprIds, _)).flatMap { seqOfMaps =>
@@ -87,7 +89,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
       val funscoredReprs = reprDao.retrieve(reprIds)
 
       for(scoredReprs <- fscoredReprs; unscoredReprs <- funscoredReprs) yield {
-        data.map { dat =>
+        subjectData.map { dat =>
 
           val mark = dat.value
           val primaryReprId = mark.primaryRepr
@@ -107,7 +109,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
               val dbScore = mbR.flatMap(_.score).getOrElse(0.0)
 
               def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
-              logger1.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
+              loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
 
               QueryResult(q._1, mbR, dbScore, q._2)
             }.force
@@ -118,7 +120,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
           // technically we should update knownTime here to the time of repr computation, but it's not really important
           // in this case b/c what we really want is "time that this data could have been known"
           val d = dat.withValue(ReprsPair(siteReprs, userReprs))
-          logger1.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
+          loggerI.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
           d
         }
       }
@@ -134,11 +136,11 @@ class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
                            (implicit mat: Materializer)
     extends DataStream[RepredMarks.typ] {
 
-  import RepredMarks._
-
-  // see comment on JoinWithable as to why the cast is necessary here
   import com.hamstoo.stream.Join.JoinWithable
-  override def in: SourceType[typ] = marks().joinWith(reprs()) { case x => x }.asInstanceOf[SourceType[typ]]
+
+  override val in: SourceType = marks().joinWith(reprs()) { case x => x }
+    .asInstanceOf[SourceType] // see comment on JoinWithable as to why this cast is necessary
+    .map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
 }
 
 object RepredMarks {

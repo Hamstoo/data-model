@@ -20,7 +20,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.higherKinds
-import scala.util.matching.Regex
+import scala.util.matching.{Regex, UnanchoredRegex}
 import scala.util.{Failure, Random, Success, Try}
 
 
@@ -63,8 +63,8 @@ package object utils {
     *  instantiated more than once."
     *    [http://reactivemongo.org/releases/0.12/documentation/tutorial/connect-database.html]
     *
-    * @param uri        The database server's URI.
-    * @param nAttempts  The default database name.
+    * @param uri        The database server's URI (which should include a database name).
+    * @param nAttempts  Number of failed attempts before giving up and throwing an exception.
     */
   @tailrec
   final def getDbConnection(uri: String, nAttempts: Int = 5): (MongoConnection, String) = {
@@ -93,8 +93,11 @@ package object utils {
   }
 
   /** Used by backend: AuthController and MarksController. */
-  def endpoint2Link(endpoint: Call)(implicit request: Request[Any]): String = httpHost + endpoint
-  def httpHost(implicit request: Request[Any]): String = s"http${if (request.secure) "s" else ""}://${request.host}"
+  def endpoint2Link(endpoint: Call, forceSecure: Boolean = false)(implicit request: Request[_]): String =
+    httpHost(forceSecure) + endpoint
+  def httpHost(forceSecure: Boolean)(implicit request: Request[_]): String =
+    s"http${if (request.secure || forceSecure) "s" else ""}://${request.host}"
+  def httpHost(implicit request: Request[_]): String = httpHost(forceSecure = false)
 
   /** Extended ReactiveMongo QueryBuilder */
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
@@ -255,8 +258,9 @@ package object utils {
   val curnt: Producer[BSONElement] = com.hamstoo.models.Mark.TIMETHRU -> INF_TIME
 
   /** A couple regexes used in `parse` but that which may also be useful elsewhere. */
-  val repeatedSpaceRgx: Regex = raw"\s{2,}".r.unanchored
-  val crlftRgx: Regex = raw"[\n\r\t]".r.unanchored
+  val rgxRepeatedSpace: Regex = raw"\s{2,}".r.unanchored
+  val rgxCRLFT: Regex = raw"[\n\r\t]".r.unanchored
+  val rgxAlpha: UnanchoredRegex = "[^a-zA-Z]".r.unanchored // TODO: https://github.com/Hamstoo/hamstoo/issues/68
 
   /**
     * Mild string parsing.  Nothing too severe here as these parsed strings are what are stored in the database
@@ -266,7 +270,7 @@ package object utils {
     * included.  This last point is part of what leads to a 418,000-word English vocabulary in which the following
     * words are all found independently: "can't", "can't", and "can't".
     */
-  def parse(s: String): String = repeatedSpaceRgx.replaceAllIn(crlftRgx.replaceAllIn(s, " "), " ").trim
+  def parse(s: String): String = rgxRepeatedSpace.replaceAllIn(rgxCRLFT.replaceAllIn(s, " "), " ").trim
 
   /**
     * `parse` should've already been applied, but use \s+ anyway, just to be safe.  Lowercase'izing to make

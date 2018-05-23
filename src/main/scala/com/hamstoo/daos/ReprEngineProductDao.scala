@@ -10,7 +10,8 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.bson.BSONDocumentHandler
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
+import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
   * This class defines base MongoDB related functionality for classes that extend the ReprEngineProduct trait.
@@ -20,12 +21,11 @@ import scala.concurrent.{ExecutionContext, Future}
   */
 abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandler]
                                    (name: String)
-                                   (implicit db: () => Future[DefaultDB],
-                                    ec: ExecutionContext) {
+                                   (implicit db: () => Future[DefaultDB]) {
 
   import com.hamstoo.models.Mark.{ID, TIMEFROM, TIMETHRU}
 
-  val logger: Logger
+  val logger = Logger(getClass)
 
   def dbColl(): Future[BSONCollection]
 
@@ -97,12 +97,13 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
   /** Given a set of representation IDs, return a mapping from ID to instance. */
   def retrieve(ids: Set[String]): Future[Map[String, T]] = for {
     c <- dbColl()
+    t0 = System.currentTimeMillis
     _ = logger.debug(s"Retrieving ${name}s (first 5): ${ids.take(5)}")
     seq <- c.find(d :~ ID -> (d :~ "$in" -> ids) :~ curnt).coll[T, Seq]()
-
-  } yield seq.map { repr => repr.id -> repr }.toMap/*(breakOut[Seq[ExpectedRating],
-                                                               (String, ExpectedRating),
-                                                               Map[String, ExpectedRating]])*/
+  } yield {
+    logger.debug(f"Retrieved ${seq.size} ${name}s given ${ids.size} IDs (${(System.currentTimeMillis - t0) / 1e3}%.3f seconds)")
+    seq.map { repr => repr.id -> repr }.toMap
+  }
 
   /** Retrieves all representations, including previous versions, by ID. */
   def retrieveAll(id: String): Future[Seq[T]] = for {

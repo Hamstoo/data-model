@@ -17,14 +17,15 @@ import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson._
 
 import scala.concurrent.duration._
-import scala.concurrent.{Await, ExecutionContext, Future}
+import scala.concurrent.{Await, Future}
+import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
   * DAO to maintain a bi-directional mapping of URLs to lists of duplicates of those URLs.  These duplicates
   * are used when marking a page to determine if a page with the same content has already been marked, in which
   * case the marks will be merged.
   */
-class UrlDuplicateDao @Inject()(implicit db: () => Future[DefaultDB], ec: ExecutionContext) {
+class UrlDuplicateDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   val logger: Logger = Logger(classOf[UrlDuplicateDao])
 

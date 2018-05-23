@@ -6,16 +6,14 @@ package com.hamstoo.daos
 import com.google.inject.Inject
 import com.hamstoo.models.Representation._
 import com.hamstoo.models.{RSearchable, Representation}
-import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 
-import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
-
+import scala.concurrent.ExecutionContext.Implicits.global
 
 object RepresentationDao {
 
@@ -35,8 +33,6 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
   import RepresentationDao._
   import com.hamstoo.models.Mark.{ID, SCORE, TIMEFROM, TIMETHRU}
   import com.hamstoo.utils._
-
-  val logger: Logger = Logger(classOf[RepresentationDao])
 
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "representations")
 
@@ -68,6 +64,7 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
     */
   def search(ids: Set[ObjectId], query: String): Future[Map[String, RSearchable]] = for {
     c <- dbColl()
+    t0 = System.currentTimeMillis
     _ = logger.debug(s"Searching with query '$query' for reprs (first 5 out of ${ids.size}): ${ids.take(5)}")
 
     // this Future.sequence the only way I can think of to lookup documents via their IDs prior to a Text Index search
@@ -84,5 +81,9 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
 
       c.find(sel :~ searchScoreSelection, searchScoreProjection).one[RSearchable]
     }}
-  } yield seq.flatten.map { repr => repr.id -> repr }.toMap
+  } yield {
+    val flat = seq.flatten
+    logger.debug(f"Done searching with query '$query'; found ${flat.size} reprs given ${ids.size} IDs (${(System.currentTimeMillis - t0) / 1e3}%.3f seconds)")
+    flat.map { repr => repr.id -> repr }.toMap
+  }
 }

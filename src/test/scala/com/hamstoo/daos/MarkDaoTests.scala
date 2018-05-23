@@ -58,7 +58,7 @@ class MarkDaoTests
     marksDao.insertStream(markStream).futureValue shouldEqual 2
   }
 
-  it should "(UNIT) insert representation info" in {
+  it should "(UNIT) insert ReprInfo" in {
     marksDao.insertReprInfo(m1.id, reprInfoPub).futureValue shouldEqual {}
 
     val mark = marksDao.retrieve(User(m1.userId), m1.id).futureValue.value
@@ -77,22 +77,30 @@ class MarkDaoTests
     reprs1.exists(_.isPublic) shouldEqual true
   }
 
-  it should "(UNIT) retrieve by uuid and id" in {
+  it should "(UNIT) retrieve by userId and markId" in {
     marksDao.retrieve(User(uuid1), m1.id).futureValue.get.id shouldEqual m1.id
   }
 
-  it should "(UNIT) retrieve by uuid" in {
+  it should "(UNIT) retrieve by userId" in {
     marksDao.retrieve(uuid2).futureValue.map(_.id) shouldEqual Seq(m3.id)
   }
 
-  it should "(UNIT) retrieve by uuid and tags" in {
+  it should "(UNIT) retrieve by userId and URL" in {
+    marksDao.retrieveByUrl(url, uuid1).futureValue.get.id shouldEqual m1.id
+  }
+
+  it should "(UNIT) retrieve same mark by userId and secure URL" in {
+    marksDao.retrieveByUrl(url.replaceFirst("http://", "https://"), uuid1).futureValue.get.id shouldEqual m1.id
+  }
+
+  it should "(UNIT) retrieve by userId and tags" in {
     val tagged = marksDao.retrieveTagged(uuid1, tagSet.get).futureValue.map(_.id)
     tagged.size shouldEqual 2
     tagged.contains(m1.id) shouldEqual true
     tagged.contains(m2.id) shouldEqual true
   }
 
-  it should "(UNIT) retrieve mark tags by uuid" in {
+  it should "(UNIT) retrieve mark tags by userId" in {
     marksDao.retrieveTags(uuid1).futureValue shouldEqual tagSet.get
   }
 
@@ -111,7 +119,7 @@ class MarkDaoTests
     marksDao.findDuplicateSubject(m3.userId, m3.mark.subj).futureValue should not equal None
   }
 
-  it should "(UNIT) retrieve represented marks by uuid and tag set" in {
+  it should "(UNIT) retrieve represented marks by userId and tag set" in {
     println(marksDao.retrieve(User(m1.userId), m1.id).futureValue.get.reprs)
     val repred = marksDao.retrieveRepred(m1.userId, tagSet.get).futureValue
 
@@ -120,7 +128,7 @@ class MarkDaoTests
     repred.exists(_.id == m1.id) shouldEqual true
   }
 
-  it should "(UNIT) update public representation rating id" in {
+  it should "(UNIT) update PUBLIC expected rating ID" in {
     val newERat = "NewRatID"
     Right(ReprType.PUBLIC).toReprId(m1)
       .flatMap(marksDao.updateExpectedRating(m1, _, "NewRatID")).futureValue shouldEqual {}
@@ -130,7 +138,7 @@ class MarkDaoTests
     pubRepr.get.expRating.get shouldEqual newERat
   }
 
-  it should "(UNIT) update users representation rating id" in {
+  it should "(UNIT) update USER_CONTENT expected rating ID" in {
     val newERat = "NewRatID"
     Right(ReprType.USER_CONTENT).toReprId(m1)
       .flatMap(marksDao.updateExpectedRating(m1, _, "NewRatID")).futureValue shouldEqual {}
@@ -140,7 +148,7 @@ class MarkDaoTests
     pubRepr.get.expRating.get shouldEqual newERat
   }
 
-  it should "(UNIT) update private representation rating id" in {
+  it should "(UNIT) update PRIVATE expected rating ID" in {
     val newERat = "NewRatID"
     val privRepr = ReprInfo("reprId2", ReprType.PRIVATE)
     marksDao.insertReprInfo(m1.id, privRepr).futureValue shouldEqual {}
@@ -156,21 +164,21 @@ class MarkDaoTests
     updatedPrivRepr.get.expRating.get shouldEqual newERat
   }
 
-  it should "(UNIT) unset public representation info" in {
+  it should "(UNIT) unset PUBLIC ReprInfo" in {
     marksDao.unsetRepr(m1, Right(ReprType.PUBLIC)).futureValue shouldEqual {}
     marksDao.retrieve(User(uuid1), m1.id, timeFrom = Some(m1.timeFrom)).futureValue.get.reprs.exists(_.isPublic) shouldEqual false
   }
 
-  it should "(UNIT) unset user representation info" in {
+  it should "(UNIT) unset USER_CONTENT ReprInfo" in {
     marksDao.unsetRepr(m1, Right(ReprType.USER_CONTENT)).futureValue shouldEqual {}
     marksDao.retrieve(User(uuid1), m1.id, timeFrom = Some(m1.timeFrom)).futureValue.get.reprs.exists(_.isUserContent) shouldEqual false
   }
 
-  it should "(UNIT) update marks by uuid, id, markData" in {
+  it should "(UNIT) update MarkData by userId and markId" in {
     marksDao.update(User(m1.userId), m1.id, newMarkData).futureValue.mark shouldEqual newMarkData
   }
 
-  it should "(UNIT) delete mark by uuid, id" in {
+  it should "(UNIT) delete mark by userId and markId" in {
     marksDao.delete(uuid1, m1.id :: Nil).futureValue shouldEqual 1
     marksDao.retrieve(User(m1.userId), m1.id).futureValue shouldEqual None
   }

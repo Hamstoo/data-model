@@ -13,6 +13,7 @@ import org.commonmark.node._
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
 import org.jsoup.safety.Whitelist
 import play.api.Logger
 import play.api.libs.json.{Json, OFormat}
@@ -50,22 +51,42 @@ case class MarkData(override val subj: String,
 
     // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
     // https://github.com/atlassian/commonmark-java
+    // https://spec.commonmark.org/
     // as well parses and renders markdown markup language
-    val document: Node = parser.parse(c)
+    val commarkDoc: org.commonmark.node.Node = parser.parse(c)
 
     // detects embedded links in text only and make them clickable (issue #136)
     // ignores html links (anchors) to avoid double tags because commonmark.parser.parse(...) does not allocate <a>
     // to separate nodes, so such tags would o/w be double tagged like <a href...><a href...>Link</a></a>
-    document.accept(MarkdownNodesVisitor())
+    commarkDoc.accept(MarkdownNodesVisitor())
 
-    val html0 = renderer.render(document)
+    val html0 = renderer.render(commarkDoc)
 
     // example: <p><IMG SRC=JaVaScRiPt:alert('XSS')></p>
     // convert that &ldquo; back to a < character
     val html1 = StringEscapeUtils.unescapeHtml4(html0)
 
     // example: <p><img></p>
-    Jsoup.clean(html1, htmlTagsWhitelist)
+    // must be applied before converting `src` attrs b/c it does special stuff w/ them that it doesn't do w/ http-src
+    val html2 = Jsoup.clean(html1, htmlTagsWhitelist)
+
+    // attention: mutable Java object
+    val jsoupDoc: org.jsoup.nodes.Document = Jsoup.parse(html2)
+
+    // select all `img` nodes with a `src` attribute (pointing to one of our images) and change attr key to `http-src`
+    // (per issue #317 here: https://github.com/Hamstoo/hamstoo/issues/317#issuecomment-387517901)
+    for(obj <- jsoupDoc.select("img[src]").toArray) yield {
+      val e = obj.asInstanceOf[Element]
+      val srcValue = e.attr("src")
+      if (srcValue.contains("api/v1/marks/img")) { // identifies "our images"
+        e.removeAttr("src")
+        e.attr("http-src", srcValue)
+      }
+    }
+
+    // apply whitelist again to remove html/head/body tags that JSoup's Document.toString adds in (super clean!)
+    val html3 = jsoupDoc.toString
+    Jsoup.clean(html3, htmlTagsWhitelist)
   }
 
   /** Check for `Automarked` label. */
@@ -115,6 +136,7 @@ object MarkData {
     .addTags("hr") // horizontal rule
     .addTags("del").addTags("s") // strikethrough
     .addTags("div").addAttributes("div", "style") // to allow text-align and such
+    .addAttributes("img", "http-src", "style")
     .addEnforcedAttribute("a", "rel", "nofollow noopener noreferrer") // https://medium.com/@jitbit/target-blank-the-most-underestimated-vulnerability-ever-96e328301f4c
     .addEnforcedAttribute("a", "target", "_blank")
 
@@ -149,8 +171,10 @@ case class MarkRef(markId: ObjectId,
 case class MarkdownNodesVisitor() extends AbstractVisitor {
   import MarkdownNodesVisitor._
 
-  override def visit(htmlBlock: HtmlBlock): Unit =
+  override def visit(htmlBlock: HtmlBlock): Unit = {
     htmlBlock.setLiteral(parseStrikethrough(htmlBlock.getLiteral)) // TODO: use Jsoup.parse here instead
+    visitChildren(htmlBlock)
+  }
 
   override def visit(text: Text): Unit = {
     val lit0 = text.getLiteral
@@ -163,8 +187,23 @@ case class MarkdownNodesVisitor() extends AbstractVisitor {
 
     // apply changes to currently visiting text node
     text.setLiteral(lit2)
+
+    visitChildren(text)
   }
-  
+
+  /*override protected def visitChildren(parent: Node): Unit = {
+    var node = parent.getFirstChild
+    while(node != null) {
+
+      Logger.error(s"NODE = $node")
+
+      // A subclass of this visitor might modify the node, resulting in getNext returning a different node or no
+      // node after visiting it. So get the next node before visiting.
+      val next = node.getNext
+      node.accept(this)
+      node = next
+    }
+  }*/
   
 }
 

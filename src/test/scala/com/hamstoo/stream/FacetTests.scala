@@ -18,12 +18,13 @@ import com.hamstoo.test.env.AkkaMongoEnvironment
 import com.hamstoo.utils.{DataInfo, ExtendedTimeStamp}
 import org.joda.time.DateTime
 import play.api.Logger
+import reactivemongo.api.DefaultDB
 
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
 
 /**
-  * DataStreamTests
+  * FacetTests
   */
 class FacetTests
   extends AkkaMongoEnvironment("FacetTests-ActorSystem")
@@ -43,9 +44,7 @@ class FacetTests
         agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
       }
 
-    // (2.63 + 3.1 + 2.1 + 1.91 + 1.77) * 1.4 =~ 16.13
-    // (2.63 + 3.1 + 2.1 + 1.91       ) * 1.4 =~ 13.65 (with `if (i != nMarks - 1)` enabled below)
-    x shouldBe (13.65 +- 0.01)
+    x shouldBe (39.55 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
@@ -53,10 +52,9 @@ class FacetTests
     val facetName = classOf[AggregateSearchScore].getSimpleName
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
-      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] => agg + d.value } }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
 
-    // this value is 4x the SearchResults value
-    x / AggregateSearchScore.COEF shouldBe (54.61 +- 0.01)
+    x / AggregateSearchScore.COEF shouldBe (39.01 +- 0.01)
   }
 
   it should "compute Recency" in {
@@ -64,21 +62,35 @@ class FacetTests
     val facetName = classOf[Recency].getSimpleName
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
-      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] => agg + d.value } }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
 
     // see data-model/docs/RecencyTest.xlsx for an independent calculation of this value
-    x / Recency.COEF shouldBe (4.54 +- 0.01)
+    val coef = (Recency.DEFAULT - 0.5) * 40
+    x / coef shouldBe (4.12 +- 0.01)
   }
 
-  // construct the stream graph but don't materialize it, let the individual tests do that
-  lazy val facetsSeq: Seq[OutType] = {
+  // another way to test this is to uncomment the "uncomment this line" line in AggregateSearchScore which
+  // causes this test to fail
+  it should "complete even when there aren't any data (a \"duplicate key error\" may indicate a timeout)" in {
+    facetsEmpty // asserts that a timeout does not occur
+  }
+
+  val query: Query.typ = "some query"
+  lazy val facetsSeq: Seq[OutType] = constructFacets(query, "A")
+  lazy val facetsEmpty: Seq[OutType] = constructFacets("", "B")
+
+  /**
+    * `subj` is the text that allows the marks to be found by the Mongo Text Index search, so if it is empty no
+    * marks will be found.
+    * @param idSuffix  Used to prevent "duplicate key error" MonboDB exceptions.
+    */
+  def constructFacets(subj: String, idSuffix: String): Seq[OutType] = {
 
     // config values that stream.ConfigModule will bind for DI
     val config = DataInfo.config
     val clockBegin: ClockBegin.typ = new DateTime(2018, 1,  1, 0, 0).getMillis
     val clockEnd  : ClockEnd  .typ = new DateTime(2018, 1, 15, 0, 0).getMillis
     val clockInterval: ClockInterval.typ = (1 day).toMillis
-    val query: Query.typ = "some query"
     val userId: CallingUserId.typ = DataInfo.constructUserId()
 
     // insert 5 marks with reprs into the database
@@ -90,9 +102,9 @@ class FacetTests
     val (b, e) = (clockBegin, clockEnd)
     (b to e by (e - b) / (nMarks - 1)).zipWithIndex.foreach { case (ts, i) =>
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
-      val r = baseRepr.copy(id = s"r_${ts.Gs}", vectors = vs)
+      val r = baseRepr.copy(id = s"r_${ts.Gs}_$idSuffix", vectors = vs)
       val ri = ReprInfo(r.id, ReprType.PUBLIC)
-      val m = Mark(userId, s"m_${ts.Gs}", MarkData("", None), reprs = Seq(ri), timeFrom = ts)
+      val m = Mark(userId, s"m_${ts.Gs}_$idSuffix", MarkData(subj, None), reprs = Seq(ri), timeFrom = ts)
       logger.info(s"\033[37m$m\033[0m")
       Await.result(marksDao.insert(m), 8 seconds)
       if (i != nMarks - 1) Await.result(reprsDao.insert(r), 8 seconds) // skip one at the end for a better test of Join
@@ -110,12 +122,9 @@ class FacetTests
         super.configure()
         logger.info(s"Configuring module: ${getClass.getName}")
 
-        // TODO: make these things (especially the DAOs) support DI as well so that these extra bindings can be removed
         classOf[ExecutionContext] := system.dispatcher
         classOf[Materializer] := materializer
-        classOf[MarkDao] := marksDao
-        classOf[RepresentationDao] := reprsDao
-        classOf[UserDao] := userDao
+        classOf[() => Future[DefaultDB]] := db
 
         //Val("clock.begin"):~ TimeStamp =~ clockBegin // alternative syntax? more like Scala?
         ClockBegin := clockBegin
@@ -158,6 +167,6 @@ class FacetTests
     // causes "[error] a.a.OneForOneStrategy - CommandError[code=11600, errmsg=interrupted at shutdown" for some reason
     //facetsModel.run(sink).futureValue
 
-    Await.result(facetsModel.run(Sink.seq), 15 seconds)
+    Await.result(facetsModel.flatRun(Sink.seq), 15 seconds)
   }
 }
