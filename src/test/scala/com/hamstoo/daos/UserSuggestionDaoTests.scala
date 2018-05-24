@@ -55,14 +55,28 @@ class UserSuggestionDaoTests
   }
 
   it should "update search suggestion timestamps" in {
-
     val a = userSuggDao.save(userId, None).futureValue
     Thread.sleep(10)
     (userSuggDao.save(userId, None).futureValue.ts - a.ts) shouldBe >= (10L)
+    userSuggDao.delete(userId, None).futureValue
 
     val b = userSuggDao.save(userId, profile.email).futureValue
     Thread.sleep(10)
     (userSuggDao.save(userId, profile.email).futureValue.ts - b.ts) shouldBe >= (10L)
+    userSuggDao.delete(userId, profile.email).futureValue
+  }
 
+  it should "update usernames" in {
+    userSuggDao.save(userId, profile.email).futureValue
+    val newUserData = UserData(username = Some("piGleT"))
+    userDao.save(user.copy(userData = newUserData)).futureValue
+    userSuggDao.updateUsernamesByEmail(profile.email.get).futureValue shouldEqual 1
+
+    // only the shareeUsername, not the ownerUsername, will have been updated so far (so we can still search w/ "du")
+    userSuggDao.searchSuggestions(userId, "du").futureValue shouldEqual Seq(userData.username.get)
+
+    // now update the ownerUsername, which will be returned by searchSuggestions
+    userSuggDao.updateUsernamesByUsername(userData.username.get, newUserData.username.get).futureValue shouldEqual 1
+    userSuggDao.searchSuggestions(userId, "Pi").futureValue shouldEqual Seq(newUserData.username.get)
   }
 }

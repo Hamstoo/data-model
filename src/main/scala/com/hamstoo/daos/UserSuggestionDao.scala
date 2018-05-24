@@ -19,13 +19,15 @@ import scala.concurrent.ExecutionContext.Implicits.global
   * Provide methods for operation with username-suggestion collection
   */
 class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], userDao: UserDao)
-    extends Dao("user_suggestion") {
+    extends Dao("usersuggestions") {
 
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
-    Index(US_OWNER_ID -> Ascending :: US_SHAREE -> Ascending :: Nil, unique = true) %
-      s"bin-$US_OWNER_ID-1-$US_SHAREE-1-uniq" ::
-    Index(US_SHAREE_UNAME -> Ascending :: Nil) % s"bin-$US_SHAREE_UNAME-1" ::
+    Index(OWNER_ID -> Ascending :: SHAREE -> Ascending :: Nil, unique = true) %
+      s"bin-$OWNER_ID-1-$SHAREE-1-uniq" ::
+    Index(OWNER_UNAME -> Ascending :: Nil) % s"bin-$OWNER_UNAME-1" ::
+    Index(SHAREE -> Ascending :: Nil) % s"bin-$SHAREE-1" ::
+    Index(SHAREE_UNAME -> Ascending :: Nil) % s"bin-$SHAREE_UNAME-1" ::
     Nil toMap;
   Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 274 seconds)
 
@@ -40,8 +42,8 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
     us <- UserSuggestion.xapply(ownerUserId, sharee) // construct UserSuggestion with updated `shareeUsername` and `ts`
     _ = logger.debug(s"Saving user suggestion: $us")
 
-    sel = d :~ US_OWNER_ID -> ownerUserId :~
-               sharee.fold(d :~ US_SHAREE -> (d :~ "$exists" -> 0))(u => d :~ US_SHAREE -> u)
+    sel = d :~ OWNER_ID -> ownerUserId :~
+               sharee.fold(d :~ SHAREE -> (d :~ "$exists" -> 0))(u => d :~ SHAREE -> u)
 
     wr <- c.update(sel, us, upsert = true)
     _ <- wr.failIfError
@@ -56,8 +58,8 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
   def delete(ownerUserId: UUID, sharee: Option[String] = None): Future[Unit] = for {
     c <- dbColl()
     _ = logger.debug(s"Removing user suggestion: $ownerUserId / $sharee")
-    sel = d :~ US_OWNER_ID -> ownerUserId :~
-               sharee.fold(d :~ US_SHAREE -> (d :~ "$exists" -> false))(u => d :~ US_SHAREE -> BSONRegex(s"^$u$$", "i"))
+    sel = d :~ OWNER_ID -> ownerUserId :~
+               sharee.fold(d :~ SHAREE -> (d :~ "$exists" -> false))(u => d :~ SHAREE -> BSONRegex(s"^$u$$", "i"))
     wr <- c.remove(sel)
     _ <- wr.failIfError
   } yield {
@@ -76,16 +78,16 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
 
     mbShareeUsername <- userDao.retrieveById(shareeUserId).map(_.flatMap(_.userData.usernameLower))
 
-    // be sure not to use US_SHAREE here in order to user proper index for search
-    isPublic = d :~ US_SHAREE_UNAME -> (d :~ "$exists" -> false)
+    // be sure not to use SHAREE here in order to user proper index for search
+    isPublic = d :~ SHAREE_UNAME -> (d :~ "$exists" -> false)
 
     // either shared-to the current user directly or completely public
     shareeSel = mbShareeUsername.fold(isPublic) { unl =>
-      d :~ "$or" -> Seq(d :~ US_SHAREE_UNAME -> BSONRegex("^" + unl + "$", "i"), isPublic)
+      d :~ "$or" -> Seq(d :~ SHAREE_UNAME -> BSONRegex("^" + unl + "$", "i"), isPublic)
     }
 
     ownerSel = if (ownerUsernamePrefix.isEmpty) d
-               else d :~ US_OWNER_UNAME -> BSONRegex("^" + ownerUsernamePrefix + ".*", "i")
+               else d :~ OWNER_UNAME -> BSONRegex("^" + ownerUsernamePrefix + ".*", "i")
 
     seq <- c.find(shareeSel :~ ownerSel).coll[UserSuggestion, Seq]()
 
@@ -100,4 +102,26 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
       .map(_._1)
       .take(30)
   }
+
+  /** For when a new email address gets registered. */
+  def updateUsernamesByEmail(email: String): Future[Int] = for {
+    c <- dbColl()
+    mbU <- userDao.retrieveByEmail(email).map(_.flatMap(_.userData.username))
+    n <- mbU.fold(Future.successful(0)){ u =>
+      c.update(d :~ SHAREE -> BSONRegex("^" + email + "$", "i"),
+               d :~ "$set" -> (d :~ SHAREE_UNAME -> u),
+               multi = true).map(_.nModified)
+    }
+  } yield n
+
+  /** For when a username gets changed. */
+  def updateUsernamesByUsername(oldUsername: String, newUsername: String): Future[Int] = for {
+    c <- dbColl()
+    doUpdate = (field: String) => c.update(d :~ field -> BSONRegex("^" + oldUsername + "$", "i"),
+                                           d :~ "$set" -> (d :~ field -> newUsername),
+                                           multi = true).map(_.nModified)
+    fn0 = doUpdate(OWNER_UNAME) // launch future
+    n1 <- doUpdate(SHAREE_UNAME) // don't wait, just launch again (though using same DefaultDB so perhaps has no effect)
+    n0 <- fn0
+  } yield n0 + n1
 }

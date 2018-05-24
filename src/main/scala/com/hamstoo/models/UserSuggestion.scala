@@ -20,9 +20,9 @@ import scala.concurrent.Future
   * @param ts        timestamp, which can be updated (which is why we don't call this field `created`)
   */
 case class UserSuggestion(ownerUserId: UUID,
+                          ownerUsername: String,
                           sharee: Option[String],
                           shareeUsername: Option[String] = None,
-                          ownerUsername: String = "",
                           ts: TimeStamp = TIME_NOW) {
 }
 
@@ -32,23 +32,23 @@ object UserSuggestion extends BSONHandlers {
   def xapply(ownerUserId: UUID, sharee: Option[String])(implicit userDao: UserDao): Future[UserSuggestion] = {
     userDao.retrieveById(ownerUserId).map(_.flatMap(_.userData.username).getOrElse("")) flatMap { ownerUsername =>
       sharee.fold(
-        Future.successful(new UserSuggestion(ownerUserId, None, None, ownerUsername))
+        Future.successful(new UserSuggestion(ownerUserId, ownerUsername, None, None))
       ){ emailOrUsername =>
         for {
           mbUserByUsername <- userDao.retrieveByUsername(emailOrUsername)
           mbUser <- mbUserByUsername.fold(userDao.retrieveByEmail(emailOrUsername))(u => Future.successful(Some(u)))
         } yield {
-          new UserSuggestion(ownerUserId, sharee, mbUser.flatMap(_.userData.username), ownerUsername)
+          new UserSuggestion(ownerUserId, ownerUsername, sharee, mbUser.flatMap(_.userData.username))
         }
       }
     }
   }
 
-  val US_OWNER_ID: String = nameOf[UserSuggestion](_.ownerUserId)
-  val US_OWNER_UNAME: String = nameOf[UserSuggestion](_.ownerUsername)
-  val US_SHAREE: String = nameOf[UserSuggestion](_.sharee)
-  val US_SHAREE_UNAME: String = nameOf[UserSuggestion](_.shareeUsername)
-  val US_TIMESTAMP: String = nameOf[UserSuggestion](_.ts)
+  val OWNER_ID: String = nameOf[UserSuggestion](_.ownerUserId)
+  val OWNER_UNAME: String = nameOf[UserSuggestion](_.ownerUsername)
+  val SHAREE: String = nameOf[UserSuggestion](_.sharee)
+  val SHAREE_UNAME: String = nameOf[UserSuggestion](_.shareeUsername)
+  val TIMESTAMP: String = nameOf[UserSuggestion](_.ts)
 
   implicit val fmt: BSONDocumentHandler[UserSuggestion] = Macros.handler[UserSuggestion]
 }
