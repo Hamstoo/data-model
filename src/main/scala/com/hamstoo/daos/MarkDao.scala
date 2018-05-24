@@ -243,7 +243,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     * @param tags  Returned marks must have all of these tags, default to empty set.
     */
   def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String],
-                     begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[MSearchable]] = {
+                     begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[Mark]] = {
     logger.debug(s"Retrieving represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
@@ -258,10 +258,10 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
 
-      seq <- c.find(sel).coll[MSearchable, Seq]()
+      seq <- c.find(sel).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
-      seq.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
+      seq.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 
@@ -278,7 +278,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       sel = d :~ USR -> user :~ REFIDx -> (d :~ "$exists" -> true) :~ curnt :~
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
-      seq <- c.find(sel).coll[MSearchable, Seq]()
+      seq <- c.find(sel).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} referenced marks were successfully retrieved")
       seq//.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) } // no longer returning Marks, so no need to cleanRanges
@@ -307,7 +307,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     * Executes a MongoDB Text Index search using text index with sorting in user's marks, constrained by tags.
     * Mark state must be current (i.e. timeThru == INF_TIME) and have all tags to qualify.
     */
-  def search(user: UUID, query: String): Future[Set[MSearchable]] = search(Set(user), query)
+  def search(user: UUID, query: String): Future[Set[Mark]] = search(Set(user), query)
 
   /**
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,
@@ -315,11 +315,11 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     */
   def search(users: Set[UUID], query: String, ids: Set[ObjectId] = Set.empty[ObjectId],
              begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):
-                                                                        Future[Set[MSearchable]] = {
+                                                                        Future[Set[Mark]] = {
 
     val which = s"for ${users.size} users (first, at most, 5: ${users.take(5)})" + (if (ids.isEmpty) "" else s", ${ids.size} IDs")
     logger.debug(s"Searching for marks $which by text query '$query' between ${begin.map(_.tfmt)} and ${end.map(_.tfmt)}")
-    if (users.isEmpty) Future.successful(Set.empty[MSearchable]) else {
+    if (users.isEmpty) Future.successful(Set.empty[Mark]) else {
 
       // this projection doesn't have any effect without this selection
       val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
@@ -341,11 +341,11 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                          searchScoreSelection :~
                          (if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids))
 
-          dbColl().flatMap(_.find(sel, searchScoreProjection).coll[MSearchable, Seq]())
+          dbColl().flatMap(_.find(sel, searchScoreProjection).coll[Mark, Seq]())
         }
       }.map(_.flatten).map { set =>
         logger.debug(s"Search retrieved ${set.size} marks")
-        set.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
+        set.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
       }
     }
   }
@@ -608,6 +608,17 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       count
     }
   }
+
+  /** Increment one of the MarkAux visit counts by 1, depending on who is visiting--or attempting to. */
+  def updateVisits(id: ObjectId, isOwner: Option[Boolean]): Future[Unit] = for {
+    c <- dbColl()
+    field = isOwner match {
+      case Some(true) => OVISITSx
+      case Some(false) => SVISITSx
+      case None => UVISITSx
+    }
+    _ <- c.update(d :~ ID -> id :~ curnt, d :~ "$inc" -> (d :~ field -> 1))
+  } yield ()
 
   /** Appends `time` to either `.tabVisible` or `.tabBground` array of a mark. */
   def addTiming(user: UUID, id: String, time: RangeMils, foreground: Boolean): Future[Unit] = for {

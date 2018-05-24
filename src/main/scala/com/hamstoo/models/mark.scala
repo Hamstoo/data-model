@@ -5,6 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
 import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.models.SearchStats.Facet
 import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
@@ -24,28 +25,29 @@ import scala.util.matching.Regex
 
 /**
   * User content data model. This case class is also used for front-end JSON formatting.
-  * The fields are:
   *
-  * @param subj           - the rated element as a string of text; either a header of the marked page, or the rated
-  *                       string itself
-  * @param url            - an optional url
-  * @param rating         - the value assigned to the mark by the user, from 0.0 to 5.0
-  * @param tags           - a set of tags assigned to the mark by the user
-  * @param comment        - an optional text comment assigned to the mark by the user
-  * @param commentEncoded - markdown converted to HTML; set by class init
+  * @param subj     the rated element as a string of text; either a header of the marked page, or the rated
+  *                   string itself
+  * @param url      an optional url
+  * @param rating   the value assigned to the mark by the user, from 0.0 to 5.0
+  * @param tags     a set of tags assigned to the mark by the user
+  * @param comment  an optional text comment assigned to the mark by the user
   */
-case class MarkData(override val subj: String,
-                    override val url: Option[String],
-                    override val rating: Option[Double] = None,
-                    override val tags: Option[Set[String]] = None,
-                    override val comment: Option[String] = None,
-                    var commentEncoded: Option[String] = None)
-    extends MDSearchable(subj, url, rating, tags, comment) {
+case class MarkData(subj: String,
+                    url: Option[String],
+                    rating: Option[Double] = None,
+                    tags: Option[Set[String]] = None,
+                    comment: Option[String] = None) {
 
   import MarkData._
 
-  // populate `commentEncoded` by deriving it from the value of `comment`
-  commentEncoded = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
+  // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
+  // rating value (not part of the data(base) model)
+  var bMasked: Boolean = false
+  var ownerRating: Option[Double] = None
+
+  // populate `commentEncoded` by deriving it from the value of `comment` (no need for this to be in the database)
+  val commentEncoded: Option[String] = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
     // example: <p>&lt;IMG SRC=JaVaScRiPt:alert('XSS')&gt;</p>
     // https://github.com/atlassian/commonmark-java
@@ -111,13 +113,13 @@ case class MarkData(override val subj: String,
 
   /** If the two MarkDatas are equal, as far as generating a public representation would be concerned. */
   // TODO: the interface for constructing a public repr should only be allowed to include these fields via having its own class
-  def equalsPerPubRepr(other: MarkData): Boolean =
-    url.isDefined && url == other.url || url.isEmpty && subj == other.subj
+  def equalsPerPubRepr(that: MarkData): Boolean =
+    url.isDefined && url == that.url || url.isEmpty && subj == that.subj
 
   /** If the two MarkDatas are equal, as far as generating a user representation would be concerned. */
   // TODO: the interface for constructing a user repr should only be allowed to include these fields via having its own class
-  def equalsPerUserRepr(other: MarkData): Boolean =
-    copy(url = None, rating = None) == other.copy(url = None, rating = None)
+  def equalsPerUserRepr(that: MarkData): Boolean =
+    copy(url = None, rating = None) == that.copy(url = None, rating = None)
 }
 
 object MarkData {
@@ -310,46 +312,46 @@ case class ReprInfo(reprId: ObjectId,
   * User history (list) entry data model. An `Entry` is a `Mark` that belongs to a
   * particular user along with an ID and timestamp.
   *
-  * @param userId   - owner's user ID
-  * @param sharedWith - defines which other users are allowed to read or write this Mark[Data]
-  * @param id       - the mark's alphanumerical string, used as an identifier common with all the marks versions
-  * @param mark     - user-provided content
-  * @param markRef - Content that references (and masks) another mark that is owned by a different user.
-  *                 When this field is provided, the `mark` field should be empty.
-  *                 TODO: What if this non-owner goes and marks the same URL?  Just create another mark!
-  * @param aux      - additional fields holding satellite data
-  * @param urlPrfx  - binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init
-  *                   Binary prefix is used as filtering and 1st stage of urls equality estimation
-  *                   https://en.wikipedia.org/wiki/Binary_prefix
-  * @param reprs    - A history of different mark states/views/representations as marked by the user
-  * @param timeFrom - timestamp of last edit
-  * @param timeThru - the moment of time until which this version is latest
-  * @param mergeId  - if this mark was merged into another, this will be the ID of that other
+  * @param userId     Owner's user ID.
+  * @param sharedWith Defines which other users are allowed to read or write this Mark[Data].
+  * @param id         The mark's alphanumerical string, used as an identifier common with all the marks versions.
+  * @param mark       User-provided content.
+  * @param markRef    Content that references (and masks) another mark that is owned by a different user.
+  *                     When this field is provided, the `mark` field should be empty.
+  *                     TODO: What if this non-owner goes and marks the same URL?  Just create another mark!
+  * @param aux        MarkAux: Additional fields holding satellite data
+  * @param urlPrfx    Binary prefix of `mark.url` for the purpose of indexing by mongodb; set by class init
+  *                     Binary prefix is used as filtering and 1st stage of urls equality estimation
+  *                     https://en.wikipedia.org/wiki/Binary_prefix
+  * @param reprs      A history of different mark states/views/representations as marked by the user
+  * @param timeFrom   Timestamp of last edit.
+  * @param timeThru   The moment of time until which this version is latest.
+  * @param mergeId    If this mark was merged into another, this will be the ID of that other.
   *
-  * @param score    - `score` is not part of the documents in the database, but it is returned from
-  *                 `MongoMarksDao.search` so it is easier to have it included here.
+  * @param score      `score` is not part of the documents in the database, but it is returned from
+  *                     `MongoMarksDao.search` so it is easier to have it included here.
   */
 case class Mark(override val userId: UUID,
                 override val id: ObjectId = generateDbId(Mark.ID_LENGTH),
-                override val mark: MarkData,
-                override val markRef: Option[MarkRef] = None,
-                override val aux: Option[MarkAux] = Some(MarkAux(None, None)),
+                mark: MarkData,
+                markRef: Option[MarkRef] = None,
+                aux: Option[MarkAux] = Some(MarkAux(None, None)),
                 var urlPrfx: Option[mutable.WrappedArray[Byte]] = None, // using *hashable* WrappedArray here
-                override val reprs: Seq[ReprInfo] = Nil,
-                override val timeFrom: TimeStamp = TIME_NOW,
-                override val timeThru: TimeStamp = INF_TIME,
-                override val modifiedBy: Option[UUID] = None,
+                reprs: Seq[ReprInfo] = Nil,
+                timeFrom: TimeStamp = TIME_NOW,
+                timeThru: TimeStamp = INF_TIME,
+                modifiedBy: Option[UUID] = None,
                 mergeId: Option[String] = None,
                 override val sharedWith: Option[SharedWith] = None,
                 override val nSharedFrom: Option[Int] = Some(0),
                 override val nSharedTo: Option[Int] = Some(0),
-                override val score: Option[Double] = None)
-    extends MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru,
-                        modifiedBy, sharedWith, nSharedFrom, nSharedTo, score) {
-
-  urlPrfx = mark.url map (_.binaryPrefix)
+                score: Option[Double] = None)
+    extends Shareable {
 
   import Mark._
+
+  // Even though this is stored in the database, it still can't hurt to enforce that it's kept inline with url.
+  urlPrfx = mark.url map (_.binaryPrefix)
 
   /** A mark has representable user content if it doesn't have a USER_CONTENT repr. */
   def representableUserContent: Boolean = !reprs.exists(_.isUserContent)
@@ -370,19 +372,21 @@ case class Mark(override val userId: UUID,
   def isCurrent: Boolean = timeThru == INF_TIME
 
   /**
-    * Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a shared-with, non-owner of the Mark.
-    * Returns the mark owner's rating in the `ownerRating` field of the returned MarkData.  Note that if
-    * `callingUser` owns the mark, the supplied optRef is completely ignored.
+    * Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a sharee (shared-with, non-owner of the Mark).
+    * Returns the mark owner's rating in the `ownerRating` field of the returned MarkData.  Note that if `callingUser`
+    * owns the mark, the supplied mbRef is completely ignored (even though it should probably be None in that case).
     */
-  override def mask(optRef: Option[MarkRef], callingUser: Option[User]): Mark = {
+  def mask(mbRef: Option[MarkRef], callingUser: Option[User]): Mark = {
     if (callingUser.exists(ownedBy)) this else {
 
-      // still mask even if optRef is None to ensure that the owner's rating is moved to the `ownerRating` field
-      val ref = optRef.getOrElse(MarkRef(id)) // create an empty MarkRef (id isn't really used)
+      // still mask even if mbRef is None to ensure that the owner's rating is moved to the `ownerRating` field
+      val ref = mbRef.getOrElse(MarkRef(id)) // create an empty MarkRef (id isn't really used)
 
       val unionedTags = mark.tags.getOrElse(Set.empty[String]) ++ ref.tags.getOrElse(Set.empty[String])
       val mdata = mark.copy(rating = ref.rating,
                             tags = if (unionedTags.isEmpty) None else Some(unionedTags))
+
+      // no need to copy facets as they aren't set until the end of search, while MarkRef masking occurs during search
       mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
       mdata.ownerRating = mark.rating
       copy(mark = mdata)
@@ -427,117 +431,6 @@ case class Mark(override val userId: UUID,
   }
 
   /**
-    * Fairly standard equals definition.  Required b/c of the overriding of hashCode.
-    * TODO: can this be removed now that we're no longer relying on it for set-union in backend's SearchService.search?
-    */
-  override def equals(other: Any): Boolean = other match {
-    case other: Mark => other.canEqual(this) && this.hashCode == other.hashCode
-    case _ => false
-  }
-
-  /** Same as `equals` except ignoring timeFrom/timeThru. */
-  def equalsIgnoreTimeStamps(other: Mark): Boolean =
-    equals(other.copy(timeFrom = timeFrom, timeThru = timeThru, score = score))
-
-  /**
-    * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
-    * `super.hashCode` comes from `Any` and so the implementation of `hashCode` that is automatically generated for
-    * case classes has to be copy and pasted here.  More at the following link:
-    * https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
-    * And an explanation here: https://stackoverflow.com/a/44708937/2030627
-    */
-  override def hashCode: Int = this.score match {
-    case None => scala.runtime.ScalaRunTime._hashCode(this)
-    case Some(_) => this.copy(score = None).hashCode
-  }
-}
-
-/**
-  * Searchable MarkData includes all fields excetp `commentEncoded`.
-  * TODO: Would it be better to just put `commentEncoded` and the 2 MarkAux fields in MSearchable?
-  */
-class MDSearchable(val subj: String,
-                   val url: Option[String],
-                   val rating: Option[Double],
-                   val tags: Option[Set[String]],
-                   val comment: Option[String]) {
-
-  // when a Mark gets masked by a MarkRef, bMasked will be set to true and ownerRating will be set to the original
-  // rating value (not part of the data(base) model)
-  var bMasked: Boolean = false
-  var ownerRating: Option[Double] = None
-
-  /** See ScalaDoc on MSearchable.xcopy. */
-  def xcopy(subj: String = subj,
-            url: Option[String] = url,
-            rating: Option[Double] = rating,
-            tags: Option[Set[String]] = tags,
-            comment: Option[String] = comment) =
-    new MDSearchable(subj, url, rating, tags, comment)
-
-  /**
-    * This method is called `xtoString` instead of `toString` to avoid conflict with `case class Mark` which
-    * is going to generate its own `toString` method.  Also see `xcopy`.
-    */
-  def xtoString: String =
-    s"${classOf[MDSearchable].getSimpleName}($subj,$url,$rating,$tags,$comment)"
-}
-
-object MDSearchable {
-
-  def apply(subj: String,
-            url: Option[String],
-            rating: Option[Double],
-            tags: Option[Set[String]],
-            comment: Option[String]): MDSearchable =
-    new MDSearchable(subj, url, rating, tags, comment)
-
-  def unapply(obj: MDSearchable):
-      Option[(String, Option[String], Option[Double], Option[Set[String]], Option[String])] =
-    Some((obj.subj, obj.url, obj.rating, obj.tags, obj.comment))
-}
-
-/**
-  * This class lists all of the fields required by the backend's `SearchService`.  `SearchService` loads and processes
-  * so many marks at once that we can't load the full `Mark` data structure for every one of them, though the severity
-  * of this issue is likely much lessened by the fact that we no longer place `Page`s on `Mark`s.  Also see the
-  * analogous `RSearchable` and `MDSearchable` classes.
-  */
-class MSearchable(val userId: UUID,
-                  val id: ObjectId,
-                  val mark: MDSearchable,
-                  val markRef: Option[MarkRef],
-                  val aux: Option[MarkAux],
-                  val reprs: Seq[ReprInfo],
-                  val timeFrom: TimeStamp,
-                  val timeThru: TimeStamp,
-                  val modifiedBy: Option[UUID],
-                  val sharedWith: Option[SharedWith],
-                  val nSharedFrom: Option[Int],
-                  val nSharedTo: Option[Int],
-                  val score: Option[Double]) extends Shareable {
-
-  /**
-    * This method is called `xcopy` instead of `copy` to avoid conflict with `case class Mark` which
-    * is going to generate its own `copy` method.  Also see `xtoString`.
-    */
-  def xcopy(userId: UUID = userId,
-            id: ObjectId = id,
-            mark: MDSearchable = mark,
-            markRef: Option[MarkRef] = markRef,
-            aux: Option[MarkAux] = aux,
-            reprs: Seq[ReprInfo] = reprs,
-            timeFrom: TimeStamp = timeFrom,
-            timeThru: TimeStamp = timeThru,
-            modifiedBy: Option[UUID] = modifiedBy,
-            sharedWith: Option[SharedWith] = sharedWith,
-            nSharedFrom: Option[Int] = nSharedFrom,
-            nSharedTo: Option[Int] = nSharedTo,
-            score: Option[Double] = score): MSearchable =
-    new MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru,
-                    modifiedBy, sharedWith, nSharedFrom, nSharedTo, score)
-
-  /**
     * Returning an Option[String] would be more "correct" here, but returning the empty string just makes things a
     * lot cleaner on the other end.  However alas, note not doing so for `expectedRating`.
     */
@@ -566,26 +459,6 @@ class MSearchable(val userId: UUID,
     reprs.filter(pred).sortBy(_.created).lastOption.map(_.reprId)
 
   /**
-    * Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a shared-with, non-owner of the Mark.
-    * Returns the mark owner's rating in the `ownerRating` field of the returned MarkData.  Note that if
-    * `callingUser` owns the mark, the supplied optRef is completely ignored.
-    */
-  def mask(optRef: Option[MarkRef], callingUser: Option[User]): MSearchable = {
-    if (callingUser.exists(ownedBy)) this else {
-
-      // still mask even if optRef is None to ensure that the owner's rating is moved to the `ownerRating` field
-      val ref = optRef.getOrElse(MarkRef(id)) // create an empty MarkRef (id isn't really used)
-
-      val unionedTags = mark.tags.getOrElse(Set.empty[String]) ++ ref.tags.getOrElse(Set.empty[String])
-      val mdata = mark.xcopy(rating = ref.rating,
-        tags = if (unionedTags.isEmpty) None else Some(unionedTags))
-      mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
-      mdata.ownerRating = mark.rating
-      xcopy(mark = mdata)
-    }
-  }
-
-  /**
     * If the mark has been masked, show the original rating in blue, o/w lookup the mark's expected rating ID in
     * the given `eratings` map and show that in blue.  This allows us to (1) always show the current user's rating
     * in orange, even when displaying another shared-from user's mark, and (2) hide shared-from users' rating
@@ -594,36 +467,9 @@ class MSearchable(val userId: UUID,
   def blueRating(eratings: Map[ObjectId, ExpectedRating]): Option[Double] =
     if (mark.bMasked) mark.ownerRating else expectedRating.flatMap(eratings.get).flatMap(_.value)
 
-  /**
-    * This method is called `xtoString` instead of `toString` to avoid conflict with `case class Mark` which
-    * is going to generate its own `toString` method.  Also see `xcopy`.
-    */
-  def xtoString: String =
-    s"${classOf[MSearchable].getSimpleName}($userId,$id,${mark.xtoString},$markRef,$aux,$reprs,$timeFrom,$timeThru,$modifiedBy,$sharedWith,$nSharedFrom,$nSharedTo,$score)"
-}
-
-object MSearchable {
-  def apply(userId: UUID,
-            id: ObjectId,
-            mark: MDSearchable,
-            markRef: Option[MarkRef],
-            aux: Option[MarkAux],
-            reprs: Seq[ReprInfo],
-            timeFrom: TimeStamp,
-            timeThru: TimeStamp,
-            modifiedBy: Option[UUID],
-            sharedWith: Option[SharedWith],
-            nSharedFrom: Option[Int],
-            nSharedTo: Option[Int],
-            score: Option[Double]): MSearchable =
-    new MSearchable(userId, id, mark, markRef, aux, reprs, timeFrom, timeThru,
-                    modifiedBy, sharedWith, nSharedFrom, nSharedTo, score)
-
-  def unapply(arg: MSearchable):
-      Option[(UUID, String, MDSearchable, Option[MarkRef], Option[MarkAux], Seq[ReprInfo], TimeStamp, TimeStamp,
-             Option[UUID], Option[SharedWith], Option[Int], Option[Int], Option[Double])] =
-    Some((arg.userId, arg.id, arg.mark, arg.markRef, arg.aux, arg.reprs, arg.timeFrom, arg.timeThru,
-          arg.modifiedBy, arg.sharedWith, arg.nSharedFrom, arg.nSharedTo,arg.score))
+  /** Same as `equals` except ignoring timeFrom/timeThru. */
+  def equalsIgnoreTimeStamps(that: Mark): Boolean =
+    equals(that.copy(timeFrom = timeFrom, timeThru = timeThru, score = score))
 }
 
 object Mark extends BSONHandlers {
@@ -642,13 +488,19 @@ object Mark extends BSONHandlers {
     */
   case class MarkAux(tabVisible: Option[Seq[RangeMils]],
                      tabBground: Option[Seq[RangeMils]],
+                     nOwnerVisits: Option[Int] = Some(0),
+                     nShareeVisits: Option[Int] = Some(0),
+                     nUnauthVisits: Option[Int] = Some(0),
                      var totalVisible: Option[DurationMils] = None,
                      var totalBground: Option[DurationMils] = None) {
 
     /** Not using `copy` in this merge to ensure if new fields are added, they aren't forgotten here. */
     def merge(oth: MarkAux) =
       MarkAux(Some(tabVisible.getOrElse(Nil) ++ oth.tabVisible.getOrElse(Nil)),
-              Some(tabBground.getOrElse(Nil) ++ oth.tabBground.getOrElse(Nil)))
+              Some(tabBground.getOrElse(Nil) ++ oth.tabBground.getOrElse(Nil)),
+              Some(nOwnerVisits.getOrElse(0) + oth.nOwnerVisits.getOrElse(0)),
+              Some(nShareeVisits.getOrElse(0) + oth.nShareeVisits.getOrElse(0)),
+              Some(nUnauthVisits.getOrElse(0) + oth.nUnauthVisits.getOrElse(0)))
 
     /** These methods return the total aggregated amount of time in the respective sequences of ranges. */
     if (tabVisible.nonEmpty) totalVisible = Some(total(tabVisible))
@@ -701,6 +553,9 @@ object Mark extends BSONHandlers {
 
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)
+  val OVISITSx: String = AUX + "." + nameOf[MarkAux](_.nOwnerVisits)
+  val SVISITSx: String = AUX + "." + nameOf[MarkAux](_.nShareeVisits)
+  val UVISITSx: String = AUX + "." + nameOf[MarkAux](_.nUnauthVisits)
 
   // ReprInfo constants value (note that these are not 'x'/extended as they aren't prefixed w/ "mark.")
   val REPR_ID: String = nameOf[ReprInfo](_.reprId)
@@ -718,8 +573,6 @@ object Mark extends BSONHandlers {
   val REPR_IDxp: String = REPRS + ".$." + REPR_ID
   val CREATEDxp: String = REPRS + ".$." + CREATED
 
-  implicit val mDataData: BSONDocumentHandler[MDSearchable] = Macros.handler[MDSearchable]
-  implicit val mSearchable: BSONDocumentHandler[MSearchable] = Macros.handler[MSearchable]
   val USRPRFX: String = nameOf[UrlDuplicate](_.userIdPrfx)
   assert(nameOf[UrlDuplicate](_.urlPrfx) == com.hamstoo.models.Mark.URLPRFX)
   assert(nameOf[UrlDuplicate](_.id) == com.hamstoo.models.Mark.ID)

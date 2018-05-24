@@ -33,7 +33,7 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
                             reprDao: RepresentationDao,
                             userDao: UserDao,
                             idfModel: IDFModel)
-    extends PreloadSource[MSearchable](loadInterval = (183 days).toMillis) {
+    extends PreloadSource[Mark](loadInterval = (183 days).toMillis) {
 
   import MarksStream._
 
@@ -41,7 +41,7 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
   val tags: Set[String] = labels.value
 
   /** PreloadSource interface.  `begin` should be inclusive and `end`, exclusive. */
-  override def preload(begin: TimeStamp, end: TimeStamp): PreloadType[MSearchable] = {
+  override def preload(begin: TimeStamp, end: TimeStamp): PreloadType[Mark] = {
 
     // unpack query words/counts/vecs (which there may none of)
     val mbCleanedQuery = mbQuery2Vecs.map(_._1)
@@ -86,15 +86,15 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
     } yield {
 
       /** Weight `entries` collection search scores by both the number of repetitions of the query word and its IDF. */
-      def wgtMkScore(qm: ((String, Int), MSearchable)): Double =
+      def wgtMkScore(qm: ((String, Int), Mark)): Double =
         qm._1._2 * idfModel.transform(qm._1._1) * qm._2.score.get // #reps * idf * score
 
       // `scoredUngroupedMs` will contain duplicate marks with different scores for different search terms so join them,
       // start by broadcasting each query word (qw) in `cleanedQuery` to its respective marks (qms)
-      val scoredMs = mbCleanedQuery.fold(Iterable.empty[MSearchable]) { cleanedQuery =>
+      val scoredMs = mbCleanedQuery.fold(Iterable.empty[Mark]) { cleanedQuery =>
         cleanedQuery.view.zip(scoredUngroupedMs).flatMap { case (qw, qms) => qms.map((qw, _)) }
           .groupBy(_._2.id).values // group query words by mark ID
-          .map { seqvw => seqvw.head._2.xcopy(score = Some(seqvw.map(wgtMkScore).sum)) }
+          .map { seqvw => seqvw.head._2.copy(score = Some(seqvw.map(wgtMkScore).sum)) }
       }
 
       // performing filterNot rather than relying on set union because scoredMs will have not only score
@@ -116,8 +116,8 @@ object MarksStream {
     * Filter for marks that the calling user is authorized to read.  This function relies on the marks being in
     * a linear Seq, so don't think you can just change it to be an Iterable--i.e. a Set won't work!
     */
-  def filterAuthorizedRead(ms: Seq[MSearchable], callingUserId: UUID)
-                          (implicit userDao: UserDao, ec: ExecutionContext): Future[Seq[MSearchable]] =
+  def filterAuthorizedRead(ms: Seq[Mark], callingUserId: UUID)
+                          (implicit userDao: UserDao, ec: ExecutionContext): Future[Seq[Mark]] =
     Future.sequence(ms.map { _.isAuthorizedRead(User(callingUserId))(userDao, implicitly) })
       .map { auths =>
         val filtered = ms.zip(auths).filter(_._2).map(_._1)
@@ -129,12 +129,12 @@ object MarksStream {
     * Referenced marks need to have their labels unioned with those of their MarkRefs before they can be filtered.
     * Non-referenced marks can just pass directly to the label filtering stage untouched.
     */
-  def maskAndFilterTags(marks: Iterable[MSearchable],
+  def maskAndFilterTags(marks: Iterable[Mark],
                         tags: Set[String],
                         id2Ref: Map[ObjectId, MarkRef],
-                        callingUser: Option[User]): Iterable[MSearchable] = {
+                        callingUser: Option[User]): Iterable[Mark] = {
 
-    def maskOrElse(m: MSearchable) = m.mask(id2Ref.get(m.id), callingUser)
+    def maskOrElse(m: Mark) = m.mask(id2Ref.get(m.id), callingUser)
 
     marks.map(maskOrElse).filter(_.hasTags(tags))
   }

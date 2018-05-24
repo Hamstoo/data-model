@@ -85,7 +85,10 @@ class RSearchable(val id: String,
   /** Another kind of similarity, the opposite of (relative) edit distance. */
   def editSimilarity(oth: RSearchable): Double = Representation.editSimilarity(doctext, oth.doctext)
 
-  /** See comment on MSearchable.xcopy for why this is necessary. */
+  /**
+    * This method is called `xcopy` instead of `copy` to avoid conflict with `case class Representation` which
+    * is going to generate its own `copy` method.  Also see `xtoString`.
+    */
   def xcopy(id: String = id,
             header: Option[String] = header,
             doctext: String = doctext,
@@ -151,26 +154,6 @@ case class Representation(
                     .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
 
   override def withTimeFrom(timeFrom: Long): Representation = this.copy(timeFrom = timeFrom)
-
-  /** Fairly standard equals definition.  Required b/c of the overriding of hashCode. */
-  override def equals(other: Any): Boolean = other match {
-    case other: Representation => other.canEqual(this) && this.hashCode == other.hashCode
-    case _ => false
-  }
-
-  /**
-    * Avoid incorporating `score: Option[Double]` into the hash code. `Product` does not define its own `hashCode` so
-    * `super.hashCode` comes from `Any` and so the implementation of `hashCode` that is automatically generated for
-    * case classes has to be copy and pasted here.  More at the following link:
-    * https://stackoverflow.com/questions/5866720/hashcode-in-case-classes-in-scala
-    * And an explanation here: https://stackoverflow.com/a/44708937/2030627
-    * TODO: why is this necessary?  it would be better to implement something like equalsIgnoreScore similar to
-    * TODO: Mark.equalsIgnoreTimeStamps
-    */
-  override def hashCode: Int = this.score match {
-    case None => scala.runtime.ScalaRunTime._hashCode(this)
-    case Some(_) => this.copy(score = None).hashCode
-  }
 }
 
 object Representation extends BSONHandlers {
@@ -197,18 +180,18 @@ object Representation extends BSONHandlers {
     // an alternative to recursive functions would be to call `.zip` followed by `.map` which is less efficient due to
     // the construction of an intermediate collection between the steps. this can be helped by first calling `.view`
     // on the list to make evaluation lazy, though View construction also has its cost.
-    def -(other: Vec): Vec = {
+    def -(that: Vec): Vec = {
       @tailrec
       def rec(a: Vec, b: Vec, c: Vec): Vec =
         if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head - b.head) +: c)
-      rec(vec, other, Nil)
+      rec(vec, that, Nil)
     }
 
-    def +(other: Vec): Vec = {
+    def +(that: Vec): Vec = {
       @tailrec
       def rec(a: Vec, b: Vec, c: Vec): Vec =
         if (a.isEmpty || b.isEmpty) c.reverse else rec(a.tail, b.tail, (a.head + b.head) +: c)
-      rec(vec, other, Nil)
+      rec(vec, that, Nil)
     }
 
     // scalar arithmetic
@@ -238,24 +221,24 @@ object Representation extends BSONHandlers {
 
     def kurt: Double = vec.centralMoment(4) / math.pow(vec.stdev, 4)
 
-    def dot(other: Vec): Double = {
+    def dot(that: Vec): Double = {
       @tailrec
       def rec(a: Vec, b: Vec, sum: Double): Double =
         if (a.isEmpty || b.isEmpty) sum else rec(a.tail, b.tail, sum + a.head * b.head)
-      rec(vec, other, 0.0)
+      rec(vec, that, 0.0)
     }
 
     // see `stdev` for a more explicit similar `foldLeft` notation
     def l2Norm: Double = math.sqrt((0.0 /: vec) (_ + math.pow(_, 2)))
 
-    def cosine(other: Vec): Double = (vec dot other) / vec.l2Norm / other.l2Norm
+    def cosine(that: Vec): Double = (vec dot that) / vec.l2Norm / that.l2Norm
 
-    def covar(other: Vec): Double = (vec dot other) / vec.size - vec.sum / vec.size * other.sum / other.size
+    def covar(that: Vec): Double = (vec dot that) / vec.size - vec.sum / vec.size * that.sum / that.size
 
-    def corr(other: Vec): Double = {
+    def corr(that: Vec): Double = {
       // https://en.wikipedia.org/wiki/Correlation_and_dependence
-      val correctedCovar = (vec covar other) * vec.size / (vec.size - 1)
-      correctedCovar / vec.stdev / other.stdev
+      val correctedCovar = (vec covar that) * vec.size / (vec.size - 1)
+      correctedCovar / vec.stdev / that.stdev
     }
 
     def beta(x: Vec): Double = (vec covar x) / x.variance

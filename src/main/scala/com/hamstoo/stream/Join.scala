@@ -202,7 +202,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
     var willShutDown1 = false
 
     private def completeJoin(s: String): Unit = {
-      logger.debug(s"\033[33mcompleteJoin($s) (${namesStr.length})\033[0m$namesStr: sz0=${joinable0.size}, sz1=${joinable1.size}")
+      logger.debug(s"\u001b[33mcompleteJoin($s) (${namesStr.length})\u001b[0m$namesStr: sz0=${joinable0.size}, sz1=${joinable1.size}")
       completeStage()
     }
 
@@ -223,7 +223,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         joinable1.view.flatMap { d1: Data[A1] =>
 
           (if (d0.isEmpty && d1.isEmpty) {
-            logger.trace(s"  \033[33mempties (${namesStr.length})\033[0m$namesStr")
+            logger.trace(s"  \u001b[33mempties (${namesStr.length})\u001b[0m$namesStr")
             Some(Join.Pairwised(immutable.Seq.empty[Datum[(A0, A1)]], true, true))
           }
            else pairwise(d0, d1))
@@ -240,7 +240,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         // push to consumer, which should then pull again from this materialized Join instance, if ready;
         // `isAvailable(out)` can be tested for either here or in both of the `onPush`es
         //logger.debug(s"  pushing: ${joined.sourceTime.tfmt}, ${joined.id}, consumed=${(consumed0, consumed1)}")
-        logger.trace(s"  \033[33mpushing (${namesStr.length})\033[0m$namesStr: ${shorten(d0)} + ${shorten(d1)} = ${shorten(joined)}, consumed=${(consumed0, consumed1)}")
+        logger.trace(s"  \u001b[33mpushing (${namesStr.length})\u001b[0m$namesStr: ${shorten(d0)} + ${shorten(d1)} = ${shorten(joined)}, consumed=${(consumed0, consumed1)}")
         /*if (isAvailable(out))*/ push(out, joined) /*else emit(out, joined)*/
 
         // cleanup to ensure we don't perform the same join again in the future (i.e. remove one or both of the joinees)
@@ -311,7 +311,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         * required then, even if 0 elements have occurred, to trigger onUpstreamFinish.
         */
       override def onUpstreamFinish(): Unit = {
-        logger.debug(s"\033[33monUpstreamFinish0 (${namesStr.length})\033[0m$namesStr (sz=${joinable0.size}&${joinable1.size}): if (${!isAvailable(in0)} && $watermark1 > $watermark0 || $willShutDown1)...")
+        logger.debug(s"\u001b[33monUpstreamFinish0 (${namesStr.length})\u001b[0m$namesStr (sz=${joinable0.size}&${joinable1.size}): if (${!isAvailable(in0)} && $watermark1 > $watermark0 || $willShutDown1)...")
         if (!isAvailable(in0) && (watermark1 > watermark0 || willShutDown1)) completeJoin("0")
         willShutDown0 = true
       }
@@ -329,7 +329,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
       }
 
       override def onUpstreamFinish(): Unit = {
-        logger.debug(s"\033[33monUpstreamFinish1 (${namesStr.length})\033[0m$namesStr (sz=${joinable0.size}&${joinable1.size}): if (${!isAvailable(in1)} && $watermark0 > $watermark1 || $willShutDown0)...")
+        logger.debug(s"\u001b[33monUpstreamFinish1 (${namesStr.length})\u001b[0m$namesStr (sz=${joinable0.size}&${joinable1.size}): if (${!isAvailable(in1)} && $watermark0 > $watermark1 || $willShutDown0)...")
         if (!isAvailable(in1) && (watermark0 > watermark1 || willShutDown0)) completeJoin("1")
         willShutDown1 = true
       }
@@ -355,7 +355,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
         * allowed to be called on this port.
         */
       override def onPull(): Unit = {
-        logger.trace(s"\033[33monPull (${namesStr.length})\033[0m$namesStr")
+        logger.trace(s"\u001b[33monPull (${namesStr.length})\u001b[0m$namesStr")
         pushOneMaybe()
       }
     })
@@ -365,7 +365,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
   def namesStr: String = names.fold(s"[$in0, $in1]") { ns =>
     val x = s"[${ns._1}, ${ns._2}]"
-    if (x.length == 28) "\033[35m" + x + "\033[0m" else x
+    if (x.length == 28) "\u001b[35m" + x + "\u001b[0m" else x
   }
 
   def shorten(d: Seq[_]): String = {

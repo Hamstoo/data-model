@@ -3,7 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.models.SearchStats.{Click, FacetVal}
+import com.hamstoo.models.SearchStats.{Click, Facet}
 import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -17,15 +17,19 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   *                analysis options--e.g. there might be intricacies in how a user types in a set of search terms
   *                (such as their ordering) that we want to use to modify the returned results.  Using a Set would
   *                perhaps be mildly more efficient, but not enough to really matter.
-  * @param facets  If any search facets were used to tailor the query (e.g. label:books).
+  * @param facets  Search facet arguments that were used to tailor the query (e.g. recency:0.7) along with the
+  *                resulting facet values for the SearchStats'ed search result.
   * @param clicks  The "stats"; the things the user clicked as a result the search.
   */
-case class SearchStats(id: ObjectId = generateDbId(Mark.ID_LENGTH),
-                       userId: UUID,
+case class SearchStats(userId: UUID,
                        markId: ObjectId,
                        query: String,
-                       facets: Set[FacetVal] = Set.empty[FacetVal],
-                       clicks: Seq[Click] = Seq.empty[Click])
+                       labels: Option[Set[String]] = None,
+                       facetArgs: Set[Facet] = Set.empty[Facet],
+                       facetVals: Set[Facet] = Set.empty[Facet],
+                       clicks: Seq[Click] = Seq.empty[Click],
+                       ts: Option[TimeStamp] = None,
+                       id: ObjectId = generateDbId(Mark.ID_LENGTH))
 
 /**
   * Extending BSONHandlers allows UUID to be converted properly for Reactive Mongo.  Otherwise one of the following
@@ -55,13 +59,13 @@ object SearchStats extends BSONHandlers {
   /**
     * Really just a key-value pair to make facet storage as flexible as possible.
     */
-  case class FacetVal(name: String, value: Double)
+  case class Facet(k: String, v: Double)
 
   val ID: String = com.hamstoo.models.Mark.ID;  assert(nameOf[SearchStats](_.id) == ID)
   val USR: String = com.hamstoo.models.Mark.USR;  assert(nameOf[SearchStats](_.userId) == USR)
   val MARKID: String = nameOf[SearchStats](_.markId)
   val QUERY: String = nameOf[SearchStats](_.query)
   implicit val clickHandler: BSONDocumentHandler[Click] = Macros.handler[Click]
-  implicit val facetValHandler: BSONDocumentHandler[FacetVal] = Macros.handler[FacetVal]
+  implicit val facetValHandler: BSONDocumentHandler[Facet] = Macros.handler[Facet]
   implicit val searchStatsHandler: BSONDocumentHandler[SearchStats] = Macros.handler[SearchStats]
 }

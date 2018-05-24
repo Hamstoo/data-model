@@ -43,7 +43,18 @@ class SearchStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
   def addClick(input: SearchStats): Future[Unit] = for {
     c <- dbColl()
     seq <- c.find(d :~ USR -> input.userId :~ MARKID -> input.markId :~ QUERY -> input.query).coll[SearchStats, Seq]()
-    opt = seq.find(_.facets == input.facets) // facets must be identical
+
+
+
+    
+    TODO: must also check labels here
+
+
+
+
+    // facets must be identical, but note that implicit inputs for facet args may change over time
+    opt = seq.find(x => x.facetArgs == input.facetArgs && x.facetVals == input.facetVals)
+
     upd = opt.fold(input)(ss => ss.copy(clicks = ss.clicks ++ input.clicks))
     wr <- c.update(d :~ ID -> upd.id, upd, upsert = true)
     _ <- wr.failIfError
