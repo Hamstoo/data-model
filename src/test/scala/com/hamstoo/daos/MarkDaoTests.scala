@@ -112,7 +112,8 @@ class MarkDaoTests
       reprs = Seq(reprInfoUsr, reprInfoPub.copy(reprId = "newReprId1"))
     )
     val set = marksDao.search(Set(uuid1), cmt.get).map(_.filter(_.hasTags(tagSet.get))).futureValue
-    set.map(_.xtoString) shouldEqual Set(m1Stub.xtoString)
+    //set.map(_.toString) shouldEqual Set(m1Stub.toString) // TODO: why need to convert toString here?
+    set shouldEqual Set(m1Stub)
   }
 
   it should "(UNIT) find duplicate of mark data, for user, by subject" in {
@@ -124,7 +125,7 @@ class MarkDaoTests
     val repred = marksDao.retrieveRepred(m1.userId, tagSet.get).futureValue
 
     repred.size shouldEqual 1
-    repred.head shouldBe a [MSearchable]
+    repred.head shouldBe a [Mark]
     repred.exists(_.id == m1.id) shouldEqual true
   }
 
@@ -176,6 +177,19 @@ class MarkDaoTests
 
   it should "(UNIT) update MarkData by userId and markId" in {
     marksDao.update(User(m1.userId), m1.id, newMarkData).futureValue.mark shouldEqual newMarkData
+  }
+
+  it should "(UNIT) update visits" in {
+    marksDao.updateVisits(m1.id, Some(true)).futureValue
+    marksDao.updateVisits(m1.id, Some(false)).futureValue
+    marksDao.updateVisits(m1.id, None).futureValue
+    val updatedAux = marksDao.retrieveInsecure(m1.id).futureValue.get.aux.get
+    updatedAux.nOwnerVisits.get shouldEqual 1
+    updatedAux.nShareeVisits.get shouldEqual 1
+    updatedAux.nUnauthVisits.get shouldEqual 1
+
+    marksDao.updateVisits(m1.id, Some(true)).futureValue
+    marksDao.retrieveInsecure(m1.id).futureValue.get.aux.get.nOwnerVisits.get shouldEqual 2
   }
 
   it should "(UNIT) delete mark by userId and markId" in {

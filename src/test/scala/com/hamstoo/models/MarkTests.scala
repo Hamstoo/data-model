@@ -12,14 +12,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
 
   import com.hamstoo.utils.DataInfo._
 
-  "Mark" should "(UNIT) be consistently hashable, regardless of its `score`" in {
-    val a = Mark(constructUserId(), mark = MarkData("a subject", None))
-    val b = a.copy(score = Some(3.4))
-    a.hashCode shouldEqual b.hashCode
-    a shouldEqual b
-  }
-
-  it should "(UNIT) markdown" in {
+  "Mark" should "(UNIT) markdown" in {
     val a = withComment("* a lonely list item")
     a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
     val b = withComment("hello markdown link conversion text [I'm an inline-kinda link](https://www.google.com)")

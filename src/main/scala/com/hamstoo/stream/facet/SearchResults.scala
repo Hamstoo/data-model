@@ -10,7 +10,7 @@ import ch.qos.logback.classic.{Logger => LogbackLogger}
 import com.google.inject.Inject
 import com.google.inject.name.Named
 import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
-import com.hamstoo.models.{MSearchable, RSearchable, Representation}
+import com.hamstoo.models.{Mark, RSearchable, Representation}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream.Data.{Data, ExtendedData}
@@ -325,7 +325,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
 
 object SearchResults {
 
-  type typ = (MSearchable, String, Option[SearchRelevance])
+  type typ = (Mark, String, Option[SearchRelevance])
 
   val logger = Logger(getClass)
 
