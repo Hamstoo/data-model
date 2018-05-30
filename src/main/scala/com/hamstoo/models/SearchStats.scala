@@ -11,24 +11,25 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * Database entry model for recording search results popularity respective to their search queries. The 'map'
   * fields use list types for better translation to JSON.
   *
-  * @param userId  User who initiated the search.
-  * @param markId  The mark that was clicked.
-  * @param query   The search query string for which statistics are recorded.  Not using a Set to preserve future
-  *                analysis options--e.g. there might be intricacies in how a user types in a set of search terms
-  *                (such as their ordering) that we want to use to modify the returned results.  Using a Set would
-  *                perhaps be mildly more efficient, but not enough to really matter.
-  * @param facets  Search facet arguments that were used to tailor the query (e.g. recency:0.7) along with the
-  *                resulting facet values for the SearchStats'ed search result.
-  * @param clicks  The "stats"; the things the user clicked as a result the search.
+  * @param userId     User who initiated the search.
+  * @param markId     The mark that was clicked.
+  * @param query      The search query string for which statistics are recorded.  Not using a Set to preserve future
+  *                     analysis options--e.g. there might be intricacies in how a user types in a set of search terms
+  *                     (such as their ordering) that we want to use to modify the returned results.  Using a Set would
+  *                     perhaps be mildly more efficient, but not enough to really matter.
+  * @param labels     The labels that were used for filtering, if any.
+  * @param facetArgs  Facet arguments that were used to tailor the search query (e.g. recency:0.7).
+  * @param nPerPage   Number of search results displayed per page.  Not sure it'll ever be useful.
+  * @param clicks     The "stats"; the things the user clicked as a result the search.
   */
 case class SearchStats(userId: UUID,
                        markId: ObjectId,
                        query: String,
                        labels: Option[Set[String]] = None,
-                       facetArgs: Set[Facet] = Set.empty[Facet],
-                       facetVals: Set[Facet] = Set.empty[Facet],
+                       facetArgs: Option[Set[Facet]] = Some(Set.empty[Facet]),
+                       nPerPage: Option[Int] = Some(0),
                        clicks: Seq[Click] = Seq.empty[Click],
-                       ts: Option[TimeStamp] = None,
+                       //ts: Option[TimeStamp] = None, // no timestamp, the individual clicks have timestamps
                        id: ObjectId = generateDbId(Mark.ID_LENGTH))
 
 /**
@@ -51,13 +52,19 @@ object SearchStats extends BSONHandlers {
     * Each click on a mark from the My Marks page will generate one of these.
     * @param clickType  If the mark's URL is clicked this will be 0.  If it's FPV is clicked, this will be 1.
     * @param relevance  The relevance to the search terms.  This is the value used to order the search results.
+    * @param facetVals  Resulting facet values for the SearchStats'ed search result.
     * @param index      The index of this mark in the results.
     * @param ts         Timestamp of when the click occurred.
     */
-  case class Click(clickType: ClickType, relevance: Double, index: Int, ts: TimeStamp = TIME_NOW)
+  case class Click(clickType: ClickType,
+                   relevance: Double,
+                   facetVals: Option[Set[Facet]] = Some(Set.empty[Facet]),
+                   index: Int,
+                   ts: TimeStamp = TIME_NOW)
 
   /**
-    * Really just a key-value pair to make facet storage as flexible as possible.
+    * Really just a key-value pair to make facet storage as flexible as possible (i.e. as opposed to utilizing
+    * a map from facet names to args/values).
     */
   case class Facet(k: String, v: Double)
 
