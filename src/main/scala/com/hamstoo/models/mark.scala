@@ -542,14 +542,18 @@ object Mark extends BSONHandlers {
   val SCORE: String = nameOf[Mark](_.score)
 
   // the 'x' is for "extended" (changing these from non-x has already identified one bug)
-  val SUBJx: String = MARK + "." + nameOf[MarkData](_.subj)
+  val SUBJnox: String = nameOf[MarkData](_.subj)
+  val SUBJx: String = MARK + "." + SUBJnox
   val URLx: String = MARK + "." + nameOf[MarkData](_.url)
   val STARSx: String = MARK + "." + nameOf[MarkData](_.rating)
-  val TAGSx: String = MARK + "." + nameOf[MarkData](_.tags)
+  val TAGSnox: String = nameOf[MarkData](_.tags)
+  val TAGSx: String = MARK + "." + TAGSnox
   val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
-  val COMNTENCx: String = MARK + "." + nameOf[MarkData](_.commentEncoded)
 
-  val REFIDx: String = nameOf[Mark](_.markRef) + "." + nameOf[MarkRef](_.markId)
+  val REF: String = nameOf[Mark](_.markRef)
+  val REFIDx: String = REF + "." + nameOf[MarkRef](_.markId)
+  assert(TAGSnox == nameOf[MarkRef](_.tags))
+  val REFTAGSx: String = REF + "." + TAGSnox
 
   val TABVISx: String = AUX + "." + nameOf[MarkAux](_.tabVisible)
   val TABBGx: String = AUX + "." + nameOf[MarkAux](_.tabBground)

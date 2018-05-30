@@ -278,6 +278,9 @@ package object utils {
     */
   def tokenize(text: String): Seq[String] = text.toLowerCase(Locale.ENGLISH).split(raw"\s+")
 
+  /** Moved this here to avoid cut-and-pasted code. */
+  def tokenizeTags(tags: String): Set[String] = tags.split(',').map(_.trim).toSet - ""
+
   /**
     * Call it what you will: `try-with-resources` (Java), `using` (C#), `with` Python.
     * https://www.phdata.io/try-with-resources-in-scala/
