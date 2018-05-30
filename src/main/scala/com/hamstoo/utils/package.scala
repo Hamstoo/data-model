@@ -77,7 +77,7 @@ package object utils {
       (dbDriver.get.connection(parsedUri), parsedUri.db.get)
     } match {
       case Success(conn) =>
-        Logger.info(s"Established connection to MongoDB via URI: $uri")
+        Logger.info(s"Established connection to MongoDB via URI: ${maskDbUri(uri)}")
         synchronized(wait(2000))
         conn
       case Failure(e) =>
@@ -89,6 +89,14 @@ package object utils {
           Logger.warn(s"Failed to establish connection to MongoDB; retrying (${nAttempts-1} attempts remaining)", e)
           getDbConnection(uri, nAttempts = 1)
         }
+    }
+  }
+
+  /** Mask the username/password out of the database URI so that it can be logged. */
+  def maskDbUri(uri: String): Option[String] = {
+    val rgx = """^(.+//)\S+:\S+(@.+)$""".r // won't match docker-compose URI, but will match production/staging
+    rgx.findFirstMatchIn(uri).map { m =>
+      s"${m.group(1)}username:password${m.group(2)}"
     }
   }
 
