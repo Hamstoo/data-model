@@ -15,7 +15,7 @@ import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
-import scala.collection.{TraversableLike, mutable}
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -154,6 +154,11 @@ package object utils {
     def failIfError: Future[Unit] =
       if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
   }
+
+  /** Convenience function; useful to have for when skipping database queries for some reason or other. */
+  def fNone[T]: Future[Option[T]] = Future.successful(Option.empty[T])
+  def ftrue: Future[Boolean] = Future.successful(true)
+  def ffalse: Future[Boolean] = Future.successful(false)
 
   // MongoDB Binary Indexes have a max size of 1024 bytes.  So to combine a 12-char string with a byte array
   // as in the `urldups` collection index, the byte array must be, at most, 992 bytes.  This is presumably
