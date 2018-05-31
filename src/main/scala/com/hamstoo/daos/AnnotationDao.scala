@@ -83,7 +83,7 @@ abstract class AnnotationDao[A <: Annotation: BSONDocumentHandler]
       c <- dbColl()
       seq <- c.find(d :~ MARKID -> markId :~ curnt).coll[A, Seq]()
     } yield {
-      logger.debug(s"${seq.size} ${name + "s"} retrieved (insecure)")
+      logger.debug(s"${seq.size} (insecure) ${name + "s"} retrieved")
       seq
     }
   }
@@ -95,13 +95,13 @@ abstract class AnnotationDao[A <: Annotation: BSONDocumentHandler]
     * @return - future with sequence of annotations that match condition
     */
   def retrieve(usr: Option[User], markId: ObjectId): Future[Seq[A]] = {
-    logger.debug(s"Retrieving ${name + "s"} for user ${usr.map(_.usernameId)} and mark $markId")
+    logger.debug(s"Retrieving (secure) ${name + "s"} for user ${usr.map(_.usernameId)} and mark $markId")
     for {
       insecures <- retrieveInsecure(markId)
       authorizedReads <- Future.sequence(insecures.map(_.isAuthorizedRead(usr)))
     } yield {
       val secures = insecures.view.zip(authorizedReads).filter(_._2).map(_._1).force
-      logger.debug(s"${secures.size} ${name + "s"} were retrieved")
+      logger.debug(s"${secures.size} (secure) ${name + "s"} retrieved")
       secures
     }
   }

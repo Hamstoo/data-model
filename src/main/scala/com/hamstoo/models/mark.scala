@@ -372,6 +372,13 @@ case class Mark(override val userId: UUID,
   def isCurrent: Boolean = timeThru == INF_TIME
 
   /**
+    * A Mark that has a pointer to a MarkRef should be used to `mask` a Mark/MarkData of another user (that has been
+    * shared with this user) rather than doing anything with it's own MarkData.  It's own MarkData will have a URL
+    * populated, but that's it, so that it can be found by MarkDao.retrieveByUrl.
+    */
+  def isRef: Boolean = markRef.nonEmpty
+
+  /**
     * Mask a Mark's MarkData with a MarkRef--for the viewing pleasure of a sharee (shared-with, non-owner of the Mark).
     * Returns the mark owner's rating in the `ownerRating` field of the returned MarkData.  Note that if `callingUser`
     * owns the mark, the supplied mbRef is completely ignored (even though it should probably be None in that case).
@@ -463,9 +470,16 @@ case class Mark(override val userId: UUID,
     * the given `eratings` map and show that in blue.  This allows us to (1) always show the current user's rating
     * in orange, even when displaying another shared-from user's mark, and (2) hide shared-from users' rating
     * predictions, which contain information about more than just the mark being shared, from shared-to users.
+    *
+    * The reason this takes a map as an argument is because backend search, MarksController.list, performs a single
+    * batch query for the rating predictions of all of the search results and passes the batch in here.
     */
   def blueRating(eratings: Map[ObjectId, ExpectedRating]): Option[Double] =
     if (mark.bMasked) mark.ownerRating else expectedRating.flatMap(eratings.get).flatMap(_.value)
+
+  /** Convenience function that converts from an Option to a Map. */
+  def blueRating(mbERating: Option[ExpectedRating]): Option[Double] =
+    blueRating(mbERating.fold(Map.empty[ObjectId, ExpectedRating])(r => Map(r.id -> r)))
 
   /** Same as `equals` except ignoring timeFrom/timeThru. */
   def equalsIgnoreTimeStamps(that: Mark): Boolean =
