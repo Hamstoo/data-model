@@ -1,5 +1,5 @@
 # data-model 
-[![CircleCI](https://circleci.com/gh/Hamstoo/data-model/tree/master.svg?style=shield&circle-token=b29866504cb3aa3024b15c51919b061632d2f847)](https://circleci.com/gh/Hamstoo/data-model/tree/master)
+[![Build Status](https://travis-ci.com/Hamstoo/data-model.svg?token=xd1gp2qpdDzhSg2aLb68&branch=master)](https://travis-ci.com/Hamstoo/data-model)
 ### Versioning
 For now for master branch it's 0.{x}.{y}, where
 * x - major versions correlated with release deployments to production
