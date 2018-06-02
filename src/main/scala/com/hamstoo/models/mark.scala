@@ -1,11 +1,11 @@
 package com.hamstoo.models
 
+import java.net.URL
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
+import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.models.SearchStats.Facet
 import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
@@ -148,6 +148,18 @@ object MarkData {
   val IMPORT_TAG = "Imported"
   val UPLOAD_TAG = "Uploaded"
   val SHARED_WITH_ME_TAG = "SharedWithMe"
+
+  /***
+    * Check string for validity and sanitize string from danger XSS content. By default it works with HTML based content.
+    * First of all in parse it, by attributes and then filter it by list of supported tags.
+    * All example can be find in tests.
+    * @param url - string that must be sanitized
+    * @return    - sanitized string
+    */
+  def sanitize(url: String): Option[String] =
+    Try(new URL(url).toString)
+      .map(Jsoup.clean(_: String, MarkData.htmlTagsWhitelist))
+      .toOption
 }
 
 /**
