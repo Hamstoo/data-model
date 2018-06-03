@@ -8,7 +8,7 @@ import ch.qos.logback.classic.{Logger => LogbackLogger}
 import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.RepresentationDao
-import com.hamstoo.models.{MSearchable, RSearchable}
+import com.hamstoo.models.{Mark, RSearchable}
 import com.hamstoo.stream.Data.ExtendedData
 import com.hamstoo.stream._
 import com.hamstoo.utils.{ExtendedTimeStamp, TimeStamp}
@@ -44,7 +44,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
                            (implicit clock: Clock,
                             mat: Materializer,
                             reprDao: RepresentationDao)
-    extends PreloadObserver[MSearchable, ReprsPair](subject = marksStream) {
+    extends PreloadObserver[Mark, ReprsPair](subject = marksStream) {
 
   // TODO: change the output of this stream to output EntityId(markId, reprId, reprType, queryWord) 4-tuples
 
@@ -63,7 +63,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
   private lazy val cleanedQuery = mbCleanedQuery.getOrElse(Seq(("", 0)))
 
   /** Maps the stream of marks to their reprs. */
-  override def observerPreload(fSubjectData: PreloadType[MSearchable], begin: TimeStamp, end: TimeStamp):
+  override def observerPreload(fSubjectData: PreloadType[Mark], begin: TimeStamp, end: TimeStamp):
                                                                                         PreloadType[ReprsPair] = {
     fSubjectData.flatMap { subjectData =>
 
@@ -144,5 +144,5 @@ class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
 }
 
 object RepredMarks {
-  type typ = (MSearchable, ReprsPair)
+  type typ = (Mark, ReprsPair)
 }

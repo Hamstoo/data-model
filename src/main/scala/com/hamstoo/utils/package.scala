@@ -15,7 +15,7 @@ import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
-import scala.collection.{TraversableLike, mutable}
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -77,7 +77,7 @@ package object utils {
       (dbDriver.get.connection(parsedUri), parsedUri.db.get)
     } match {
       case Success(conn) =>
-        Logger.info(s"Established connection to MongoDB via URI: $uri")
+        Logger.info(s"Established connection to MongoDB via URI: ${maskDbUri(uri)}")
         synchronized(wait(2000))
         conn
       case Failure(e) =>
@@ -89,6 +89,14 @@ package object utils {
           Logger.warn(s"Failed to establish connection to MongoDB; retrying (${nAttempts-1} attempts remaining)", e)
           getDbConnection(uri, nAttempts = 1)
         }
+    }
+  }
+
+  /** Mask the username/password out of the database URI so that it can be logged. */
+  def maskDbUri(uri: String): Option[String] = {
+    val rgx = """^(.+//)\S+:\S+(@.+)$""".r // won't match docker-compose URI, but will match production/staging
+    rgx.findFirstMatchIn(uri).map { m =>
+      s"${m.group(1)}username:password${m.group(2)}"
     }
   }
 
@@ -152,6 +160,11 @@ package object utils {
     def failIfError: Future[Unit] =
       if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
   }
+
+  /** Convenience function; useful to have for when skipping database queries for some reason or other. */
+  def fNone[T]: Future[Option[T]] = Future.successful(Option.empty[T])
+  def ftrue: Future[Boolean] = Future.successful(true)
+  def ffalse: Future[Boolean] = Future.successful(false)
 
   // MongoDB Binary Indexes have a max size of 1024 bytes.  So to combine a 12-char string with a byte array
   // as in the `urldups` collection index, the byte array must be, at most, 992 bytes.  This is presumably
@@ -275,6 +288,9 @@ package object utils {
     * the caching more efficient (TODO: https://github.com/Hamstoo/hamstoo/issues/68).
     */
   def tokenize(text: String): Seq[String] = text.toLowerCase(Locale.ENGLISH).split(raw"\s+")
+
+  /** Moved this here to avoid cut-and-pasted code. */
+  def tokenizeTags(tags: String): Set[String] = tags.split(',').map(_.trim).toSet - ""
 
   /**
     * Call it what you will: `try-with-resources` (Java), `using` (C#), `with` Python.

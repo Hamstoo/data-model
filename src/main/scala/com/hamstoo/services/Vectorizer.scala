@@ -6,6 +6,7 @@ import com.google.inject.name.Named
 import com.google.inject.Inject
 import com.hamstoo.daos.WordVectorDao
 import com.hamstoo.models.Representation.Vec
+import com.hamstoo.utils.fNone
 import play.api.Logger
 import play.api.libs.ws._
 
@@ -94,7 +95,7 @@ class Vectorizer @Inject() (httpClient: WSClient,
     val verbose: Boolean = Vectorizer.dbCount < 100 || Vectorizer.dbCount % 100 == 0
 
     // `mtch` appears to have trailing punctuation removed (was that the intent?)
-    termRgx.findFirstMatchIn(term.toLowerCase(locale)).map { mtch =>
+    termRgx.findFirstMatchIn(term.toLowerCase(locale)).fold(fNone[(Vec, String)]) { mtch =>
 
       // `standardizedTerm` appears to have leading punctuation removed (was that the intent?)
       val standardizedTerm = mtch.group(1).replaceAll("’", "'").replaceAll(s"($spcrRgx)+", "_")
@@ -108,7 +109,7 @@ class Vectorizer @Inject() (httpClient: WSClient,
       def fetch(rec: Boolean): Future[Option[Vec]] = {
         if (rec) synchronized(Thread.sleep(100)) // if recursing, wait for conceptnet-vectors to become responsive
         httpClient.url(s"$vectorsLink$uri").get map handleResponse(_.json.as[Vec]) recoverWith {
-          case _: NumberFormatException => Future.successful(None)
+          case _: NumberFormatException => fNone
           //case _: Throwable => fetch(true)
         }
       }
@@ -128,7 +129,7 @@ class Vectorizer @Inject() (httpClient: WSClient,
             _ <- vectorsDao.addUri(uri, optVec)
           } yield optVec.map(_ -> standardizedTerm)
       }
-    }.getOrElse(Future.successful(None))
+    }
   }
 
   /** Preserves original `dbCachedLookup` behavior: what does the future hold? */

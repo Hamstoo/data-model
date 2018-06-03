@@ -29,8 +29,7 @@ class SearchStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   private val indxs: Map[String, Index] =
     Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
-    Index(USR -> Ascending :: MARKID -> Ascending :: QUERY -> Ascending :: Nil, unique = true) %
-      s"bin-$USR-1-$MARKID-1-$QUERY-1-uniq" ::
+    Index(USR -> Ascending :: MARKID -> Ascending :: QUERY -> Ascending :: Nil) % s"bin-$USR-1-$MARKID-1-$QUERY-1" ::
     // text index (there can be only one per collection)
     Index(USR -> Ascending :: QUERY -> Text :: Nil) % s"bin-$USR-1--txt-$QUERY" ::
     Nil toMap;
@@ -43,8 +42,11 @@ class SearchStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
   def addClick(input: SearchStats): Future[Unit] = for {
     c <- dbColl()
     seq <- c.find(d :~ USR -> input.userId :~ MARKID -> input.markId :~ QUERY -> input.query).coll[SearchStats, Seq]()
-    opt = seq.find(_.facets == input.facets) // facets must be identical
-    upd = opt.fold(input)(ss => ss.copy(clicks = ss.clicks ++ input.clicks))
+
+    // facet args must be identical, but note that *implicit*/default facet args may change over time
+    mb = seq.find(x => x.facetArgs == input.facetArgs && x.labels == input.labels)
+
+    upd = mb.fold(input)(ss => ss.copy(clicks = ss.clicks ++ input.clicks))
     wr <- c.update(d :~ ID -> upd.id, upd, upsert = true)
     _ <- wr.failIfError
   } yield ()
