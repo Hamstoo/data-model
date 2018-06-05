@@ -14,7 +14,7 @@ import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
-import com.hamstoo.utils.fNone
+import com.hamstoo.utils._
 import com.mohiva.play.silhouette.api.exceptions.NotAuthorizedException
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -41,7 +41,6 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                         userDao: UserDao,
                         urlDuplicatesDao: UrlDuplicateDao) {
 
-  import com.hamstoo.utils._
   val logger: Logger = Logger(classOf[MarkDao])
 
   val collName: String = "entries"
