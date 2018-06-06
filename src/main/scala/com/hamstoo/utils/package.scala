@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo
 
 import java.util.Locale
@@ -73,11 +76,11 @@ package object utils {
         initDbDriver()
       // the below doesn't work bc/ the second parameter is used as the Akka actor name, which must be unique when testing
       //dbDriver.get.connection(parsedUri, parsedUri.db, strictUri = false).get
-      Logger.info(s"Database name: ${parsedUri.db.get}")
+      Logger.warn(s"Database name: ${parsedUri.db.get}")
       (dbDriver.get.connection(parsedUri), parsedUri.db.get)
     } match {
       case Success(conn) =>
-        Logger.info(s"Established connection to MongoDB via URI: ${maskDbUri(uri)}")
+        Logger.warn(s"Established connection to MongoDB via URI: ${maskDbUri(uri)}")
         synchronized(wait(2000))
         conn
       case Failure(e) =>
@@ -93,11 +96,11 @@ package object utils {
   }
 
   /** Mask the username/password out of the database URI so that it can be logged. */
-  def maskDbUri(uri: String): Option[String] = {
+  def maskDbUri(uri: String): String = {
     val rgx = """^(.+//)\S+:\S+(@.+)$""".r // won't match docker-compose URI, but will match production/staging
     rgx.findFirstMatchIn(uri).map { m =>
       s"${m.group(1)}username:password${m.group(2)}"
-    }
+    }.getOrElse(uri)
   }
 
   /** Used by backend: AuthController and MarksController. */
@@ -238,8 +241,12 @@ package object utils {
     def dt: DateTime = new DateTime(ms, DateTimeZone.UTC)
     /** Giga-seconds make for an easily readable display. */
     def Gs: Double = ms.toDouble / 1000000000
+    /** Mega-seconds. */
+    def Ms: Double = ms.toDouble / 1000000
     /** Time format. */
     def tfmt: String = s"${ms.dt} [${ms.Gs}]".replaceAll("T00:00:00.000", "").replaceAll(":00:00.000", "")
+    /** Seconds format. */
+    def sfmt: String = s"${ms.dt.getSecondOfDay} [${ms.Ms}]"
     /** Converts from time in milliseconds to a JsValueWrapper. */
     def toJson: Json.JsValueWrapper =
       s"${dt.year.getAsString}-${dt.monthOfYear.getAsString}-${dt.dayOfMonth.getAsString}"
