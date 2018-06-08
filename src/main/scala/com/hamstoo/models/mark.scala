@@ -152,17 +152,20 @@ object MarkData {
   val UPLOAD_TAG = "Uploaded"
   val SHARED_WITH_ME_TAG = "SharedWithMe"
 
-  /***
+  /**
     * Check string for validity and sanitize string from danger XSS content. By default it works with HTML based content.
     * First of all in parse it, by attributes and then filter it by list of supported tags.
     * All example can be find in tests.
-    * @param url - string that must be sanitized
-    * @return    - sanitized string
+    * @param url  string that must be sanitized
+    * @return     sanitized string
     */
   def sanitize(url: String): Option[String] =
     Try(new URL(url).toString)
       .map(Jsoup.clean(_: String, MarkData.htmlTagsWhitelist))
       .toOption
+      // added 2018-6-8 after retrieveByUrl was found broken due to '&'s being converted to '&amp;'s in URLs
+      // in MarksController.add
+      .map(StringEscapeUtils.unescapeHtml4)
 }
 
 /**
