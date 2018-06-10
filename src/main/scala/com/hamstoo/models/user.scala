@@ -97,11 +97,11 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
   /** Returns a list of all of the User's *confirmed* email addresses on file. */
   def emails: Set[String] = profiles.filter(_.confirmed).flatMap(_.email).toSet
 
-  /** Return first confirmed email address. */
-  //def email: Option[String] = profiles.filter(_.confirmed).flatMap(_.email).headOption
-
   /** Returns a @username or UUID if username is absent--useful for logging. */
   def usernameId: String = userData.username.fold(id.toString)("@" + _)
+
+  /** retrieving user identifier for retrieving in suggestions */
+  def identifier: String = userData.username.orElse(emails.headOption).getOrElse(id.toString)
 }
 
 object User extends BSONHandlers {
