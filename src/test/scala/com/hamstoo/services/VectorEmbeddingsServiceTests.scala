@@ -45,7 +45,7 @@ class VectorEmbeddingsServiceTests
   lazy val vectorizer: Vectorizer = injector.instance[Vectorizer]
   lazy val vecSvc: VectorEmbeddingsService = injector.instance[VectorEmbeddingsService]
 
-  // skip all of these tests because CircleCI doesn't have access to the conceptnet-vectors container
+  // skip all of these tests because TravisCI doesn't have access to the conceptnet-vectors container
 
   "VectorEmbeddingsService" should "IDF vectorize" ignore {
     val header0 = "Futures and Promises - Scala Documentation Futures and Promises"
@@ -165,5 +165,9 @@ class VectorEmbeddingsServiceTests
       vecs.head.cosine(wordVec) shouldEqual s0 +- 1e-3
       vecs(1).cosine(wordVec) shouldEqual s1 +- 1e-3
     }
+  }
+
+  "Vectorizer" should "health check" ignore {
+    vectorizer.health.futureValue shouldEqual true
   }
 }
