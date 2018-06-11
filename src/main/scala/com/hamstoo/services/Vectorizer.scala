@@ -108,7 +108,7 @@ class Vectorizer @Inject() (httpClient: WSClient,
       /** If a word vec isn't in the DB, then attempt to fetch it from the conceptnet-vectors service. */
       def fetch(rec: Boolean): Future[Option[Vec]] = {
         if (rec) synchronized(Thread.sleep(100)) // if recursing, wait for conceptnet-vectors to become responsive
-        httpClient.url(s"$vectorsLink$uri").get map handleResponse(_.json.as[Vec]) recoverWith {
+        httpClient.url(s"$vectorsLink$uri").get.map(handleResponse(_.json.as[Vec])).recoverWith {
           case _: NumberFormatException => fNone
           //case _: Throwable => fetch(true)
         }
@@ -149,6 +149,13 @@ class Vectorizer @Inject() (httpClient: WSClient,
         throw new Exception(msg)
     }
   }
+
+  /** Only used for testing the `health` endpoint. */
+  def health: Future[Boolean] =
+    httpClient.url(s"$vectorsLink/health").get
+      .map(handleResponse(_ => ()))
+      .map(_.nonEmpty)
+      .recover { case _ => false }
 
   /**
     * Prepare `link` and `data` to post to one of the standardize endpoints.
