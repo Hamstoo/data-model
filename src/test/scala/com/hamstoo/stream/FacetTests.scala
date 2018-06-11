@@ -88,7 +88,7 @@ class FacetTests
 
     // config values that stream.ConfigModule will bind for DI
     val config = DataInfo.config
-    val clockBegin: ClockBegin.typ = new DateTime(2018, 1,  1, 0, 0).getMillis
+    val clockBegin: ClockBegin.typ = new DateTime(2017, 12, 31, 0, 0).getMillis
     val clockEnd  : ClockEnd  .typ = new DateTime(2018, 1, 15, 0, 0).getMillis
     val clockInterval: ClockInterval.typ = (1 day).toMillis
     val userId: CallingUserId.typ = DataInfo.constructUserId()
@@ -99,7 +99,7 @@ class FacetTests
     val baseVs = Map(VecEnum.PC1.toString -> baseVec)
     val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
     //val b :: e :: Nil = Seq(ClockBegin.name, ClockEnd.name).map(config.getLong)
-    val (b, e) = (clockBegin, clockEnd)
+    val (b, e) = (clockBegin + clockInterval, clockEnd)
     (b to e by (e - b) / (nMarks - 1)).zipWithIndex.foreach { case (ts, i) =>
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
       val r = baseRepr.copy(id = s"r_${ts.Gs}_$idSuffix", vectors = vs)
