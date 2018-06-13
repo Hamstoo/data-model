@@ -77,10 +77,10 @@ object VectorEmbeddingsService {
   /** See kwsSimilarities.xlsx for an approximate fit of this model (R^2 ~= 12.2%). */
   def aggregateSimilarityScore(sims: Map[VecEnum.Value, Double]): Double = {
     0.47 * sims.getOrElse(VecEnum.IDF, 0.0) + // t-stat ~= 3.7
-      1.22 * sims.getOrElse(VecEnum.PC1, 0.0) + //           7.1
-      0.84 * sims.getOrElse(VecEnum.PC2, 0.0) + //           5.0
-      0.66 * sims.getOrElse(VecEnum.PC3, 0.0) + //           3.4
-      -0.28 * sims.getOrElse(VecEnum.KM1, 0.0)   //          -2.6
+    1.22 * sims.getOrElse(VecEnum.PC1, 0.0) + //           7.1
+    0.84 * sims.getOrElse(VecEnum.PC2, 0.0) + //           5.0
+    0.66 * sims.getOrElse(VecEnum.PC3, 0.0) + //           3.4
+   -0.28 * sims.getOrElse(VecEnum.KM1, 0.0)   //          -2.6
   }
 }
 
@@ -166,7 +166,7 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
 
       //val crpVecs: (Option[Vec], Option[Vec]) = text2CrpVecs(topWords)
       val idfVecs: Option[(Vec, Vec)] = text2IdfVecs(topWords)
-      val pcVecs: Seq[Vec] = text2PcaVecs(topWords, 4)
+      val pcVecs: Seq[Vec] = text2PcaVecs(topWords, 4, idfVecs.map(_._1))
 
       val (kmVecs0, loss0) = text2KMeansVecs(topWords, 5) // compute 5 clusters but only use best 3 of them
       val (kmVecs1, loss1) = text2KMeansVecs(topWords, 5) // and compute the 5 clusters 3 times also ...
@@ -396,8 +396,8 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
         // TODO: it would be nice if we could standardize the word first before calling `dbCachedLookup`
         // TODO: this would cut down on re-querying vectors for words that have already been found
         vectorizer.dbCachedLookupFuture(Locale.ENGLISH, grouped.head._1)
-          .map { optWordVec =>
-            optWordVec.collect { case (vec, standardizedWord) =>
+          .map { mbWordVec =>
+            mbWordVec.collect { case (vec, standardizedWord) =>
               val updt = wordCounts.getOrElse(standardizedWord, (0, vec))
               wCount += 1 // not threadsafe, but just for testing, so who cares
               wordCounts.updated(standardizedWord, (updt._1 + grouped.head._2, vec))
@@ -441,7 +441,7 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
     // intentionally use very few words so that there aren't too many represented by each PC
     val maxWords = 75
     val nDesired = math.min(maxWords, fracDesired * nUnique).toInt
-    logger.info(f"Document word mass stats: # unique = $nUnique, # top = $nDesired (${fracDesired*100}%.1f%%)")
+    logger.info(f"Document word mass stats: nUnique = $nUnique, nTop = $nDesired (${fracDesired*100}%.1f%%)")
     nDesired
   }
 
@@ -506,7 +506,7 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
       val withIdfs = counts.toSeq.map { case (w, (n, v)) =>
         val tf = bm25Tf(n, docLength) // "true" docLength
         val mass = tf * idfModel.transform(w)
-        logger.debug(f"text2TopWords.withIdfs: WordMass($w, $n, $tf%.2f * ${mass / tf}%.2f = $mass%.2f)")
+        logger.trace(f"text2TopWords.withIdfs: WordMass($w, $n, $tf%.2f * ${mass / tf}%.2f = $mass%.2f)")
         WordMass(w, n, tf, mass, v * mass)
       }
 
@@ -527,10 +527,10 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
 
   /**
     * Principal Component Analysis of weighted word vectors.  This method only uses the words included in the
-    * top 50% (or more if less than 200 total words) of IDF * word_count "mass" (which typically accounts for
+    * top 50% (or more if fewer than 200 total words) of IDF * word_count "mass" (which typically accounts for
     * between 10% to 25% of the actual words).
     */
-  def text2PcaVecs(topWords: Seq[WordMass], nComponents: Int): Seq[Vec] = {
+  def text2PcaVecs(topWords: Seq[WordMass], nComponents: Int, idfVec: Option[Vec]): Seq[Vec] = {
 
     /**
       * Compute principal directions/axes as we don't really care about the actual principal components,
@@ -570,12 +570,15 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
         // sign(skew(corrs)).
         // UPDATE - Once the EXPONENT gets set down to around 1.0, skew isn't biased enough anymore, so just use
         // sign(max-min) as originally thought.  This will effectively align the vector with the highest n*idf word.
+        // UPDATE2 - Rather than using skew or highest (which can be unstable), just align PC vectors with IDF vector.
         val axes = aaxes.map { ax =>
-          val corrs = topWords.map(_._2 cosine ax).toSeq // using `cosine` here b/c it's faster than `corr`
-          /*val skew = corrs.skew*/
-          val sign = /*if (math.abs(skew) < 1e-5)*/ corrs.max + corrs.min /*else corrs.skew*/
+          val sign = idfVec.map(_ cosine ax).getOrElse {
+            val corrs = topWords.map(_._2 cosine ax).toSeq // using `cosine` here b/c it's faster than `corr`
+            /*val skew = corrs.skew*/
+            /*if (math.abs(skew) < 1e-5)*/ corrs.max + corrs.min /*else corrs.skew*/
+          }
           // e.g. happens if n==2
-          (ax * sign).l2Normalize
+          (ax * (if (sign == 0.0) 1.0 else sign)).l2Normalize
         }
 
         // debugging

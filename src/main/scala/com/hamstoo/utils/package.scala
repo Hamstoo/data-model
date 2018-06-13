@@ -248,8 +248,10 @@ package object utils {
     /** Seconds format. */
     def sfmt: String = s"${ms.dt.getSecondOfDay} [${ms.Ms}]"
     /** Converts from time in milliseconds to a JsValueWrapper. */
-    def toJson: Json.JsValueWrapper =
-      s"${dt.year.getAsString}-${dt.monthOfYear.getAsString}-${dt.dayOfMonth.getAsString}"
+    def toJson: Json.JsValueWrapper = {
+      val date = this.dt
+      s"${date.year.getAsString}-${date.monthOfYear.getAsString}-${date.dayOfMonth.getAsString}"
+    }
   }
 
   implicit class ExtendedDurationMils(private val dur: DurationMils) extends AnyVal {
@@ -266,7 +268,7 @@ package object utils {
   }
 
   /** A couple of handy ReactiveMongo shortcuts that were formerly being defined in every DAO class. */
-  val d = BSONDocument.empty
+  val d: BSONDocument = BSONDocument.empty
   val curnt: Producer[BSONElement] = com.hamstoo.models.Mark.TIMETHRU -> INF_TIME
 
   /** A couple regexes used in `parse` but that which may also be useful elsewhere. */

@@ -43,8 +43,10 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
   // number of weeks over which to compute user statistics
   val nWeeks = 4
 
-  /** Retrieves user's usage stats. */
-  // TODO: what is the meaning of offsetMinutes????
+  /**
+    * Retrieves user's usage stats.
+    * @param offsetMinutes  offset minutes from UTC, obtained from user's HTTP request
+    */
   def stats(userId: UUID, offsetMinutes: Int): Future[UserStats] = for {
     cI <- importsColl()
     cE <- marksColl()
@@ -66,7 +68,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     // group timestamps into collections by day string and take the number of records for each day
     val format = "MMMM d"
     val values: Map[String, Int] = seq groupBy { d =>
-      (new DateTime(d.getAs[Long](Mark.TIMEFROM).get) minusMinutes offsetMinutes).toString(format)
+      new DateTime(d.getAs[Long](Mark.TIMEFROM).get).minusMinutes(offsetMinutes).toString(format)
     } mapValues (_.size) withDefaultValue 0
 
     seq.foreach(x => logger.debug(BSONDocument.pretty(x)))
@@ -78,6 +80,6 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     }
 
     val nImported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
-    UserStats(nMarks, nImported, days, (0 /: days) (_ + _.nMarks), days.reverse maxBy (_.nMarks))
+    UserStats(nMarks, nImported, days, (0 /: days)(_ + _.nMarks), days.reverse.maxBy(_.nMarks))
   }
 }
