@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo.services
 
 import java.util.Locale
@@ -172,7 +175,7 @@ class VectorEmbeddingsService @Inject() (vectorizer: Vectorizer, idfModel: IDFMo
       val (kmVecs1, loss1) = text2KMeansVecs(topWords, 5) // and compute the 5 clusters 3 times also ...
       val (kmVecs2, loss2) = text2KMeansVecs(topWords, 5) // ... to choose the one with the lowest loss
       val kmVecs = if (loss0 < loss1 && loss0 < loss2) kmVecs0
-      else if (loss1 < loss0 && loss1 < loss2) kmVecs1 else kmVecs2
+              else if (loss1 < loss0 && loss1 < loss2) kmVecs1 else kmVecs2
 
       // TODO: should pcVecs be calculated from vectors that are residualized wrt the previously calculated vectors?
 

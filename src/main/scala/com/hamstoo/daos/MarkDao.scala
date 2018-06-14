@@ -241,7 +241,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ TAGSx -> (d :~ "$all" -> labels) :~ curnt
-      seq <- (c find sel sort d :~ TIMEFROM -> -1).coll[Mark, Seq]()
+      seq <- c.find(sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} tagged marks were successfully retrieved")
       seq

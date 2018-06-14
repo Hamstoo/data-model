@@ -6,16 +6,18 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.google.inject.Inject
-import com.hamstoo.models.{Mark, MarkData, UserStats, UserStatsDay}
+import com.hamstoo.models._
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
+import reactivemongo.api.indexes.Index
+import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson._
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
-
+import scala.concurrent.{Await, Future}
+import scala.concurrent.duration._
 
 /**
   * Data access object for usage stats.
@@ -26,6 +28,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
   val logger: Logger = Logger(classOf[UserStatDao])
 
   // database collections
+  private def userstatsColl(): Future[BSONCollection] = db().map(_.collection("userstats2"))
   private def importsColl(): Future[BSONCollection] = db().map(_.collection("imports"))
   private def marksColl(): Future[BSONCollection] = db().map(_.collection("entries"))
 
@@ -41,13 +44,13 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
   } yield ()
 
   // number of weeks over which to compute user statistics
-  val nWeeks = 4
+  val N_WEEKS = 4
 
   /**
-    * Retrieves user's usage stats.
+    * Constructs user's profile dots a.k.a. usage stats.
     * @param offsetMinutes  offset minutes from UTC, obtained from user's HTTP request
     */
-  def stats(userId: UUID, offsetMinutes: Int): Future[UserStats] = for {
+  def profileDots(userId: UUID, offsetMinutes: Int): Future[ProfileDots] = for {
     cI <- importsColl()
     cE <- marksColl()
     sel0 = d :~ Mark.USR -> userId.toString :~ Mark.TIMETHRU -> INF_TIME
@@ -55,13 +58,13 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     imports <- cI.find(d :~ U_ID -> userId.toString).one[BSONDocument]
 
     // query all records in past four weeks, correcting for user's current timezone
-    sel1 = sel0 :~ Mark.TIMEFROM -> (d :~ "$gt" -> DateTime.now.minusWeeks(nWeeks).getMillis) :~
+    sel1 = sel0 :~ Mark.TIMEFROM -> (d :~ "$gt" -> DateTime.now.minusWeeks(N_WEEKS).getMillis) :~
                    Mark.TAGSx -> (d :~ "$not" -> (d :~ "$all" -> Seq(MarkData.IMPORT_TAG)))
     _ = logger.debug(BSONDocument.pretty(sel1))
     seq <- cE.find(sel1).projection(d :~ Mark.TIMEFROM -> 1).coll[BSONDocument, Seq]()
 
   } yield {
-    val extraDays = nWeeks * 7 - 1
+    val extraDays = N_WEEKS * 7 - 1
     val extraOffset = 60 * 24 * extraDays // = 38880
     val firstDay = DateTime.now.minusMinutes(offsetMinutes + extraOffset)
 
@@ -74,12 +77,32 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     seq.foreach(x => logger.debug(BSONDocument.pretty(x)))
 
     // get last 28 dates in user's timezone and pair them with numbers of marks
-    val days: Seq[UserStatsDay] = for (i <- 0 to extraDays) yield {
+    val days: Seq[ProfileDot] = for (i <- 0 to extraDays) yield {
       val s = firstDay.plusDays(i).toString(format)
-      UserStatsDay(s, values(s))
+      ProfileDot(s, values(s))
     }
 
     val nImported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
-    UserStats(nMarks, nImported, days, (0 /: days)(_ + _.nMarks), days.reverse.maxBy(_.nMarks))
+    ProfileDots(nMarks, nImported, days, (0 /: days)(_ + _.nMarks), days.reverse.maxBy(_.nMarks))
+  }
+
+  import com.hamstoo.models.UserStats._
+
+  // indexes with names for this mongo collection
+  private val indxs: Map[String, Index] =
+    Index(USR -> Ascending :: TIMESTAMP -> Ascending :: Nil) % s"bin-$USR-1-$TIMESTAMP-1" ::
+    Nil toMap;
+  Await.result(userstatsColl().map(_.indexesManager.ensure(indxs)), 93 seconds)
+
+  /** Retrieves most recent UserStats for given user ID. */
+  def retrieve(userId: UUID): Future[Option[UserStats]] = {
+    logger.debug(s"Retrieving most recent UserStats for user $userId")
+    for {
+      c <- userstatsColl()
+      mb <- c.find(d :~ USR -> userId).sort(d :~ TIMESTAMP -> -1).one[UserStats]
+    } yield {
+      logger.debug(s"${mb.size} UserStats were successfully retrieved")
+      mb
+    }
   }
 }

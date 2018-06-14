@@ -66,7 +66,7 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   def coll(name: String): Future[BSONCollection] = db().map(_ collection name)
 
   // could instead use an injector here, but implementing that would involve work, and this code would look the same
-  lazy val statsDao = new UserStatDao
+  lazy val userStatsDao = new UserStatDao
   lazy implicit val userDao = new UserDao
   lazy implicit val urlDuplicatesDao = new UrlDuplicateDao
   lazy implicit val marksDao = new MarkDao
