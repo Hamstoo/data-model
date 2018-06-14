@@ -39,7 +39,7 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
   */
 @Singleton
 class ReprsStream @Inject()(marksStream: MarksStream,
-                            @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
+                            @Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.typ,
                             logLevel: LogLevelOptional.typ)
                            (implicit clock: Clock,
                             mat: Materializer,

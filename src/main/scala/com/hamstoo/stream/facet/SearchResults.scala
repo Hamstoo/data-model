@@ -41,13 +41,19 @@ case class SearchRelevance(uraw: Double, usem: Double, rraw: Double, rsem: Doubl
 
 /**
   * Define the (default) implementation of this facet.
+  *
+  * Note that the 2 @Named parameters use InjectId.name but do not use InjectId.typ as their types.  This is why
+  * the 2 additional, non-optional StreamModule @Provides methods are needed.  This is perhaps confusing though, so
+  * maybe SearchResults should just take Options as inputs and throw an exception if they are None, which is what
+  * the @Provides methods already do anyway--one fewer degree of indirection.
+  *
   * @param rawQuery     Only used for extracting (and boosting) full phrases in search ordering.
   * @param repredMarks  A stream of a user's marks paired with their representations.
   * @param query2Vecs   Semantic word vectors for each query term.
   */
 @com.google.inject.Singleton
-class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
-                              @Named(Query2VecsOptional.name) query2Vecs: Query2VecsType,
+class SearchResults @Inject()(@Named(QueryOptional.name) rawQuery: String,
+                              @Named(Query2Vecs.name) query2Vecs: Query2VecsType,
                               repredMarks: RepredMarks,
                               logLevel: LogLevelOptional.typ)
                              (implicit mat: Materializer,

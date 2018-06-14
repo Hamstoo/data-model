@@ -75,7 +75,7 @@ class FacetTests
     facetsEmpty // asserts that a timeout does not occur
   }
 
-  val query: Query.typ = "some query"
+  val query: String = "some query"
   lazy val facetsSeq: Seq[OutType] = constructFacets(query, "A")
   lazy val facetsEmpty: Seq[OutType] = constructFacets("", "B")
 
@@ -130,7 +130,7 @@ class FacetTests
         ClockBegin := clockBegin
         ClockEnd := clockEnd
         ClockInterval := clockInterval
-        Query := query
+        QueryOptional := Some(query)
         CallingUserId := userId
         LogLevelOptional := Some(ch.qos.logback.classic.Level.TRACE)
 
@@ -147,7 +147,7 @@ class FacetTests
 
       /** Provides a VectorEmbeddingsService for SearchResults to use via StreamModule.provideQueryVec. */
       @Provides @Singleton
-      def provideVecSvc(@Named(Query.name) query: Query.typ,
+      def provideVecSvc(@Named(QueryOptional.name) query: String,
                         idfModel: IDFModel): VectorEmbeddingsService = new VectorEmbeddingsService(null, idfModel) {
 
         override def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] = {

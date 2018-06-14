@@ -112,7 +112,6 @@ package object stream {
 
   // `final val`s are required so that their values are constants that can be used at compile time in @Named annotations
   object CallingUserId extends InjectId[UUID] { final val name = "calling.user.id" }
-  object Query extends InjectId[String] { final val name = "query" }
   object ClockBegin extends InjectId[TimeStamp] { final val name = "clock.begin" }
   object ClockInterval extends InjectId[DurationMils] { final val name = "clock.interval" }
 
@@ -124,9 +123,12 @@ package object stream {
   // .Named(value=clock.end) was bound."
   object ClockEnd extends InjectId[/*Option[java.lang.Long]*/TimeStamp] { final val name = "clock.end" }
 
-  // optionals
+  // optional bindings (default values specified in StreamModule.configure)
   object LogLevelOptional extends NamelessInjectId[Option[ch.qos.logback.classic.Level]]
-  object Query2VecsOptional extends InjectId[Option[Query2VecsType]] { final val name = "query2Vecs" }
+  object QueryOptional extends InjectId[Option[String]] { final val name = "query" }
+
+  // formerly an optional binding, still an Option, but the binding optionality is now implemented via QueryOptional
+  object Query2Vecs extends InjectId[Option[Query2VecsType]] { final val name = "query2Vecs" }
 
   /** One might think that getting the name of a stream would be easier than this. */
   def streamName[S](stream: S): String = {

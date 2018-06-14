@@ -27,21 +27,24 @@ class StreamModule extends BaseModule {
     super.configure()
     logger.debug(s"Configuring module: ${classOf[StreamModule].getName}")
 
-    // see, using this method of declaring optional defaults requires StreamModule to know about them
+    // unfortunately this method of declaring optional defaults requires StreamModule to know about them
     LogLevelOptional ?= None
-    Query2VecsOptional ?= None
+    QueryOptional ?= None
   }
 
   /** See Query2VecsOptional.  There are 2 providers of objects named "query2Vecs" but they return different types. */
-  @Provides @Singleton @Named(Query2VecsOptional.name)
-  def provideQuery2VecsOptional(@Named(Query.name) query: Query.typ, vecSvc: VectorEmbeddingsService)
-                               (implicit ec: ExecutionContext): Query2VecsOptional.typ =
-    Some(vecSvc.query2Vecs(query))
+  @Provides @Singleton @Named(Query2Vecs.name)
+  def provideQuery2VecsOp(@Named(QueryOptional.name) mbQuery: QueryOptional.typ, vecSvc: VectorEmbeddingsService)
+                        (implicit ec: ExecutionContext): Query2Vecs.typ =
+    mbQuery.map(vecSvc.query2Vecs)
 
   /** One of the providers is needed for when "query2Vecs" is optional and the other, this one, for when it isn't. */
-  @Provides @Singleton @Named(Query2VecsOptional.name)
-  def provideQuery2Vecs(@Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ): Query2VecsType =
-    mbQuery2Vecs.get
+  @Provides @Singleton @Named(Query2Vecs.name)
+  def provideQuery2Vecs(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.typ): Query2VecsType = mbQuery2Vecs.get
+
+  /** Same as `provideQuery2Vecs` above.  Sometimes we need the query string to be non-optional.  See SearchResults. */
+  @Provides @Singleton @Named(QueryOptional.name)
+  def provideQuery2Vecs(@Named(QueryOptional.name) mbQuery: QueryOptional.typ): String = mbQuery.get
 
   /**
     * StreamModules are typically passed to `parentInjector.createChildInjector(new StreamModule)`.  In such cases

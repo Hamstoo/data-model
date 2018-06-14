@@ -24,7 +24,7 @@ import scala.concurrent.{ExecutionContext, Future}
   */
 @com.google.inject.Singleton
 class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUserId.typ,
-                            @Named(Query2VecsOptional.name) mbQuery2Vecs: Query2VecsOptional.typ,
+                            @Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.typ,
                             mbSearchUserId: MarksStream.SearchUserIdOptional,
                             labels: MarksStream.SearchLabelsOptional)
                            (implicit clock: Clock,
