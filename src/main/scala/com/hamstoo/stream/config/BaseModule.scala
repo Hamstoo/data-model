@@ -4,7 +4,7 @@
 package com.hamstoo.stream.config
 
 import com.google.inject.multibindings.OptionalBinder
-import com.google.inject.{AbstractModule, Key}
+import com.google.inject._
 import com.hamstoo.stream.NamelessInjectId
 import net.codingwell.scalaguice.ScalaModule
 import play.api.Logger
@@ -15,7 +15,7 @@ import play.api.Logger
   */
 class BaseModule extends AbstractModule with ScalaModule {
 
-  import BaseModule._
+  val logger = Logger(getClass)
 
   // having an `implicit this` enables the `:=` methods of InjectId and this class, StreamModule
   implicit val implicitThis: BaseModule = this
@@ -26,7 +26,7 @@ class BaseModule extends AbstractModule with ScalaModule {
     */
   implicit class InjectVal[T :Manifest](private val _typ: Class[T]) /*extends AnyVal*/ {
     def :=(instance: T): Unit = new NamelessInjectId[T] := instance
-    def ?=(default: T): Unit = new NamelessInjectId[T] ?= default
+    //def ?=(default: T): Unit = new NamelessInjectId[T] ?= default
     def :=[TImpl <:T :Manifest](clazz: Class[TImpl]): Unit = bind[T].to[TImpl]
   }
 
@@ -43,12 +43,8 @@ class BaseModule extends AbstractModule with ScalaModule {
   }
 
   /** Bind an optional injectable argument with a default value. */
-  def assignOptional[T :Manifest](key: Key[T], default: T): Unit = {
-    logger.debug(s"Binding (optional) $key to default: $default")
-    OptionalBinder.newOptionalBinder(binder(), key).setDefault().toInstance(default)
-  }
-}
-
-object BaseModule {
-  val logger = Logger(classOf[BaseModule])
+//  def assignOptional[T :Manifest](key: Key[T], default: T): Unit = {
+//    logger.debug(s"Binding (optional) $key to default: $default")
+//    OptionalBinder.newOptionalBinder(binder(), key).setDefault().toInstance(default)
+//  }
 }

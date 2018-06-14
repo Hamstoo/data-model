@@ -129,9 +129,9 @@ class FacetTests
         Clock.BeginOptional() := clockBegin
         Clock.EndOptional() := clockEnd
         Clock.IntervalOptional() := clockInterval
-        QueryOptional := Some(query)
+        QueryOptional() := query
         CallingUserId := userId
-        LogLevelOptional := Some(ch.qos.logback.classic.Level.TRACE)
+        LogLevelOptional() := Some(ch.qos.logback.classic.Level.TRACE)
 
         // fix this value (don't use default DateTime.now) so that computed values don't change every day
         Recency.CurrentTimeOptional() := new DateTime(2018, 4, 19, 0, 0).getMillis
@@ -146,11 +146,10 @@ class FacetTests
 
       /** Provides a VectorEmbeddingsService for SearchResults to use via StreamModule.provideQueryVec. */
       @Provides @Singleton
-      def provideVecSvc(@Named(QueryOptional.name) query: String,
-                        idfModel: IDFModel): VectorEmbeddingsService = new VectorEmbeddingsService(null, idfModel) {
-
+      def provideVecSvc(query: QueryOptional, idfModel: IDFModel): VectorEmbeddingsService
+                                                             = new VectorEmbeddingsService(null, idfModel) {
         override def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] = {
-          Future.successful(query.split(" ").map(_ -> (1, baseVec)).toMap)
+          Future.successful(query.value.split(" ").map(_ -> (1, baseVec)).toMap)
         }
       }
     })

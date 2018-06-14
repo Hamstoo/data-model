@@ -5,12 +5,13 @@ package com.hamstoo.services
 
 import java.util.Locale
 
-import com.google.inject.{Guice, Injector}
+import com.google.inject.{Guice, Injector, Provides, Singleton}
 import com.hamstoo.daos.WordVectorDao
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingsService.WordMass
 import com.hamstoo.stream.config.ConfigModule
+import com.hamstoo.stream.config.StreamModule.WrappedInjector
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
 import com.hamstoo.utils.DataInfo
@@ -38,6 +39,10 @@ class VectorEmbeddingsServiceTests
       bind[WSClient].toInstance(AhcWSClient())
       bind[WordVectorDao].toInstance(vectorsDao)
     }
+
+    /** See IDFModelTests ScalaDoc for the same method. */
+    @Provides @Singleton
+    def provideWrappedInjector(injector: Injector): WrappedInjector = Some(injector)
   })
 
   // instantiate components from the Guice injector
@@ -164,6 +169,23 @@ class VectorEmbeddingsServiceTests
       val wordVec = vectorizer.dbCachedLookupFuture(Locale.ENGLISH, w).futureValue.get._1
       vecs.head.cosine(wordVec) shouldEqual s0 +- 1e-3
       vecs(1).cosine(wordVec) shouldEqual s1 +- 1e-3
+    }
+  }
+
+  it should "principal axesize" ignore {
+    val orientationVec = vectorizer.dbCachedLookupFuture(Locale.ENGLISH, "beaver").futureValue.get._1
+    val txt = "otter european_otter otter otters otterlike toyota ford car"
+    val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt).futureValue._1
+    val vecs = vecSvc.text2PcaVecs(topWords, 2, Some(orientationVec))
+
+    Seq(("otter" ,  0.885,  -0.310),
+        ("car"   , -0.436,  -0.591), // note that "car" is filtered out by `text2TopWords`
+        ("ford"  , -0.655,   0.596),
+        ("toyota", -0.667,  -0.690)).foreach { case (w, s0, s1) =>
+
+      val wordVec = vectorizer.dbCachedLookupFuture(Locale.ENGLISH, w).futureValue.get._1
+      vecs.head cosine wordVec shouldEqual s0 +- 1e-3
+      vecs(1) cosine wordVec shouldEqual s1 +- 1e-3
     }
   }
 

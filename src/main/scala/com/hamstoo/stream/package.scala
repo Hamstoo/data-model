@@ -7,11 +7,12 @@ import java.net.URLDecoder
 import java.util.UUID
 
 import akka.stream.Attributes
-import com.google.inject.{ConfigurationException, Inject, Key}
+import com.google.inject.{ConfigurationException, Inject, Injector, Key}
 import com.google.inject.name.Names
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.stream.config.{BaseModule, StreamModule}
 import net.codingwell.scalaguice.typeLiteral
+import net.codingwell.scalaguice.InjectorExtensions._
 import play.api.Logger
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -19,6 +20,9 @@ import scala.util.Try
 
 
 package object stream {
+
+  /** Similar to `implicitly` where the "nether world" in this case is an implicit Injector's namespace. */
+  def injectorly[A :Manifest](implicit injector: Injector): A = injector.instance[A]
 
   /**
     * Guice uses a (type, optional name) pair to uniquely identify bindings.  Instances of this class are that pair
@@ -37,7 +41,7 @@ package object stream {
 
     /** An overloaded assignment operator of sorts--or as close as you can get in Scala.  Who remembers Pascal? */
     def :=(instance: typ)(implicit module: BaseModule): Unit = module.assign(key, instance)
-    def ?=(default: typ)(implicit module: BaseModule): Unit = module.assignOptional(key, default)
+    //def ?=(default: typ)(implicit module: BaseModule): Unit = module.assignOptional(key, default)
 
     /**
       * Guice is a Java package so it uses its own (Java) version of a Manifest/ClassTag/TypeTag called a TypeLiteral,
@@ -113,8 +117,8 @@ package object stream {
   object CallingUserId extends InjectId[UUID] { final val name = "calling.user.id" }
 
   // optional bindings (default values specified in StreamModule.configure)
-  object LogLevelOptional extends NamelessInjectId[Option[ch.qos.logback.classic.Level]]
-  object QueryOptional extends InjectId[Option[String]] { final val name = "query" }
+  case class LogLevelOptional() extends OptionalInjectId[Option[ch.qos.logback.classic.Level]]("", None)
+  case class QueryOptional() extends OptionalInjectId[String]("query", "")
 
   // formerly an optional binding, still an Option, but the binding optionality is now implemented via QueryOptional
   object Query2Vecs extends InjectId[Option[Query2VecsType]] { final val name = "query2Vecs" }

@@ -40,7 +40,7 @@ case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
 @Singleton
 class ReprsStream @Inject()(marksStream: MarksStream,
                             @Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.typ,
-                            logLevel: LogLevelOptional.typ)
+                            logLevel: LogLevelOptional)
                            (implicit clock: Clock,
                             mat: Materializer,
                             reprDao: RepresentationDao)
@@ -53,7 +53,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
   // https://stackoverflow.com/questions/3837801/how-to-change-root-logging-level-programmatically
   val loggerI: Logger = {
     val logback = LoggerFactory.getLogger("I" + classOf[ReprsStream].getName).asInstanceOf[LogbackLogger]
-    logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
+    logLevel.value.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
     new Logger(logback)
   }
 

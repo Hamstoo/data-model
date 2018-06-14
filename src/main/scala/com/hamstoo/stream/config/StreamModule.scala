@@ -8,43 +8,26 @@ import com.google.inject.name.Named
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.stream._
-import play.api.Logger
 
 import scala.concurrent.ExecutionContext
 
 /**
   * "A module is a collection of bindings"
   * "The modules are the building blocks of an injector, which is Guice's object-graph builder."
-  *
-  * This StreamModule trait requires an implementation of `configure`.
   */
-class StreamModule extends BaseModule {
+case class StreamModule() extends BaseModule {
 
   import StreamModule._
 
-  /** Configure optional default values. */
-  override def configure(): Unit = {
-    super.configure()
-    logger.debug(s"Configuring module: ${classOf[StreamModule].getName}")
-
-    // unfortunately this method of declaring optional defaults requires StreamModule to know about them
-    LogLevelOptional ?= None
-    QueryOptional ?= None
-  }
-
   /** See Query2VecsOptional.  There are 2 providers of objects named "query2Vecs" but they return different types. */
   @Provides @Singleton @Named(Query2Vecs.name)
-  def provideQuery2VecsOpt(@Named(QueryOptional.name) mbQuery: QueryOptional.typ, vecSvc: VectorEmbeddingsService)
+  def provideQuery2VecsOpt(query: QueryOptional, vecSvc: VectorEmbeddingsService)
                         (implicit ec: ExecutionContext): Query2Vecs.typ =
-    mbQuery.map(vecSvc.query2Vecs)
+    if (query.value.isEmpty) None else Some(vecSvc.query2Vecs(query.value))
 
-  /** One of the providers is needed for when "query2Vecs" is optional and the other, this one, for when it isn't. */
+  /** provideQuery2VecsOpt is needed for when query2Vecs is optional and this one for when not, as by SearchResults. */
   @Provides @Singleton @Named(Query2Vecs.name)
   def provideQuery2Vecs(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.typ): Query2VecsType = mbQuery2Vecs.get
-
-  /** Same as `provideQuery2Vecs` above.  Sometimes we need the query string to be non-optional.  See SearchResults. */
-  @Provides @Singleton @Named(QueryOptional.name)
-  def provideQuery2Vecs(@Named(QueryOptional.name) mbQuery: QueryOptional.typ): String = mbQuery.get
 
   /**
     * StreamModules are typically passed to `parentInjector.createChildInjector(new StreamModule)`.  In such cases
@@ -62,13 +45,12 @@ class StreamModule extends BaseModule {
     * @param injector  This injector (assuming our parent injector is unable to JIT bind an Option[Injector]).
     */
   @Provides @Singleton
-  def provideStreamInjector(injector: Injector): WrappedInjector = {
+  def provideWrappedInjector(injector: Injector): WrappedInjector = {
     logger.debug(s"Stream injector: ${injector.hashCode}")
     Some(injector)
   }
 }
 
 object StreamModule {
-  val logger = Logger(classOf[StreamModule])
   type WrappedInjector = Option[Injector]
 }

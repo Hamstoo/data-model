@@ -3,7 +3,8 @@
  */
 package com.hamstoo.services
 
-import com.google.inject.{Guice, Injector}
+import com.google.inject.{Guice, Injector, Provides, Singleton}
+import com.hamstoo.stream.config.StreamModule.WrappedInjector
 import com.hamstoo.stream.config.ConfigModule
 import com.hamstoo.test.FlatSpecWithMatchers
 import com.hamstoo.utils.DataInfo
@@ -14,7 +15,15 @@ import com.hamstoo.utils.DataInfo
 class IDFModelTests extends FlatSpecWithMatchers {
 
   // create a Guice object graph configuration/module and instantiate it to an injector
-  lazy val injector: Injector = Guice.createInjector(new ConfigModule(DataInfo.config))
+  lazy val injector: Injector = Guice.createInjector(new ConfigModule(DataInfo.config) {
+
+    /**
+      * A StreamModule isn't required here, which already has this @Provides method, but since we use an
+      * OptionalInjectId now with IDFModel, this provider is required.
+      */
+    @Provides @Singleton
+    def provideWrappedInjector(injector: Injector): WrappedInjector = Some(injector)
+  })
 
   // instantiate components from the Guice injector
   import net.codingwell.scalaguice.InjectorExtensions._

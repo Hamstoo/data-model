@@ -52,10 +52,10 @@ case class SearchRelevance(uraw: Double, usem: Double, rraw: Double, rsem: Doubl
   * @param query2Vecs   Semantic word vectors for each query term.
   */
 @com.google.inject.Singleton
-class SearchResults @Inject()(@Named(QueryOptional.name) rawQuery: String,
+class SearchResults @Inject()(rawQuery: QueryOptional,
                               @Named(Query2Vecs.name) query2Vecs: Query2VecsType,
                               repredMarks: RepredMarks,
-                              logLevel: LogLevelOptional.typ)
+                              logLevel: LogLevelOptional)
                              (implicit mat: Materializer,
                               idfModel: IDFModel)
     extends DataStream[SearchResults.typ] {
@@ -68,7 +68,7 @@ class SearchResults @Inject()(@Named(QueryOptional.name) rawQuery: String,
   // set logging level for this SearchResults *instance* (change prefix w/ "I" to prevent modifying the other logger)
   val loggerI: Logger = {
     val logback = LoggerFactory.getLogger("I" + classOf[SearchResults].getName).asInstanceOf[LogbackLogger]
-    logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
+    logLevel.value.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
     new Logger(logback)
   }
 
@@ -119,7 +119,7 @@ class SearchResults @Inject()(@Named(QueryOptional.name) rawQuery: String,
             val rraw0 = math.max(rscore, 0.0)
             val dbscore = Seq(uscore, mscore, rscore).map(math.max(_, 0.0).coalesce0).sum
 
-            val previewer = Previewer(rawQuery, cleanedQuery, mark.id)
+            val previewer = Previewer(rawQuery.value, cleanedQuery, mark.id)
             val utext = parse(mark.mark.comment.getOrElse(""))
             val rtext = parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
             val urtext = utext + " " * PREVIEW_LENGTH + rtext
