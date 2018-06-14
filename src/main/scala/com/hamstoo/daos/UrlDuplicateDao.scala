@@ -5,7 +5,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Mark.{URLPRFX, USRPRFX, _}
 import com.hamstoo.models.UrlDuplicate
 import com.hamstoo.utils.{ExtendedIM, ExtendedIndex, ExtendedQB, ExtendedString, ExtendedWriteResult, ObjectId, d}
@@ -25,6 +25,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
   * are used when marking a page to determine if a page with the same content has already been marked, in which
   * case the marks will be merged.
   */
+@Singleton
 class UrlDuplicateDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   val logger: Logger = Logger(classOf[UrlDuplicateDao])

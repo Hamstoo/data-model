@@ -3,7 +3,7 @@
  */
 package com.hamstoo.services
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.HighlightDao
 import com.hamstoo.models.{Highlight, PageCoord, User}
 import play.api.Logger
@@ -14,6 +14,7 @@ import scala.concurrent.{ExecutionContext, Future}
   * Intermediate between highlights DAO and controllers. It's function is to check new highlights for
   * intersections with existing highlights on the same page and to join them if such intersections are detected.
   */
+@Singleton
 class HighlightsIntersectionService @Inject()(implicit hlightsDao: HighlightDao, ec: ExecutionContext) {
 
   val logger: Logger = Logger(classOf[HighlightsIntersectionService])

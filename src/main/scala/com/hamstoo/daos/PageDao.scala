@@ -6,7 +6,7 @@ package com.hamstoo.daos
 import java.nio.file.Files
 import java.util.UUID
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models._
 import play.api.Logger
@@ -26,6 +26,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
   * then moved over to the Reprs upon Representation computation, but now we just have them in their own
   * collection with references pointing in every which direction.
   */
+@Singleton
 class PageDao @Inject()(implicit db: () => Future[DefaultDB],
                         marksDao: MarkDao) {
 

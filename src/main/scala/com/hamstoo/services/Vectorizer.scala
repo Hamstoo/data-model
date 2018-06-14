@@ -1,9 +1,12 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo.services
 
 import java.util.Locale
 
 import com.google.inject.name.Named
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.WordVectorDao
 import com.hamstoo.models.Representation.Vec
 import com.hamstoo.utils.fNone
@@ -32,10 +35,10 @@ object Vectorizer {
   * "Guice can create bindings for concrete types by using the type's injectable constructor."
   *   [https://github.com/google/guice/wiki/JustInTimeBindings]
   */
-@com.google.inject.Singleton
-class Vectorizer @Inject() (httpClient: WSClient,
-                            vectorsDao: WordVectorDao,
-                            @Named("vectors.link") vectorsLink: String) {
+@Singleton
+class Vectorizer @Inject()(httpClient: WSClient,
+                           vectorsDao: WordVectorDao,
+                           @Named("vectors.link") vectorsLink: String) {
 
   import Vectorizer._
 

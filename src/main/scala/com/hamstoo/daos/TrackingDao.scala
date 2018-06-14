@@ -3,7 +3,7 @@
  */
 package com.hamstoo.daos
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -16,6 +16,7 @@ import scala.concurrent.Future
 /**
   * Data access object for tracking (Facebook) events.
   */
+@Singleton
 class TrackingDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._

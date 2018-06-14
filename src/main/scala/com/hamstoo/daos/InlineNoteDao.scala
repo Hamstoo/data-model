@@ -5,7 +5,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.{InlineNote, PageCoord}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -19,6 +19,7 @@ import scala.concurrent.duration._
   * Data access object for inline notes (of which there can be many per mark) as opposed to comments (of which there
   * is only one per mark).
   */
+@Singleton
 class InlineNoteDao @Inject()(implicit db: () => Future[DefaultDB],
                               marksDao: MarkDao,
                               userDao: UserDao,

@@ -5,7 +5,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.{Highlight, PageCoord}
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -18,6 +18,7 @@ import scala.concurrent.duration._
 /**
   * Data access object for highlights.
   */
+@Singleton
 class HighlightDao @Inject()(implicit db: () => Future[DefaultDB],
                              marksDao: MarkDao,
                              userDao: UserDao,

@@ -8,7 +8,7 @@ import java.util.UUID
 import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Representation.ReprType
@@ -37,6 +37,7 @@ object MarkDao {
   * Using an implicit ExecutionContext would cause this to use Play's Akka Dispatcher, which slows down both
   * queries to the database and stream graph execution.
   */
+@Singleton
 class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                         userDao: UserDao,
                         urlDuplicatesDao: UrlDuplicateDao) {

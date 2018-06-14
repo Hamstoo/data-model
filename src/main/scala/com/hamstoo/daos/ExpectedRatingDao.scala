@@ -3,7 +3,7 @@
  */
 package com.hamstoo.daos
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Mark.ExpectedRating
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -19,6 +19,7 @@ import scala.concurrent.{Await, Future}
   * Data access object for MongoDB `eratings` collection.
   * @param db  Future[DefaultDB] database connection returning function.
   */
+@Singleton
 class ExpectedRatingDao @Inject()(implicit db: () => Future[DefaultDB])
     extends ReprEngineProductDao[ExpectedRating]("expected rating") {
 

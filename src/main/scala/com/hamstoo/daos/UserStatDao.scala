@@ -5,7 +5,7 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models._
 import org.joda.time.DateTime
 import play.api.Logger
@@ -22,6 +22,7 @@ import scala.concurrent.duration._
 /**
   * Data access object for usage stats.
   */
+@Singleton
 class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._

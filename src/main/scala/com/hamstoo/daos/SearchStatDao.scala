@@ -3,7 +3,7 @@
  */
 package com.hamstoo.daos
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.SearchStats
 import com.hamstoo.models.SearchStats._
 import reactivemongo.api.DefaultDB
@@ -20,6 +20,7 @@ import scala.concurrent.{Await, Future}
   * MongoDB data access object for `searchstats` collection.  Search stats are stats on the number of times
   * a user has visited a mark's URL (via Hamstoo) or its full-page view.
   */
+@Singleton
 class SearchStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._
