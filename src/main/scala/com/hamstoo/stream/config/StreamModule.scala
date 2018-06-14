@@ -34,7 +34,7 @@ class StreamModule extends BaseModule {
 
   /** See Query2VecsOptional.  There are 2 providers of objects named "query2Vecs" but they return different types. */
   @Provides @Singleton @Named(Query2Vecs.name)
-  def provideQuery2VecsOp(@Named(QueryOptional.name) mbQuery: QueryOptional.typ, vecSvc: VectorEmbeddingsService)
+  def provideQuery2VecsOpt(@Named(QueryOptional.name) mbQuery: QueryOptional.typ, vecSvc: VectorEmbeddingsService)
                         (implicit ec: ExecutionContext): Query2Vecs.typ =
     mbQuery.map(vecSvc.query2Vecs)
 

@@ -11,7 +11,6 @@ import com.google.inject.{ConfigurationException, Inject, Key}
 import com.google.inject.name.Names
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.stream.config.{BaseModule, StreamModule}
-import com.hamstoo.utils.{DurationMils, TimeStamp}
 import net.codingwell.scalaguice.typeLiteral
 import play.api.Logger
 
@@ -112,16 +111,6 @@ package object stream {
 
   // `final val`s are required so that their values are constants that can be used at compile time in @Named annotations
   object CallingUserId extends InjectId[UUID] { final val name = "calling.user.id" }
-  object ClockBegin extends InjectId[TimeStamp] { final val name = "clock.begin" }
-  object ClockInterval extends InjectId[DurationMils] { final val name = "clock.interval" }
-
-  // using Option[TimeStamp/Long] here works to construct the binding, but it doesn't work when it comes time for
-  // injection because Scala's Long gets changed into a Java primitive `long` and then into an Option[Object] in
-  // resulting bytecode, so ClockEnd.typ ends up being an Option[Object] that can't be found at injection time
-  // more here: https://github.com/codingwell/scala-guice/issues/56
-  // Error message: "No implementation for scala.Option<java.lang.Object> annotated with @com.google.inject.name
-  // .Named(value=clock.end) was bound."
-  object ClockEnd extends InjectId[/*Option[java.lang.Long]*/TimeStamp] { final val name = "clock.end" }
 
   // optional bindings (default values specified in StreamModule.configure)
   object LogLevelOptional extends NamelessInjectId[Option[ch.qos.logback.classic.Level]]

@@ -7,7 +7,6 @@ import akka.stream._
 import akka.stream.scaladsl.Sink
 import com.google.inject.name.Named
 import com.google.inject.{Guice, Provides, Singleton}
-import com.hamstoo.daos.{MarkDao, RepresentationDao, UserDao}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
@@ -15,7 +14,7 @@ import com.hamstoo.stream.config.{ConfigModule, FacetsModel, StreamModule}
 import com.hamstoo.stream.facet.{AggregateSearchScore, Recency, SearchResults}
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
-import com.hamstoo.utils.{DataInfo, ExtendedTimeStamp}
+import com.hamstoo.utils.{DataInfo, DurationMils, ExtendedTimeStamp, TimeStamp}
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -88,9 +87,9 @@ class FacetTests
 
     // config values that stream.ConfigModule will bind for DI
     val config = DataInfo.config
-    val clockBegin: ClockBegin.typ = new DateTime(2017, 12, 31, 0, 0).getMillis
-    val clockEnd  : ClockEnd  .typ = new DateTime(2018, 1, 15, 0, 0).getMillis
-    val clockInterval: ClockInterval.typ = (1 day).toMillis
+    val clockBegin: TimeStamp = new DateTime(2017, 12, 31, 0, 0).getMillis
+    val clockEnd  : TimeStamp = new DateTime(2018,  1, 15, 0, 0).getMillis
+    val clockInterval: DurationMils = (1 day).toMillis
     val userId: CallingUserId.typ = DataInfo.constructUserId()
 
     // insert 5 marks with reprs into the database
@@ -127,9 +126,9 @@ class FacetTests
         classOf[() => Future[DefaultDB]] := db
 
         //Val("clock.begin"):~ TimeStamp =~ clockBegin // alternative syntax? more like Scala?
-        ClockBegin := clockBegin
-        ClockEnd := clockEnd
-        ClockInterval := clockInterval
+        Clock.BeginOptional() := clockBegin
+        Clock.EndOptional() := clockEnd
+        Clock.IntervalOptional() := clockInterval
         QueryOptional := Some(query)
         CallingUserId := userId
         LogLevelOptional := Some(ch.qos.logback.classic.Level.TRACE)

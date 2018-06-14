@@ -6,21 +6,19 @@ package com.hamstoo.stream
 import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
-import com.google.inject.name.Named
 import com.google.inject.Inject
-import com.hamstoo.utils.{ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
+import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TIME_NOW, TimeStamp}
+import org.joda.time.DateTime
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration._
 import scala.concurrent.{Await, Promise}
 
 /**
   * A mocked clock, implemented as an Akka Source.
   */
 @com.google.inject.Singleton
-case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
-                           @Named(ClockEnd.name) end: ClockEnd.typ,
-                           @Named(ClockInterval.name) private val interval: ClockInterval.typ)
-                          (implicit mat: Materializer)
+case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: DurationMils)
+                (implicit mat: Materializer)
 
     extends ElemStream[Datum[TimeStamp]](bufferSize = 1) {
       // we use 1 here because there appears to be a bug in BroadcastHub where if the buffer consumes the
@@ -28,6 +26,10 @@ case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
       // dependent flows/sinks won't ever have a chance to backpressure (which is a problem for the clock especially!)
       //   [https://stackoverflow.com/questions/49307645/akka-stream-broadcasthub-being-consumed-prematurely]
 
+  /** Dependency injection constructor--there can be only one.  Convert from OptionalInjectIds to their values. */
+  @Inject def this(beginOpt: Clock.BeginOptional, endOpt: Clock.EndOptional, intervalOpt: Clock.IntervalOptional)
+                  (implicit mat: Materializer) =
+    this(beginOpt.value, endOpt.value, intervalOpt.value) // redirect to primary constructor
 
   override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.tfmt}, ${interval.dfmt})"
   logger.info(s"Constructing $this")
@@ -76,4 +78,21 @@ case class Clock @Inject()(@Named(ClockBegin.name) begin: ClockBegin.typ,
       }
     }
   }.named("Clock")
+}
+
+object Clock {
+
+  val DEFAULT_BEGIN: TimeStamp = new DateTime(2017, 1,  1, 0, 0).getMillis
+  val DEFAULT_INTERVAL: DurationMils = (100 days).toMillis
+
+  case class BeginOptional() extends OptionalInjectId[TimeStamp]("clock.begin", DEFAULT_BEGIN)
+  case class IntervalOptional() extends OptionalInjectId[DurationMils]("clock.interval", DEFAULT_INTERVAL)
+
+  // using Option[TimeStamp/Long] here works to construct the binding, but it doesn't work when it comes time for
+  // injection because Scala's Long gets changed into a Java primitive `long` and then into an Option[Object] in
+  // resulting bytecode, so ClockEnd.typ ends up being an Option[Object] that can't be found at injection time
+  // more here: https://github.com/codingwell/scala-guice/issues/56
+  // Error message: "No implementation for scala.Option<java.lang.Object> annotated with @com.google.inject.name
+  // .Named(value=clock.end) was bound."
+  case class EndOptional() extends OptionalInjectId[/*Option[java.lang.Long]*/TimeStamp]("clock.end", TIME_NOW)
 }

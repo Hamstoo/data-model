@@ -8,8 +8,7 @@ import com.google.inject.{Inject, Singleton}
 import com.hamstoo.stream.{DataStream, OptionalInjectId}
 import com.hamstoo.stream.Data.ExtendedData
 import com.hamstoo.stream.dataset.MarksStream
-import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
-import org.joda.time.DateTime
+import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TIME_NOW, TimeStamp}
 
 import scala.concurrent.duration._
 
@@ -71,5 +70,5 @@ object Recency {
   case class Arg() extends OptionalInjectId[Double]("recency", DEFAULT)
 
   /** Optional current time parameter for compuation of Recency model. */
-  case class CurrentTimeOptional() extends OptionalInjectId[TimeStamp]("current.time", DateTime.now.getMillis)
+  case class CurrentTimeOptional() extends OptionalInjectId[TimeStamp]("current.time", TIME_NOW)
 }
