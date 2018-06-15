@@ -5,6 +5,8 @@ package com.hamstoo
 
 import java.util.Locale
 
+import breeze.linalg.{DenseMatrix, DenseVector, svd}
+import com.hamstoo.models.Representation.Vec
 import org.joda.time.{DateTime, DateTimeZone}
 import play.api.Logger
 import play.api.libs.json.Json
@@ -312,4 +314,79 @@ package object utils {
   /** Returns a string of memory statistics. */
   def memoryString: String =
     f"total: ${Runtime.getRuntime.totalMemory/1e6}%.0f, free: ${Runtime.getRuntime.freeMemory/1e6}%.0f"
+
+  /**
+    * Compute principal directions/axes as we don't really care about the actual principal components,
+    * which are just a reduced dimensional approximation of the data.
+    *
+    * There are a couple issues with SVD-based clustering:
+    * 1. Principal axes are adirectional, so we either must attempt to assign directions to them or use
+    *    max(cos, -cos) when computing cosine similarities to them.  This is happening below.
+    * 2. They're based on axes of maximum variance, so they may require words with vectors in opposite directions
+    *    from each other to really be chosen as a top axis.  We're really only interested in positive similarity
+    *    words though.
+    *
+    * @param weightedVecs      Input vectors, originally L2-normalized, but then weighted according to their importance.
+    * @param nAxes             Desired number of principal axes to return.
+    * @param mbOrientationVec  A vector, which if specified, will be used to orient the principal axes according to
+    *                          whichever orientation direction has positive correlation to this vector.
+    * @param bOrientAxes       If mbOrientationVec is None, another more simplistic/dumb orientation method will be
+    *                          attempted.
+    */
+  def principalAxes(weightedVecs: Seq[Vec],
+                    nAxes: Int,
+                    mbOrientationVec: Option[Vec] = None,
+                    bOrientAxes: Boolean = true): Seq[Vec] = {
+
+    val n = weightedVecs.size // #words
+    if (n == 0) Seq.empty[Vec]
+    else if (n == 1) Seq(weightedVecs.head)
+    else {
+      import com.hamstoo.models.Representation.VecFunctions
+      val colMeans = weightedVecs.reduce(_ + _) / n
+
+      // Breeze vectors are column vectors, which is why the transpose is required below (to convert them to rows)
+      val data: DenseMatrix[Double] = new DenseMatrix(n, weightedVecs.head.size) // e.g. n x 300
+      weightedVecs.zipWithIndex.foreach { case (v, i) => data(i, ::) := DenseVector((v - colMeans).toArray).t }
+
+      // X = USV' s.t. U = n x n (probably big!), S = n x 300 (diagonal), V = 300 x 300 (small'ish)
+      val svd_ = svd(data)
+
+      // adirectional principal directions/axes
+      val aaxes = (0 until math.min(n, nAxes)).map(svd_.Vt(_, ::).t.toArray.toSeq)
+
+      // The axes are 'adirectional' (i.e. they can point in either direction along their line) but we're interested
+      // in vectors that are *positively* correlated with words that are maximally representative of the text, so we
+      // need to choose a sign for each vector.  If one word had a huge tf*idf that overcame all other words, then
+      // we'd expect the correlation of that word's word vector to the first principal axis to be close to either 1
+      // or -1, so one way to select the direction of the vector could be based on this metric: sign(max(corrs) +
+      // min(corrs)).  Given that we typically don't have such huge tf*idfs another way to do this might be to use
+      // sign(skew(corrs)).
+      // UPDATE - Once the EXPONENT gets set down to around 1.0, skew isn't biased enough anymore, so just use
+      // sign(max-min) as originally thought.  This will effectively align the vector with the highest n*idf word.
+      // UPDATE2 - Rather than using skew or highest (which can be unstable), just align PC vectors with IDF vector.
+      val axes = if (!bOrientAxes && mbOrientationVec.isEmpty) aaxes else {
+
+        aaxes.map { ax =>
+          val sign = mbOrientationVec.map(_ cosine ax).getOrElse {
+            val corrs = weightedVecs.map(_ cosine ax) // using `cosine` here b/c it's faster than `corr`
+            /*val skew = corrs.skew*/
+            /*if (math.abs(skew) < 1e-5)*/ corrs.max + corrs.min /*else corrs.skew*/
+          }
+          // e.g. happens if n==2
+          (ax * (if (sign == 0.0) 1.0 else sign)).l2Normalize
+        }
+      }
+
+      // debugging
+      /*if (true) {
+        axes.zipWithIndex.foreach { case (ax, i) =>
+          val corrs = topWords.map { case (w, v) => w -> (v corr ax) }.toSeq.sortBy(-_._2)
+          println(f"ax$i: sum=${corrs.map(_._2).stdev}%.4f skew=${corrs.map(_._2).skew}%.4f $corrs")
+        }
+      }*/
+
+      axes
+    }
+  }
 }
