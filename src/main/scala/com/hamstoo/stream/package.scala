@@ -41,7 +41,7 @@ package object stream {
 
     /** An overloaded assignment operator of sorts--or as close as you can get in Scala.  Who remembers Pascal? */
     def :=(instance: typ)(implicit module: BaseModule): Unit = module.assign(key, instance)
-    //def ?=(default: typ)(implicit module: BaseModule): Unit = module.assignOptional(key, default)
+    def ?=(default: typ)(implicit module: BaseModule): Unit = module.assignOptional(key, default)
 
     /**
       * Guice is a Java package so it uses its own (Java) version of a Manifest/ClassTag/TypeTag called a TypeLiteral,
@@ -82,6 +82,10 @@ package object stream {
     * still needs to perform the `bind` during the module's `configure` thus requiring StreamModule to know about
     * all of the possible optionals.  So rather than pushing instances of this class to StreamModule, instead we
     * access the StreamModule injector inside this class via its StreamModule.WrappedInjector member.
+    *
+    * Note this class only works with StreamModule, not ConfigModule, because the former has the @Provides method
+    * while the latter does not.  This is by design; if ConfigModule had the same @Provides method we'd be back
+    * to square one.  This is only really relevant for IDFModel.
     */
   abstract class OptionalInjectId[T :Manifest](_name: String, default: => T = null) extends InjectId[T] {
 

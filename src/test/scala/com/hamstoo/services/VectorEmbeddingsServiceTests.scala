@@ -5,13 +5,12 @@ package com.hamstoo.services
 
 import java.util.Locale
 
-import com.google.inject.{Guice, Injector, Provides, Singleton}
+import com.google.inject.{Guice, Injector}
 import com.hamstoo.daos.WordVectorDao
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingsService.WordMass
 import com.hamstoo.stream.config.ConfigModule
-import com.hamstoo.stream.config.StreamModule.WrappedInjector
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
 import com.hamstoo.utils.DataInfo
@@ -39,10 +38,6 @@ class VectorEmbeddingsServiceTests
       bind[WSClient].toInstance(AhcWSClient())
       bind[WordVectorDao].toInstance(vectorsDao)
     }
-
-    /** See IDFModelTests ScalaDoc for the same method. */
-    @Provides @Singleton
-    def provideWrappedInjector(injector: Injector): WrappedInjector = Some(injector)
   })
 
   // instantiate components from the Guice injector

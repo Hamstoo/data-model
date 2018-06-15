@@ -7,7 +7,7 @@ import java.util.{Locale, Scanner}
 import com.google.inject.{Inject, Singleton}
 import com.google.inject.name.Named
 import com.hamstoo.services.IDFModel.ResourcePathOptional
-import com.hamstoo.stream.OptionalInjectId
+import com.hamstoo.stream.InjectId
 import com.hamstoo.utils
 import play.api.Logger
 import play.api.libs.json.{JsValue, Json}
@@ -18,7 +18,7 @@ import scala.collection.mutable
 object IDFModel {
 
   // https://github.com/google/guice/wiki/FrequentlyAskedQuestions#how-can-i-inject-optional-parameters-into-a-constructor
-  case class ResourcePathOptional() extends OptionalInjectId[Option[String]]("idfs.resource.path", None)
+  object ResourcePathOptional extends InjectId[Option[String]] { final val name = "idfs.resource.path" }
 }
 
 /**
@@ -43,7 +43,7 @@ object IDFModel {
   */
 @Singleton
 class IDFModel @Inject()(@Named("idfs.resource") zipFileResource: String,
-                         mbZipFilePath: ResourcePathOptional) {
+                         @Named("idfs.resource.path") mbZipFilePath: ResourcePathOptional.typ) {
 
   val logger: Logger = Logger(classOf[IDFModel])
 
@@ -59,8 +59,8 @@ class IDFModel @Inject()(@Named("idfs.resource") zipFileResource: String,
 
   // Load IDFs in from a zipped JSON file.
   // get resource file off the classpath if not explicitly provided
-  val zipfilepath: String = mbZipFilePath.value.getOrElse('/' + zipFileResource)
-  val inputStream: InputStream = mbZipFilePath.value.fold(getClass.getResourceAsStream(zipfilepath))(new FileInputStream(_))
+  val zipfilepath: String = mbZipFilePath.getOrElse('/' + zipFileResource)
+  val inputStream: InputStream = mbZipFilePath.fold(getClass.getResourceAsStream(zipfilepath))(new FileInputStream(_))
   val infilepath: String = zipfilepath.substring(0, zipfilepath.length - 4) // remove ".zip"
   logger.info(s"Loading IDFs from $zipfilepath")
   cleanly(new ZipInputStream(inputStream))(_.close) { in =>

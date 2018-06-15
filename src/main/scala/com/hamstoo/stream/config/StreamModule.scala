@@ -45,7 +45,7 @@ case class StreamModule() extends BaseModule {
     * @param injector  This injector (assuming our parent injector is unable to JIT bind an Option[Injector]).
     */
   @Provides @Singleton
-  def provideWrappedInjector(injector: Injector): WrappedInjector = {
+  def provideStreamInjector(injector: Injector): WrappedInjector = {
     logger.debug(s"Stream injector: ${injector.hashCode}")
     Some(injector)
   }

@@ -26,8 +26,8 @@ case class ProfileDots(nMarks: Int,
                        marksLatest: Seq[ProfileDot],
                        marksLatestSum: Int,
                        mostProductive: ProfileDot,
-                       userVecSimMin: Double = Double.NaN,
-                       userVecSimMax: Double = Double.NaN)
+                       userVecSimMin: Double = 0.0, // can't default to NaN:
+                       userVecSimMax: Double = 0.0) //   java.lang.NumberFormatException when passing to frontend
 
 /**
   * A count of the number of marks that were created on a particular date.
@@ -35,7 +35,7 @@ case class ProfileDots(nMarks: Int,
   * @param nMarks             The number of marks created on that date.
   * @param userVecSimilarity  The cosine similarity of the user's average vector to the marks' vectors from this day.
   */
-case class ProfileDot(date: String, nMarks: Int, userVecSimilarity: Double = Double.NaN)
+case class ProfileDot(date: String, nMarks: Int, userVecSimilarity: Double = 0.0)
 
 /**
   * Statistics corresponding to a user's aggregate marks, computed over time.
