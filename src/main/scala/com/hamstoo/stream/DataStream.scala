@@ -280,6 +280,9 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I],
   // don't forget to observe the subject, which is the whole reason why we're here
   subject.registerPreloadObserver(this)
 
+  // must signal demand from primary `out` source, o/w there might not be any data produced by the `subject` to observe
+  subject.out.runWith(Sink.ignore)
+
   // cache of previous calls to `preloadUpdate` (using TrieMap rather than faster ConcurrentHashMap b/c the former
   // has `getOrElseUpdate`)
   private[this] val cache = new scala.collection.concurrent.TrieMap[TimeStamp, Promise[Data[O]]]

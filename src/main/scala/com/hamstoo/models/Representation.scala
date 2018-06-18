@@ -176,6 +176,8 @@ object Representation extends BSONHandlers {
 
   implicit class VecFunctions(private val vec: Vec) extends AnyVal {
 
+    def unary_-(): Vec = vec.map(-_)
+
     // vector arithmetic
     // an alternative to recursive functions would be to call `.zip` followed by `.map` which is less efficient due to
     // the construction of an intermediate collection between the steps. this can be helped by first calling `.view`

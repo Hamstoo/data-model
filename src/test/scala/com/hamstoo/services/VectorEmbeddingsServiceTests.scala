@@ -13,6 +13,7 @@ import com.hamstoo.services.VectorEmbeddingsService.WordMass
 import com.hamstoo.stream.config.ConfigModule
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
+import com.hamstoo.utils
 import com.hamstoo.utils.DataInfo
 import play.api.libs.ws.WSClient
 import play.api.libs.ws.ahc.AhcWSClient
@@ -186,5 +187,21 @@ class VectorEmbeddingsServiceTests
 
   "Vectorizer" should "health check" ignore {
     vectorizer.health.futureValue shouldEqual true
+  }
+
+  "principalAxes" should "compute principal axes" in {
+    val v0 = Seq(10.0, 9.0, 9.0)
+    val v1 = Seq(9.0, 10.0, 9.0)
+    val v2 = Seq(10.0, 9.0, 10.0)
+    val v3 = Seq(9.0, 10.0, 10.0)
+    val seq = Seq(v0, v1, v2, v3)
+
+    val x = utils.principalAxes(seq, 1, bOrientAxes = false)
+
+    // this happens because principalAxes demeans as its first step, resulting in this contrived test case
+    // with a 1x1 square
+    x.head.head shouldEqual -0.71 +- 0.01
+    x.head(1)   shouldEqual  0.71 +- 0.01
+    x.head(2)   shouldEqual  0.0  +- 1e-8
   }
 }

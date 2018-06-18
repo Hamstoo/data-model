@@ -6,6 +6,7 @@ package com.hamstoo.daos
 import java.util.UUID
 
 import com.google.inject.{Inject, Singleton}
+import com.hamstoo.models.Mark.{ID, TIMETHRU}
 import com.hamstoo.models._
 import org.joda.time.DateTime
 import play.api.Logger
@@ -106,4 +107,12 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
       mb
     }
   }
+
+  /** Insert a new UserStats. */
+  def insert(ustats: UserStats): Future[Unit] = for {
+    c <- userstatsColl()
+    _ = logger.info(s"Inserting: $ustats")
+    wr <- c.insert(ustats)
+    _ <- wr.failIfError
+  } yield logger.debug(s"Successfully inserted: $ustats")
 }

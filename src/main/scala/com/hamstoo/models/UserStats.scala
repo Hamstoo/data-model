@@ -6,7 +6,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.TimeStamp
+import com.hamstoo.utils.{ExtendedTimeStamp, TimeStamp}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 /**
@@ -46,7 +46,11 @@ case class ProfileDot(date: String, nMarks: Int, userVecSimilarity: Double = 0.0
   */
 case class UserStats(userId: UUID,
                      ts: TimeStamp,
-                     vectors: Map[String, Representation.Vec])
+                     vectors: Map[String, Representation.Vec]) {
+
+  override def toString: String =
+    s"${getClass.getSimpleName}($userId, ${ts.tfmt}, nVectors=${vectors.size})"
+}
 
 object UserStats extends BSONHandlers {
 

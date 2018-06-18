@@ -31,6 +31,8 @@ import scala.util.{Failure, Random, Success, Try}
 
 package object utils {
 
+  val logger = Logger(getClass)
+
   /** Singleton database driver (actor system) instance. */
   private var dbDriver: Option[MongoDriver] = None
 
@@ -344,6 +346,7 @@ package object utils {
     else {
       import com.hamstoo.models.Representation.VecFunctions
       val colMeans = weightedVecs.reduce(_ + _) / n
+      logger.debug(s"principalAxes: colMeans.take(5) = ${colMeans.take(5)}")
 
       // Breeze vectors are column vectors, which is why the transpose is required below (to convert them to rows)
       val data: DenseMatrix[Double] = new DenseMatrix(n, weightedVecs.head.size) // e.g. n x 300
@@ -373,7 +376,7 @@ package object utils {
             /*val skew = corrs.skew*/
             /*if (math.abs(skew) < 1e-5)*/ corrs.max + corrs.min /*else corrs.skew*/
           }
-          // e.g. happens if n==2
+          // sign == 0.0 e.g. happens if n==2
           (ax * (if (sign == 0.0) 1.0 else sign)).l2Normalize
         }
       }
@@ -387,6 +390,35 @@ package object utils {
       }*/
 
       axes
+    }
+  }
+
+  /** Print a vector similarity matrix to stdout. */
+  def printSimilarityMatrix(vs: Seq[(String, Vec)],
+                            similarityFns: Seq[String] = Seq("correlation"/*, "cosine similarity"*/),
+                            printer: (String) => Unit = print): Unit = {
+    import com.hamstoo.models.Representation.VecFunctions
+    if (vs.nonEmpty) {
+      similarityFns.foreach { which =>
+        printer(s"\nDocument vector $which matrix (n = ${vs.size}):\n      ")
+        vs.foreach { col => printer(f"  ${col._1}%5s") }
+        printer("\n")
+        vs.foreach { row =>
+          printer(f"${row._1}%6s")
+          vs.foreach { col =>
+            val x = if (which == "correlation") row._2 corr col._2 else row._2 cosine col._2
+            val color = if (x == 1.0) 90 // dark gray (https://misc.flogisoft.com/bash/tip_colors_and_formatting)
+            else if (x > 0.995) 37 // light gray
+            else if (x < -0.5) 31 // red
+            else if (x < -0.05) 35 // magenta
+            else if (x > 0.9) 32 // green
+            else if (x > 0.6) 33 // yellow
+            printer(f"\u001b[${color}m  $x%+.2f\u001b[0m")
+          }
+          printer("\n")
+        }
+        printer("\n")
+      }
     }
   }
 }

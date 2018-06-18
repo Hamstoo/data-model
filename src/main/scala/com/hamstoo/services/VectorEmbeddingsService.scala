@@ -76,7 +76,18 @@ object VectorEmbeddingsService {
     aggregateSimilarityScore(sims)
   }
 
-  /** See kwsSimilarities.xlsx for an approximate fit of this model (R^2 ~= 12.2%). */
+  /**
+    * See kwsSimilarities.xlsx for an approximate fit of this model (R^2 ~= 12.2%).
+    *
+    * Note:
+    *   1. there is an attempt made at directionalizing the PC vectors in VectorEmbeddingsService.text2PcaVecs
+    *   2. the KM vectors (especially KM2 and KM3) are unstable
+    *   3. the PC vectors (columns) are demeaned first anyway, effectively equivalent to IDF-weighted, so maybe
+    *      IDF-weighted is a better first "component" (i.e. think "market factor")
+    *
+    * For an example of this, see the "compute principal axes" test case.  Furthermore, a decent approximation
+    * of `aggregateSimilarityScore` might just be IDF + PC1, weighted evenly.
+    */
   def aggregateSimilarityScore(sims: Map[VecEnum.Value, Double]): Double = {
     0.47 * sims.getOrElse(VecEnum.IDF, 0.0) + // t-stat ~= 3.7
     1.22 * sims.getOrElse(VecEnum.PC1, 0.0) + //           7.1
