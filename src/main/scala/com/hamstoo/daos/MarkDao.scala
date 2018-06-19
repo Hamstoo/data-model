@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.daos
 
@@ -8,12 +8,13 @@ import java.util.UUID
 import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.Source
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Mark._
 import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
+import com.hamstoo.utils._
 import com.mohiva.play.silhouette.api.exceptions.NotAuthorizedException
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
@@ -35,11 +36,10 @@ object MarkDao {
   * Using an implicit ExecutionContext would cause this to use Play's Akka Dispatcher, which slows down both
   * queries to the database and stream graph execution.
   */
+@Singleton
 class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                         userDao: UserDao,
                         urlDuplicatesDao: UrlDuplicateDao) extends Dao("entries") {
-
-  import com.hamstoo.utils._
 
   private def reprsColl(): Future[BSONCollection] = db().map(_ collection "representations")
   private def pagesColl(): Future[BSONCollection] = db().map(_ collection "pages")
@@ -128,20 +128,25 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
   /** Retrieves a mark by user and ID, None if not found or not authorized. */
   def retrieve(user: Option[User], id: ObjectId, timeFrom: Option[TimeStamp] = None): Future[Option[Mark]] = {
-    logger.debug(s"Retrieving mark $id for user ${user.map(_.usernameId)}")
+    logger.debug(s"Retrieving (secure) mark $id for user ${user.map(_.usernameId)}")
     for {
       mInsecure <- retrieveInsecure(id, timeFrom = timeFrom)
-      authorizedRead <- mInsecure.fold(Future.successful(false))(_.isAuthorizedRead(user))
-    } yield mInsecure match {
-      case Some(m) if authorizedRead => logger.debug(s"Mark $id successfully retrieved"); Some(m)
-      case Some(_) => logger.info(s"User $user unauthorized to view mark $id"); None
-      case None => logger.debug(s"Mark $id not found"); None
-    }
+      authorizedRead <- mInsecure.fold(ffalse)(_.isAuthorizedRead(user))
+      mSecure <- mInsecure match {
+        case Some(m) if authorizedRead =>
+          logger.debug(s"Mark $id successfully retrieved")
+          val isOwner = user.exists(m.ownedBy) // there might be a MarkRef, if so, find and apply it
+          if (isOwner || user.isEmpty) Future.successful(Some(m))
+          else findOrCreateMarkRef(user.get.id, m.id, m.mark.url).map(ref => Some(m.mask(ref.markRef, user)))
+        case Some(_) => logger.info(s"User $user unauthorized to view mark $id"); fNone
+        case None => logger.debug(s"Mark $id not found"); fNone
+      }
+    } yield mSecure
   }
 
   /** Retrieves all current marks for the user, sorted by `timeFrom` descending. */
   def retrieve(user: UUID): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving marks by user $user")
+    logger.debug(s"Retrieving all current marks for user $user")
     for {
       c <- dbColl()
       seq <- c.find(d :~ USR -> user :~ curnt).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
@@ -153,7 +158,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
   /** Retrieves all versions of a mark, current and previous, sorted by timeFrom, descending. */
   def retrieveInsecureHist(id: String): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving history of mark $id")
+    logger.debug(s"Retrieving mark history for $id")
     for {
       c <- dbColl()
       seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
@@ -177,7 +182,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       retiredMarks <- retrieveInsecureHist(id)
       _ = logger.debug(s"Unable to find mark $id; searching merged/retired marks: ${retiredMarks.flatMap(_.mergeId)}")
       mrgId = retiredMarks.headOption.flatMap(_.mergeId)
-      m1 <- if (mrgId.isDefined) retrieveInsecure(mrgId.get) else Future.successful(None)
+      m1 <- mrgId.fold(fNone[Mark])(retrieveInsecure(_))
     } yield m1
   } yield m1
 
@@ -190,20 +195,20 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     * new browser tab, and if it is deemed to be a duplicate of an existing mark, then show star as orange and display
     * highlights/notes.
     */
-  def retrieveByUrl(url: String, user: UUID): Future[Option[Mark]] = for {
+  def retrieveByUrl(url: String, user: UUID): Future[(Option[Mark], Option[Mark])] = for {
     _ <- Future.unit
-    _ = logger.debug(s"Retrieving marks by URL $url and user $user")
+    _ = logger.debug(s"Retrieving marks for user $user by URL ${url.take(100)}")
 
     oth = if (url.startsWith("https://")) url.replaceFirst("https://", "http://")
           else if (url.startsWith("http://")) url.replaceFirst("http://", "https://")
-          else "f8g34bkw1z"
+          else "f8g34bkw1z" // bet ya won't find this URL :)
 
     // find set of URLs that contain duplicate content to the one requested
     (f0, f1) = (urlDuplicatesDao.retrieve(user, url), urlDuplicatesDao.retrieve(user, oth))
     setDups0 <- f0; setDups1 <- f1
     urls = Set(url, oth).union(setDups0.flatMap(_.dups)).union(setDups1.flatMap(_.dups))
 
-    // find all marks with those URL prefixes
+    // find all marks with those URL prefixes (including MarkRefs which now have their URLs populated)
     c <- dbColl()
     prfxIn = d :~ "$in" -> urls.map(_.binaryPrefix)
     seq <- c.find(d :~ USR -> user :~ URLPRFX -> prfxIn :~ curnt).coll[Mark, Seq]()
@@ -212,11 +217,18 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
     // filter/find down to a single (optional) mark, but first look for a (current, i.e. no mergeId) mark with the
     // original URL (which corrects for erroneous URL dups, issue #325)
-    val mbMark = seq.find(_.mark.url.contains(url))
-      .orElse(seq.find(_.mark.url.exists(urls.contains)))
+    val mbMark = seq.find(m => m.mark.url.contains(url) && !m.isRef)
+                    .orElse(seq.find(m => m.mark.url.exists(urls.contains) && !m.isRef))
 
-    logger.debug(s"$mbMark mark was successfully retrieved")
-    mbMark
+    // look for a corresponding mark with a MarkRef (i.e. a mark that has been shared with this user), but note
+    // that this doesn't mean the corresponding referenced mark is necessarily _still_ shared with this user
+    val mbRef = seq.find(m => m.mark.url.contains(url) && m.isRef)
+                   .orElse(seq.find(m => m.mark.url.exists(urls.contains) && m.isRef))
+
+    // TODO: instead (?) look for an "aggregate mark" with aggregated highlights/notes/etc. for the specified URL
+
+    logger.debug(s"Marks ${mbMark.map(_.id)} and (referenced) ${mbRef.map(_.id)} were successfully retrieved by URL")
+    (mbMark, mbRef)
   }
 
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
@@ -225,7 +237,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ TAGSx -> (d :~ "$all" -> labels) :~ curnt
-      seq <- (c find sel sort d :~ TIMEFROM -> -1).coll[Mark, Seq]()
+      seq <- c.find(sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} tagged marks were successfully retrieved")
       seq
@@ -239,7 +251,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     * @param tags  Returned marks must have all of these tags, default to empty set.
     */
   def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String],
-                     begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[MSearchable]] = {
+                     begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[Mark]] = {
     logger.debug(s"Retrieving represented marks for user $user and tags $tags")
     for {
       c <- dbColl()
@@ -254,10 +266,10 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
 
-      seq <- c.find(sel).coll[MSearchable, Seq]()
+      seq <- c.find(sel).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} represented marks were successfully retrieved")
-      seq.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
+      seq.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
     }
   }
 
@@ -274,7 +286,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       sel = d :~ USR -> user :~ REFIDx -> (d :~ "$exists" -> true) :~ curnt :~
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
-      seq <- c.find(sel).coll[MSearchable, Seq]()
+      seq <- c.find(sel).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} referenced marks were successfully retrieved")
       seq//.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) } // no longer returning Marks, so no need to cleanRanges
@@ -282,18 +294,21 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     }
   }
 
-  /** Retrieves all tags existing in all current marks for the given user. */
+  /** Retrieves all tags existing in all current marks (and MarkRefs) for the given user. */
   def retrieveTags(user: UUID): Future[Set[String]] = {
     logger.debug(s"Retrieving labels for user $user")
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ curnt
-      docs <- c.find(sel, d :~ TAGSx -> 1 :~ "_id" -> 0).coll[BSONDocument, Set]()
+      docs <- c.find(sel, d :~ TAGSx -> 1 :~ REFTAGSx -> 1 :~ "_id" -> 0).coll[BSONDocument, Set]()
     } yield {
-      val labels: Set[String] = for {
-        doc <- docs // foreach returned document and foreach mark.tags
-        label <- doc.getAs[BSONDocument](MARK).get.getAs[Set[String]](TAGSx.split(raw"\.")(1)).getOrElse(Set.empty)
-      } yield label
+      val labels: Set[String] = Set(MARK, REF) flatMap { field: String =>
+        for {
+          doc <- docs // foreach returned document and foreach mark.tags
+          mbMarkDataOrRef = doc.getAs[BSONDocument](field) // both MarkData and MarkRef have a `tags` member
+          label <- mbMarkDataOrRef.flatMap(_.getAs[Set[String]](TAGSnox)).getOrElse(Set.empty)
+        } yield label
+      }
       logger.debug(s"Successfully retrieved ${labels.size} labels: $labels")
       labels
     }
@@ -322,7 +337,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     * Executes a MongoDB Text Index search using text index with sorting in user's marks, constrained by tags.
     * Mark state must be current (i.e. timeThru == INF_TIME) and have all tags to qualify.
     */
-  def search(user: UUID, query: String): Future[Set[MSearchable]] = search(Set(user), query)
+  def search(user: UUID, query: String): Future[Set[Mark]] = search(Set(user), query)
 
   /**
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,
@@ -330,11 +345,11 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     */
   def search(users: Set[UUID], query: String, ids: Set[ObjectId] = Set.empty[ObjectId],
              begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):
-                                                                        Future[Set[MSearchable]] = {
+                                                                        Future[Set[Mark]] = {
 
     val which = s"for ${users.size} users (first, at most, 5: ${users.take(5)})" + (if (ids.isEmpty) "" else s", ${ids.size} IDs")
     logger.debug(s"Searching for marks $which by text query '$query' between ${begin.map(_.tfmt)} and ${end.map(_.tfmt)}")
-    if (users.isEmpty) Future.successful(Set.empty[MSearchable]) else {
+    if (users.isEmpty) Future.successful(Set.empty[Mark]) else {
 
       // this projection doesn't have any effect without this selection
       val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
@@ -356,11 +371,11 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                          searchScoreSelection :~
                          (if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids))
 
-          dbColl().flatMap(_.find(sel, searchScoreProjection).coll[MSearchable, Seq]())
+          dbColl().flatMap(_.find(sel, searchScoreProjection).coll[Mark, Seq]())
         }
       }.map(_.flatten).map { set =>
         logger.debug(s"Search retrieved ${set.size} marks")
-        set.map { m => m.xcopy(aux = m.aux.map(_.cleanRanges)) }
+        set.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
       }
     }
   }
@@ -387,13 +402,13 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     */
   def update(user: Option[User], id: String, mdata: MarkData): Future[Mark] = for {
     c <- dbColl()
-    _ = logger.info(s"Updating mark $id")
+    _ = logger.debug(s"update(${user.map(_.id)}, $id): begin")
 
     // test write permissions
     (mOld, updateRef) <- for {
       mInsecure <- retrieveInsecure(id)
-      authorizedRead <- mInsecure.fold(Future.successful(false))(_.isAuthorizedRead(user))
-      authorizedWrite <- mInsecure.fold(Future.successful(false))(_.isAuthorizedWrite(user))
+      authorizedRead <- mInsecure.fold(ffalse)(_.isAuthorizedRead(user))
+      authorizedWrite <- mInsecure.fold(ffalse)(_.isAuthorizedWrite(user))
     } yield mInsecure match {
       case None =>
         throw new NoSuchElementException(s"Unable to find mark $id for updating")
@@ -405,6 +420,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
         // non-owner is authorized for writing then a change to the set of labels is reflected on the actual mark,
         // but if not then they additional labels will be put on the MarkRef (and only viewable to that non-owner user)
         val updateRef = user.exists(!m.ownedBy(_)) && (!authorizedWrite || mdata.rating.isDefined)
+        logger.debug(s"update(${user.map(_.id)}, $id): updateRef=$updateRef")
 
         if (!authorizedWrite && !updateRef)
           throw new NotAuthorizedException(s"User ${user.map(_.usernameId)} unauthorized to modify mark $id")
@@ -434,8 +450,8 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
         _ <- wr.failIfError
 
         // only create a MarkRef in the database if the user is non-None, o/w there'd be nowhere to put it
-        ref <- if (user.exists(!mNew.ownedBy(_))) findOrCreateMarkRef(user.get.id, mNew.id).map(Some(_))
-               else Future.successful(None)
+        ref <- if (user.exists(!mNew.ownedBy(_))) findOrCreateMarkRef(user.get.id, mNew.id, mNew.mark.url).map(Some(_))
+               else fNone
 
       } yield mNew.mask(ref.flatMap(_.markRef), user) // might be a no-op if user owns the mark
     }
@@ -448,18 +464,20 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     * Retrieves a Mark with a MarkRef (and no MarkData) given its referenced mark ID.  If one doesn't exist
     * in the database, then this method will create it (i.e. upsert).
     */
-  def findOrCreateMarkRef(user: UUID, refId: ObjectId): Future[Mark] = for {
+  def findOrCreateMarkRef(user: UUID, refId: ObjectId, refUrl: Option[String]): Future[Mark] = for {
     c <- dbColl()
+    _ = logger.debug(s"findOrCreateMarkRef($user, $refId): begin")
+
     mOld <- c.find(refSel(user, refId)).one[Mark]
     m <- if (mOld.isDefined) Future.successful(mOld.get) else {
+
       val ref = MarkRef(refId, tags = Some(Set(SHARED_WITH_ME_TAG))) // user can remove this tag later
+      val mNew = Mark(user, mark = MarkData("", refUrl), markRef = Some(ref))
 
-      // for now we'll set pubRepr/userRepr/pubExpRating to prevent repr-engine from doing the same, but
-      // once issue #260 is implemented we will merely not send a message to repr-engine to process this mark
-      val mNew = Mark(user, mark = MarkData("", None), markRef = Some(ref))
-
+      logger.debug(s"findOrCreateMarkRef($user, $refId): inserting")
       c.insert(mNew).map(_ => mNew)
     }
+    _ = logger.debug(s"findOrCreateMarkRef($user, $refId): found ${m.id}")
   } yield m
 
   /**
@@ -475,22 +493,25 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     */
   def updateMarkRef(user: UUID, referenced: Mark, mdata: MarkData): Future[Mark] = for {
     c <- dbColl()
-    mOld <- findOrCreateMarkRef(user, referenced.id)
+    _ = logger.debug(s"updateMarkRef($user, ${referenced.id}): begin")
+    mOld <- findOrCreateMarkRef(user, referenced.id, referenced.mark.url)
 
     // TODO: throw an exception if this non-owner user has attempted to change anything but the rating or (add) labels
 
     // only update rating if mdata.rating.isDefined, o/w update labels
+    // update: but now I forget why, something to do with how frontend passes bare ratings to backend
     refOld = mOld.markRef.get
     refNew = if (mdata.rating.isDefined) refOld.copy(rating = mdata.rating) else {
       // this set diff allows for removal of the SHARED_WITH_ME_TAG
       val netLabels = mdata.tags.getOrElse(Set.empty[String]) diff referenced.mark.tags.getOrElse(Set.empty[String])
       refOld.copy(tags = if (netLabels.isEmpty) None else Some(netLabels))
     }
+    _ = logger.debug(s"updateMarkRef($user, ${referenced.id}): refNew=$refNew")
 
     now: TimeStamp = TIME_NOW
 
     // if no change to MarkRef then there's nothing to do
-    m <- if (refOld == refNew) Future.successful(mOld) else for {
+    _ <- if (refOld == refNew) Future.successful(mOld) else for {
 
       // the MarkRef's user will be that of the non-owner-user, not the owner-user of the mark
       wr <- c.update(refSel(user, referenced.id), d :~ "$set" -> (d :~ TIMETHRU -> now))
@@ -500,6 +521,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       // logic doesn't seem worth the complexity
       mNew = mOld.copy(markRef = Some(refNew), timeFrom = now)
 
+      _ = logger.debug(s"updateMarkRef($user, ${referenced.id}): updating")
       wr <- c.insert(mNew)
       _ <- wr.failIfError
     } yield mNew
@@ -518,8 +540,8 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     logger.debug(s"Sharing mark ${m.id} with $readOnly and $readWrite")
     val ts = TIME_NOW // use the same time stamp everywhere
     val so = Some(UserGroup.SharedObj(m.id, ts))
-    def saveGroup(opt: Option[UserGroup]): Future[Option[UserGroup]] =
-      opt.fold(Future.successful(Option.empty[UserGroup]))(ug => userDao.saveGroup(ug, so).map(Some(_)))
+    def saveGroup(mb: Option[UserGroup]): Future[Option[UserGroup]] =
+      mb.fold(fNone[UserGroup])(ug => userDao.saveGroup(ug, so).map(Some(_)))
 
     for {
       // these can return different id'ed groups than were passed in (run these sequentially so that if they're the
@@ -563,7 +585,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       c <- dbColl()
       sel = d :~ USR -> user :~ ID -> id :~ curnt :~ URLx -> (d :~ "$exists" -> false)
       doc <- c.find(sel, d :~ SUBJx -> 1 :~ "_id" -> 0).one[BSONDocument]
-      oldSubj = doc.get.getAs[BSONDocument](MARK).get.getAs[String](SUBJx.split(raw"\.")(1)).getOrElse("")
+      oldSubj = doc.get.getAs[BSONDocument](MARK).get.getAs[String](SUBJnox).getOrElse("")
       _ = logger.info(s"Updating subject from '$oldSubj' to '$newSubj' for mark $id")
       wr <- c.update(sel, d :~ "$set" -> (d :~ SUBJx -> newSubj :~ URLx -> oldSubj))
       _ <- wr.failIfError
@@ -606,23 +628,16 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     }
   }
 
-  /**
-    * Renames one tag in all user's marks that have it.
-    * Returns updated mark states number.
-    */
-  def updateTag(user: UUID, tag: String, rename: String): Future[Int] = {
-    logger.debug(s"Updating all '$tag' tags to '$rename' for user $user")
-    for {
-      c <- dbColl()
-      sel = d :~ USR -> user :~ TAGSx -> tag
-      wr <- c.update(sel, d :~ "$set" -> (d :~ s"$TAGSx.$$" -> rename), multi = true)
-      _ <- wr.failIfError
-    } yield {
-      val count = wr.nModified
-      logger.debug(s"$count marks' tags were successfully updated")
-      count
+  /** Increment one of the MarkAux visit counts by 1, depending on who is visiting--or attempting to. */
+  def updateVisits(id: ObjectId, isOwner: Option[Boolean]): Future[Unit] = for {
+    c <- dbColl()
+    field = isOwner match {
+      case Some(true) => OVISITSx
+      case Some(false) => SVISITSx
+      case None => UVISITSx
     }
-  }
+    _ <- c.update(d :~ ID -> id :~ curnt, d :~ "$inc" -> (d :~ field -> 1))
+  } yield ()
 
   /** Appends `time` to either `.tabVisible` or `.tabBground` array of a mark. */
   def addTiming(user: UUID, id: String, time: RangeMils, foreground: Boolean): Future[Unit] = for {
@@ -676,46 +691,40 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     }
   }
 
-  /** Removes a tag from all user's marks that have it. */
+  /** Renames one tag in all user's marks (and MarkRefs) that have it. */
+  def updateTag(user: UUID, tag: String, rename: String): Future[Int] = {
+    logger.debug(s"Updating all '$tag' tags to '$rename' for user $user")
+    Future.sequence {
+      Seq(TAGSx, REFTAGSx).map { field =>
+        for {
+          c <- dbColl()
+          sel = d :~ USR -> user :~ field -> tag
+          wr <- c.update(sel, d :~ "$set" -> (d :~ s"$field.$$" -> rename), multi = true)
+          _ <- wr.failIfError
+        } yield wr.nModified
+      }
+    } map { modifiedCounts =>
+      val count = modifiedCounts.sum
+      logger.debug(s"$count marks' tags were successfully updated")
+      count
+    }
+  }
+
+  /** Removes a tag from all user's marks (and MarkRefs) that have it. */
   def deleteTag(user: UUID, tag: String): Future[Int] = {
     logger.debug(s"Deleting tag '$tag' from all user's marks for user $user")
-    for {
-      c <- dbColl()
-      sel = d :~ USR -> user :~ TAGSx -> tag
-      wr <- c.update(sel, d :~ "$pull" -> (d :~ TAGSx -> tag), multi = true)
-      _ <- wr.failIfError
-    } yield {
-      val count = wr.nModified
+    Future.sequence {
+      Seq(TAGSx, REFTAGSx).map { field =>
+        for {
+          c <- dbColl()
+          sel = d :~ USR -> user :~ field -> tag
+          wr <- c.update(sel, d :~ "$pull" -> (d :~ field -> tag), multi = true)
+          _ <- wr.failIfError
+        } yield wr.nModified
+      }
+    } map { modifiedCounts =>
+      val count = modifiedCounts.sum
       logger.debug(s"Tag '$tag' was removed from $count marks")
-      count
-    }
-  }
-
-  /** Adds a set of tags to each current mark from a list of IDs. */
-  def tag(user: UUID, ids: Seq[String], tags: Set[String]): Future[Int] = {
-    logger.debug(s"Adding tags to marks for user $user")
-    for {
-      c <- dbColl()
-      sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
-      wr <- c.update(sel, d :~ "$push" -> (d :~ TAGSx -> (d :~ "$each" -> tags)), multi = true)
-      _ <- wr.failIfError
-    } yield {
-      val count = wr.nModified
-      logger.debug(s"Tags were added to $count marks")
-      count
-    }
-  }
-
-  /** Removes a set of tags from each current mark from a list of IDs if they have any of the tags. */
-  def untag(user: UUID, ids: Seq[String], tags: Set[String]): Future[Int] = {
-    logger.debug(s"Removing tags from marks for user $user")
-    for {
-      c <- dbColl()
-      sel = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
-      wr <- c.update(sel, d :~ "$pull" -> (d :~ TAGSx -> (d :~ "$in" -> tags)), multi = true)
-    } yield {
-      val count = wr.nModified
-      logger.debug(s"Tags were removed from $count marks")
       count
     }
   }

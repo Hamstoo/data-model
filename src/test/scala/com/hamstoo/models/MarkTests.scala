@@ -12,14 +12,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
 
   import com.hamstoo.utils.DataInfo._
 
-  "Mark" should "(UNIT) be consistently hashable, regardless of its `score`" in {
-    val a = Mark(constructUserId(), mark = MarkData("a subject", None))
-    val b = a.copy(score = Some(3.4))
-    a.hashCode shouldEqual b.hashCode
-    a shouldEqual b
-  }
-
-  it should "(UNIT) markdown" in {
+  "Mark" should "(UNIT) markdown" in {
     val a = withComment("* a lonely list item")
     a.commentEncoded.get.replaceAll("\\s", "") shouldEqual "<ul><li>alonelylistitem</li></ul>"
     val b = withComment("hello markdown link conversion text [I'm an inline-kinda link](https://www.google.com)")
@@ -95,7 +88,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
     orig.commentEncoded.get shouldEqual parsed
   }
 
-  it should "(UNIT) try to prevent XSS attacks" in {
+  it should "(UNIT) try to prevent XSS attacks from comments" in {
     // https://www.owasp.org/index.php/XSS_Filter_Evasion_Cheat_Sheet
     val a = withComment("<SCRIPT SRC=http://xss.rocks/xss.js></SCRIPT>")
     a.commentEncoded.get shouldEqual ""
@@ -111,6 +104,10 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
     f.commentEncoded.get shouldEqual "<p>'';!--\"=&amp;{()}</p>"
     val g = a.copy(comment = Some("hello <a name=\"n\" href=\"javascript:alert('xss')\">*you*</a>"))
     g.commentEncoded.get shouldEqual "<p>hello <a rel=\"nofollow noopener noreferrer\" target=\"_blank\"><em>you</em></a></p>"
+  }
+
+  it should "(UNIT) try to prevent XSS attacks from url" in {
+    MarkData.sanitize("unsafe:javascript:alert('xss')") shouldBe None
   }
 
   it should "(UNIT) be mergeable" in {

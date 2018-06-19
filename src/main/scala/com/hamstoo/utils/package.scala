@@ -1,7 +1,12 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo
 
 import java.util.Locale
 
+import breeze.linalg.{DenseMatrix, DenseVector, svd}
+import com.hamstoo.models.Representation.Vec
 import org.joda.time.{DateTime, DateTimeZone}
 import play.api.Logger
 import play.api.libs.json.Json
@@ -15,7 +20,7 @@ import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
-import scala.collection.{TraversableLike, mutable}
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -25,6 +30,8 @@ import scala.util.{Failure, Random, Success, Try}
 
 
 package object utils {
+
+  val logger = Logger(getClass)
 
   /** Singleton database driver (actor system) instance. */
   private var dbDriver: Option[MongoDriver] = None
@@ -73,11 +80,11 @@ package object utils {
         initDbDriver()
       // the below doesn't work bc/ the second parameter is used as the Akka actor name, which must be unique when testing
       //dbDriver.get.connection(parsedUri, parsedUri.db, strictUri = false).get
-      Logger.info(s"Database name: ${parsedUri.db.get}")
+      Logger.warn(s"Database name: ${parsedUri.db.get}")
       (dbDriver.get.connection(parsedUri), parsedUri.db.get)
     } match {
       case Success(conn) =>
-        Logger.info(s"Established connection to MongoDB via URI: $uri")
+        Logger.warn(s"Established connection to MongoDB via URI: ${maskDbUri(uri)}")
         synchronized(wait(2000))
         conn
       case Failure(e) =>
@@ -90,6 +97,14 @@ package object utils {
           getDbConnection(uri, nAttempts = 1)
         }
     }
+  }
+
+  /** Mask the username/password out of the database URI so that it can be logged. */
+  def maskDbUri(uri: String): String = {
+    val rgx = """^(.+//)\S+:\S+(@.+)$""".r // won't match docker-compose URI, but will match production/staging
+    rgx.findFirstMatchIn(uri).map { m =>
+      s"${m.group(1)}username:password${m.group(2)}"
+    }.getOrElse(uri)
   }
 
   /** Used by backend: AuthController and MarksController. */
@@ -152,6 +167,11 @@ package object utils {
     def failIfError: Future[Unit] =
       if (wr.ok) Future.successful {} else Future.failed(new Exception(wr.writeErrors.mkString("; ")))
   }
+
+  /** Convenience function; useful to have for when skipping database queries for some reason or other. */
+  def fNone[T]: Future[Option[T]] = Future.successful(Option.empty[T])
+  def ftrue: Future[Boolean] = Future.successful(true)
+  def ffalse: Future[Boolean] = Future.successful(false)
 
   // MongoDB Binary Indexes have a max size of 1024 bytes.  So to combine a 12-char string with a byte array
   // as in the `urldups` collection index, the byte array must be, at most, 992 bytes.  This is presumably
@@ -231,11 +251,17 @@ package object utils {
     def dt: DateTime = new DateTime(ms, DateTimeZone.UTC)
     /** Giga-seconds make for an easily readable display. */
     def Gs: Double = ms.toDouble / 1000000000
+    /** Mega-seconds. */
+    def Ms: Double = ms.toDouble / 1000000
     /** Time format. */
     def tfmt: String = s"${ms.dt} [${ms.Gs}]".replaceAll("T00:00:00.000", "").replaceAll(":00:00.000", "")
+    /** Seconds format. */
+    def sfmt: String = s"${ms.dt.getSecondOfDay} [${ms.Ms}]"
     /** Converts from time in milliseconds to a JsValueWrapper. */
-    def toJson: Json.JsValueWrapper =
-      s"${dt.year.getAsString}-${dt.monthOfYear.getAsString}-${dt.dayOfMonth.getAsString}"
+    def toJson: Json.JsValueWrapper = {
+      val date = this.dt
+      s"${date.year.getAsString}-${date.monthOfYear.getAsString}-${date.dayOfMonth.getAsString}"
+    }
   }
 
   implicit class ExtendedDurationMils(private val dur: DurationMils) extends AnyVal {
@@ -252,7 +278,7 @@ package object utils {
   }
 
   /** A couple of handy ReactiveMongo shortcuts that were formerly being defined in every DAO class. */
-  val d = BSONDocument.empty
+  val d: BSONDocument = BSONDocument.empty
   val curnt: Producer[BSONElement] = com.hamstoo.models.Mark.TIMETHRU -> INF_TIME
 
   /** A couple regexes used in `parse` but that which may also be useful elsewhere. */
@@ -276,6 +302,9 @@ package object utils {
     */
   def tokenize(text: String): Seq[String] = text.toLowerCase(Locale.ENGLISH).split(raw"\s+")
 
+  /** Moved this here to avoid cut-and-pasted code. */
+  def tokenizeTags(tags: String): Set[String] = tags.split(',').map(_.trim).toSet - ""
+
   /**
     * Call it what you will: `try-with-resources` (Java), `using` (C#), `with` Python.
     * https://www.phdata.io/try-with-resources-in-scala/
@@ -293,4 +322,109 @@ package object utils {
   /** Returns a string of memory statistics. */
   def memoryString: String =
     f"total: ${Runtime.getRuntime.totalMemory/1e6}%.0f, free: ${Runtime.getRuntime.freeMemory/1e6}%.0f"
+
+  /**
+    * Compute principal directions/axes as we don't really care about the actual principal components,
+    * which are just a reduced dimensional approximation of the data.
+    *
+    * There are a couple issues with SVD-based clustering:
+    * 1. Principal axes are adirectional, so we either must attempt to assign directions to them or use
+    *    max(cos, -cos) when computing cosine similarities to them.  This is happening below.
+    * 2. They're based on axes of maximum variance, so they may require words with vectors in opposite directions
+    *    from each other to really be chosen as a top axis.  We're really only interested in positive similarity
+    *    words though.
+    *
+    * @param weightedVecs      Input vectors, originally L2-normalized, but then weighted according to their importance.
+    * @param nAxes             Desired number of principal axes to return.
+    * @param mbOrientationVec  A vector, which if specified, will be used to orient the principal axes according to
+    *                          whichever orientation direction has positive correlation to this vector.
+    * @param bOrientAxes       If mbOrientationVec is None, another more simplistic/dumb orientation method will be
+    *                          attempted.
+    */
+  def principalAxes(weightedVecs: Seq[Vec],
+                    nAxes: Int,
+                    mbOrientationVec: Option[Vec] = None,
+                    bOrientAxes: Boolean = true): Seq[Vec] = {
+
+    val n = weightedVecs.size // #words
+    if (n == 0) Seq.empty[Vec]
+    else if (n == 1) Seq(weightedVecs.head)
+    else {
+      import com.hamstoo.models.Representation.VecFunctions
+      val colMeans = weightedVecs.reduce(_ + _) / n
+      logger.debug(s"principalAxes: colMeans.take(5) = ${colMeans.take(5)}")
+
+      // Breeze vectors are column vectors, which is why the transpose is required below (to convert them to rows)
+      val data: DenseMatrix[Double] = new DenseMatrix(n, weightedVecs.head.size) // e.g. n x 300
+      weightedVecs.zipWithIndex.foreach { case (v, i) => data(i, ::) := DenseVector((v - colMeans).toArray).t }
+
+      // X = USV' s.t. U = n x n (probably big!), S = n x 300 (diagonal), V = 300 x 300 (small'ish)
+      val svd_ = svd(data)
+
+      // adirectional principal directions/axes
+      val aaxes = (0 until math.min(n, nAxes)).map(svd_.Vt(_, ::).t.toArray.toSeq)
+
+      // The axes are 'adirectional' (i.e. they can point in either direction along their line) but we're interested
+      // in vectors that are *positively* correlated with words that are maximally representative of the text, so we
+      // need to choose a sign for each vector.  If one word had a huge tf*idf that overcame all other words, then
+      // we'd expect the correlation of that word's word vector to the first principal axis to be close to either 1
+      // or -1, so one way to select the direction of the vector could be based on this metric: sign(max(corrs) +
+      // min(corrs)).  Given that we typically don't have such huge tf*idfs another way to do this might be to use
+      // sign(skew(corrs)).
+      // UPDATE - Once the EXPONENT gets set down to around 1.0, skew isn't biased enough anymore, so just use
+      // sign(max-min) as originally thought.  This will effectively align the vector with the highest n*idf word.
+      // UPDATE2 - Rather than using skew or highest (which can be unstable), just align PC vectors with IDF vector.
+      val axes = if (!bOrientAxes && mbOrientationVec.isEmpty) aaxes else {
+
+        aaxes.map { ax =>
+          val sign = mbOrientationVec.map(_ cosine ax).getOrElse {
+            val corrs = weightedVecs.map(_ cosine ax) // using `cosine` here b/c it's faster than `corr`
+            /*val skew = corrs.skew*/
+            /*if (math.abs(skew) < 1e-5)*/ corrs.max + corrs.min /*else corrs.skew*/
+          }
+          // sign == 0.0 e.g. happens if n==2
+          (ax * (if (sign == 0.0) 1.0 else sign)).l2Normalize
+        }
+      }
+
+      // debugging
+      /*if (true) {
+        axes.zipWithIndex.foreach { case (ax, i) =>
+          val corrs = topWords.map { case (w, v) => w -> (v corr ax) }.toSeq.sortBy(-_._2)
+          println(f"ax$i: sum=${corrs.map(_._2).stdev}%.4f skew=${corrs.map(_._2).skew}%.4f $corrs")
+        }
+      }*/
+
+      axes
+    }
+  }
+
+  /** Print a vector similarity matrix to stdout. */
+  def printSimilarityMatrix(vs: Seq[(String, Vec)],
+                            similarityFns: Seq[String] = Seq("correlation"/*, "cosine similarity"*/),
+                            printer: (String) => Unit = print): Unit = {
+    import com.hamstoo.models.Representation.VecFunctions
+    if (vs.nonEmpty) {
+      similarityFns.foreach { which =>
+        printer(s"\nDocument vector $which matrix (n = ${vs.size}):\n      ")
+        vs.foreach { col => printer(f"  ${col._1}%5s") }
+        printer("\n")
+        vs.foreach { row =>
+          printer(f"${row._1}%6s")
+          vs.foreach { col =>
+            val x = if (which == "correlation") row._2 corr col._2 else row._2 cosine col._2
+            val color = if (x == 1.0) 90 // dark gray (https://misc.flogisoft.com/bash/tip_colors_and_formatting)
+            else if (x > 0.995) 37 // light gray
+            else if (x < -0.5) 31 // red
+            else if (x < -0.05) 35 // magenta
+            else if (x > 0.9) 32 // green
+            else if (x > 0.6) 33 // yellow
+            printer(f"\u001b[${color}m  $x%+.2f\u001b[0m")
+          }
+          printer("\n")
+        }
+        printer("\n")
+      }
+    }
+  }
 }

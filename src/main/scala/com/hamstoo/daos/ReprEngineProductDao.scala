@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.daos
 
@@ -16,7 +16,6 @@ import scala.concurrent.ExecutionContext.Implicits.global
 /**
   * This class defines base MongoDB related functionality for classes that extend the ReprEngineProduct trait.
   * @param name name of object like 'representation' or 'expected rating' for logging purpose only
-  * @param ec   execution context
   * @tparam T   this type param must be subtype of Annotations and have defined BSONDocument handler
   */
 abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandler]

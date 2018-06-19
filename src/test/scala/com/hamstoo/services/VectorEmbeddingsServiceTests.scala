@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.services
 
@@ -13,6 +13,7 @@ import com.hamstoo.services.VectorEmbeddingsService.WordMass
 import com.hamstoo.stream.config.ConfigModule
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
+import com.hamstoo.utils
 import com.hamstoo.utils.DataInfo
 import play.api.libs.ws.WSClient
 import play.api.libs.ws.ahc.AhcWSClient
@@ -45,7 +46,7 @@ class VectorEmbeddingsServiceTests
   lazy val vectorizer: Vectorizer = injector.instance[Vectorizer]
   lazy val vecSvc: VectorEmbeddingsService = injector.instance[VectorEmbeddingsService]
 
-  // skip all of these tests because CircleCI doesn't have access to the conceptnet-vectors container
+  // skip all of these tests because TravisCI doesn't have access to the conceptnet-vectors container
 
   "VectorEmbeddingsService" should "IDF vectorize" ignore {
     val header0 = "Futures and Promises - Scala Documentation Futures and Promises"
@@ -165,5 +166,42 @@ class VectorEmbeddingsServiceTests
       vecs.head.cosine(wordVec) shouldEqual s0 +- 1e-3
       vecs(1).cosine(wordVec) shouldEqual s1 +- 1e-3
     }
+  }
+
+  it should "principal axesize" ignore {
+    val orientationVec = vectorizer.dbCachedLookupFuture(Locale.ENGLISH, "beaver").futureValue.get._1
+    val txt = "otter european_otter otter otters otterlike toyota ford car"
+    val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt).futureValue._1
+    val vecs = vecSvc.text2PcaVecs(topWords, 2, Some(orientationVec))
+
+    Seq(("otter" ,  0.885,  -0.310),
+        ("car"   , -0.436,  -0.591), // note that "car" is filtered out by `text2TopWords`
+        ("ford"  , -0.655,   0.596),
+        ("toyota", -0.667,  -0.690)).foreach { case (w, s0, s1) =>
+
+      val wordVec = vectorizer.dbCachedLookupFuture(Locale.ENGLISH, w).futureValue.get._1
+      vecs.head cosine wordVec shouldEqual s0 +- 1e-3
+      vecs(1) cosine wordVec shouldEqual s1 +- 1e-3
+    }
+  }
+
+  "Vectorizer" should "health check" ignore {
+    vectorizer.health.futureValue shouldEqual true
+  }
+
+  "principalAxes" should "compute principal axes" in {
+    val v0 = Seq(10.0, 9.0, 9.0)
+    val v1 = Seq(9.0, 10.0, 9.0)
+    val v2 = Seq(10.0, 9.0, 10.0)
+    val v3 = Seq(9.0, 10.0, 10.0)
+    val seq = Seq(v0, v1, v2, v3)
+
+    val x = utils.principalAxes(seq, 1, bOrientAxes = false)
+
+    // this happens because principalAxes demeans as its first step, resulting in this contrived test case
+    // with a 1x1 square
+    x.head.head shouldEqual -0.71 +- 0.01
+    x.head(1)   shouldEqual  0.71 +- 0.01
+    x.head(2)   shouldEqual  0.0  +- 1e-8
   }
 }

@@ -1,11 +1,15 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo.services
 
 import java.util.Locale
 
 import com.google.inject.name.Named
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.WordVectorDao
 import com.hamstoo.models.Representation.Vec
+import com.hamstoo.utils.fNone
 import play.api.Logger
 import play.api.libs.ws._
 
@@ -31,10 +35,10 @@ object Vectorizer {
   * "Guice can create bindings for concrete types by using the type's injectable constructor."
   *   [https://github.com/google/guice/wiki/JustInTimeBindings]
   */
-@com.google.inject.Singleton
-class Vectorizer @Inject() (httpClient: WSClient,
-                            vectorsDao: WordVectorDao,
-                            @Named("vectors.link") vectorsLink: String) {
+@Singleton
+class Vectorizer @Inject()(httpClient: WSClient,
+                           vectorsDao: WordVectorDao,
+                           @Named("vectors.link") vectorsLink: String) {
 
   import Vectorizer._
 
@@ -94,7 +98,7 @@ class Vectorizer @Inject() (httpClient: WSClient,
     val verbose: Boolean = Vectorizer.dbCount < 100 || Vectorizer.dbCount % 100 == 0
 
     // `mtch` appears to have trailing punctuation removed (was that the intent?)
-    termRgx.findFirstMatchIn(term.toLowerCase(locale)).map { mtch =>
+    termRgx.findFirstMatchIn(term.toLowerCase(locale)).fold(fNone[(Vec, String)]) { mtch =>
 
       // `standardizedTerm` appears to have leading punctuation removed (was that the intent?)
       val standardizedTerm = mtch.group(1).replaceAll("’", "'").replaceAll(s"($spcrRgx)+", "_")
@@ -107,8 +111,8 @@ class Vectorizer @Inject() (httpClient: WSClient,
       /** If a word vec isn't in the DB, then attempt to fetch it from the conceptnet-vectors service. */
       def fetch(rec: Boolean): Future[Option[Vec]] = {
         if (rec) synchronized(Thread.sleep(100)) // if recursing, wait for conceptnet-vectors to become responsive
-        httpClient.url(s"$vectorsLink$uri").get map handleResponse(_.json.as[Vec]) recoverWith {
-          case _: NumberFormatException => Future.successful(None)
+        httpClient.url(s"$vectorsLink$uri").get.map(handleResponse(_.json.as[Vec])).recoverWith {
+          case _: NumberFormatException => fNone
           //case _: Throwable => fetch(true)
         }
       }
@@ -128,7 +132,7 @@ class Vectorizer @Inject() (httpClient: WSClient,
             _ <- vectorsDao.addUri(uri, optVec)
           } yield optVec.map(_ -> standardizedTerm)
       }
-    }.getOrElse(Future.successful(None))
+    }
   }
 
   /** Preserves original `dbCachedLookup` behavior: what does the future hold? */
@@ -148,6 +152,13 @@ class Vectorizer @Inject() (httpClient: WSClient,
         throw new Exception(msg)
     }
   }
+
+  /** Only used for testing the `health` endpoint. */
+  def health: Future[Boolean] =
+    httpClient.url(s"$vectorsLink/health").get
+      .map(handleResponse(_ => ()))
+      .map(_.nonEmpty)
+      .recover { case _ => false }
 
   /**
     * Prepare `link` and `data` to post to one of the standardize endpoints.

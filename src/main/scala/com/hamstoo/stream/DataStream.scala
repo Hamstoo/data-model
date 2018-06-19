@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.stream
 
@@ -8,7 +8,6 @@ import akka.stream.Materializer
 import akka.stream.scaladsl.{BroadcastHub, Sink, Source, SourceQueue}
 import com.hamstoo.stream.ElemStream._
 import com.hamstoo.stream.Data.{Data, ExtendedData}
-import com.hamstoo.stream.Tick.{ExtendedTick, Tick}
 import com.hamstoo.stream.Join.{JoinWithable, Pairwised}
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TimeStamp}
 import play.api.Logger
@@ -164,7 +163,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
     /** This method generates GroupCommands containing PreloadGroups which have Future data attached. */
     def knownDataFor(tick: Tick): KnownData = {
       val ts = tick.time
-      val window = TimeWindow(ts - clock.interval, ts)
+      val window = TimeWindow(tick.previousTime, ts)
 
       // the first interval boundary strictly after ts
       def nextIntervalStart(ts: TimeStamp) = ts / loadInterval * loadInterval + loadInterval
@@ -243,7 +242,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       // only allows (probably) smaller chunks of known data to pass at each tick
       .statefulMapConcat { () =>
         val factory = PreloadFactory() // this factory is constructed once per stream materialization
-        tick => immutable.Iterable(factory.knownDataFor(tick)) // lambda function called once per tick
+        t => immutable.Iterable(factory.knownDataFor(t.asInstanceOf[Tick])) // lambda function called once per tick
       }
 
       // the end time of the KnownData window will be that of the most recent tick (brought here by statefulMapConcat),
@@ -280,6 +279,9 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I],
 
   // don't forget to observe the subject, which is the whole reason why we're here
   subject.registerPreloadObserver(this)
+
+  // must signal demand from primary `out` source, o/w there might not be any data produced by the `subject` to observe
+  subject.out.runWith(Sink.ignore)
 
   // cache of previous calls to `preloadUpdate` (using TrieMap rather than faster ConcurrentHashMap b/c the former
   // has `getOrElseUpdate`)
@@ -336,11 +338,11 @@ abstract class ThrottledSource[T](bufferSize: Int = DEFAULT_BUFFER_SIZE)
     // watermark0 gets ahead of the clock's watermark1
 
     /** Move `d.knownTime`s up to the end of the clock window that they fall inside, just like PreloadSource. */
-    def pairwise(d: Data[T], t: immutable.Seq[Tick]): Option[Join.Pairwised[T, TimeStamp]] =
-      if (d.knownTimeMax > t.head.time)
+    def pairwise(d: Data[T], t: immutable.Seq[Datum[TimeStamp]]): Option[Join.Pairwised[T, TimeStamp]] =
+      if (d.knownTimeMax > t.head.asInstanceOf[Tick].time)
         None // throttlee known time must come before current clock time to be emitted
       else Some(Pairwised(
-        d.map(e => Datum((e.value, 0L), e.id, e.sourceTime, t.head.time)),
+        d.map(e => Datum((e.value, 0L), e.id, e.sourceTime, t.head.asInstanceOf[Tick].time)),
         consumed0 = true // throttlee (not clock tick) consumed
       ))
 

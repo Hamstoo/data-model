@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.stream
 
@@ -34,9 +34,10 @@ class ClockTests
     source.runForeach { n => Thread.sleep(1); if (n % 10 == 0) println(s"------------- source1: $n") }
     source.runForeach(n => if (n % 10 == 0) println(s"\033[37msource2\033[0m: $n"))*/
 
-    // changing these (including interval) will affect results b/c it changes the effective time range the clock covers
-    val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
-    val stop: TimeStamp = new DateTime(2018, 1, 10, 0, 0, DateTimeZone.UTC).getMillis
+    // changing these (NOT including interval) will affect results b/c it changes the effective time range
+    // the clock covers
+    val start: TimeStamp = new DateTime(2017, 12, 30, 0, 0, DateTimeZone.UTC).getMillis
+    val stop: TimeStamp = new DateTime(2018, 1, 9, 0, 0, DateTimeZone.UTC).getMillis
     val interval: DurationMils = (2 days).toMillis
     implicit val clock: Clock = Clock(start, stop, interval)
 
@@ -45,7 +46,7 @@ class ClockTests
 
     implicit val ec: ExecutionContext = system.dispatcher
     case class TestSource() extends PreloadSource[TimeStamp](preloadInterval.toMillis) {
-      //override val logger = Logger(classOf[TestSource]) // this line causes a NPE for some reason
+
       override def preload(begin: TimeStamp, end: TimeStamp): Future[immutable.Seq[Datum[TimeStamp]]] = Future {
 
         // must snapBegin, o/w DataSource's preloadInterval can affect the results, which it should not
@@ -63,7 +64,7 @@ class ClockTests
 
     val fut: Future[Int] = TestSource().out
       .mapConcat(identity)
-      .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.sourceTime.tfmt} / ${e.value.dt.getDayOfMonth}"); e }
+      .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.sourceTime.tfmt} / \033[33m${e.value.dt.getDayOfMonth}\033[0m"); e }
       .runWith(
         Sink.fold[Int, Datum[TimeStamp]](0) { case (agg, d) => agg + d.value.dt.getDayOfMonth }
       )
@@ -76,10 +77,11 @@ class ClockTests
 
   it should "throttle a ThrottledSource (with 4 Datums between each clock tick)" in {
 
-    // changing these (including interval) will affect results b/c it changes the effective time range the clock covers
-    val start: TimeStamp = new DateTime(2018, 1, 1, 0, 0, DateTimeZone.UTC).getMillis
-    val stop: TimeStamp = new DateTime(2018, 1, 10, 0, 0, DateTimeZone.UTC).getMillis
-    val interval: DurationMils = (2 days).toMillis
+    // changing these (NOT including interval) will affect results b/c it changes the effective time range
+    // the clock covers
+    val start: TimeStamp = new DateTime(2017, 12, 30, 0, 0, DateTimeZone.UTC).getMillis
+    val stop: TimeStamp = new DateTime(2018, 1, 9, 0, 0, DateTimeZone.UTC).getMillis
+    val interval: DurationMils = (3 days).toMillis
     implicit val clock: Clock = Clock(start, stop, interval)
 
     implicit val ec: ExecutionContext = system.dispatcher
@@ -93,7 +95,7 @@ class ClockTests
 
         // a preload source would backup the data until the (exclusive) beginning of the tick interval before `start`,
         // so that's what we do here with `start - interval + dataInterval` to make the two test results match up
-        (start - interval + dataInterval until stop by dataInterval).map { t => Datum[TimeStamp](t, MarkId("kf"), t) }
+        (start + dataInterval until stop + 1 by dataInterval).map { t => Datum[TimeStamp](t, MarkId("kf"), t) }
       }
         .map(e => Data(e)) // convert singles to batches
         .named("TestThrottledSource")
@@ -101,7 +103,7 @@ class ClockTests
 
     val fut: Future[Int] = TestSource().out
       .mapConcat(identity) // convert batches back to singles
-      .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.sourceTime.tfmt} / ${e.value.dt.getDayOfMonth}"); e }
+      .map { e => logger.debug(s"TestSource: ${e.knownTime.tfmt} / ${e.sourceTime.tfmt} / \033[33m${e.value.dt.getDayOfMonth}\033[0m"); e }
       .runWith(
         Sink.fold[Int, Datum[TimeStamp]](0) { case (agg, d) => agg + d.value.dt.getDayOfMonth }
       )

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.stream.config
 
@@ -15,7 +15,7 @@ import play.api.Logger
   */
 class BaseModule extends AbstractModule with ScalaModule {
 
-  import BaseModule._
+  val logger = Logger(getClass)
 
   // having an `implicit this` enables the `:=` methods of InjectId and this class, StreamModule
   implicit val implicitThis: BaseModule = this
@@ -47,8 +47,4 @@ class BaseModule extends AbstractModule with ScalaModule {
     logger.debug(s"Binding (optional) $key to default: $default")
     OptionalBinder.newOptionalBinder(binder(), key).setDefault().toInstance(default)
   }
-}
-
-object BaseModule {
-  val logger = Logger(classOf[BaseModule])
 }

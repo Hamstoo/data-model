@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.services
 
@@ -10,7 +10,7 @@ import java.nio.ByteBuffer
 import akka.util.ByteString
 import com.gargoylesoftware.htmlunit._
 import com.gargoylesoftware.htmlunit.html.HtmlPage
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Page
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{MediaType, ObjectId}
@@ -107,6 +107,7 @@ object ContentRetriever {
   * Tika-supported implementation of ContentRetriever.
   * All it does is `retrieve: String => Future[(MimeType, String)]`.
   */
+@Singleton
 class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionContext) {
 
   import ContentRetriever._

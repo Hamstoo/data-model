@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.stream
 
@@ -160,16 +160,19 @@ object Data {
   * A Tick is just an alias for a Datum[TimeStamp], like any other Datum[T], but with bounds on its
   * value, sourceTime, and knownTime.  Namely, they must all be equal.
   */
-object Tick {
-  type Tick = Datum[TimeStamp]
+class Tick(private val _time: TimeStamp, private val _previousTime: TimeStamp)
+    extends Datum[TimeStamp](_time, UnitId, _time, _time) {
 
-  def apply(time: TimeStamp): Tick = Datum[TimeStamp](time, UnitId, time, time)
+  // accessors
+  def time: TimeStamp = _time
+  def previousTime: TimeStamp = _previousTime
+}
+
+object Tick {
+
+  def apply(time: TimeStamp, previousTime: TimeStamp): Tick = new Tick(time, previousTime)
 
   def unapply[T](dat: Datum[T]): Option[TimeStamp] =
     if (dat.id == UnitId && dat.value.isInstanceOf[TimeStamp] &&
-        dat.value == dat.sourceTime && dat.value == dat.knownTime) Some(dat.value.asInstanceOf[TimeStamp]) else None
-
-  implicit class ExtendedTick(private val tick: Tick) extends AnyVal {
-    def time: TimeStamp = tick.value
-  }
+        dat.value == dat.sourceTime) Some(dat.value.asInstanceOf[TimeStamp]) else None
 }

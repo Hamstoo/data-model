@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo
 
@@ -7,12 +7,12 @@ import java.net.URLDecoder
 import java.util.UUID
 
 import akka.stream.Attributes
-import com.google.inject.{ConfigurationException, Inject, Key}
+import com.google.inject.{ConfigurationException, Inject, Injector, Key}
 import com.google.inject.name.Names
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.stream.config.{BaseModule, StreamModule}
-import com.hamstoo.utils.{DurationMils, TimeStamp}
 import net.codingwell.scalaguice.typeLiteral
+import net.codingwell.scalaguice.InjectorExtensions._
 import play.api.Logger
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -20,6 +20,9 @@ import scala.util.Try
 
 
 package object stream {
+
+  /** Similar to `implicitly` where the "nether world" in this case is an implicit Injector's namespace. */
+  def injectorly[A :Manifest](implicit injector: Injector): A = injector.instance[A]
 
   /**
     * Guice uses a (type, optional name) pair to uniquely identify bindings.  Instances of this class are that pair
@@ -79,6 +82,10 @@ package object stream {
     * still needs to perform the `bind` during the module's `configure` thus requiring StreamModule to know about
     * all of the possible optionals.  So rather than pushing instances of this class to StreamModule, instead we
     * access the StreamModule injector inside this class via its StreamModule.WrappedInjector member.
+    *
+    * Note this class only works with StreamModule, not ConfigModule, because the former has the @Provides method
+    * while the latter does not.  This is by design; if ConfigModule had the same @Provides method we'd be back
+    * to square one.  This is only really relevant for IDFModel.
     */
   abstract class OptionalInjectId[T :Manifest](_name: String, default: => T = null) extends InjectId[T] {
 
@@ -112,21 +119,13 @@ package object stream {
 
   // `final val`s are required so that their values are constants that can be used at compile time in @Named annotations
   object CallingUserId extends InjectId[UUID] { final val name = "calling.user.id" }
-  object Query extends InjectId[String] { final val name = "query" }
-  object ClockBegin extends InjectId[TimeStamp] { final val name = "clock.begin" }
-  object ClockInterval extends InjectId[DurationMils] { final val name = "clock.interval" }
 
-  // using Option[TimeStamp/Long] here works to construct the binding, but it doesn't work when it comes time for
-  // injection because Scala's Long gets changed into a Java primitive `long` and then into an Option[Object] in
-  // resulting bytecode, so ClockEnd.typ ends up being an Option[Object] that can't be found at injection time
-  // more here: https://github.com/codingwell/scala-guice/issues/56
-  // Error message: "No implementation for scala.Option<java.lang.Object> annotated with @com.google.inject.name
-  // .Named(value=clock.end) was bound."
-  object ClockEnd extends InjectId[/*Option[java.lang.Long]*/TimeStamp] { final val name = "clock.end" }
+  // optional bindings (default values specified in StreamModule.configure)
+  case class LogLevelOptional() extends OptionalInjectId[Option[ch.qos.logback.classic.Level]]("", None)
+  case class QueryOptional() extends OptionalInjectId[String]("query", "")
 
-  // optionals
-  object LogLevelOptional extends NamelessInjectId[Option[ch.qos.logback.classic.Level]]
-  object Query2VecsOptional extends InjectId[Option[Query2VecsType]] { final val name = "query2Vecs" }
+  // formerly an optional binding, still an Option, but the binding optionality is now implemented via QueryOptional
+  object Query2Vecs extends InjectId[Option[Query2VecsType]] { final val name = "query2Vecs" }
 
   /** One might think that getting the name of a stream would be easier than this. */
   def streamName[S](stream: S): String = {

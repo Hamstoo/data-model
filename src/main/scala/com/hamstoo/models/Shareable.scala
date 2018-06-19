@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.daos.UserDao
-import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, fNone, ffalse, ftrue, generateDbId}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -43,18 +43,18 @@ trait Shareable {
   def isAuthorizedRead(user: Option[User])
                       (implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] = for {
     aw <- isAuthorizedWrite(user) // no ownership check necessary here; isAuthorizedWrite will check
-    ar <- if (aw) Future.successful(true) else { sharedWith match {
+    ar <- if (aw) ftrue else { sharedWith match {
       case Some(SharedWith(Some(sgRO), _, _)) => sgRO.isAuthorized(user)
-      case _ => Future.successful(false)
+      case _ => ffalse
     }}
   } yield ar
 
   def isAuthorizedWrite(user: Option[User])
                        (implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] = for {
     ob <- Future.successful(user.exists(ownedBy))
-    aw <- if (ob) Future.successful(true) else { sharedWith match {
+    aw <- if (ob) ftrue else { sharedWith match {
       case Some(SharedWith(_, Some(sgRW), _)) => sgRW.isAuthorized(user)
-      case _ => Future.successful(false)
+      case _ => ffalse
     }}
   } yield aw
 
@@ -171,7 +171,7 @@ case class ShareGroup(level: Int, group: Option[ObjectId]) {
   def isAuthorized(user: Option[User])(implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] =
     PUBLIC_LEVELS.get(Level(level)).fold {
       // defer to the "listed" users in the group
-      UserGroup.retrieve(group).flatMap(_.fold(Future.successful(false))(_.isAuthorized(user)))
+      UserGroup.retrieve(group).flatMap(_.fold(ffalse)(_.isAuthorized(user)))
     }(isAuthFunc => Future.successful(isAuthFunc(user)))
 
   /**
@@ -179,17 +179,17 @@ case class ShareGroup(level: Int, group: Option[ObjectId]) {
     * another ShareGroup.
     */
   def >(other: ShareGroup)(implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] =
-    if (level > other.level) Future.successful(true)
+    if (level > other.level) ftrue
     else if (Level(level) == Level.LISTED && Level(other.level) == Level.LISTED) {
       val futs = Seq(group, other.group).map(UserGroup.retrieve) // calling these `retrieve`s inside a for-
       for (ugT <- futs.head; ugO <- futs(1)) yield {             // expression would cause them to run sequentially
         import UserGroup.ExtendedOptionSet
         ugT.flatMap(_.userIds) > ugO.flatMap(_.userIds) && ugT.flatMap(_.emails) > ugO.flatMap(_.emails)
       }
-    } else Future.successful(false)
+    } else ffalse
 
   def >=(other: ShareGroup)(implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] =
-    if (this == other) Future.successful(true) else this > other
+    if (this == other) ftrue else this > other
 }
 
 object ShareGroup {
@@ -237,12 +237,12 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
   def isAuthorized(user: Option[User])(implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] = {
 
     // isAuthorizedUserId(user.map(_.id)) || user.exists(_.emails.exists(isAuthorizedEmail))
-    if (isAuthorizedUserId(user.map(_.id))) Future.successful(true) else {
+    if (isAuthorizedUserId(user.map(_.id))) ftrue else {
 
       // the User instance may have been constructed with User.apply from merely a UUID, in which case we need
       // to get its emails from the db (this allows callers with a UUID to not have to perform this lookup themselves)
       user match {
-        case None => Future.successful(false)
+        case None => ffalse
         case Some(u) =>
           if (u.emails.nonEmpty) Future.successful(u.emails.exists(isAuthorizedEmail))
           else userDao.retrieveById(u.id).map(_.fold(false)(_.emails.exists(isAuthorizedEmail)))
@@ -266,7 +266,7 @@ object UserGroup extends BSONHandlers {
 
   /** Query the database for a UserGroup given its ID. */
   def retrieve(opt: Option[ObjectId])(implicit userDao: UserDao, ec: ExecutionContext): Future[Option[UserGroup]] =
-    opt.fold(Future.successful(Option.empty[UserGroup]))(userDao.retrieveGroup)
+    opt.fold(fNone[UserGroup])(userDao.retrieveGroup)
 
   implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
   implicit val userGroupHandler: BSONDocumentHandler[UserGroup] = Macros.handler[UserGroup]

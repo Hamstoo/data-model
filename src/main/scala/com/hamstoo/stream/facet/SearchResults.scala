@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.stream.facet
 
@@ -10,7 +10,7 @@ import ch.qos.logback.classic.{Logger => LogbackLogger}
 import com.google.inject.Inject
 import com.google.inject.name.Named
 import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
-import com.hamstoo.models.{MSearchable, RSearchable, Representation}
+import com.hamstoo.models.{Mark, RSearchable, Representation}
 import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream.Data.{Data, ExtendedData}
@@ -41,15 +41,21 @@ case class SearchRelevance(uraw: Double, usem: Double, rraw: Double, rsem: Doubl
 
 /**
   * Define the (default) implementation of this facet.
+  *
+  * Note that the 2 @Named parameters use InjectId.name but do not use InjectId.typ as their types.  This is why
+  * the 2 additional, non-optional StreamModule @Provides methods are needed.  This is perhaps confusing though, so
+  * maybe SearchResults should just take Options as inputs and throw an exception if they are None, which is what
+  * the @Provides methods already do anyway--one fewer degree of indirection.
+  *
   * @param rawQuery     Only used for extracting (and boosting) full phrases in search ordering.
   * @param repredMarks  A stream of a user's marks paired with their representations.
   * @param query2Vecs   Semantic word vectors for each query term.
   */
 @com.google.inject.Singleton
-class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
-                              @Named(Query2VecsOptional.name) query2Vecs: Query2VecsType,
+class SearchResults @Inject()(rawQuery: QueryOptional,
+                              @Named(Query2Vecs.name) query2Vecs: Query2VecsType,
                               repredMarks: RepredMarks,
-                              logLevel: LogLevelOptional.typ)
+                              logLevel: LogLevelOptional)
                              (implicit mat: Materializer,
                               idfModel: IDFModel)
     extends DataStream[SearchResults.typ] {
@@ -62,7 +68,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
   // set logging level for this SearchResults *instance* (change prefix w/ "I" to prevent modifying the other logger)
   val loggerI: Logger = {
     val logback = LoggerFactory.getLogger("I" + classOf[SearchResults].getName).asInstanceOf[LogbackLogger]
-    logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
+    logLevel.value.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
     new Logger(logback)
   }
 
@@ -113,7 +119,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
             val rraw0 = math.max(rscore, 0.0)
             val dbscore = Seq(uscore, mscore, rscore).map(math.max(_, 0.0).coalesce0).sum
 
-            val previewer = Previewer(rawQuery, cleanedQuery, mark.id)
+            val previewer = Previewer(rawQuery.value, cleanedQuery, mark.id)
             val utext = parse(mark.mark.comment.getOrElse(""))
             val rtext = parse(siteReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
             val urtext = utext + " " * PREVIEW_LENGTH + rtext
@@ -325,7 +331,7 @@ class SearchResults @Inject()(@Named(Query.name) rawQuery: Query.typ,
 
 object SearchResults {
 
-  type typ = (MSearchable, String, Option[SearchRelevance])
+  type typ = (Mark, String, Option[SearchRelevance])
 
   val logger = Logger(getClass)
 

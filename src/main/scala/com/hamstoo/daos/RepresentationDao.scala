@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.daos
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Representation._
 import com.hamstoo.models.{RSearchable, Representation}
 import reactivemongo.api.DefaultDB
@@ -27,6 +27,7 @@ object RepresentationDao {
   * Data access object for MongoDB `representations` collection.
   * @param db  Future[DefaultDB] database connection returning function.
   */
+@Singleton
 class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
     extends ReprEngineProductDao[Representation]("representation") {
 

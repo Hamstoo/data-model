@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.services
 
@@ -14,7 +14,7 @@ import com.hamstoo.utils.DataInfo
 class IDFModelTests extends FlatSpecWithMatchers {
 
   // create a Guice object graph configuration/module and instantiate it to an injector
-  lazy val injector: Injector = Guice.createInjector(new ConfigModule(DataInfo.config))
+  lazy val injector: Injector = Guice.createInjector(ConfigModule(DataInfo.config))
 
   // instantiate components from the Guice injector
   import net.codingwell.scalaguice.InjectorExtensions._

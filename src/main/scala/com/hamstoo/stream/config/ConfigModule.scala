@@ -1,20 +1,17 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.stream.config
 
 import com.google.inject.name.Names
 import com.hamstoo.services.IDFModel
 import com.typesafe.config.{Config, ConfigValueFactory}
-import play.api.Logger
 
 /**
   * "A module is a collection of bindings"
   * "The modules are the building blocks of an injector, which is Guice's object-graph builder."
   */
 case class ConfigModule(config: Config) extends BaseModule {
-
-  import ConfigModule._
 
   /**
     * "To create bindings, extend AbstractModule and override its configure method.  In the method body, call
@@ -44,10 +41,6 @@ case class ConfigModule(config: Config) extends BaseModule {
   }
 }
 
-object ConfigModule {
-  val logger = Logger(classOf[ConfigModule])
-}
-
 object ConfigValue {
-  def apply[T](v: T) = ConfigValueFactory.fromAnyRef(v)
+  def apply[T](v: T): com.typesafe.config.ConfigValue = ConfigValueFactory.fromAnyRef(v)
 }

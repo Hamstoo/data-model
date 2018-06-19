@@ -1,11 +1,11 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.User._
 import com.hamstoo.models.{Mark, Profile, Shareable, SharedWith, User, UserGroup}
 import com.mohiva.play.silhouette.api.LoginInfo
@@ -28,6 +28,7 @@ object UserDao {
 /**
   * Data access object for user accounts.  Note that this class extends IdentityService.
   */
+@Singleton
 class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentityService[User] {
 
   import com.hamstoo.models.Profile.{loginInfHandler, profileHandler}

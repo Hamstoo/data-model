@@ -14,7 +14,6 @@ import play.api.libs.json.{JsValue, Json}
 import com.hamstoo.utils.cleanly
 
 import scala.collection.mutable
-import scala.util.matching.UnanchoredRegex
 
 object IDFModel {
 
@@ -43,8 +42,8 @@ object IDFModel {
   * http://www.benfrederickson.com/distance-metrics/
   */
 @Singleton
-class IDFModel @Inject() (@Named("idfs.resource") zipfileResource: String,
-                          @Named("idfs.resource.path") opzipfilepath: ResourcePathOptional.typ) {
+class IDFModel @Inject()(@Named("idfs.resource") zipFileResource: String,
+                         @Named("idfs.resource.path") mbZipFilePath: ResourcePathOptional.typ) {
 
   val logger: Logger = Logger(classOf[IDFModel])
 
@@ -60,8 +59,8 @@ class IDFModel @Inject() (@Named("idfs.resource") zipfileResource: String,
 
   // Load IDFs in from a zipped JSON file.
   // get resource file off the classpath if not explicitly provided
-  val zipfilepath: String = opzipfilepath.getOrElse('/' + zipfileResource)
-  val inputStream: InputStream = opzipfilepath.fold(getClass.getResourceAsStream(zipfilepath))(new FileInputStream(_))
+  val zipfilepath: String = mbZipFilePath.getOrElse('/' + zipFileResource)
+  val inputStream: InputStream = mbZipFilePath.fold(getClass.getResourceAsStream(zipfilepath))(new FileInputStream(_))
   val infilepath: String = zipfilepath.substring(0, zipfilepath.length - 4) // remove ".zip"
   logger.info(s"Loading IDFs from $zipfilepath")
   cleanly(new ZipInputStream(inputStream))(_.close) { in =>

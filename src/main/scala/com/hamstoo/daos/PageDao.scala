@@ -1,12 +1,12 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.daos
 
 import java.nio.file.Files
 import java.util.UUID
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models._
 import play.api.Logger
@@ -26,6 +26,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
   * then moved over to the Reprs upon Representation computation, but now we just have them in their own
   * collection with references pointing in every which direction.
   */
+@Singleton
 class PageDao @Inject()(implicit db: () => Future[DefaultDB],
                         marksDao: MarkDao) {
 
@@ -40,7 +41,7 @@ class PageDao @Inject()(implicit db: () => Future[DefaultDB],
     Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
     Index(MARK_ID -> Ascending :: Nil) % s"bin-$MARK_ID-1" ::
     Nil toMap;
-  Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 203 seconds)
+  Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 403 seconds)
 
   /** Insert page to collection. */
   def insertPage(page: Page): Future[Page] = for {

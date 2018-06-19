@@ -1,9 +1,9 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.daos
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Representation.Vec
 import com.hamstoo.models.VectorEntry
 import com.hamstoo.models.VectorEntry._
@@ -22,6 +22,7 @@ import scala.concurrent.duration._
   * Data access object for conceptnet-vectors API's MongoDB-based storage.  `services.Vectorizer` provides
   * additional access to this data directly via the API itself.
   */
+@Singleton
 class WordVectorDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._

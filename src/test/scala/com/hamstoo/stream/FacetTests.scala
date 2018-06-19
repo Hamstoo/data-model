@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.stream
 
@@ -7,7 +7,6 @@ import akka.stream._
 import akka.stream.scaladsl.Sink
 import com.google.inject.name.Named
 import com.google.inject.{Guice, Provides, Singleton}
-import com.hamstoo.daos.{MarkDao, RepresentationDao, UserDao}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
@@ -15,7 +14,7 @@ import com.hamstoo.stream.config.{ConfigModule, FacetsModel, StreamModule}
 import com.hamstoo.stream.facet.{AggregateSearchScore, Recency, SearchResults}
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
-import com.hamstoo.utils.{DataInfo, ExtendedTimeStamp}
+import com.hamstoo.utils.{DataInfo, DurationMils, ExtendedTimeStamp, TimeStamp}
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -75,7 +74,7 @@ class FacetTests
     facetsEmpty // asserts that a timeout does not occur
   }
 
-  val query: Query.typ = "some query"
+  val query: String = "some query"
   lazy val facetsSeq: Seq[OutType] = constructFacets(query, "A")
   lazy val facetsEmpty: Seq[OutType] = constructFacets("", "B")
 
@@ -88,9 +87,9 @@ class FacetTests
 
     // config values that stream.ConfigModule will bind for DI
     val config = DataInfo.config
-    val clockBegin: ClockBegin.typ = new DateTime(2018, 1,  1, 0, 0).getMillis
-    val clockEnd  : ClockEnd  .typ = new DateTime(2018, 1, 15, 0, 0).getMillis
-    val clockInterval: ClockInterval.typ = (1 day).toMillis
+    val clockBegin: TimeStamp = new DateTime(2017, 12, 31, 0, 0).getMillis
+    val clockEnd  : TimeStamp = new DateTime(2018,  1, 15, 0, 0).getMillis
+    val clockInterval: DurationMils = (1 day).toMillis
     val userId: CallingUserId.typ = DataInfo.constructUserId()
 
     // insert 5 marks with reprs into the database
@@ -99,7 +98,7 @@ class FacetTests
     val baseVs = Map(VecEnum.PC1.toString -> baseVec)
     val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
     //val b :: e :: Nil = Seq(ClockBegin.name, ClockEnd.name).map(config.getLong)
-    val (b, e) = (clockBegin, clockEnd)
+    val (b, e) = (clockBegin + clockInterval, clockEnd)
     (b to e by (e - b) / (nMarks - 1)).zipWithIndex.foreach { case (ts, i) =>
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
       val r = baseRepr.copy(id = s"r_${ts.Gs}_$idSuffix", vectors = vs)
@@ -127,12 +126,12 @@ class FacetTests
         classOf[() => Future[DefaultDB]] := db
 
         //Val("clock.begin"):~ TimeStamp =~ clockBegin // alternative syntax? more like Scala?
-        ClockBegin := clockBegin
-        ClockEnd := clockEnd
-        ClockInterval := clockInterval
-        Query := query
+        Clock.BeginOptional() := clockBegin
+        Clock.EndOptional() := clockEnd
+        Clock.IntervalOptional() := clockInterval
+        QueryOptional() := query
         CallingUserId := userId
-        LogLevelOptional := Some(ch.qos.logback.classic.Level.TRACE)
+        LogLevelOptional() := Some(ch.qos.logback.classic.Level.TRACE)
 
         // fix this value (don't use default DateTime.now) so that computed values don't change every day
         Recency.CurrentTimeOptional() := new DateTime(2018, 4, 19, 0, 0).getMillis
@@ -147,11 +146,10 @@ class FacetTests
 
       /** Provides a VectorEmbeddingsService for SearchResults to use via StreamModule.provideQueryVec. */
       @Provides @Singleton
-      def provideVecSvc(@Named(Query.name) query: Query.typ,
-                        idfModel: IDFModel): VectorEmbeddingsService = new VectorEmbeddingsService(null, idfModel) {
-
+      def provideVecSvc(query: QueryOptional, idfModel: IDFModel): VectorEmbeddingsService
+                                                             = new VectorEmbeddingsService(null, idfModel) {
         override def countWords(words: Seq[String]): Future[Map[String, (Int, Vec)]] = {
-          Future.successful(query.split(" ").map(_ -> (1, baseVec)).toMap)
+          Future.successful(query.value.split(" ").map(_ -> (1, baseVec)).toMap)
         }
       }
     })

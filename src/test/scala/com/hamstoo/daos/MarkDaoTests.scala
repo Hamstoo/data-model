@@ -1,11 +1,14 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.daos
 
 import java.util.UUID
 
+import com.hamstoo.models.MarkData.SHARED_WITH_ME_TAG
 import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.models.SharedWith.Level
+import com.hamstoo.models.UserGroup.SharedObj
 import com.hamstoo.models._
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
@@ -23,10 +26,8 @@ class MarkDaoTests
     with FutureHandler
     with OptionValues {
 
-  import com.hamstoo.utils.DataInfo._
-
-  val uuid1: UUID = constructUserId()
-  val uuid2: UUID = constructUserId()
+  val userA: UUID = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+  val userB: UUID = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 
   val tagSet = Some(Set("tag1, tag2"))
   val cmt = Some("Query")
@@ -38,10 +39,10 @@ class MarkDaoTests
   val url = "http://hamstoo.com/as"
 
   // set pagePending = true as if m1 came from the Chrome extension
-  val m1 = Mark(uuid1, "m1id", MarkData("a subject1", Some(url), tags = tagSet, comment = cmt), reprs = reprs)
-  val m2 = Mark(uuid1, "m2id", MarkData("a subject2", Some("http://hamstoo.com"), tags = tagSet))
-  val m3 = Mark(uuid2, "m3id", MarkData("a subject3", None))
-  val m4 = Mark(uuid2, m3.id, MarkData("a subject4", Some("http://hamstoo.com")), timeThru = INF_TIME - 1)
+  val m1 = Mark(userA, "m1id", MarkData("a subject1", Some(url), tags = tagSet, comment = cmt), reprs = reprs)
+  val m2 = Mark(userA, "m2id", MarkData("a subject2", Some("http://hamstoo.com"), tags = tagSet))
+  val m3 = Mark(userB, "m3id", MarkData("a subject3", None))
+  val m4 = Mark(userB, m3.id, MarkData("a subject4", m2.mark.url), timeThru = INF_TIME - 1)
 
   "MongoMarksDao" should "(UNIT) insert mark" in {
     marksDao.insert(m1).futureValue shouldEqual m1
@@ -78,30 +79,30 @@ class MarkDaoTests
   }
 
   it should "(UNIT) retrieve by userId and markId" in {
-    marksDao.retrieve(User(uuid1), m1.id).futureValue.get.id shouldEqual m1.id
+    marksDao.retrieve(User(userA), m1.id).futureValue.get.id shouldEqual m1.id
   }
 
   it should "(UNIT) retrieve by userId" in {
-    marksDao.retrieve(uuid2).futureValue.map(_.id) shouldEqual Seq(m3.id)
+    marksDao.retrieve(userB).futureValue.map(_.id) shouldEqual Seq(m3.id)
   }
 
   it should "(UNIT) retrieve by userId and URL 1" in {
-    marksDao.retrieveByUrl(url, uuid1).futureValue.get.id shouldEqual m1.id
+    marksDao.retrieveByUrl(url, userA).futureValue._1.get.id shouldEqual m1.id
   }
 
   it should "(UNIT) retrieve same mark by userId and secure URL" in {
-    marksDao.retrieveByUrl(url.replaceFirst("http://", "https://"), uuid1).futureValue.get.id shouldEqual m1.id
+    marksDao.retrieveByUrl(url.replaceFirst("http://", "https://"), userA).futureValue._1.get.id shouldEqual m1.id
   }
 
   it should "(UNIT) retrieve by userId and tags" in {
-    val tagged = marksDao.retrieveTagged(uuid1, tagSet.get).futureValue.map(_.id)
+    val tagged = marksDao.retrieveTagged(userA, tagSet.get).futureValue.map(_.id)
     tagged.size shouldEqual 2
     tagged.contains(m1.id) shouldEqual true
     tagged.contains(m2.id) shouldEqual true
   }
 
   it should "(UNIT) retrieve mark tags by userId" in {
-    marksDao.retrieveTags(uuid1).futureValue shouldEqual tagSet.get
+    marksDao.retrieveTags(userA).futureValue shouldEqual tagSet.get
   }
 
   it should "(UNIT) perform MongoDB Text Index marks search by user ID, query and tags" in {
@@ -111,8 +112,9 @@ class MarkDaoTests
       score = Some(1.0), // this field is only populated by `MongoMarksDao.search`
       reprs = Seq(reprInfoUsr, reprInfoPub.copy(reprId = "newReprId1"))
     )
-    val set = marksDao.search(Set(uuid1), cmt.get).map(_.filter(_.hasTags(tagSet.get))).futureValue
-    set.map(_.xtoString) shouldEqual Set(m1Stub.xtoString)
+    val set = marksDao.search(Set(userA), cmt.get).map(_.filter(_.hasTags(tagSet.get))).futureValue
+    //set.map(_.toString) shouldEqual Set(m1Stub.toString) // TODO: why need to convert toString here?
+    set shouldEqual Set(m1Stub)
   }
 
   it should "(UNIT) find duplicate of mark data, for user, by subject" in {
@@ -124,7 +126,7 @@ class MarkDaoTests
     val repred = marksDao.retrieveRepred(m1.userId, tagSet.get).futureValue
 
     repred.size shouldEqual 1
-    repred.head shouldBe a [MSearchable]
+    repred.head shouldBe a [Mark]
     repred.exists(_.id == m1.id) shouldEqual true
   }
 
@@ -166,38 +168,86 @@ class MarkDaoTests
 
   it should "(UNIT) unset PUBLIC ReprInfo" in {
     marksDao.unsetRepr(m1, Right(ReprType.PUBLIC)).futureValue shouldEqual {}
-    marksDao.retrieve(User(uuid1), m1.id, timeFrom = Some(m1.timeFrom)).futureValue.get.reprs.exists(_.isPublic) shouldEqual false
+    marksDao.retrieve(User(userA), m1.id, timeFrom = Some(m1.timeFrom)).futureValue.get.reprs.exists(_.isPublic) shouldEqual false
   }
 
   it should "(UNIT) unset USER_CONTENT ReprInfo" in {
     marksDao.unsetRepr(m1, Right(ReprType.USER_CONTENT)).futureValue shouldEqual {}
-    marksDao.retrieve(User(uuid1), m1.id, timeFrom = Some(m1.timeFrom)).futureValue.get.reprs.exists(_.isUserContent) shouldEqual false
+    marksDao.retrieve(User(userA), m1.id, timeFrom = Some(m1.timeFrom)).futureValue.get.reprs.exists(_.isUserContent) shouldEqual false
   }
 
   it should "(UNIT) update MarkData by userId and markId" in {
     marksDao.update(User(m1.userId), m1.id, newMarkData).futureValue.mark shouldEqual newMarkData
   }
 
+  it should "(UNIT) update visits" in {
+    marksDao.updateVisits(m1.id, Some(true)).futureValue
+    marksDao.updateVisits(m1.id, Some(false)).futureValue
+    marksDao.updateVisits(m1.id, None).futureValue
+    val updatedAux = marksDao.retrieveInsecure(m1.id).futureValue.get.aux.get
+    updatedAux.nOwnerVisits.get shouldEqual 1
+    updatedAux.nShareeVisits.get shouldEqual 1
+    updatedAux.nUnauthVisits.get shouldEqual 1
+
+    marksDao.updateVisits(m1.id, Some(true)).futureValue
+    marksDao.retrieveInsecure(m1.id).futureValue.get.aux.get.nOwnerVisits.get shouldEqual 2
+  }
+
   it should "(UNIT) delete mark by userId and markId" in {
-    marksDao.delete(uuid1, m1.id :: Nil).futureValue shouldEqual 1
+    marksDao.delete(userA, m1.id :: Nil).futureValue shouldEqual 1
     marksDao.retrieve(User(m1.userId), m1.id).futureValue shouldEqual None
   }
 
   it should "(UNIT) check if mark was every previously deleted" in {
-    marksDao.isDeleted(uuid1, m1.mark.url.get).futureValue shouldEqual true
+    marksDao.isDeleted(userA, m1.mark.url.get).futureValue shouldEqual true
+  }
+
+  // see ShareableTests.scala for more tests of sharing functionality
+  it should "(UNIT) updateSharedWith" in {
+    val ug = UserGroup("updateSharedWith", userIds = Some(Set(userB)), sharedObjs = Seq(SharedObj(m2.id, TIME_NOW)))
+    val m2New = marksDao.updateSharedWith(m2, 1, (Level.LISTED, Some(ug)), (Level.PRIVATE, None)).futureValue
+    m2.isAuthorizedRead(User(userB)).futureValue shouldBe false
+    m2New.isAuthorizedRead(User(userB)).futureValue shouldBe true
+    m2New.isAuthorizedWrite(User(userB)).futureValue shouldBe false
+  }
+
+  it should "(UNIT) findOrCreateMarkRef and mask via retrieve" in {
+    val masked = marksDao.retrieve(User(userB), m2.id).map(_.get).futureValue
+    masked.mark.url shouldEqual m2.mark.url
+    masked.id shouldEqual m2.id
+    masked.mark.tags.get should contain(SHARED_WITH_ME_TAG)
+  }
+
+  it should "(UNIT) retrieve MarkRefs by URL" in {
+    val m = marksDao.retrieveByUrl(m2.mark.url.get, userA).map(_._1.get).futureValue
+    val mRef = marksDao.retrieveByUrl(m2.mark.url.get, userB).map(_._2.get).futureValue
+    m.isRef shouldEqual false
+    mRef.isRef shouldEqual true
+    Some(m.id) shouldEqual mRef.markRef.map(_.markId)
+    m.mark.url shouldEqual mRef.mark.url
+  }
+
+  it should "(UNIT) updateMarkRef via update" in {
+    marksDao.update(User(userB), m2.id, MarkData("", None, rating = Some(3))).futureValue
+    marksDao.update(User(userB), m2.id, MarkData("", None, tags = tagSet.map(_ + "updateMarkRefTAG"))).futureValue
+    val masked = marksDao.retrieve(User(userB), m2.id).map(_.get).futureValue
+    masked.mark.url shouldEqual m2.mark.url
+    masked.id shouldEqual m2.id
+    masked.mark.tags.get should contain("updateMarkRefTAG")
+    masked.mark.rating.get shouldEqual 3.0
   }
 
   it should "(UNIT) retrieve by userId and URL 2" in {
     val url1 = "https://mail.google.com/mail/u/0/#inbox/162e903e20ce4af3"
     val url2 = "https://mail.google.com/mail/u/0/#inbox/162e5aa71f6ebdff"
 
-    val m1 = Mark(uuid1, "markID1", mark = MarkData("subj1", Some(url1)))
-    val m2 = Mark(uuid1, "markID2", mark = MarkData("subj2", Some(url2)))
+    val m1 = Mark(userA, "markID1", mark = MarkData("subj1", Some(url1)))
+    val m2 = Mark(userA, "markID2", mark = MarkData("subj2", Some(url2)))
 
     marksDao.insert(m1).futureValue shouldEqual m1
-    marksDao.retrieveByUrl(url1, uuid1).futureValue.value shouldEqual m1
+    marksDao.retrieveByUrl(url1, userA).futureValue._1.value shouldEqual m1
 
     marksDao.insert(m2).futureValue shouldEqual m2
-    marksDao.retrieveByUrl(url2, uuid1).futureValue.value shouldEqual m2
+    marksDao.retrieveByUrl(url2, userA).futureValue._1.value shouldEqual m2
   }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.daos
 
@@ -15,7 +15,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
 /**
-  * This class provides unit tests for MongoUserStatsDao.
+  * This class provides unit tests for UserStatDao.
   * 2 tests in this class are responsible for testing total marks particular users.
   * They are designed to test the counting of marks after marks modifications operations.
   */
@@ -43,11 +43,11 @@ class UserStatDaoTests extends FlatSpecWithMatchers
 
   /** This test is designed to create two marks for user. */
   "MongoUserStatsDao" should "(UNIT) calculate marks inserted by userId" in {
-    val totalMarks: Future[UserStats] =
+    val totalMarks: Future[ProfileDots] =
       for {
         mi1 <- marksDao.insert(m1)
         mi2 <- marksDao.insert(m2)
-        totalMarks <- statsDao.stats(userId, 0)
+        totalMarks <- userStatsDao.profileDots(userId, 0)
       } yield totalMarks
 
       totalMarks.futureValue.nMarks shouldEqual 2
@@ -55,7 +55,7 @@ class UserStatDaoTests extends FlatSpecWithMatchers
 
   /** This test is designed to modify marks, but to keep only two actual marks for user. */
   it should "(UNIT) calculate marks updated by userId" in {
-    val totalMarks: Future[UserStats] =
+    val totalMarks: Future[ProfileDots] =
       for {
         mi1 <- marksDao.update(souser, m1.id, m2.mark)
         mi2 <- marksDao.update(souser, m2.id, m1.mark)
@@ -63,7 +63,7 @@ class UserStatDaoTests extends FlatSpecWithMatchers
         mi4 <- marksDao.update(souser, m2.id, m2.mark)
         mi5 <- marksDao.insert(m3)
         intResult <- marksDao.delete(userId, m2.id :: Nil)
-        totalMarks <- statsDao.stats(userId, 0)
+        totalMarks <- userStatsDao.profileDots(userId, 0)
       } yield totalMarks
 
     totalMarks.futureValue.nMarks shouldEqual 2
@@ -77,9 +77,9 @@ class UserStatDaoTests extends FlatSpecWithMatchers
       optRes <- c.find(BSONDocument("_id" -> userId.toString)).one[Test]
     } yield optRes
 
-    statsDao.imprt(userId, 5).futureValue shouldEqual {}
+    userStatsDao.imprt(userId, 5).futureValue shouldEqual {}
     retrieveImportsCount.futureValue.get.imports shouldEqual 5
-    statsDao.imprt(userId, 2).futureValue shouldEqual {}
+    userStatsDao.imprt(userId, 2).futureValue shouldEqual {}
     retrieveImportsCount.futureValue.get.imports shouldEqual 7
   }
 }

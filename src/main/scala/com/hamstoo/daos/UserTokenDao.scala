@@ -1,11 +1,11 @@
 /*
- * Copyright (C) 2017-2018 Hamstoo Corp. <https://www.hamstoo.com>
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
  */
 package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.UserToken
 import com.hamstoo.models.UserToken.{EXPIRY, ID, ISSIGNUP, USR}
 import org.joda.time.DateTime
@@ -21,6 +21,7 @@ import scala.concurrent.{Await, Future}
 /**
   * Data access object for (email and password reset) confirmation tokens.
   */
+@Singleton
 class UserTokenDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   import com.hamstoo.utils._
