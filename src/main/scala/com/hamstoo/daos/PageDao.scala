@@ -41,7 +41,7 @@ class PageDao @Inject()(implicit db: () => Future[DefaultDB],
     Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
     Index(MARK_ID -> Ascending :: Nil) % s"bin-$MARK_ID-1" ::
     Nil toMap;
-  Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 203 seconds)
+  Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 403 seconds)
 
   /** Insert page to collection. */
   def insertPage(page: Page): Future[Page] = for {
