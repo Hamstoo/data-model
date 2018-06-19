@@ -33,9 +33,9 @@ class UserSuggestionDaoTests
 
   def testIt(sharee: Option[String], shareeUsername: Option[String]): Unit = {
     userSuggDao.save(userId, sharee).futureValue.shareeUsername shouldEqual shareeUsername
-    userSuggDao.searchSuggestions(userId, "du").futureValue shouldEqual Seq(userData.username.get)
+    userSuggDao.retrieveUserSuggestions(userId, "du").futureValue shouldEqual Seq(userData.username.get)
     userSuggDao.delete(userId, sharee).futureValue
-    userSuggDao.searchSuggestions(userId, "du").futureValue shouldEqual Seq()
+    userSuggDao.retrieveUserSuggestions(userId, "du").futureValue shouldEqual Seq()
   }
 
   "UserSuggestionDao" should "retrieve search suggestions from public share" in {
@@ -56,13 +56,13 @@ class UserSuggestionDaoTests
 
   it should "update search suggestion timestamps" in {
     val a = userSuggDao.save(userId, None).futureValue
-    Thread.sleep(10)
-    (userSuggDao.save(userId, None).futureValue.ts - a.ts) shouldBe >= (10L)
+    Thread.sleep(5)
+    (userSuggDao.save(userId, None).futureValue.ts - a.ts) shouldBe >= (5L)
     userSuggDao.delete(userId, None).futureValue
 
     val b = userSuggDao.save(userId, profile.email).futureValue
-    Thread.sleep(10)
-    (userSuggDao.save(userId, profile.email).futureValue.ts - b.ts) shouldBe >= (10L)
+    Thread.sleep(5)
+    (userSuggDao.save(userId, profile.email).futureValue.ts - b.ts) shouldBe >= (5L)
     userSuggDao.delete(userId, profile.email).futureValue
   }
 
@@ -73,10 +73,10 @@ class UserSuggestionDaoTests
     userSuggDao.updateUsernamesByEmail(profile.email.get).futureValue shouldEqual 1
 
     // only the shareeUsername, not the ownerUsername, will have been updated so far (so we can still search w/ "du")
-    userSuggDao.searchSuggestions(userId, "du").futureValue shouldEqual Seq(userData.username.get)
+    userSuggDao.retrieveUserSuggestions(userId, "du").futureValue shouldEqual Seq(userData.username.get)
 
-    // now update the ownerUsername, which will be returned by searchSuggestions
+    // now update the ownerUsername, which will be returned by retrieveUserSuggestions
     userSuggDao.updateUsernamesByUsername(userData.username.get, newUserData.username.get).futureValue shouldEqual 1
-    userSuggDao.searchSuggestions(userId, "Pi").futureValue shouldEqual Seq(newUserData.username.get)
+    userSuggDao.retrieveUserSuggestions(userId, "Pi").futureValue shouldEqual Seq(newUserData.username.get)
   }
 }

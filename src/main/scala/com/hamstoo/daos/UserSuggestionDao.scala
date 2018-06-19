@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo.daos
 
 import java.util.UUID
@@ -72,9 +75,9 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
     * @param shareeUserId  current user (used as sharee in this function)
     * @return              sequence of mark owner usernames starting with prefix
     */
-  def searchSuggestions(shareeUserId: UUID, ownerUsernamePrefix: String): Future[Seq[String]] = for {
+  def retrieveUserSuggestions(shareeUserId: UUID, ownerUsernamePrefix: String): Future[Seq[String]] = for {
     c <- dbColl()
-    _ = logger.debug(s"searchSuggestions($shareeUserId, $ownerUsernamePrefix)")
+    _ = logger.debug(s"retrieveUserSuggestions($shareeUserId, $ownerUsernamePrefix)")
 
     mbShareeUsername <- userDao.retrieveById(shareeUserId).map(_.flatMap(_.userData.usernameLower))
 
@@ -92,7 +95,7 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
     seq <- c.find(shareeSel :~ ownerSel).coll[UserSuggestion, Seq]()
 
   } yield {
-    logger.debug(s"searchSuggestions retrieved ${seq.size} documents")
+    logger.debug(s"retrieveUserSuggestions retrieved ${seq.size} documents")
     val now = TIME_NOW
 
     // put those shared directly from first, then public (note the negative symbol)
