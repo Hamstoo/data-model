@@ -5,9 +5,17 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.google.inject.{Inject, Singleton}
+import akka.NotUsed
+import akka.stream.Materializer
+import akka.stream.scaladsl.{Sink, Source}
+import com.google.inject.{Inject, Injector, Singleton}
 import com.hamstoo.models.Mark.{ID, TIMETHRU}
+import com.hamstoo.models.Representation.{Vec, VecEnum}
 import com.hamstoo.models._
+import com.hamstoo.stream.Data.Data
+import com.hamstoo.stream.{CallingUserId, Clock, Datum, LogLevelOptional, injectorly}
+import com.hamstoo.stream.config.StreamModule
+import com.hamstoo.stream.dataset.{MarksStream, ReprsPair, ReprsStream}
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -50,42 +58,82 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   /**
     * Constructs user's profile dots a.k.a. usage stats.
-    * @param offsetMinutes  offset minutes from UTC, obtained from user's HTTP request
+    * @param tzOffset  offset minutes from UTC, obtained from user's HTTP request
     */
-  def profileDots(userId: UUID, offsetMinutes: Int): Future[ProfileDots] = for {
-    cI <- importsColl()
-    cE <- marksColl()
-    sel0 = d :~ Mark.USR -> userId.toString :~ Mark.TIMETHRU -> INF_TIME
-    nMarks <- cE.count(Some(sel0))
-    imports <- cI.find(d :~ U_ID -> userId.toString).one[BSONDocument]
+  def profileDots(userId: UUID, tzOffset: Int, appInjector: Injector): Future[ProfileDots] = {
 
-    // query all records in past four weeks, correcting for user's current timezone
-    sel1 = sel0 :~ Mark.TIMEFROM -> (d :~ "$gt" -> DateTime.now.minusWeeks(N_WEEKS).getMillis) :~
-                   Mark.TAGSx -> (d :~ "$not" -> (d :~ "$all" -> Seq(MarkData.IMPORT_TAG)))
-    _ = logger.debug(BSONDocument.pretty(sel1))
-    seq <- cE.find(sel1).projection(d :~ Mark.TIMEFROM -> 1).coll[BSONDocument, Seq]()
+    // bind some stuff in addition to what's required by StreamModule
+    implicit val streamInjector = appInjector.createChildInjector(new StreamModule {
+      override def configure(): Unit = {
+        super.configure()
+        CallingUserId := userId
+        Clock.BeginOptional() := DateTime.now.minusDays(N_WEEKS * 7 + 1).getMillis
+      }
+    })
 
-  } yield {
-    val extraDays = N_WEEKS * 7 - 1
-    val extraOffset = 60 * 24 * extraDays // = 38880
-    val firstDay = DateTime.now.minusMinutes(offsetMinutes + extraOffset)
+    val marks = injectorly[MarksStream]
+    val reprs = injectorly[ReprsStream]
 
-    // group timestamps into collections by day string and take the number of records for each day
-    val format = "MMMM d"
-    val values: Map[String, Int] = seq groupBy { d =>
-      new DateTime(d.getAs[Long](Mark.TIMEFROM).get).minusMinutes(offsetMinutes).toString(format)
-    } mapValues (_.size) withDefaultValue 0
-
-    seq.foreach(x => logger.debug(BSONDocument.pretty(x)))
-
-    // get last 28 dates in user's timezone and pair them with numbers of marks
-    val days: Seq[ProfileDot] = for (i <- 0 to extraDays) yield {
-      val s = firstDay.plusDays(i).toString(format)
-      ProfileDot(s, values(s))
+    // get external content (web *site*) Representation vector or, if missing, user-content Representation vector
+    val rsource: Source[(TimeStamp, Option[Vec]), NotUsed] = reprs.out.mapConcat { _.map { x: Datum[ReprsPair] =>
+      x.sourceTime ->
+        x.value.siteReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString))
+          .orElse(x.value.userReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString)))
+      }
     }
 
-    val nImported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
-    ProfileDots(nMarks, nImported, days, (0 /: days)(_ + _.nMarks), days.reverse.maxBy(_.nMarks))
+    // don't rely on reprs being populated for all marks
+    val msource: Source[(TimeStamp, ObjectId), NotUsed] = marks.out.mapConcat { _.map { x: Datum[Mark] =>
+      x.sourceTime -> x.value.id
+    }}
+
+    val mfut = msource.runWith(Sink.seq)(injectorly[Materializer])
+    val rfut = rsource.runWith(Sink.seq)(injectorly[Materializer])
+    injectorly[Clock].start()
+
+
+
+    
+      ...
+
+
+
+    
+    for {
+      cI <- importsColl()
+      cE <- marksColl()
+      sel0 = d :~ Mark.USR -> userId.toString :~ Mark.TIMETHRU -> INF_TIME
+      nMarks <- cE.count(Some(sel0))
+      imports <- cI.find(d :~ U_ID -> userId.toString).one[BSONDocument]
+
+      // query all records in past four weeks, correcting for user's current timezone
+      sel1 = sel0 :~ Mark.TIMEFROM -> (d :~ "$gt" -> DateTime.now.minusWeeks(N_WEEKS).getMillis) :~
+        Mark.TAGSx -> (d :~ "$not" -> (d :~ "$all" -> Seq(MarkData.IMPORT_TAG)))
+      _ = logger.debug(BSONDocument.pretty(sel1))
+      seq <- cE.find(sel1).projection(d :~ Mark.TIMEFROM -> 1).coll[BSONDocument, Seq]()
+
+    } yield {
+      val extraDays = N_WEEKS * 7 - 1
+      val extraOffset = 60 * 24 * extraDays // = 38880
+      val firstDay = DateTime.now.minusMinutes(tzOffset + extraOffset)
+
+      // group timestamps into collections by day string and take the number of records for each day
+      val format = "MMMM d"
+      val values: Map[String, Int] = seq groupBy { d =>
+        new DateTime(d.getAs[Long](Mark.TIMEFROM).get).minusMinutes(tzOffset).toString(format)
+      } mapValues (_.size) withDefaultValue 0
+
+      seq.foreach(x => logger.debug(BSONDocument.pretty(x)))
+
+      // get last 28 dates in user's timezone and pair them with numbers of marks
+      val days: Seq[ProfileDot] = for (i <- 0 to extraDays) yield {
+        val s = firstDay.plusDays(i).toString(format)
+        ProfileDot(s, values(s))
+      }
+
+      val nImported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
+      ProfileDots(nMarks, nImported, days, (0 /: days)(_ + _.nMarks), days.reverse.maxBy(_.nMarks))
+    }
   }
 
   import com.hamstoo.models.UserStats._
