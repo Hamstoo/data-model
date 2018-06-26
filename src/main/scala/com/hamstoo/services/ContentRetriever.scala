@@ -158,62 +158,11 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
 
   /**
     * This method is called if "incapsula" keyword found in page response.  Soon new WAFs should added to be detected.
-    * The method uses HtmlUnit *testing* tool which runs JavaScript scripts and waits until all scripts are loaded--
-    * it runs loaded scripts as well.  What provides necessary calculations to bypass WAF.
+    * The method WSClient to get content of a page ny URI.
+    * What provides necessary calculations to bypass WAF.
     */
   def bypassWAF(url: String): Future[WSResponse] = {
-
-    // these settings are important to run JavaScript in loaded page by emulated browser
-    val webClient: WebClient = new WebClient(BrowserVersion.EDGE)
-    webClient.setAjaxController(new AjaxController(){
-      override def processSynchron(page: HtmlPage, request: WebRequest, async: Boolean) = true
-    })
-
-    // this low timeout is required because WAFs can include several redirects and heavy JavaScripts to be loaded
-    // from Wordpress CMS sites (usually used with Incapsula plugin), it depends on client/server bandwidth and
-    // server capacity (PHP sites in general usually consume lots of resources)
-    webClient.waitForBackgroundJavaScript(20000)
-    webClient.getOptions.setJavaScriptEnabled(true)
-    webClient.getOptions.setThrowExceptionOnFailingStatusCode(false);
-    webClient.getOptions.setThrowExceptionOnScriptError(false);
-    webClient.getOptions.setCssEnabled(false)
-    webClient.getOptions.setRedirectEnabled(true)
-    webClient.getOptions.setUseInsecureSSL(true)
-
-    // HtmlUnit throws too many non-critical exceptions so we perform a few retries.  Many Exceptions are probably
-    // thrown by HtmlUnit because of HTML inconsistencies.  Incapsula has also a plugin for Wordpress engine, which
-    // is a source of plenty of errors.
-    // This code can be tested with the following URL: http://www.arnoldkling.com/blog/does-america-over-incarcerate/
-    // UPDATE - 20180220 - But can it really?  It sure is throwing a lot of exceptions?  Where did we leave this issue?
-    def retryGetPage[T](fn: () => T, nRetries: Int = 3): Try[T] = Try(fn()).recoverWith {
-      case e: FailingHttpStatusCodeException => {
-        if (nRetries == 0) Failure(HtmlUnitFailingHttpStatusCodeException(e.getMessage, e)) else {
-          logger.info(s"Unable to get URL ${url.take(60)}; ${e.getClass.getName}: ${e.getMessage}; $nRetries retries remaining")
-          retryGetPage(fn, nRetries = nRetries - 1)
-        }
-      }
-    }
-
-    val page: Try[HtmlPage] = retryGetPage[HtmlPage](() => {
-      logger.debug("*** This next call to HtmlUnit.WebClient.getPage can generate a bunch of exceptions which don't appear to be an existential problem")
-      // this URL will cause them when run from full docker-compose initiated system (i.e. repr-engine + hamstoo)
-      //   http://www.arnoldkling.com/blog/does-america-over-incarcerate/
-      val pg = webClient.getPage(url).asInstanceOf[HtmlPage]
-      logger.debug("*** Done HtmlUnit.WebClient.getPage")
-      pg
-    })
-
-    val response: Try[Response] = page.map { htmlPage =>
-      val html = htmlPage.asText()
-      val contentByte = html.toCharArray.map(_.toByte)
-      new ResponseBuilder().accumulate(new HttpResponseBodyPart(true) {
-        override def getBodyPartBytes: Array[Byte] = contentByte
-        override def length(): Int = contentByte.length
-        override def getBodyByteBuffer: ByteBuffer = ByteBuffer.allocate(contentByte.length)
-        }).accumulate(new CacheableHttpResponseStatus(Uri.create(url), 200, "200", "https"))build()
-    }
-
-    Future.fromTry(response).map(r => AhcWSResponse(StandaloneAhcWSResponse(r)))
+    httpClient.url(url).withMethod("GET").execute()
   }
 
   val MAX_REDIRECTS = 8
