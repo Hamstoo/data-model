@@ -5,18 +5,15 @@ package com.hamstoo.services
 
 import java.util.Locale
 
-import com.google.inject.{Guice, Injector}
-import com.hamstoo.daos.WordVectorDao
+import com.google.inject.Injector
 import com.hamstoo.models.Representation
 import com.hamstoo.models.Representation._
 import com.hamstoo.services.VectorEmbeddingsService.WordMass
-import com.hamstoo.stream.config.ConfigModule
+import com.hamstoo.stream.injectorly
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
 import com.hamstoo.utils
-import com.hamstoo.utils.DataInfo
-import play.api.libs.ws.WSClient
-import play.api.libs.ws.ahc.AhcWSClient
+import com.hamstoo.utils.DataInfo.createExtendedInjector
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -26,25 +23,17 @@ import scala.concurrent.{ExecutionContext, Future}
   * If any of these tests fail with the following error "java.util.NoSuchElementException: None.get"
   * then it's possible that the conceptnet5-vectors-docker container isn't reachable.
   */
-class VectorEmbeddingsServiceTests
-  extends AkkaMongoEnvironment("VectorEmbeddingsServiceSpec-ActorSystem")
+class VectorEmbeddingsServiceTests extends AkkaMongoEnvironment("VectorEmbeddingsServiceTests-ActorSystem")
     with FutureHandler {
 
   implicit val ex: ExecutionContext = system.dispatcher
 
   // create a Guice object graph configuration/module and instantiate it to an injector
-  lazy val injector: Injector = Guice.createInjector(new ConfigModule(DataInfo.config) {
-    override def configure(): Unit = {
-      super.configure()
-      bind[WSClient].toInstance(AhcWSClient())
-      bind[WordVectorDao].toInstance(vectorsDao)
-    }
-  })
+  lazy implicit val injector: Injector = createExtendedInjector()
 
   // instantiate components from the Guice injector
-  import net.codingwell.scalaguice.InjectorExtensions._
-  lazy val vectorizer: Vectorizer = injector.instance[Vectorizer]
-  lazy val vecSvc: VectorEmbeddingsService = injector.instance[VectorEmbeddingsService]
+  lazy val vectorizer: Vectorizer = injectorly[Vectorizer]
+  lazy val vecSvc: VectorEmbeddingsService = injectorly[VectorEmbeddingsService]
 
   // skip all of these tests because TravisCI doesn't have access to the conceptnet-vectors container
 

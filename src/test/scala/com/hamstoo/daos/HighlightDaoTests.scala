@@ -31,11 +31,11 @@ class HighlightDaoTests
 
   "MongoHighlightDao" should "(UNIT) insert highlights, unset user content repr" in {
     marksDao.insert(m).futureValue shouldEqual m
-    marksDao.retrieve(User(userId), markId).futureValue.value.userContentRepr should not equal None
+    marksDao.retrieveById(User(userId), markId).futureValue.value.userContentRepr should not equal None
 
     hlightsDao.insert(h).futureValue shouldEqual h
 
-    marksDao.retrieve(User(userId), markId).futureValue.value.userContentRepr shouldEqual None
+    marksDao.retrieveById(User(userId), markId).futureValue.value.userContentRepr shouldEqual None
   }
 
   /*it should "(UNIT) retrieve highlights by id" in {
@@ -53,11 +53,11 @@ class HighlightDaoTests
 
   it should "(UNIT) delete highlight" in {
     marksDao.insertReprInfo(m.id, usrRepr).futureValue shouldEqual {}
-    marksDao.retrieve(User(m.userId), m.id).futureValue.value.userContentRepr should not equal None
+    marksDao.retrieveById(User(m.userId), m.id).futureValue.value.userContentRepr should not equal None
 
     hlightsDao.delete(h.usrId, h.id).futureValue shouldEqual {}
     hlightsDao.retrieve(User(h.usrId), h.markId).futureValue shouldEqual Nil
 
-    marksDao.retrieve(User(m.userId), m.id).futureValue.value.userContentRepr shouldEqual None
+    marksDao.retrieveById(User(m.userId), m.id).futureValue.value.userContentRepr shouldEqual None
   }
 }

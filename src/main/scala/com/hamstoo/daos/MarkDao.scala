@@ -132,7 +132,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   }
 
   /** Retrieves a mark by user and ID, None if not found or not authorized. */
-  def retrieve(user: Option[User], id: ObjectId, timeFrom: Option[TimeStamp] = None): Future[Option[Mark]] = {
+  def retrieveById(user: Option[User], id: ObjectId, timeFrom: Option[TimeStamp] = None): Future[Option[Mark]] = {
     logger.debug(s"Retrieving (secure) mark $id for user ${user.map(_.usernameId)}")
     for {
       mInsecure <- retrieveInsecure(id, timeFrom = timeFrom)
@@ -147,18 +147,6 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
         case None => logger.debug(s"Mark $id not found"); fNone
       }
     } yield mSecure
-  }
-
-  /** Retrieves all current marks for the user, sorted by `timeFrom` descending. */
-  def retrieve(user: UUID): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving all current marks for user $user")
-    for {
-      c <- dbColl()
-      seq <- c.find(d :~ USR -> user :~ curnt).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
-    } yield {
-      logger.debug(s"${seq.size} marks were successfully retrieved")
-      seq
-    }
   }
 
   /** Retrieves all versions of a mark, current and previous, sorted by timeFrom, descending. */
@@ -250,14 +238,20 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   }
 
   /**
-    * Retrieves all current marks with representations for the user, constrained by a list of tags.  Mark must have
-    * all tags to qualify.
-    * @param user  Only marks for this user will be returned/searched.
-    * @param tags  Returned marks must have all of these tags, default to empty set.
+    * Retrieves all current marks for the user, sorted by `timeFrom` descending, constrained by a list of tags.
+    * Mark must have all tags to qualify.  This function was formerly (prior to 2018-6-27) called `retrieveRepred`
+    * (i.e. its `requireRepr` effectively used to default to true).
+    * @param user         Only marks for this user will be returned/searched.
+    * @param tags         Returned marks must have all of these tags, default to empty set.
+    * @param begin        Optional timeFrom lower bound constraint (inclusive).
+    * @param end          Optional timeFrom upper bound constraint (exclusive).
+    * @param requireRepr  If true (default: false), only marks with at least one representation will be returned.
     */
-  def retrieveRepred(user: UUID, tags: Set[String] = Set.empty[String],
-                     begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving represented marks for user $user and tags $tags")
+  def retrieve(user: UUID,
+               tags: Set[String] = Set.empty[String],
+               begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None,
+               requireRepr: Boolean = false): Future[Seq[Mark]] = {
+    logger.debug(s"Retrieving marks for user $user and tags $tags")
     for {
       c <- dbColl()
 
@@ -266,14 +260,14 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
       // maybe we should $and instead of $or
       sel = d :~ USR -> user :~ curnt :~ // TODO: should `curnt` be moved into `reprs` to utilize indexes?
-                 REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0)) :~
+                 (if (!requireRepr) d else d :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0))) :~
                  (if (tags.isEmpty) d else d :~ TAGSx -> (d :~ "$all" -> tags)) :~
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
 
-      seq <- c.find(sel).coll[Mark, Seq]()
+      seq <- c.find(sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
-      logger.debug(s"${seq.size} represented marks were successfully retrieved")
+      logger.debug(s"${seq.size} marks were successfully retrieved")
       seq.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
     }
   }

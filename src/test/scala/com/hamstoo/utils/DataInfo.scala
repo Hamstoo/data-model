@@ -5,10 +5,19 @@ package com.hamstoo.utils
 
 import java.util.UUID
 
+import akka.stream.Materializer
+import com.google.inject.name.Named
+import com.google.inject.{Guice, Injector, Provides, Singleton}
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.models._
+import com.hamstoo.stream.config.{BaseModule, ConfigModule}
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.typesafe.config.{Config, ConfigFactory}
+import play.api.libs.ws.WSClient
+import play.api.libs.ws.ahc.AhcWSClient
+import reactivemongo.api.{DefaultDB, MongoConnection}
+
+import scala.concurrent.{ExecutionContext, Future}
 
 /**
   * Trait that contain test information
@@ -24,6 +33,31 @@ object DataInfo {
                                                          |idfs.resource = idfs/text8.json.zip
                                                          |mongodb.uri = "mongodb://localhost:$mongoPort/hamstoo"
                                                          |""".stripMargin)
+
+  // create a Guice object graph configuration/module and instantiate it to an injector
+  lazy val appInjector: Injector = Guice.createInjector(ConfigModule(config))
+
+  /**
+    * Unlike repr-engine's DBDriverTestSuite, data-model tests get their Materializer by extending
+    * AkkaMongoEnvironment, which is why it has to be passed in here.
+    */
+  def createExtendedInjector()(implicit materializer: Materializer, ec: ExecutionContext): Injector =
+    appInjector.createChildInjector(new BaseModule {
+      override def configure(): Unit = {
+        super.configure()
+        classOf[Materializer] := materializer
+        classOf[ExecutionContext] := ec
+      }
+
+      @Provides @Singleton
+      def provideDB(@Named("mongodb.uri") mongoDbUri: String): () => Future[DefaultDB] = {
+        val (dbConn: MongoConnection, dbName: String) = getDbConnection(mongoDbUri)
+        () => dbConn.database(dbName)
+      }
+
+      @Provides @Singleton
+      def provideWSClient(implicit materializer: Materializer): WSClient = AhcWSClient()
+    })
 
   // these used to be `userId` and `markId` constants but were changed to functions to avoid collisions between tests
   def constructUserId(): UUID = UUID.randomUUID()

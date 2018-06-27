@@ -56,8 +56,8 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
         .map(_.toSeq.filter(_.hasTags(tags))).flatMap(filterAuthorizedRead(_, callingUserId))
     }
 
-    // every single mark with an existing representation
-    val funscoredMs = markDao.retrieveRepred(searchUserId, tags = tags, begin = Some(begin), end = Some(end))
+    // every single mark ~~with an existing representation~~ (repr requirement removed 2018-6-27)
+    val funscoredMs = markDao.retrieve(searchUserId, tags = tags, begin = Some(begin), end = Some(end))
                         .flatMap(filterAuthorizedRead(_, callingUserId))
 
     for {

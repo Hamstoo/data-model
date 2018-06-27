@@ -112,10 +112,9 @@ class FacetTests
     // this commented out line would have the same effect as below, but in the hamstoo project we already have an
     // appInjector and we need to call createChildInjector from it, so we do so here also to better mimic that scenario
     //val streamInjector = Guice.createInjector(ConfigModule(DataInfo.config), new StreamModule {
-    val appInjector = Guice.createInjector(ConfigModule(DataInfo.config))
 
     // bind some stuff in addition to what's required by StreamModule
-    val streamInjector = appInjector.createChildInjector(new StreamModule {
+    val streamInjector = DataInfo.appInjector.createChildInjector(new StreamModule {
 
       override def configure(): Unit = {
         super.configure()
@@ -154,7 +153,7 @@ class FacetTests
       }
     })
 
-    logger.info(s"App injector: ${appInjector.hashCode}, stream injector: ${streamInjector.hashCode}")
+    logger.info(s"App injector: ${DataInfo.appInjector.hashCode}, stream injector: ${streamInjector.hashCode}")
 
     import net.codingwell.scalaguice.InjectorExtensions._
     val facetsModel = streamInjector.instance[FacetsModel]

@@ -9,11 +9,9 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Sink, Source}
 import com.google.inject.{Inject, Injector, Singleton}
-import com.hamstoo.models.Mark.{ID, TIMETHRU}
 import com.hamstoo.models.Representation.{Vec, VecEnum}
 import com.hamstoo.models._
-import com.hamstoo.stream.Data.Data
-import com.hamstoo.stream.{CallingUserId, Clock, Datum, LogLevelOptional, injectorly}
+import com.hamstoo.stream.{CallingUserId, Clock, Datum, injectorly}
 import com.hamstoo.stream.config.StreamModule
 import com.hamstoo.stream.dataset.{MarksStream, ReprsPair, ReprsStream}
 import org.joda.time.DateTime
@@ -27,6 +25,7 @@ import reactivemongo.bson._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
+import scala.util.Try
 
 /**
   * Data access object for usage stats.
@@ -62,12 +61,15 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     */
   def profileDots(userId: UUID, tzOffset: Int, appInjector: Injector): Future[ProfileDots] = {
 
+    val clockBegin = DateTime.now.minusDays(N_WEEKS * 7 + 1).getMillis
+    logger.info(s"Computing profile dots for user $userId with timezone offset $tzOffset minutes since ${clockBegin.tfmt}")
+
     // bind some stuff in addition to what's required by StreamModule
     implicit val streamInjector = appInjector.createChildInjector(new StreamModule {
       override def configure(): Unit = {
         super.configure()
         CallingUserId := userId
-        Clock.BeginOptional() := DateTime.now.minusDays(N_WEEKS * 7 + 1).getMillis
+        Clock.BeginOptional() := clockBegin
       }
     })
 
@@ -75,64 +77,71 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     val reprs = injectorly[ReprsStream]
 
     // get external content (web *site*) Representation vector or, if missing, user-content Representation vector
-    val rsource: Source[(TimeStamp, Option[Vec]), NotUsed] = reprs.out.mapConcat { _.map { x: Datum[ReprsPair] =>
-      x.sourceTime ->
-        x.value.siteReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString))
-          .orElse(x.value.userReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString)))
-      }
-    }
+    val rsource: Source[(TimeStamp, Vec), NotUsed] = reprs.out.mapConcat { _.flatMap { x: Datum[ReprsPair] =>
+      val mbVec = x.value.siteReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString))
+        .orElse(x.value.userReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString)))
+      mbVec.map(x.sourceTime -> _)
+    }}
 
     // don't rely on reprs being populated for all marks
-    val msource: Source[(TimeStamp, ObjectId), NotUsed] = marks.out.mapConcat { _.map { x: Datum[Mark] =>
-      x.sourceTime -> x.value.id
-    }}
+    val msource: Source[TimeStamp, NotUsed] = marks.out.mapConcat(_.map(_.sourceTime))
+
+    // TODO: implement a test that ensures reprs' timestamps match marks'
 
     val mfut = msource.runWith(Sink.seq)(injectorly[Materializer])
     val rfut = rsource.runWith(Sink.seq)(injectorly[Materializer])
     injectorly[Clock].start()
 
-
-
-    
-      ...
-
-
-
-    
     for {
       cI <- importsColl()
       cE <- marksColl()
-      sel0 = d :~ Mark.USR -> userId.toString :~ Mark.TIMETHRU -> INF_TIME
-      nMarks <- cE.count(Some(sel0))
+      nUserTotalMarks <- cE.count(Some(d :~ Mark.USR -> userId.toString :~ Mark.TIMETHRU -> INF_TIME))
       imports <- cI.find(d :~ U_ID -> userId.toString).one[BSONDocument]
 
-      // query all records in past four weeks, correcting for user's current timezone
-      sel1 = sel0 :~ Mark.TIMEFROM -> (d :~ "$gt" -> DateTime.now.minusWeeks(N_WEEKS).getMillis) :~
-        Mark.TAGSx -> (d :~ "$not" -> (d :~ "$all" -> Seq(MarkData.IMPORT_TAG)))
-      _ = logger.debug(BSONDocument.pretty(sel1))
-      seq <- cE.find(sel1).projection(d :~ Mark.TIMEFROM -> 1).coll[BSONDocument, Seq]()
+      mbUserStats <- retrieve(userId)
+
+      marks <- mfut
+      reprs <- rfut
 
     } yield {
+
       val extraDays = N_WEEKS * 7 - 1
-      val extraOffset = 60 * 24 * extraDays // = 38880
-      val firstDay = DateTime.now.minusMinutes(tzOffset + extraOffset)
+      val extraMinutes = 60 * 24 * extraDays // = 38880
+      val firstDay = DateTime.now.minusMinutes(tzOffset + extraMinutes)
 
-      // group timestamps into collections by day string and take the number of records for each day
-      val format = "MMMM d"
-      val values: Map[String, Int] = seq groupBy { d =>
-        new DateTime(d.getAs[Long](Mark.TIMEFROM).get).minusMinutes(tzOffset).toString(format)
-      } mapValues (_.size) withDefaultValue 0
+      // group timestamps into collections by day string
+      val format = "MMMM d" // `format` must not include any part of datetime smaller than day
+      val groupedDays = marks.groupBy(new DateTime(_).minusMinutes(tzOffset).toString(format))
 
-      seq.foreach(x => logger.debug(BSONDocument.pretty(x)))
+      // number of records for each day
+      val nPerDay: Map[String, Int] = groupedDays.mapValues(_.size).withDefaultValue(0)
+
+      // similarity for each day
+      import UserStats.DEFAULT_SIMILARITY
+      val mbUserVec = mbUserStats.flatMap(_.vectors.get(VecEnum.IDF.toString))
+      val similarityByDay: Map[String, Double] = mbUserVec.fold(Map.empty[String, Double]) { uvec =>
+        val mappedReprs = reprs.toMap
+        groupedDays.mapValues { timestamps =>
+          import com.hamstoo.models.Representation.VecFunctions
+          val meanSimilarity = timestamps.flatMap { mappedReprs.get(_).map(_ cosine uvec) }.mean
+          if (meanSimilarity.isNaN) DEFAULT_SIMILARITY else meanSimilarity
+        }
+      }.withDefaultValue(DEFAULT_SIMILARITY)
 
       // get last 28 dates in user's timezone and pair them with numbers of marks
       val days: Seq[ProfileDot] = for (i <- 0 to extraDays) yield {
-        val s = firstDay.plusDays(i).toString(format)
-        ProfileDot(s, values(s))
+        val dt = firstDay.plusDays(i).toString(format)
+        ProfileDot(dt, nPerDay(dt), userVecSimilarity = similarityByDay(dt))
       }
 
       val nImported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
-      ProfileDots(nMarks, nImported, days, (0 /: days)(_ + _.nMarks), days.reverse.maxBy(_.nMarks))
+      ProfileDots(nUserTotalMarks,
+                  nImported,
+                  days,
+                  (0 /: days)(_ + _.nMarks),
+                  days.reverse.maxBy(_.nMarks),
+                  userVecSimMin = Try(similarityByDay.values.min).getOrElse(DEFAULT_SIMILARITY),
+                  userVecSimMax = Try(similarityByDay.values.max).getOrElse(DEFAULT_SIMILARITY))
     }
   }
 

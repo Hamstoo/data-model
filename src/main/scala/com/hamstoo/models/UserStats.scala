@@ -26,8 +26,8 @@ case class ProfileDots(nMarks: Int,
                        marksLatest: Seq[ProfileDot],
                        marksLatestSum: Int,
                        mostProductive: ProfileDot,
-                       userVecSimMin: Double = 0.0, // can't default to NaN:
-                       userVecSimMax: Double = 0.0) //   java.lang.NumberFormatException when passing to frontend
+                       userVecSimMin: Double = UserStats.DEFAULT_SIMILARITY,
+                       userVecSimMax: Double = UserStats.DEFAULT_SIMILARITY)
 
 /**
   * A count of the number of marks that were created on a particular date.
@@ -35,7 +35,7 @@ case class ProfileDots(nMarks: Int,
   * @param nMarks             The number of marks created on that date.
   * @param userVecSimilarity  The cosine similarity of the user's average vector to the marks' vectors from this day.
   */
-case class ProfileDot(date: String, nMarks: Int, userVecSimilarity: Double = 0.0)
+case class ProfileDot(date: String, nMarks: Int, userVecSimilarity: Double = UserStats.DEFAULT_SIMILARITY)
 
 /**
   * Statistics corresponding to a user's aggregate marks, computed over time.
@@ -53,6 +53,9 @@ case class UserStats(userId: UUID,
 }
 
 object UserStats extends BSONHandlers {
+
+  // can't default to NaN (java.lang.NumberFormatException when passing to frontend)
+  val DEFAULT_SIMILARITY = 0.0
 
   val USR: String = Mark.USR; assert(USR == nameOf[UserStats](_.userId))
   val TIMESTAMP: String = nameOf[UserStats](_.ts)

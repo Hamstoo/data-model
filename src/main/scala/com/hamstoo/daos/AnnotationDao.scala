@@ -64,7 +64,7 @@ abstract class AnnotationDao[A <: Annotation: BSONDocumentHandler]
 
   /** Now that user content has changed remove the mark's "user content" repr so that it will be recomputed. */
   private def updateUserContentReprInfo(annotation: A): Future[Unit] = for {
-    mbMark <- marksDao.retrieve(User(annotation.usrId), annotation.markId)
+    mbMark <- marksDao.retrieveById(User(annotation.usrId), annotation.markId)
     _ <- if (mbMark.isEmpty) Future.unit else for {
       _ <- marksDao.unsetRepr(mbMark.get, Right(ReprType.USER_CONTENT))
       _ <- pagesDao.removeUserContentPage(mbMark.get.id) // this isn't completely necessary, just a little housekeeping

@@ -3,22 +3,20 @@
  */
 package com.hamstoo.services
 
-import com.google.inject.{Guice, Injector}
-import com.hamstoo.stream.config.ConfigModule
+import com.google.inject.Injector
+import com.hamstoo.stream.injectorly
 import com.hamstoo.test.FlatSpecWithMatchers
-import com.hamstoo.utils.DataInfo
 
 /**
   * IDFModel tests.
   */
 class IDFModelTests extends FlatSpecWithMatchers {
 
-  // create a Guice object graph configuration/module and instantiate it to an injector
-  lazy val injector: Injector = Guice.createInjector(ConfigModule(DataInfo.config))
+  import com.hamstoo.utils.DataInfo._
 
   // instantiate components from the Guice injector
-  import net.codingwell.scalaguice.InjectorExtensions._
-  lazy val idfModel: IDFModel = injector.instance[IDFModel]
+  lazy implicit val injector: Injector = appInjector
+  lazy val idfModel: IDFModel = injectorly[IDFModel]
 
   val deviation = 1e-4
 

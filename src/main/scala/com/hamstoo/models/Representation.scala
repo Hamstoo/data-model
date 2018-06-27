@@ -298,7 +298,7 @@ object Representation extends BSONHandlers {
     def toReprId(mark: Mark)(implicit marksDao: MarkDao, ex: ExecutionContext): Future[ObjectId] = {
       repr.fold(
         rid => Future.successful(rid),
-        rtyp => marksDao.retrieve(User(mark.userId), mark.id, timeFrom = Some(mark.timeFrom)).map { mbMark =>
+        rtyp => marksDao.retrieveById(User(mark.userId), mark.id, timeFrom = Some(mark.timeFrom)).map { mbMark =>
           mbMark.flatMap(_.reprs.find(_.reprType == rtyp.toString)).map(_.reprId).getOrElse("")
         }
       )
