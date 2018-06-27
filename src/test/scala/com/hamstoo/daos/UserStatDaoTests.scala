@@ -12,7 +12,6 @@ import com.hamstoo.test.FutureHandler
 import com.hamstoo.utils.DataInfo
 import org.joda.time.DateTime
 import org.scalatest.OptionValues
-import play.api.Logger
 import reactivemongo.bson.{BSONDocument, BSONDocumentReader, Macros}
 
 import scala.concurrent.ExecutionContext

@@ -11,11 +11,10 @@ import com.google.inject.Inject
 import com.google.inject.name.Named
 import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
 import com.hamstoo.models.{Mark, RSearchable, Representation}
-import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream.Data.{Data, ExtendedData}
 import com.hamstoo.stream._
-import com.hamstoo.stream.dataset.{QueryResult, RepredMarks, ReprsPair}
+import com.hamstoo.stream.dataset.{ReprQueryResult, RepredMarks, ReprsPair}
 import com.hamstoo.utils.{ExtendedDouble, ExtendedTimeStamp, TimeStamp, memoryString, parse}
 import org.slf4j.LoggerFactory
 import play.api.Logger
@@ -240,7 +239,7 @@ class SearchResults @Inject()(rawQuery: QueryOptional,
     */
   def searchTerms2Scores(rOrU: String,
                          mId: String,
-                         searchTermReprs: Seq[QueryResult],
+                         searchTermReprs: Seq[ReprQueryResult],
                          searchTermVecs: Seq[VecSvc.WordMass],
                          nWordsMult: Int = 1): (Double, Option[Double], String, String) = {
 
@@ -263,7 +262,7 @@ class SearchResults @Inject()(rawQuery: QueryOptional,
       // (we used to do this by dividing by sqrt(reprText.length) which is similar to BM25 when its `b` parameter
       // is 1--we have `b` hard-coded to 0.5 in `bm25Tf`--and w/out the sqrt)
       import com.hamstoo.services.VectorEmbeddingsService.bm25Tf
-      def bm25(qr: QueryResult): (Double, Double, Int) = {
+      def bm25(qr: ReprQueryResult): (Double, Double, Int) = {
 
         if (loggerI.isTraceEnabled) {
           val owm = searchTermVecs.find(_.word == qr.qword) // same documentSimilarity calculation as below

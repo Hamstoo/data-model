@@ -21,14 +21,14 @@ import scala.concurrent.Future
 /**
   * A MongoDB Text Index search score for a search term / query word along with its corresponding repr.
   */
-case class QueryResult(qword: String, mbR: Option[RSearchable], dbScore: Double, count: Int)
+case class ReprQueryResult(qword: String, mbR: Option[RSearchable], dbScore: Double, count: Int)
 
 /**
   * The instance type streamed from the ReprsStream.
   * @param siteReprs  A representation corresponding to the (external) content of the marked site.
   * @param userReprs  A representation constructed from the user-created content (comments, labels, highlights, notes).
   */
-case class ReprsPair(siteReprs: Seq[QueryResult], userReprs: Seq[QueryResult])
+case class ReprsPair(siteReprs: Seq[ReprQueryResult], userReprs: Seq[ReprQueryResult])
 
 /**
   * A stream of a user's marks' representations.
@@ -98,7 +98,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
           // each element of `scoredReprs` contains a collection of representations for the respective word in
           // `cleanedQuery`, so zip them together, pull out the requested reprId, and multiply the MongoDB search
           // scores `dbScore` by the query word counts `q._2`
-          def searchTermReprs(rOrU: String, reprId: String): Seq[QueryResult] =
+          def searchTermReprs(rOrU: String, reprId: String): Seq[ReprQueryResult] =
 
             // both of these must contain at least 1 element
             cleanedQuery.view.zip(scoredReprs).map { case (q, scoredReprsForThisWord) =>
@@ -111,7 +111,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
               def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
               loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
 
-              QueryResult(q._1, mbR, dbScore, q._2)
+              ReprQueryResult(q._1, mbR, dbScore, q._2)
             }.force
 
           val siteReprs = searchTermReprs("R", primaryReprId)    // website-content representations

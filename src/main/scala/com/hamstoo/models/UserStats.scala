@@ -11,10 +11,11 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 /**
   * Instances of this class are not (as of 12/17) stored in the database as documents in a collection.
-  * Instead these instances are constructed by the `UserStatDao.stats` method.
+  * Instead these instances are constructed by the `UserStatDao.stats` method.  This is more of a frontend
+  * API interface than a data model.
   *
   * @param nMarks          entries.count(Some(d :~ Mark.USR -> userId.toString :~ Mark.TIMETHRU -> INF_TIME))
-  * @param imported        Count of number of imported marks from the `imports` collection.
+  * @param nImported        Count of number of imported marks from the `imports` collection.
   * @param marksLatest     List of counts for each day over the last 4 weeks.
   * @param marksLatestSum  Total number over the last 4 weeks, computed from the `entries` collection.
   * @param mostProductive  Max nMarks day over last 4 weeks.
@@ -22,12 +23,13 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * @param userVecSimMax   max(marksLatest.map(_.userVecSimilarity))
   */
 case class ProfileDots(nMarks: Int,
-                       imported: Int,
+                       nImported: Int,
                        marksLatest: Seq[ProfileDot],
                        marksLatestSum: Int,
                        mostProductive: ProfileDot,
                        userVecSimMin: Double = UserStats.DEFAULT_SIMILARITY,
-                       userVecSimMax: Double = UserStats.DEFAULT_SIMILARITY)
+                       userVecSimMax: Double = UserStats.DEFAULT_SIMILARITY,
+                       autoGenKws: Option[Seq[String]] = None)
 
 /**
   * A count of the number of marks that were created on a particular date.
@@ -46,10 +48,11 @@ case class ProfileDot(date: String, nMarks: Int, userVecSimilarity: Double = Use
   */
 case class UserStats(userId: UUID,
                      ts: TimeStamp,
-                     vectors: Map[String, Representation.Vec]) {
+                     vectors: Map[String, Representation.Vec],
+                     autoGenKws: Option[Seq[String]] = None) {
 
   override def toString: String =
-    s"${getClass.getSimpleName}($userId, ${ts.tfmt}, nVectors=${vectors.size})"
+    s"${getClass.getSimpleName}($userId, ${ts.tfmt}, nVectors=${vectors.size}, $autoGenKws)"
 }
 
 object UserStats extends BSONHandlers {

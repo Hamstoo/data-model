@@ -257,7 +257,8 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
     val nDesired = 15
 
     // sort by `aggregateSimilarityScore` (descending)
-    val words = candidates.map { wm => wm.word -> documentSimilarity(wm.scaledVec, docVecs) }
+    val words = candidates.filterNot(wm => Seq("http", "https").contains(wm.word))
+      .map { wm => wm.word -> documentSimilarity(wm.scaledVec, docVecs) }
       .sortBy(-_._2).map(_._1)
 
     // not quite sure how to do what follows in a functional programming style

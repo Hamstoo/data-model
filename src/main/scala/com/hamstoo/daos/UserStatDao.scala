@@ -11,6 +11,7 @@ import akka.stream.scaladsl.{Sink, Source}
 import com.google.inject.{Inject, Injector, Singleton}
 import com.hamstoo.models.Representation.{Vec, VecEnum}
 import com.hamstoo.models._
+import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.stream.{CallingUserId, Clock, Datum, injectorly}
 import com.hamstoo.stream.config.StreamModule
 import com.hamstoo.stream.dataset.{MarksStream, ReprsPair, ReprsStream}
@@ -101,12 +102,10 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
       imports <- cI.find(d :~ U_ID -> userId.toString).one[BSONDocument]
 
       mbUserStats <- retrieve(userId)
-
       marks <- mfut
       reprs <- rfut
 
     } yield {
-
       val extraDays = N_WEEKS * 7 - 1
       val extraMinutes = 60 * 24 * extraDays // = 38880
       val firstDay = DateTime.now.minusMinutes(tzOffset + extraMinutes)
@@ -120,12 +119,14 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
       // similarity for each day
       import UserStats.DEFAULT_SIMILARITY
-      val mbUserVec = mbUserStats.flatMap(_.vectors.get(VecEnum.IDF.toString))
-      val similarityByDay: Map[String, Double] = mbUserVec.fold(Map.empty[String, Double]) { uvec =>
+      val mbUserVecs = mbUserStats.map(_.vectors.map(kv => VecEnum.withName(kv._1) -> kv._2))
+      val similarityByDay: Map[String, Double] = mbUserVecs.fold(Map.empty[String, Double]) { uvecs =>
         val mappedReprs = reprs.toMap
         groupedDays.mapValues { timestamps =>
           import com.hamstoo.models.Representation.VecFunctions
-          val meanSimilarity = timestamps.flatMap { mappedReprs.get(_).map(_ cosine uvec) }.mean
+          val meanSimilarity = timestamps.flatMap {
+            //mappedReprs.get(_).map(v => VectorEmbeddingsService.documentSimilarity(v, uvecs)) }.mean
+            mappedReprs.get(_).flatMap(v => uvecs.get(VecEnum.IDF).map(_ cosine v)) }.mean
           if (meanSimilarity.isNaN) DEFAULT_SIMILARITY else meanSimilarity
         }
       }.withDefaultValue(DEFAULT_SIMILARITY)
@@ -143,7 +144,8 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
                   (0 /: days)(_ + _.nMarks),
                   days.reverse.maxBy(_.nMarks),
                   userVecSimMin = Try(similarityByDay.values.min).getOrElse(DEFAULT_SIMILARITY),
-                  userVecSimMax = Try(similarityByDay.values.max).getOrElse(DEFAULT_SIMILARITY))
+                  userVecSimMax = Try(similarityByDay.values.max).getOrElse(DEFAULT_SIMILARITY),
+                  autoGenKws = mbUserStats.flatMap(_.autoGenKws))
     }
   }
 
