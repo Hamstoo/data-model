@@ -269,11 +269,20 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
 
     words.foreach { w => if (selections.lengthCompare(nDesired) < 0) {
 
-      val limit = wordLengthLimits.lift(w.length - 1).getOrElse(nDesired)
+      // if the plural of the word is already in the list, then replace it
+      if (selections.contains(w + "s")) {
+        val i = selections.indexOf(w + "s")
+        selections(i) = w
 
-      // count the number of words of this limit in the list so far
-      if (selections.count(_.length == w.length) < limit)
-        selections += w
+      } else if (w.endsWith("s") && selections.contains(w.dropRight(1))) {
+        // do nothing
+
+      } else {
+        // count the number of words of this limit in the list so far
+        val limit = wordLengthLimits.lift(w.length - 1).getOrElse(nDesired)
+        if (selections.count(_.length == w.length) < limit)
+          selections += w
+      }
     }}
 
     selections

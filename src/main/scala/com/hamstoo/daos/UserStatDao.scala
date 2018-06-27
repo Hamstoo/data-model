@@ -58,7 +58,8 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
   /**
     * Constructs user's profile dots a.k.a. usage stats.
-    * @param tzOffset  offset minutes from UTC, obtained from user's HTTP request
+    * @param tzOffset  Offset minutes from UTC, obtained from user's HTTP request.  Note that if user is in the
+    *                  UTC-4 timezone (e.g. EDT), this value will be +240, not -240, which is why we subtract it below.
     */
   def profileDots(userId: UUID, tzOffset: Int, appInjector: Injector): Future[ProfileDots] = {
 
@@ -145,7 +146,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
                   days.reverse.maxBy(_.nMarks),
                   userVecSimMin = Try(similarityByDay.values.min).getOrElse(DEFAULT_SIMILARITY),
                   userVecSimMax = Try(similarityByDay.values.max).getOrElse(DEFAULT_SIMILARITY),
-                  autoGenKws = mbUserStats.flatMap(_.autoGenKws))
+                  autoGenKws = mbUserStats.flatMap(_.autoGenKws).map(_.mkString(", ")))
     }
   }
 

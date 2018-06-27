@@ -29,7 +29,7 @@ case class ProfileDots(nMarks: Int,
                        mostProductive: ProfileDot,
                        userVecSimMin: Double = UserStats.DEFAULT_SIMILARITY,
                        userVecSimMax: Double = UserStats.DEFAULT_SIMILARITY,
-                       autoGenKws: Option[Seq[String]] = None)
+                       autoGenKws: Option[String] = None)
 
 /**
   * A count of the number of marks that were created on a particular date.
