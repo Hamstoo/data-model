@@ -11,9 +11,7 @@ import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import org.scalatest.OptionValues
 
 /**
-  * Created by
-  * Author: fayaz.sanaulla@gmail.com
-  * Date: 12.11.17
+  * UserTokenDaoTests
   */
 class UserTokenDaoTests
   extends FlatSpecWithMatchers

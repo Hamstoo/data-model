@@ -16,7 +16,6 @@ import com.hamstoo.models.Shareable.{N_SHARED_FROM, N_SHARED_TO, SHARED_WITH}
 import com.hamstoo.models._
 import com.hamstoo.utils._
 import com.mohiva.play.silhouette.api.exceptions.NotAuthorizedException
-import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
@@ -40,12 +39,8 @@ object MarkDao {
 @Singleton
 class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                         userDao: UserDao,
-                        urlDuplicatesDao: UrlDuplicateDao) {
+                        urlDuplicatesDao: UrlDuplicateDao) extends Dao("entries") {
 
-  val logger: Logger = Logger(classOf[MarkDao])
-
-  val collName: String = "entries"
-  private val dbColl: () => Future[BSONCollection] = () => db().map(_ collection collName)
   private def reprsColl(): Future[BSONCollection] = db().map(_ collection "representations")
   private def pagesColl(): Future[BSONCollection] = db().map(_ collection "pages")
 
@@ -313,6 +308,25 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     }
   }
 
+  /***
+    * Retrieve sharable marks for user
+    * @param user - user identifier
+    * @return     - seq of sharable marks
+    */
+  def retrieveShared(user: UUID): Future[Seq[Mark]] = {
+    logger.debug(s"Retrieving sharable marks for $user")
+
+    for {
+      c <- dbColl()
+      sel = d :~ SHARED_WITH -> (d :~ "$exist" -> true)
+
+      marks <- c.find(sel).coll[Mark, Seq]()
+    } yield {
+      logger.debug(s"Retrieved ${marks.size} sharable marks")
+      marks
+    }
+  }
+
   /**
     * Executes a MongoDB Text Index search using text index with sorting in user's marks, constrained by tags.
     * Mark state must be current (i.e. timeThru == INF_TIME) and have all tags to qualify.
@@ -525,7 +539,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
     for {
       // these can return different id'ed groups than were passed in (run these sequentially so that if they're the
-      // same only one instance will be written to the database)
+      // same, then only one instance will be written to the database)
       ro <- saveGroup(readOnly ._2)
       rw <- saveGroup(readWrite._2)
       sw = SharedWith(readOnly  = ShareGroup.xapply(readOnly ._1, ro),
@@ -536,7 +550,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
       c <- dbColl()
 
-      // be sure not to select userId field here as different DB models use name that field differently: userId/usrId
+      // be sure not to select userId field here as different DB models name that field differently: userId/usrId
       sel = d :~ ID -> m.id :~ curnt
       wr <- {
         import UserGroup.sharedWithHandler

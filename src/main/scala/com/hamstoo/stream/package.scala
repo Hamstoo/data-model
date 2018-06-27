@@ -138,7 +138,7 @@ package object stream {
     // it's unclear whether or not this might throw an exception in some cases which is why it's wrapped in a Try
     // more here: https://stackoverflow.com/questions/1988181/pattern-matching-structural-types-in-scala
     val x: Option[Attributes.Name] = Try {
-      stream match {
+      (stream: @unchecked)  match {
         //case simp: Source[Data[A0], Mat] => simp.traversalBuilder.attributes.get[Attributes.Name]
         //case fimp: Flow[In, Data[A0], Mat] => fimp.traversalBuilder.attributes.get[Attributes.Name]
         case duck: Duck[{ def attributes: Attributes }] @unchecked =>

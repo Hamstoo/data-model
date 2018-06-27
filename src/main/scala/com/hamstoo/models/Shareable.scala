@@ -64,13 +64,14 @@ trait Shareable {
     */
   def isAuthorizedShare(user: Option[User]): Boolean = user.exists(ownedBy(_) || isPublic)
   def isPublic: Boolean = sharedWith.exists { sw =>
-    import SharedWith.{PUBLIC_LEVELS, Level}
+    import SharedWith.{Level, PUBLIC_LEVELS}
     Seq(sw.readOnly, sw.readWrite).flatten.exists(sg => PUBLIC_LEVELS.contains(Level(sg.level)))
   }
 }
 
 object Shareable {
   val ID: String = nameOf[Shareable](_.id)
+  val USR: String = nameOf[Shareable](_.userId)
   val SHARED_WITH: String = nameOf[Shareable](_.sharedWith)
   val N_SHARED_FROM: String = nameOf[Shareable](_.nSharedFrom)
   val N_SHARED_TO: String = nameOf[Shareable](_.nSharedTo)
@@ -78,6 +79,12 @@ object Shareable {
 
 /**
   * A pair of UserGroups, one for read-only and one for read-write.
+  *
+  * `readOnly` and `readWrite` were chosen as field names here (rather than `view` and `edit`) because
+  * they are more clear regarding the fact that the set of users who can "read" a mark is the combined
+  * set of `readOnly` + `readWrite`.  I didn't want there to be any ambiguity as to whether `edit`
+  * included read-access, which one might think is silly, but seeing "read" explicitly written in both
+  * hopefully makes the coder think more carefully about the possibility.
   */
 case class SharedWith(readOnly: Option[ShareGroup] = None,
                       readWrite: Option[ShareGroup] = None,
@@ -112,6 +119,9 @@ object SharedWith {
     // This instance exemplifies why isAuthorized takes an Option; even userId=None will be granted authorization.
     val PUBLIC: Value = Value(3)
 
+    // if we really need this function, then let's call it `valueOption` to be consistent with `headOption`
+    //final def optValue(i: scala.Int): Option[Value] = values.find(_.id == i)
+
     // https://stackoverflow.com/questions/24851677/reactivemongo-how-to-write-macros-handler-to-enumeration-object
 //    implicit val enumReads: Reads[Level] = EnumUtils.enumReads(Level)
 //    implicit def enumWrites: Writes[Level] = EnumUtils.enumWrites
@@ -139,7 +149,7 @@ object SharedWith {
 
     // convert userIds into a set of email addresses (which could be empty)
     val futUserEmails: Future[Set[String]] = for {
-      optUsers <- Future.sequence(userIds.map(userDao.retrieve))
+      optUsers <- Future.sequence(userIds.map(userDao.retrieveById))
     } yield optUsers.flatten.flatMap(_.profiles.flatMap(_.email))
 
     futUserEmails.map(_.union(rawEmails))
@@ -155,7 +165,7 @@ object SharedWith {
   */
 case class ShareGroup(level: Int, group: Option[ObjectId]) {
 
-  import SharedWith.{PUBLIC_LEVELS, Level}
+  import SharedWith.{Level, PUBLIC_LEVELS}
 
   /** Returns true if the given user is authorized, either via (optional) user ID or email. */
   def isAuthorized(user: Option[User])(implicit userDao: UserDao, ec: ExecutionContext): Future[Boolean] =
@@ -235,7 +245,7 @@ case class UserGroup(id: ObjectId = generateDbId(Mark.ID_LENGTH),
         case None => ffalse
         case Some(u) =>
           if (u.emails.nonEmpty) Future.successful(u.emails.exists(isAuthorizedEmail))
-          else userDao.retrieve(u.id).map(_.fold(false)(_.emails.exists(isAuthorizedEmail)))
+          else userDao.retrieveById(u.id).map(_.fold(false)(_.emails.exists(isAuthorizedEmail)))
       }
     }
   }

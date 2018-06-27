@@ -23,11 +23,11 @@ version := {
     } else branch + "-") + l.trim
   } getOrElse "latest"
 }
-scalaVersion := "2.12.3"
+scalaVersion := "2.12.6"
 
 organization := "com.hamstoo"
 
-crossScalaVersions := Seq("2.11.11", "2.11.7", "2.12.3")
+crossScalaVersions := Seq("2.11.11", scalaVersion.value)
 
 homepage := Some(url("https://github.com/Hamstoo/data-model"))
 

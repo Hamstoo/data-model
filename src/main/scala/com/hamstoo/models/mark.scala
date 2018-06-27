@@ -558,10 +558,40 @@ object Mark extends BSONHandlers {
     override def withTimeFrom(timeFrom: Long): ExpectedRating = this.copy(timeFrom = timeFrom)
   }
 
+  /**
+    * Keep track of which URLs have identical content to other URLs, per user.  For example, the following 2 URLs:
+    *  https://www.nature.com/articles/d41586-017-07522-z?utm_campaign=Data%2BElixir&utm_medium=email&utm_source=Data_Elixir_160
+    *  https://www.nature.com/articles/d41586-017-07522-z
+    *
+    * The two `var`s are used for database lookup and index.  Their respective non-`var`s are the true values.  `dups`
+    * is the thing being looked up--a list of other URLs that are duplicated content of `url`.
+    */
+  case class UrlDuplicate(userId: UUID,
+                          url: String,
+                          dups: Set[String],
+                          var userIdPrfx: String = "", // why can't a simple string be used for urlPrfx also?
+                          var urlPrfx: Option[mutable.WrappedArray[Byte]] = None,
+                          id: String = generateDbId(Mark.ID_LENGTH)) {
+    userIdPrfx = userId.toString.binPrfxComplement
+    urlPrfx = Some(url.binaryPrefix)
+  }
+
+  /**
+    * This class is only used to get a projection of userId field from mark BSONDocument to optimize performance of db query.
+    * See also: https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data
+    */
+  case class UserId(userId: String)
+
+  /**
+    * This class is only used to get a projection of id field from mark BSONDocument to optimize performance of db query
+    * look at https://docs.mongodb.com/manual/tutorial/optimize-query-performance-with-indexes-and-projections/#use-projections-to-return-only-necessary-data
+    */
+  case class Id(id: String)
+
   val ID_LENGTH: Int = 16
 
-  val USR: String = nameOf[Mark](_.userId)
   val ID: String = Shareable.ID
+  val USR: String = Shareable.USR
   val MARK: String = nameOf[Mark](_.mark)
   val AUX: String = nameOf[Mark](_.aux)
   val URLPRFX: String = nameOf[Mark](_.urlPrfx)
@@ -623,4 +653,6 @@ object Mark extends BSONHandlers {
   implicit val reprRating: BSONDocumentHandler[ReprInfo] = Macros.handler[ReprInfo]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
+  //implicit val idBsonHandler: BSONDocumentHandler[Id] = Macros.handler[Id] // TODO: necessary?
+  //implicit val userIdBsonHandler: BSONDocumentHandler[UserId] = Macros.handler[UserId] // TODO: necessary?
 }

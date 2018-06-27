@@ -7,7 +7,7 @@ import com.github.simplyscala.{MongoEmbedDatabase, MongodProps}
 import com.hamstoo.daos._
 import com.hamstoo.daos.auth.{OAuth1InfoDao, OAuth2InfoDao, PasswordInfoDao}
 import com.hamstoo.services.HighlightsIntersectionService
-import com.hamstoo.utils.getDbConnection
+import com.hamstoo.utils.{DataInfo, getDbConnection}
 import de.flapdoodle.embed.mongo.distribution.Version
 import org.scalatest.{BeforeAndAfterAll, Suite}
 import reactivemongo.api.collections.bson.BSONCollection
@@ -26,13 +26,17 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
 
   self: Suite =>
 
-  import com.hamstoo.utils.DataInfo
+  // default mongo port, override if needed
+  def mongoPort: Int = 12345
 
   // default mongo version, override if needed
-  val mongoVersion: Version = Version.V3_5_1
+  def mongoVersion: Version = Version.V3_5_1
+
+  // mongodb uri and database name
+  def dbUri = s"mongodb://localhost:$mongoPort/hamstoo"
 
   // fongo (fake mongo) instance
-  final lazy val fongo: MongodProps = mongoStart(DataInfo.mongoPort, mongoVersion)
+  lazy val fongo: MongodProps = mongoStart(mongoPort, mongoVersion)
 
   override def beforeAll(): Unit = {
     println(s"Starting MongoDB:$mongoVersion instance on port: ${DataInfo.mongoPort}")
@@ -81,4 +85,6 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   lazy val passDao = new PasswordInfoDao
   lazy val searchDao = new SearchStatDao
   lazy val tokenDao = new UserTokenDao
+  lazy val hlIntersectionSvc = new HighlightsIntersectionService
+  lazy val userSuggDao = new UserSuggestionDao
 }

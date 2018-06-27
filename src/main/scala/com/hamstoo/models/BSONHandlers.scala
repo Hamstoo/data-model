@@ -4,7 +4,7 @@ import java.util.UUID
 
 import akka.util.ByteString
 import org.joda.time.DateTime
-import reactivemongo.bson.{BSONBinary, BSONHandler, BSONLong, BSONString, Subtype}
+import reactivemongo.bson.{BSONBinary, BSONHandler, BSONInteger, BSONLong, BSONString, Subtype}
 
 import scala.collection.mutable
 
@@ -21,4 +21,6 @@ trait BSONHandlers {
     BSONHandler[BSONString, UUID](UUID fromString _.value, BSONString apply _.toString)
   implicit val dateTimeBsonHandler: BSONHandler[BSONLong, DateTime] =
     BSONHandler[BSONLong, DateTime](b => new DateTime(b.value), BSONLong apply _.getMillis)
+  implicit val sharedWithLevelValueHandler: BSONHandler[BSONInteger, SharedWith.Level.Value] =
+    BSONHandler[BSONInteger, SharedWith.Level.Value](b => SharedWith.Level(b.value), BSONInteger apply _.id)
 }

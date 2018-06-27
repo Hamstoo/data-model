@@ -3,7 +3,8 @@
  */
 package com.hamstoo.daos
 
-import com.hamstoo.models.{Profile, User, UserData}
+import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.models.{UserData, _}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.DataInfo._
@@ -11,9 +12,7 @@ import com.mohiva.play.silhouette.api.LoginInfo
 import org.scalatest.OptionValues
 
 /**
-  * Created by
-  * Author: fayaz.sanaulla@gmail.com
-  * Date: 10.11.17
+  * UserDaoTests
   */
 class UserDaoTests
   extends FlatSpecWithMatchers
@@ -36,7 +35,7 @@ class UserDaoTests
   val profile = Profile(loginInfo, confirmed = false, Some(email), None, None, None)
   val newProfile = Profile(newLoginInfo, confirmed = true, Some(newEmail), None, None, None)
 
-  val user = User(constructUserId(), UserData(), List(profile))
+  val user = User(constructUserId(), UserData(username = Some("namenamename")), List(profile))
 
   "MongoUserDao" should "(UNIT) create user" in {
     userDao.save(user).futureValue shouldEqual {}
@@ -47,11 +46,11 @@ class UserDaoTests
   }
 
   it should "(UNIT) retrieve user by email" in {
-    userDao.retrieve(email).futureValue.get shouldEqual user
+    userDao.retrieveByEmail(email).futureValue.get shouldEqual user
   }
 
   it should "(UNIT) retrieve user by UUID" in {
-    userDao.retrieve(user.id).futureValue.get shouldEqual user
+    userDao.retrieveById(user.id).futureValue.get shouldEqual user
   }
 
   it should "(UNIT) link profile to user" in {
@@ -80,6 +79,6 @@ class UserDaoTests
 
   it should "(UNIT) delete user" in {
     userDao.delete(user.id).futureValue shouldEqual {}
-    userDao.retrieve(user.id).futureValue shouldEqual None
+    userDao.retrieveById(user.id).futureValue shouldEqual None
   }
 }

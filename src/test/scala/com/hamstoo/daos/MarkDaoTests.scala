@@ -86,7 +86,7 @@ class MarkDaoTests
     marksDao.retrieve(userB).futureValue.map(_.id) shouldEqual Seq(m3.id)
   }
 
-  it should "(UNIT) retrieve by userId and URL" in {
+  it should "(UNIT) retrieve by userId and URL 1" in {
     marksDao.retrieveByUrl(url, userA).futureValue._1.get.id shouldEqual m1.id
   }
 
@@ -236,5 +236,19 @@ class MarkDaoTests
     masked.id shouldEqual m2.id
     masked.mark.tags.get should contain("updateMarkRefTAG")
     masked.mark.rating.get shouldEqual 3.0
+  }
+
+  it should "(UNIT) retrieve by userId and URL 2" in {
+    val url1 = "https://mail.google.com/mail/u/0/#inbox/162e903e20ce4af3"
+    val url2 = "https://mail.google.com/mail/u/0/#inbox/162e5aa71f6ebdff"
+
+    val m1 = Mark(userA, "markID1", mark = MarkData("subj1", Some(url1)))
+    val m2 = Mark(userA, "markID2", mark = MarkData("subj2", Some(url2)))
+
+    marksDao.insert(m1).futureValue shouldEqual m1
+    marksDao.retrieveByUrl(url1, userA).futureValue._1.value shouldEqual m1
+
+    marksDao.insert(m2).futureValue shouldEqual m2
+    marksDao.retrieveByUrl(url2, userA).futureValue._1.value shouldEqual m2
   }
 }

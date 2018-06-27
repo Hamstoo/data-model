@@ -80,11 +80,11 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
     dbColl().flatMap(_.find(d :~ PLINFOx -> loginInfo).one[User])
 
   /** Retrieves user account data by user id. */
-  def retrieve(userId: UUID): Future[Option[User]] =
+  def retrieveById(userId: UUID): Future[Option[User]] =
     dbColl().flatMap(_.find(d :~ ID -> userId.toString).one[User])
 
   /** Retrieves user account data by email. */
-  def retrieve(email: String): Future[Option[User]] =
+  def retrieveByEmail(email: String): Future[Option[User]] =
     dbColl().flatMap(_.find(d :~ PEMAILx -> email).one[User])
 
   /** Retrieves user account data by username. */

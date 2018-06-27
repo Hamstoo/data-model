@@ -76,6 +76,8 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     val marks = injectorly[MarksStream]
     val reprs = injectorly[ReprsStream]
 
+    // TODO: this should be possible to implement via the StreamDSL?  would need a UserStatsStream of course
+
     // get external content (web *site*) Representation vector or, if missing, user-content Representation vector
     val rsource: Source[(TimeStamp, Vec), NotUsed] = reprs.out.mapConcat { _.flatMap { x: Datum[ReprsPair] =>
       val mbVec = x.value.siteReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString))
