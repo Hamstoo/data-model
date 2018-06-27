@@ -6,7 +6,6 @@ package com.hamstoo.stream.config
 import com.google.inject._
 import com.google.inject.name.Named
 import com.hamstoo.services.VectorEmbeddingsService
-import com.hamstoo.services.VectorEmbeddingsService.Query2VecsType
 import com.hamstoo.stream._
 
 import scala.concurrent.ExecutionContext
@@ -19,15 +18,11 @@ case class StreamModule() extends BaseModule {
 
   import StreamModule._
 
-  /** See Query2VecsOptional.  There are 2 providers of objects named "query2Vecs" but they return different types. */
+  /** See Query2VecsOpt. */
   @Provides @Singleton @Named(Query2Vecs.name)
   def provideQuery2VecsOpt(query: QueryOptional, vecSvc: VectorEmbeddingsService)
                         (implicit ec: ExecutionContext): Query2Vecs.typ =
     if (query.value.isEmpty) None else Some(vecSvc.query2Vecs(query.value))
-
-  /** provideQuery2VecsOpt is needed for when query2Vecs is optional and this one for when not, as by SearchResults. */
-  @Provides @Singleton @Named(Query2Vecs.name)
-  def provideQuery2Vecs(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.typ): Query2VecsType = mbQuery2Vecs.get
 
   /**
     * StreamModules are typically passed to `parentInjector.createChildInjector(new StreamModule)`.  In such cases

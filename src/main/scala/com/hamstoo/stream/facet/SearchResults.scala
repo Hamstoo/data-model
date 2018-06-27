@@ -47,13 +47,15 @@ case class SearchRelevance(uraw: Double, usem: Double, rraw: Double, rsem: Doubl
   * maybe SearchResults should just take Options as inputs and throw an exception if they are None, which is what
   * the @Provides methods already do anyway--one fewer degree of indirection.
   *
-  * @param rawQuery     Only used for extracting (and boosting) full phrases in search ordering.
-  * @param repredMarks  A stream of a user's marks paired with their representations.
-  * @param query2Vecs   Semantic word vectors for each query term.
+  * @param rawQuery      Only used for extracting (and boosting) full phrases in search ordering.
+  * @param repredMarks   A stream of a user's marks paired with their representations.
+  * @param mbQuery2Vecs  Semantic word vectors for each query term.  Cannot be None: we used to have a separate
+  *                      \@Provides method in StreamModule that would simply call mbQuery2Vecs.get, but it was getting
+  *                      called even when SearchResults wasn't being used, so now we just call it inside here.
   */
 @com.google.inject.Singleton
 class SearchResults @Inject()(rawQuery: QueryOptional,
-                              @Named(Query2Vecs.name) query2Vecs: Query2VecsType,
+                              @Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.typ,
                               repredMarks: RepredMarks,
                               logLevel: LogLevelOptional)
                              (implicit mat: Materializer,
@@ -76,7 +78,7 @@ class SearchResults @Inject()(rawQuery: QueryOptional,
   private var constructionTime: Option[TimeStamp] = Some(System.currentTimeMillis)
 
   // get uniquified `cleanedQSeq` and (future) vectors for all terms in search query `fsearchTermVecs`
-  private lazy val (cleanedQuery, fsearchTermVecs) = query2Vecs
+  private lazy val (cleanedQuery, fsearchTermVecs) = mbQuery2Vecs.get
   private lazy val cleanedQSeq = cleanedQuery.map(_._1)
 
   // repredMarks will arrive according to time, but search results don't need to be ordered after here because we
