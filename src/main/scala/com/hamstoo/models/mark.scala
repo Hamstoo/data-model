@@ -160,7 +160,17 @@ object MarkData {
     * @return     sanitized string
     */
   def sanitize(url: String): Option[String] =
-    Try(new URL(url).toString)
+    Try {
+      // this next line will change "file:///home/fred/Downloads/Baxter&Crimins_2018.pdf" (note the triple '/'s) to
+      // "file:/home/fred/Downloads/Baxter&Crimins_2018.pdf", which we don't want it to do (because it breaks
+      // retrieveByUrl), so undo it if it happens
+      val javaNetUrl = new URL(url).toString
+      val pfx = "file://" // "file:///" gets changed to "file:/" but any other number of slashes remains unchanged
+      if (url.startsWith(pfx) && !javaNetUrl.startsWith(pfx))
+        pfx + javaNetUrl.substring(pfx.length - 2)
+      else
+        javaNetUrl
+    }
       .map(Jsoup.clean(_: String, MarkData.htmlTagsWhitelist))
       .toOption
       // added 2018-6-8 after retrieveByUrl was found broken due to '&'s being converted to '&amp;'s in URLs

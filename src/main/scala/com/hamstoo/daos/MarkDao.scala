@@ -189,7 +189,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
     oth = if (url.startsWith("https://")) url.replaceFirst("https://", "http://")
           else if (url.startsWith("http://")) url.replaceFirst("http://", "https://")
-          else "f8g34bkw1z" // bet ya won't find this URL :)
+          else "A_URL_YOU_WILL_NOT_FIND" // bet ya won't find this URL :)
 
     // find set of URLs that contain duplicate content to the one requested
     (f0, f1) = (urlDuplicatesDao.retrieve(user, url), urlDuplicatesDao.retrieve(user, oth))
