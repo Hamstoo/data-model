@@ -126,8 +126,11 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
         groupedDays.mapValues { timestamps =>
           import com.hamstoo.models.Representation.VecFunctions
           val meanSimilarity = timestamps.flatMap {
-            //mappedReprs.get(_).map(v => VectorEmbeddingsService.documentSimilarity(v, uvecs)) }.mean
-            mappedReprs.get(_).flatMap(v => uvecs.get(VecEnum.IDF).map(_ cosine v)) }.mean
+
+            // use documentSimilarity rather than IDF-cosine to get a more general sense of the similarity to the user
+            mappedReprs.get(_).map(v => VectorEmbeddingsService.documentSimilarity(v, uvecs)) }.mean
+            //mappedReprs.get(_).flatMap(v => uvecs.get(VecEnum.IDF).map(_ cosine v)) }.mean
+
           if (meanSimilarity.isNaN) DEFAULT_SIMILARITY else meanSimilarity
         }
       }.withDefaultValue(DEFAULT_SIMILARITY)
@@ -144,8 +147,8 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
                   days,
                   (0 /: days)(_ + _.nMarks),
                   days.reverse.maxBy(_.nMarks),
-                  userVecSimMin = Try(similarityByDay.values.min).getOrElse(DEFAULT_SIMILARITY),
-                  userVecSimMax = Try(similarityByDay.values.max).getOrElse(DEFAULT_SIMILARITY),
+                  userVecSimMin = Try(similarityByDay.values.filter(_ !~= 0.0).min).getOrElse(DEFAULT_SIMILARITY),
+                  userVecSimMax = Try(similarityByDay.values.filter(_ !~= 0.0).max).getOrElse(DEFAULT_SIMILARITY),
                   autoGenKws = mbUserStats.flatMap(_.autoGenKws).map(_.mkString(", ")))
     }
   }

@@ -57,13 +57,16 @@ object VectorEmbeddingsService {
     * Given a word vector and a map of various vector types (that were all constructed from a single
     * document) compute the aggregate similarity of the word to the document.
     */
-  def documentSimilarity(wordVec: Vec, docVecs: Map[Representation.VecEnum.Value, Vec]): Double = {
+  def documentSimilarity(wordVec: Vec,
+                         docVecs: Map[Representation.VecEnum.Value, Vec],
+                         chooseMax: Boolean = false): Double = {
 
     // principal axes are (typically) adirectional (though we attempt to directionalize them when they
     // are constructed in repr-engine) so allow negatives but with a penalty
     val sims: Map[VecEnum.Value, Double] = docVecs.flatMap { case (vecType, docVec) =>
       val cos = wordVec cosine docVec
       vecType match {
+        // TODO: should this math.max be removed now that we're directionalizing PC vecs? see mbOrientationVec below
         case vt if vt.toString.startsWith("PC") => Some(vt -> math.max(cos, -0.95 * cos))
         case vt => Some(vt -> cos)
       }
@@ -73,7 +76,7 @@ object VectorEmbeddingsService {
     //sims.toSeq.sortBy(_._1).foreach { case (t, s) => logger.debug(f"  $t = $s%.2f") }
     //logger.debug(f"    aggregateSimilarityScore(${wm.word}) = ${aggregateSimilarityScore(sims)}%.2f")
 
-    aggregateSimilarityScore(sims)
+    if (chooseMax) maxSimilarityScore(sims) else aggregateSimilarityScore(sims)
   }
 
   /**
@@ -94,6 +97,19 @@ object VectorEmbeddingsService {
     0.84 * sims.getOrElse(VecEnum.PC2, 0.0) + //           5.0
     0.66 * sims.getOrElse(VecEnum.PC3, 0.0) + //           3.4
    -0.28 * sims.getOrElse(VecEnum.KM1, 0.0)   //          -2.6
+  }
+
+  /**
+    * Rather than selecting keywords based on a single function, why not select them based on their highest
+    * correlation to any one of the representative vecs.  That way a more diverse set of words might be selected.
+    */
+  def maxSimilarityScore(sims: Map[VecEnum.Value, Double]): Double = {
+    import math.max
+    max(max(max(sims.getOrElse(VecEnum.IDF, -1.0),
+                sims.getOrElse(VecEnum.PC1, -1.0)),
+            max(sims.getOrElse(VecEnum.PC2, -1.0),
+                sims.getOrElse(VecEnum.PC3, -1.0))),
+                sims.getOrElse(VecEnum.KM1, -1.0))
   }
 }
 
@@ -258,7 +274,7 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
 
     // sort by `aggregateSimilarityScore` (descending)
     val words = candidates.filterNot(wm => Seq("http", "https").contains(wm.word))
-      .map { wm => wm.word -> documentSimilarity(wm.scaledVec, docVecs) }
+      .map { wm => wm.word -> documentSimilarity(wm.scaledVec, docVecs, chooseMax = true) }
       .sortBy(-_._2).map(_._1)
 
     // not quite sure how to do what follows in a functional programming style
