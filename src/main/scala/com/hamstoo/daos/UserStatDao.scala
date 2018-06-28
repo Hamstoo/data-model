@@ -141,14 +141,17 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
         ProfileDot(dt, nPerDay(dt), userVecSimilarity = similarityByDay(dt))
       }
 
+      // don't use `similarityByDay` to compute this in case it includes more days than `days` does
+      val nonZeroSimilarities = days.map(_.userVecSimilarity).filter(_ !~= 0.0)
+
       val nImported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
       ProfileDots(nUserTotalMarks,
                   nImported,
                   days,
                   (0 /: days)(_ + _.nMarks),
                   days.reverse.maxBy(_.nMarks),
-                  userVecSimMin = Try(similarityByDay.values.filter(_ !~= 0.0).min).getOrElse(DEFAULT_SIMILARITY),
-                  userVecSimMax = Try(similarityByDay.values.filter(_ !~= 0.0).max).getOrElse(DEFAULT_SIMILARITY),
+                  userVecSimMin = Try(nonZeroSimilarities.min).getOrElse(DEFAULT_SIMILARITY),
+                  userVecSimMax = Try(nonZeroSimilarities.max).getOrElse(DEFAULT_SIMILARITY),
                   autoGenKws = mbUserStats.flatMap(_.autoGenKws).map(_.mkString(", ")))
     }
   }
