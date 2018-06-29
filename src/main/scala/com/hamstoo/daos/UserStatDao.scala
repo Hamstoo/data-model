@@ -137,8 +137,9 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
       // get last 28 dates in user's timezone and pair them with numbers of marks
       val days: Seq[ProfileDot] = for (i <- 0 to extraDays) yield {
-        val dt = firstDay.plusDays(i).toString(format)
-        ProfileDot(dt, nPerDay(dt), userVecSimilarity = similarityByDay(dt))
+        val dt = firstDay.plusDays(i)
+        val str = dt.toString(format)
+        ProfileDot(str, dt.getYear, nPerDay(str), userVecSimilarity = similarityByDay(str))
       }
 
       // don't use `similarityByDay` to compute this in case it includes more days than `days` does

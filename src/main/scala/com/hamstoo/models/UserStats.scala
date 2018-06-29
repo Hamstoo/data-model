@@ -37,7 +37,7 @@ case class ProfileDots(nMarks: Int,
   * @param nMarks             The number of marks created on that date.
   * @param userVecSimilarity  The cosine similarity of the user's average vector to the marks' vectors from this day.
   */
-case class ProfileDot(date: String, nMarks: Int, userVecSimilarity: Double = UserStats.DEFAULT_SIMILARITY)
+case class ProfileDot(date: String, year: Int, nMarks: Int, userVecSimilarity: Double = UserStats.DEFAULT_SIMILARITY)
 
 /**
   * Statistics corresponding to a user's aggregate marks, computed over time.
