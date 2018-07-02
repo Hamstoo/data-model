@@ -21,7 +21,12 @@ import scala.util.Try
 
 package object stream {
 
-  /** Similar to `implicitly` where the "nether world" in this case is an implicit Injector's namespace. */
+  /**
+    * Similar to `implicitly` where the "nether world" in this case is an implicit Injector's namespace.
+    *
+    * Sote that scalaguice (i.e. `injector.instance`) still uses old Scala version implicit Manifests, presumably
+    * for backwards compatibility.
+    */
   def injectorly[A :Manifest](implicit injector: Injector): A = injector.instance[A]
 
   /**
@@ -87,7 +92,7 @@ package object stream {
     * while the latter does not.  This is by design; if ConfigModule had the same @Provides method we'd be back
     * to square one.  This is only really relevant for IDFModel.
     */
-  abstract class OptionalInjectId[T :Manifest](_name: String, default: => T = null) extends InjectId[T] {
+  class OptionalInjectId[T :Manifest](_name: String, default: => T = null) extends InjectId[T] {
 
     override def name: String = _name
 
@@ -105,7 +110,7 @@ package object stream {
     /** Use the injector to construct a (possibly annotated) T. */
     def value: T = {
       if (injector.isEmpty)
-        throw new NullPointerException(s"Unable to get injected value for $key; OptionalInjectId values can only be gotten at (dependency) injection time")
+        throw new NullPointerException(s"Unable to get injected value for $key because no injector is available; OptionalInjectId values can only be gotten at (dependency) injection time")
       Logger.debug(s"Getting instance for $key (default = $default) from injector ${injector.get.hashCode}")
       Try(injector.get.getInstance(key)).recover {
         case e: ConfigurationException if e.getMessage.contains("No implementation for") =>

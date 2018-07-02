@@ -94,7 +94,11 @@ object ElemStream {
 abstract class DataStream[+T](bufferSize: Int = DEFAULT_BATCH_STREAM_BUFFER_SIZE,
                               mbName: Option[String] = None)
                              (implicit mat: Materializer)
-    extends ElemStream[Data[T]](bufferSize, mbName) {}
+    extends ElemStream[Data[T]](bufferSize, mbName) {
+
+  /** A (overrideable) default implementation to convert a facet argument into a FacetsModel coefficient. */
+  def coefficient(arg: Double): Double = arg
+}
 
 /**
   * A PreloadSource is merely a ElemStream that can listen to a Clock so that it knows when to load

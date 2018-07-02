@@ -28,8 +28,6 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
                                     (implicit mat: Materializer)
     extends DataStream[Double] {
 
-  import AggregateSearchScore._
-
   logger.info(f"Semantic weight: ${semWgt.value}%.2f, user-content weight: ${usrWgt.value}%.2f, ")
 
   override val in: SourceType = {
@@ -47,12 +45,10 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
     val w_rraw = (2 - w_sem) * (2 - w_usr)
     val w_rsem =      w_sem  * (2 - w_usr)
 
-    val value = w_uraw * relevance("uraw") +
-                w_usem * relevance("usem") +
-                w_rraw * relevance("rraw") +
-                w_rsem * relevance("rsem")
-
-    value * COEF
+    w_uraw * relevance("uraw") +
+      w_usem * relevance("usem") +
+      w_rraw * relevance("rraw") +
+      w_rsem * relevance("rsem")
 
     // uncomment this line to see the effect of not terminating streams as the last test in FacetsTests tests for
     // (i.e. the stream graph that's constructed does not get terminated)
@@ -63,14 +59,12 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
 
 object AggregateSearchScore {
 
-  val COEF = 1.0
-
   // 0.5 weights semantic/syntactic (https://en.wikipedia.org/wiki/Semantic_similarity) content evenly, and
   // user/marked content evenly
-  val DEFAULT = 0.5
+  val DEFAULT_ARGX = 0.5 // can't name this DEFAULT_ARG because reflection is used for the field in FacetsModel
 
-  case class SemanticWeight() extends OptionalInjectId[Double]("sem", DEFAULT)
-  case class UserContentWeight() extends OptionalInjectId[Double]("usr", DEFAULT)
+  case class SemanticWeight() extends OptionalInjectId[Double]("sem", DEFAULT_ARGX)
+  case class UserContentWeight() extends OptionalInjectId[Double]("usr", DEFAULT_ARGX)
 }
 
 

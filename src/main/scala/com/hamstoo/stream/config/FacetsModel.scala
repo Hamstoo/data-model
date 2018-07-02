@@ -8,23 +8,25 @@ import akka.event.Logging
 import akka.stream.scaladsl.{GraphDSL, Merge, Sink, Source}
 import akka.stream.{Attributes, Materializer, SourceShape}
 import com.google.inject.{Inject, Injector, Singleton}
-import com.hamstoo.stream.facet.{AggregateSearchScore, Recency, SearchResults}
-import com.hamstoo.stream.{Clock, DataStream}
+import com.hamstoo.stream.facet._
+import com.hamstoo.stream.{Clock, DataStream, injectorly}
 import com.hamstoo.stream.Data.{Data, ExtendedData}
-import com.hamstoo.utils.ExtendedTimeStamp
+import com.hamstoo.stream.OptionalInjectId
+import com.hamstoo.utils.{ExtendedDouble, ExtendedTimeStamp}
 import play.api.Logger
 
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.reflect.runtime.universe.TypeTag
 import scala.reflect.{ClassTag, classTag}
+import scala.util.Try
 
 /**
   * A "facets model" is a collection of facet-computing streams.  Running the model generates a merged stream of
   * values containing all of the facets with their own labels.
   */
-class FacetsModel @Inject()(injector: Injector)
-                           (implicit clock: Clock, mat: Materializer) {
+class FacetsModel @Inject()(clock: Clock)
+                           (implicit injector: Injector, mat: Materializer) {
 
   import FacetsModel._
   val logger: Logger = Logger(classOf[FacetsModel])
@@ -34,17 +36,45 @@ class FacetsModel @Inject()(injector: Injector)
   protected val facets = mutable.Map.empty[String, DataStream[_]]
 
   /** Add a facet to be computed by this model. */
-  def add[T <:DataStream[_] :ClassTag :TypeTag](mbName: Option[String] = None): Unit = {
+  def add[T <:DataStream[Double] :ClassTag :TypeTag](mbName: Option[String] = None): Unit = {
 
-    val name: String = mbName.getOrElse(classTag[T].runtimeClass.getSimpleName)
+    val cls: Class[_] = classTag[T].runtimeClass
+    val name: String = mbName.getOrElse(cls.getSimpleName)
     logger.debug(s"Adding data stream: $name")
     if (facets.contains(name))
       throw new Exception(s"Duplicate '$name' named facets detected")
 
-    // note that scalaguice still uses old Scala version implicit Manifests (presumably for backwards compatibility)
-    import net.codingwell.scalaguice.InjectorExtensions._
-    val ds: T = injector.instance[T]
-    facets += name -> ds
+    // first lookup a *default* arg, or just 1.0 if there isn't one available
+    // get DEFAULT_ARG automagically from companion objects
+    // TODO: load defaults from a resource file
+    // (https://stackoverflow.com/questions/36290863/get-field-value-of-a-companion-object-from-typetagt)
+    val default = Try {
+      import scala.reflect.runtime.{currentMirror, universe}
+      val companionSymbol = currentMirror.classSymbol(cls).companion.asModule
+      val companionInstance = currentMirror.reflectModule(companionSymbol.asModule)
+      val companionMirror   = currentMirror.reflect(companionInstance.instance)
+      val fieldSymbol = companionSymbol.typeSignature.decl(universe.TermName("DEFAULT_ARG")).asTerm
+      val fieldMirror = companionMirror.reflectField(fieldSymbol)
+      fieldMirror.get.asInstanceOf[Double]
+    }.getOrElse(1.0)
+
+    // pluck the (non-default, possibly overridden) arg from the injector
+    val argGetter = new OptionalInjectId(name.toLowerCase, default)
+    argGetter.injector_(Some(injector))
+    val arg: Double = argGetter.value
+
+    // coefficients are applied outside of the facet implementations themselves so that they and lower/upper
+    // bounds can be applied independently (o/w applying bounds could involve backing out the coefficients)
+    val ds: T = injectorly[T]
+    val beta = ds.coefficient(arg)
+    logger.info(f"\u001b[33mFACET\u001b[0m: $name($arg%.2f) = $beta%.2f")
+
+    import com.hamstoo.stream.StreamDSL._
+    facets += name -> (beta match {
+      case b if b ~= 0.0 => ds.map(x => if (x.isNaN || x.isInfinite) Double.NaN else 0.0)
+      case b if b ~= 1.0 => ds
+      case b             => ds * b // will only work with DataStream[Double], which is why this function requires it
+    })
   }
 
   /**
@@ -88,7 +118,7 @@ class FacetsModel @Inject()(injector: Injector)
 
       // label the source with its facet name so that we can tell them apart on the other side
       val labeledSource = ds()
-        .map { d => logger.debug(s"(\033[2m${name}\033[0m) ${d.sourceTimeMax.tfmt}"); d }
+        .map { d => logger.debug(s"(\u001b[2m${name}\u001b[0m) ${d.sourceTimeMax.tfmt}"); d }
         .map { d => (name, d) }
         .named(name)
 
@@ -103,22 +133,35 @@ object FacetsModel {
 
   type OutType = (String, AnyRef)
 
-  /** Factory function to construct a default FacetsModel. */
+  /**
+    * Factory function to construct a default FacetsModel.
+    * TODO: All of this (the set of facets and their args) should be configured in some sort of resource file.
+    */
   @Singleton
-  case class Default @Inject()(injector: Injector, clock: Clock, mat: Materializer)
-      extends FacetsModel(injector)(clock, mat) {
+  case class Default @Inject()(clock: Clock)
+                              (implicit injector: Injector, mat: Materializer)
+      extends FacetsModel(clock)(injector, mat) {
 
     // An injected instance of a stream can only be reused (singleton) if its defined inside a type (e.g. see Recency).
     // But eventually (perhaps) we can automatically generate new types (e.g. add[classOf[Recency] + 2]) or lookup
     // nodes in the injected Akka stream graph by name.
     //   https://www.google.com/search?q=dynamically+create+type+scala&oq=dynamically+create+type+scala&aqs=chrome..69i57.5239j1j4&sourceid=chrome&ie=UTF-8
 
-    add[SearchResults]()
+    facets += classOf[SearchResults].getSimpleName -> injectorly[SearchResults]
+    //add[SearchResults]() // no longer works now that FacetsModel.add's T isn't a DataStream[_]
+
+    // TODO: break this up into 2 facets so that the 2 coef-args can be extracted
+    // TODO: not so fast, the problem with having all the coef-args applied in FacetsModel is that we can't control
+    // TODO:  "internal args" from here, like "any-vs-all search terms" so perhaps some params just need to be elsewhere
+    // TODO:  the one constant in all of this though is that these values are all configured via OptionalInjectIds
+    // TODO:   whether in AggregateSearchScore companion object or FacetsModel.add
+    // TODO:    so instead of having ConstStream perhaps we should just amend the StreamDSL to work w/ OptionalInjectIds
     add[AggregateSearchScore]()
+
     add[Recency]() // see How to Think screenshot
     //add(ConfirmationBias)
-    //add(TimeSpent)
-    //add(Rating)
+//    add[LogTimeSpent]()
+//    add[Rating]()
     //add(SearchRelevance)
   }
 }

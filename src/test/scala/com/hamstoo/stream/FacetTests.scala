@@ -53,7 +53,7 @@ class FacetTests
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
 
-    x / AggregateSearchScore.COEF shouldBe (39.01 +- 0.01)
+    x shouldBe (39.01 +- 0.01)
   }
 
   it should "compute Recency" in {
@@ -64,7 +64,7 @@ class FacetTests
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
 
     // see data-model/docs/RecencyTest.xlsx for an independent calculation of this value
-    val coef = (Recency.DEFAULT - 0.5) * 40
+    val coef = (Recency.DEFAULT_ARG - 0.5) * 40
     x / coef shouldBe (4.12 +- 0.01)
   }
 

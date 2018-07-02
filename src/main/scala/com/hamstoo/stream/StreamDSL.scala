@@ -74,7 +74,7 @@ object StreamDSL {
     def timeFrom(implicit ev: ClassTag[A], m: Materializer) = s("timeFrom", classTag[TimeStamp])
     def timeThru(implicit ev: ClassTag[A], m: Materializer) = s("timeThru", classTag[TimeStamp])
     def mark(implicit ev: ClassTag[A], m: Materializer) = s("mark", classTag[MarkData])
-    def rating(implicit ev: ClassTag[A], m: Materializer) = s("rating", classTag[Option[Double]])
+    def rating(implicit ev: ClassTag[A], m: Materializer) = { val md = s.mark; md("rating", classTag[Option[Double]]) }
 
     /** Invoke JoinWithable.joinWith on the provided streams.  Also see comment on `map`. */
     def join[B, O](that: DataStream[B])(op: (A, B) => O)(implicit m: Materializer, name: Option[String] = None):

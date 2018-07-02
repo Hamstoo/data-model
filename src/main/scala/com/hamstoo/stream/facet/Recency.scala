@@ -16,13 +16,11 @@ import scala.concurrent.duration._
   * For args above 0.5, the values of this model are higher for more recent marks and lower for older marks, with
   * a maximum value of 1.  For args below 0.5 the opposite is true.  0.5 is neutral.
   *
-  * @param facetArg  User-provided model input argument, which gets translated into a half-life.
   * @param now       Current date-time.
   * @param marks     Marks data source.
   */
 @Singleton
-class Recency @Inject()(facetArg: Recency.Arg,
-                        now: Recency.CurrentTimeOptional,
+class Recency @Inject()(now: Recency.CurrentTimeOptional,
                         marks: MarksStream)
                        (implicit mat: Materializer)
     extends DataStream[Double] {
@@ -33,14 +31,14 @@ class Recency @Inject()(facetArg: Recency.Arg,
 
   // rather than using this complicated formula, just have a fixed 2-year half life with a parameterized COEF
   val HALF_LIFE: DurationMils = 365.days.toMillis
+  logger.info(f"Using a half-life of ${HALF_LIFE.dfmt}")
 
-  val mbCoef: Option[Double] = facetArg.value match {
-    case x if x < 0.479 => Some((math.max(x, 0.0) - 0.5) * 40)
-    case x if x < 0.521 => None // undefined: no time preference
-    case x              => Some((math.min(x, 1.0) - 0.5) * 40)
+  /** Override the default `identity` implementation of the conversion from facet arg to coefficient. */
+  override def coefficient(arg: Double): Double = arg match {
+    case x if x < 0.479 => (math.max(x, 0.0) - 0.5) * 40
+    case x if x < 0.521 => 0.0 // no time preference
+    case x              => (math.min(x, 1.0) - 0.5) * 40
   }
-
-  logger.info(f"Using a half-life of ${HALF_LIFE.dfmt} and coefficient of ${mbCoef.getOrElse(0.0)}%.2f given arg value ${facetArg.value}%.2f")
 
   override val in: SourceType = {
     import com.hamstoo.stream.StreamDSL._
@@ -51,23 +49,17 @@ class Recency @Inject()(facetArg: Recency.Arg,
     //   "could not find implicit value for parameter ev: spire.algebra.Ring[com.hamstoo.stream.DataStream[Double]]"
     //import spire.implicits._
 
-    mbCoef.fold(marks.map(_ => 0.0)) { coef =>
+    val timeSince = now.value - marks.timeFrom
+    val nHalfLifes = timeSince / HALF_LIFE
+    0.5.pow(nHalfLifes)
 
-      val timeSince = now.value - marks.timeFrom
-      val nHalfLifes = timeSince / HALF_LIFE
-      (0.5 pow nHalfLifes) * coef
-
-    }
   }.out.map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
 }
 
 object Recency {
 
   // 0.65 is equivalent to a coefficient of 6.0 (= 0.15 * 40)
-  val DEFAULT = 0.65
-
-  /** Optional half-life (input) argument for computation of Recency model.  Memories fade over time. */
-  case class Arg() extends OptionalInjectId[Double]("recency", DEFAULT)
+  val DEFAULT_ARG = 0.65
 
   /** Optional current time parameter for compuation of Recency model. */
   case class CurrentTimeOptional() extends OptionalInjectId[TimeStamp]("current.time", TIME_NOW)
