@@ -24,8 +24,6 @@ class Rating @Inject()(marks: MarksStream)(implicit mat: Materializer) extends D
   }.out
 }
 
-object Rating { val DEFAULT_ARG = 1.0 }
-
 /**
   * log([mark.aux.totalVisible minutes] + e), which has a lower bound of 1.0 (when totalVisible is 0).
   * This facet can be thought of as a sort of implicit rating--i.e. how much time the user spent at the site.
@@ -40,12 +38,8 @@ class LogTimeSpent @Inject()(marks: MarksStream)(implicit mat: Materializer) ext
       val durationMils = mbAux.flatMap(_.totalVisible).getOrElse(0L)
       val durationMins = durationMils.toDouble / 1000 / 60
 
-      // add `e` so that the lower bound is 1.0
-      math.log(durationMins + math.E)
+      // add `e` so that the lower bound is 1 (but then subtract 1 after logging to shift lb back to 0)
+      math.log(durationMins + math.E) - 1.0
     }
   }.out
 }
-
-object LogTimeSpent { val DEFAULT_ARG = 1.0 }
-
-

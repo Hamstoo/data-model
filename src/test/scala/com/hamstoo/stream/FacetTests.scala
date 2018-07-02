@@ -7,11 +7,12 @@ import akka.stream._
 import akka.stream.scaladsl.Sink
 import com.google.inject.name.Named
 import com.google.inject.{Guice, Provides, Singleton}
+import com.hamstoo.models.Mark.{MarkAux, RangeMils}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
 import com.hamstoo.stream.config.{ConfigModule, FacetsModel, StreamModule}
-import com.hamstoo.stream.facet.{AggregateSearchScore, Recency, SearchResults}
+import com.hamstoo.stream.facet._
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
 import com.hamstoo.utils.{DataInfo, DurationMils, ExtendedTimeStamp, TimeStamp}
@@ -34,7 +35,6 @@ class FacetTests
   type OutType = FacetsModel.OutType // (String, AnyRef)
 
   "FacetsModel" should "compute SearchResults" in {
-
     // filter so that the test doesn't break as more facets are added to FacetsModel
     val facetName = classOf[SearchResults].getSimpleName
     val x = facetsSeq.filter(_._1 == facetName)
@@ -42,30 +42,41 @@ class FacetTests
       .foldLeft(0.0) { case (agg, d) =>
         agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
       }
-
     x shouldBe (39.55 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
-
     val facetName = classOf[AggregateSearchScore].getSimpleName
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-
     x shouldBe (39.01 +- 0.01)
   }
 
   it should "compute Recency" in {
-
     val facetName = classOf[Recency].getSimpleName
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-
     // see data-model/docs/RecencyTest.xlsx for an independent calculation of this value
-    val coef = (Recency.DEFAULT_ARG - 0.5) * 40
+    val coef = (FacetsModel.getDefaultArg[Recency] - 0.5) * 40
     x / coef shouldBe (4.12 +- 0.01)
+  }
+
+  it should "compute Rating" in {
+    val facetName = classOf[Rating].getSimpleName
+    val x = facetsSeq.filter(_._1 == facetName)
+      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
+    x shouldBe (12.5 +- 1e-10)
+  }
+
+  it should "compute LogTimeSpent" in {
+    val facetName = classOf[LogTimeSpent].getSimpleName
+    val x = facetsSeq.filter(_._1 == facetName)
+      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
+    x shouldBe (1.96 +- 0.01)
   }
 
   // another way to test this is to uncomment the "uncomment this line" line in AggregateSearchScore which
@@ -97,13 +108,22 @@ class FacetTests
     val baseVec = Seq(1.0, 2.0, 3.0)
     val baseVs = Map(VecEnum.PC1.toString -> baseVec)
     val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
+
     //val b :: e :: Nil = Seq(ClockBegin.name, ClockEnd.name).map(config.getLong)
     val (b, e) = (clockBegin + clockInterval, clockEnd)
     (b to e by (e - b) / (nMarks - 1)).zipWithIndex.foreach { case (ts, i) =>
+
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
       val r = baseRepr.copy(id = s"r_${ts.Gs}_$idSuffix", vectors = vs)
-      val ri = ReprInfo(r.id, ReprType.PUBLIC)
-      val m = Mark(userId, s"m_${ts.Gs}_$idSuffix", MarkData(subj, None), reprs = Seq(ri), timeFrom = ts)
+      val rating = if (i == 0) None else Some(i.toDouble)
+      val aux = if (i == 2) None else Some(MarkAux(Some(Seq(RangeMils(0, i * 1000 * 60))), None))
+
+      val m = Mark(userId, s"m_${ts.Gs}_$idSuffix",
+                   MarkData(subj, None, rating = rating),
+                   aux = aux,
+                   reprs = Seq(ReprInfo(r.id, ReprType.PUBLIC)),
+                   timeFrom = ts)
+
       logger.info(s"\033[37m$m\033[0m")
       Await.result(marksDao.insert(m), 8 seconds)
       if (i != nMarks - 1) Await.result(reprsDao.insert(r), 8 seconds) // skip one at the end for a better test of Join

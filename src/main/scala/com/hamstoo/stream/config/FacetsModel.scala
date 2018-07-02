@@ -45,18 +45,7 @@ class FacetsModel @Inject()(clock: Clock)
       throw new Exception(s"Duplicate '$name' named facets detected")
 
     // first lookup a *default* arg, or just 1.0 if there isn't one available
-    // get DEFAULT_ARG automagically from companion objects
-    // TODO: load defaults from a resource file
-    // (https://stackoverflow.com/questions/36290863/get-field-value-of-a-companion-object-from-typetagt)
-    val default = Try {
-      import scala.reflect.runtime.{currentMirror, universe}
-      val companionSymbol = currentMirror.classSymbol(cls).companion.asModule
-      val companionInstance = currentMirror.reflectModule(companionSymbol.asModule)
-      val companionMirror   = currentMirror.reflect(companionInstance.instance)
-      val fieldSymbol = companionSymbol.typeSignature.decl(universe.TermName("DEFAULT_ARG")).asTerm
-      val fieldMirror = companionMirror.reflectField(fieldSymbol)
-      fieldMirror.get.asInstanceOf[Double]
-    }.getOrElse(1.0)
+    val default = getDefaultArg[T]
 
     // pluck the (non-default, possibly overridden) arg from the injector
     val argGetter = new OptionalInjectId(name.toLowerCase, default)
@@ -160,8 +149,23 @@ object FacetsModel {
 
     add[Recency]() // see How to Think screenshot
     //add(ConfirmationBias)
-//    add[LogTimeSpent]()
-//    add[Rating]()
-    //add(SearchRelevance)
+    add[LogTimeSpent]()
+    add[Rating]()
   }
+
+  /**
+    * Get DEFAULT_ARG automagically from companion objects.
+    *   https://stackoverflow.com/questions/36290863/get-field-value-of-a-companion-object-from-typetagt
+    * TODO: load defaults from a resource file
+    */
+  def getDefaultArg[T :ClassTag]: Double = Try {
+    val cls: Class[_] = classTag[T].runtimeClass
+    import scala.reflect.runtime.{currentMirror, universe}
+    val companionSymbol = currentMirror.classSymbol(cls).companion.asModule
+    val companionInstance = currentMirror.reflectModule(companionSymbol.asModule)
+    val companionMirror   = currentMirror.reflect(companionInstance.instance)
+    val fieldSymbol = companionSymbol.typeSignature.decl(universe.TermName("DEFAULT_ARG")).asTerm
+    val fieldMirror = companionMirror.reflectField(fieldSymbol)
+    fieldMirror.get.asInstanceOf[Double]
+  }.getOrElse(1.0)
 }
