@@ -5,13 +5,12 @@ package com.hamstoo.stream
 
 import akka.stream._
 import akka.stream.scaladsl.Sink
-import com.google.inject.name.Named
-import com.google.inject.{Guice, Provides, Singleton}
+import com.google.inject.{Provides, Singleton}
 import com.hamstoo.models.Mark.{MarkAux, RangeMils}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
-import com.hamstoo.stream.config.{ConfigModule, FacetsModel, StreamModule}
+import com.hamstoo.stream.config.{FacetsModel, StreamModule}
 import com.hamstoo.stream.facet._
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
@@ -42,7 +41,7 @@ class FacetTests
       .foldLeft(0.0) { case (agg, d) =>
         agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
       }
-    x shouldBe (39.55 +- 0.01)
+    x shouldBe (3.49 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
@@ -50,7 +49,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (39.01 +- 0.01)
+    x shouldBe (13.97 +- 0.01)
   }
 
   it should "compute Recency" in {
@@ -68,15 +67,15 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (12.5 +- 1e-10)
+    x shouldBe (6.25 +- 1e-10)
   }
 
-  it should "compute LogTimeSpent" in {
-    val facetName = classOf[LogTimeSpent].getSimpleName
+  it should "compute ImplicitRating" in {
+    val facetName = classOf[ImplicitRating].getSimpleName
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (1.96 +- 0.01)
+    x shouldBe (2.95 +- 0.01)
   }
 
   // another way to test this is to uncomment the "uncomment this line" line in AggregateSearchScore which
@@ -116,7 +115,7 @@ class FacetTests
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
       val r = baseRepr.copy(id = s"r_${ts.Gs}_$idSuffix", vectors = vs)
       val rating = if (i == 0) None else Some(i.toDouble)
-      val aux = if (i == 2) None else Some(MarkAux(Some(Seq(RangeMils(0, i * 1000 * 60))), None))
+      val aux = if (i == 2) None else Some(MarkAux(Some(Seq(RangeMils(0, i * 1000 * 60))), None, nOwnerVisits = Some(i)))
 
       val m = Mark(userId, s"m_${ts.Gs}_$idSuffix",
                    MarkData(subj, None, rating = rating),

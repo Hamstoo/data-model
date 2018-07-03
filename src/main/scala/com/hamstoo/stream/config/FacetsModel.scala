@@ -142,14 +142,14 @@ object FacetsModel {
     // TODO: break this up into 2 facets so that the 2 coef-args can be extracted
     // TODO: not so fast, the problem with having all the coef-args applied in FacetsModel is that we can't control
     // TODO:  "internal args" from here, like "any-vs-all search terms" so perhaps some params just need to be elsewhere
-    // TODO:  the one constant in all of this though is that these values are all configured via OptionalInjectIds
-    // TODO:   whether in AggregateSearchScore companion object or FacetsModel.add
-    // TODO:    so instead of having ConstStream perhaps we should just amend the StreamDSL to work w/ OptionalInjectIds
+    // TODO: the one constant in all of this though is that these values are all configured via OptionalInjectIds
+    // TODO:  whether in AggregateSearchScore companion object or FacetsModel.add
+    // TODO:  so perhaps we should just amend the StreamDSL to work w/ OptionalInjectIds (or see AnyVsAllArg)
     add[AggregateSearchScore]()
 
     add[Recency]() // see How to Think screenshot
     //add(ConfirmationBias)
-    add[LogTimeSpent]()
+    add[ImplicitRating]()
     add[Rating]()
   }
 
