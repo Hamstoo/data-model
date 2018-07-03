@@ -339,7 +339,10 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
           .foreach(kv => extraText += f" ${kv._1}=<b>${kv._2}%.2f</b>")
       }
 
-      ScoresAndText(math.max(wmean, 0.0).coalesce0, mbSimilarity.getOrElse(0.0), extraText, extraTermText)
+      // multiply by 6 and 2 to make search relevance a more important component of final search score
+      val rawDbScore = math.max(wmean, 0.0).coalesce0 * 6
+      val similarity = mbSimilarity.getOrElse(0.0) * 2
+      ScoresAndText(rawDbScore, similarity, extraText, extraTermText)
     }
   }
 }

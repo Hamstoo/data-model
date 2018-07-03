@@ -58,8 +58,8 @@ class Recency @Inject()(now: Recency.CurrentTimeOptional,
 
 object Recency {
 
-  // 0.65 is equivalent to a coefficient of 6.0 (= 0.15 * 40)
-  val DEFAULT_ARG = 0.65
+  // 0.6 is equivalent to a coefficient of 4.0 (= 0.1 * 40)
+  val DEFAULT_ARG = 0.6
 
   /** Optional current time parameter for compuation of Recency model. */
   case class CurrentTimeOptional() extends OptionalInjectId[TimeStamp]("current.time", TIME_NOW)

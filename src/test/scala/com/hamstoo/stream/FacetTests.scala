@@ -41,7 +41,7 @@ class FacetTests
       .foldLeft(0.0) { case (agg, d) =>
         agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
       }
-    x shouldBe (3.49 +- 0.01)
+    x shouldBe (6.98 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
@@ -49,7 +49,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (13.97 +- 0.01)
+    x shouldBe (27.94 +- 0.01)
   }
 
   it should "compute Recency" in {
@@ -58,8 +58,7 @@ class FacetTests
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
     // see data-model/docs/RecencyTest.xlsx for an independent calculation of this value
-    val coef = (FacetsModel.getDefaultArg[Recency] - 0.5) * 40
-    x / coef shouldBe (4.12 +- 0.01)
+    x shouldBe (16.51 +- 0.01)
   }
 
   it should "compute Rating" in {
