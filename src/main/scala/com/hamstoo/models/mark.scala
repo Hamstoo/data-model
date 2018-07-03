@@ -373,6 +373,7 @@ case class Mark(override val userId: UUID,
                 override val sharedWith: Option[SharedWith] = None,
                 override val nSharedFrom: Option[Int] = Some(0),
                 override val nSharedTo: Option[Int] = Some(0),
+                created: Option[TimeStamp] = Some(TIME_NOW),
                 score: Option[Double] = None)
     extends Shareable {
 
