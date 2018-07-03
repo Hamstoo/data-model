@@ -202,7 +202,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
             val endTime: TimeStamp = System.currentTimeMillis()
             val elapsed = (endTime - startTime) / 1e3
             if (elapsed > 0.1)
-              loggerI.debug(f"\u001b[35m${mark.id}\u001b[0m: query= '$rawQuery', subj='${mark.mark.subj}, textLen=${utext.length + rtext.length}' in $elapsed%.3f seconds")
+              loggerI.debug(f"\u001b[35m${mark.id}\u001b[0m: query='${rawQuery.value}', subj='${mark.mark.subj}, textLen=${utext.length + rtext.length}' in $elapsed%.3f seconds")
 
             mbPv.flatMap { pv =>
 
