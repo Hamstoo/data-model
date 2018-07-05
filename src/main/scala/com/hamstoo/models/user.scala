@@ -69,13 +69,14 @@ case class UserData(
 
   usernameLower = username.map(_.toLowerCase) // impossible to set any other way
 
-  /** Assign a username consisting of first/last name and a random number. */
-  def assignUsername()(implicit userDao: UserDao, ec: ExecutionContext): Future[UserData] = {
-    val startWith = firstName.getOrElse("") + lastName.getOrElse("") match {
+  /** Generate a username consisting of first/last name and a random number. */
+  def generateUsername()(implicit userDao: UserDao, ec: ExecutionContext): Future[String] = {
+    val startWith = (firstName.getOrElse("") + lastName.getOrElse("")).replaceAll(User.NON_USERNAME_CHARS, "") match {
       case User.VALID_USERNAME(alpha, _) => alpha
-      case _ => Random.alphanumeric.take(6).mkString.toLowerCase
+      case _ => "u" + Random.alphanumeric.take(6).mkString.toLowerCase
     }
-    userDao.nextUsername(startWith + Random.nextInt(9999)).map(nxt => copy(username = Some(nxt)))
+    assert(User.VALID_USERNAME.pattern.matcher(startWith).matches) // must match to avoid infinite recursive loop
+    userDao.nextUsername(startWith + Random.nextInt(9999), Some(this))
   }
 }
 
@@ -107,6 +108,7 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
 object User extends BSONHandlers {
 
   val VALID_USERNAME: Regex = raw"^([a-zA-Z][a-zA-Z0-9_]+[a-zA-Z_])([0-9]*)$$".r
+  val NON_USERNAME_CHARS: String = "[^a-zA-Z0-9_]"
 
   /** Creates a dummy User without anything but an ID, which is useful to have in some cases. */
   def apply(id: UUID): Option[User] = Some(User(id, UserData(), Nil))

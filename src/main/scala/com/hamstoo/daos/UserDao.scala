@@ -7,7 +7,7 @@ import java.util.UUID
 
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.User._
-import com.hamstoo.models.{Mark, Profile, Shareable, SharedWith, User, UserGroup}
+import com.hamstoo.models._
 import com.mohiva.play.silhouette.api.LoginInfo
 import com.mohiva.play.silhouette.api.services.IdentityService
 import play.api.Logger
@@ -66,13 +66,18 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
     _ <- wr.failIfError
   } yield ()
 
-  /** Start with a username, but then return a different one if that one is already taken. */
-  def nextUsername(startWith: String): Future[String] = {
-    retrieveByUsername(startWith).flatMap { _.fold(Future.successful(startWith)) { _ =>
-      val User.VALID_USERNAME(alpha, numeric) = startWith
-      val number = if (numeric.isEmpty) 2 else numeric.toInt + 1
-      nextUsername(alpha + number)
-    }}
+  /** Start with a username, but then return a different one if that one is already taken (or invalid). */
+  def nextUsername(proposed: String, udata: Option[UserData]): Future[String] = {
+    proposed match {
+      case User.VALID_USERNAME(alpha, numeric) =>
+        retrieveByUsername(proposed).flatMap { _.fold(Future.successful(proposed)) { _ =>
+          val number = if (numeric.isEmpty) 2 else numeric.toInt + 1
+          nextUsername(alpha + number, udata)
+        }}
+      case _ =>
+        implicit val implicitThis: UserDao = this
+        udata.getOrElse(UserData()).generateUsername() // suggest a username based on UserData
+    }
   }
 
   /** Retrieves user account data by login. */
