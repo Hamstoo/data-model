@@ -48,6 +48,11 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
     val mbQuerySeq = mbCleanedQuery.map(_.map(_._1))
     val mbSearchTermVecs = mbQuery2Vecs.map(_._2)
 
+    // if the search & calling users are the same then only show MarkRefs in the search results
+    // if query words exist (o/w we're simply listing the calling user's marks or something),
+    // this behavior matches that of the `else` clause in MarksController.list
+    val includeMarkRefs = mbSearchUserId.value.exists(_ != callingUserId) || mbQuery2Vecs.nonEmpty
+
     // get a couple of queries off-and-running before we start Future-flatMap-chaining
 
     // Mongo Text Index search (e.g. includes stemming) over `entries` collection (and filter results by labels)
@@ -62,7 +67,8 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
 
     for {
       // candidate referenced marks (i.e. marks that aren't owned by the calling user)
-      id2Ref <- markDao.retrieveRefed(callingUserId, begin = Some(begin), end = Some(end))
+      id2Ref <- if (!includeMarkRefs) Future.successful(Map.empty[ObjectId, MarkRef])
+                else markDao.retrieveRefed(callingUserId, begin = Some(begin), end = Some(end))
       candidateRefs <- markDao.retrieveInsecureSeq(id2Ref.keys.toSeq, begin = Some(begin), end = Some(end))
                          .map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
 
@@ -109,7 +115,10 @@ object MarksStream {
 
   val logger = Logger(classOf[MarksStream])
 
+  // allows marks by one user (the search user) to be searched by another user (the calling user)
   case class SearchUserIdOptional() extends OptionalInjectId[Option[UUID]]("search.user.id", None)
+
+  // allows marks search to filter for specific labels
   case class SearchLabelsOptional() extends OptionalInjectId[Set[String]]("labels", Set.empty[String])
 
   /**

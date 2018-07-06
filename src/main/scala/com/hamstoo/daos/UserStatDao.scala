@@ -99,7 +99,9 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     for {
       cI <- importsColl()
       cE <- marksColl()
-      nUserTotalMarks <- cE.count(Some(d :~ Mark.USR -> userId.toString :~ Mark.TIMETHRU -> INF_TIME))
+      nUserTotalMarks <- cE.count(Some(d :~ Mark.USR -> userId.toString :~
+                                            Mark.REF -> (d :~ "$exists" -> false) :~
+                                            curnt))
       imports <- cI.find(d :~ U_ID -> userId.toString).one[BSONDocument]
 
       mbUserStats <- retrieve(userId)
