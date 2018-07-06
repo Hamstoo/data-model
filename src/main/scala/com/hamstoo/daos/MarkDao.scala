@@ -269,8 +269,11 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
   /**
     * Retrieves all of a user's MarkRefs--i.e. marks owned by other users that have been shared with this one.
-    * Returns them in a map from the referenced mark IDs to the MarkRefs themselves--the assumption being they'll
-    * need to be "application-level joined" by the caller.
+    * A reference will only exist for this user however, for other users' marks that he has explicitly accessed.
+    * So if another user simply shares a mark to this user, and this user never accesses it, then there won't
+    * be a reference.
+    * @return  A map from the referenced mark IDs to the MarkRefs themselves--the assumption being they'll
+    *          need to be "application-level joined" by the caller.
     */
   def retrieveRefed(user: UUID, begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):
                                                                             Future[Map[ObjectId, MarkRef]] = {

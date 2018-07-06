@@ -88,7 +88,10 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     }}
 
     // don't rely on reprs being populated for all marks
-    val msource: Source[TimeStamp, NotUsed] = marks.out.mapConcat(_.map(_.sourceTime))
+    val msource: Source[TimeStamp, NotUsed] = marks.out.mapConcat(_.map { m =>
+      logger.warn(s"profileDots: ${m.value.id} -> ${m.value.timeFrom.tfmt} / ${m.sourceTime.tfmt} (${m.value.markRef.nonEmpty})")
+      m.sourceTime
+    })
 
     // TODO: implement a test that ensures reprs' timestamps match marks'
 
