@@ -52,7 +52,7 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
     // if query words exist (o/w we're simply listing the calling user's marks or something),
     // this behavior matches that of the `else` clause in MarksController.list
     val includeMarkRefs = mbSearchUserId.value.exists(_ != callingUserId) || mbQuery2Vecs.nonEmpty
-    logger.warn(s"includeMarkRefs = $includeMarkRefs")
+    logger.debug(s"includeMarkRefs = $includeMarkRefs")
 
     // get a couple of queries off-and-running before we start Future-flatMap-chaining
 
@@ -70,7 +70,7 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
 
     for {
       // candidate referenced marks (i.e. marks that aren't owned by the calling user)
-      id2Ref <- if (false/*!includeMarkRefs*/) Future.successful(Map.empty[ObjectId, MarkRef])
+      id2Ref <- if (!includeMarkRefs) Future.successful(Map.empty[ObjectId, MarkRef])
                 else markDao.retrieveRefed(callingUserId, begin = Some(begin), end = Some(end))
       candidateRefs <- markDao.retrieveInsecureSeq(id2Ref.keys.toSeq, begin = Some(begin), end = Some(end))
                          .map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
