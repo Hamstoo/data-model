@@ -42,10 +42,14 @@ class UserStatDaoTests extends AkkaMongoEnvironment("UserStatDaoTests-ActorSyste
   val cmt = Some("Queryasdasd")
   val pubRepr = Some("reprasdsad")
   val newMarkData = MarkData("a NEW subjфывыфвect1", Some("https://github.com"))
-  val m1 = Mark(userId, timeFrom = DateTime.now.minusDays(10).getMillis,
+  val m1 = Mark(userId, timeFrom = DateTime.now.minusDays(8).getMillis,
                 mark = MarkData("a subjasdect342", Some("http://hamstoo231321.com"), tags = tagSet, comment = cmt))
-  val m2 = Mark(userId, mark = MarkData("a subasdject1", Some("http://hamstoo223.com"), tags = tagSet))
-  val m3 = Mark(userId, mark = MarkData("a subasdject1asdasd", Some("http://hamstooasdasd223.com"), tags = tagSet))
+  val m2 = Mark(userId, timeFrom = DateTime.now.minusDays(6).getMillis,
+                mark = MarkData("a subasdject1", Some("http://hamstoo223.com"), tags = tagSet))
+  val m3 = Mark(userId, timeFrom = DateTime.now.minusDays(4).getMillis,
+                mark = MarkData("a subasdject1asdasd", Some("http://hamstooasdasd223.com"), tags = tagSet))
+  val m4 = Mark(DataInfo.constructUserId(), timeFrom = DateTime.now.minusDays(2).getMillis,
+                mark = MarkData("other user subj", None))
 
   /** This test is designed to create two marks for user. */
   "MongoUserStatsDao" should "(UNIT) calculate marks inserted by userId" in {
@@ -62,12 +66,21 @@ class UserStatDaoTests extends AkkaMongoEnvironment("UserStatDaoTests-ActorSyste
   /** This test is designed to modify marks, but to keep only two actual marks for user. */
   it should "(UNIT) calculate marks updated by userId" in {
     val totalMarks: ProfileDots = (for {
-      mi1 <- marksDao.update(mbUser, m1.id, m2.mark)
-      mi2 <- marksDao.update(mbUser, m2.id, m1.mark)
-      mi3 <- marksDao.update(mbUser, m1.id, m1.mark)
-      mi4 <- marksDao.update(mbUser, m2.id, m2.mark)
-      mi5 <- marksDao.insert(m3)
+      _ <- marksDao.update(mbUser, m1.id, m2.mark)
+      _ <- marksDao.update(mbUser, m2.id, m1.mark)
+      _ <- marksDao.update(mbUser, m1.id, m1.mark)
+      _ <- marksDao.update(mbUser, m2.id, m2.mark)
+      _ <- marksDao.insert(m3)
       intResult <- marksDao.delete(userId, m2.id :: Nil)
+
+      // insert a mark owned by another user...
+      _ <- marksDao.insert(m4)
+      pub :: priv :: Nil = Seq(SharedWith.Level.PUBLIC, SharedWith.Level.PRIVATE).map((_, None))
+      _ <- marksDao.updateSharedWith(m4, 0, pub, priv)
+
+      // ...and create a MarkRef to ensure it doesn't get picked up by profileDots
+      _ <- marksDao.retrieveById(mbUser, m4.id)
+
       totalMarks <- userStatsDao.profileDots(userId, 0, injector)
     } yield totalMarks).futureValue
 

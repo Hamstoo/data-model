@@ -93,9 +93,9 @@ class FacetTests
     val x = scoreDiffUsers
       .map { d => logger.info(s"\033[37m$facetName (different users): $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (18.87 +- 0.01) // would be same as above 27.94 if not for access permissions
-    facetsDiffUsers.size shouldBe 15
-    scoreDiffUsers.size shouldBe 3
+    x shouldBe (13.69 +- 0.01) // would be same as above 27.94 if not for access permissions
+    facetsDiffUsers.size shouldBe 10
+    scoreDiffUsers.size shouldBe 2
   }
 
   val query: String = "some query"
@@ -147,15 +147,6 @@ class FacetTests
         val pub :: priv :: Nil = Seq(SharedWith.Level.PUBLIC, SharedWith.Level.PRIVATE).map((_, None))
         if (i == 1) marksDao.updateSharedWith(m, 0, pub, priv).futureValue // readOnly
         if (i == 2) marksDao.updateSharedWith(m, 0, priv, pub).futureValue // readWrite
-
-        if (i == 3 /*&& subj.isEmpty*/) {
-          marksDao.updateSharedWith(m, 0, pub, priv).futureValue // readOnly...
-
-          // at one point MarksStream was returning MarkRefs when its query was empty and the calling/search users
-          // were the same, which is what this would ideally test, but I can't figure out how it was doing that anymore
-          // (see commented out `includeMarkRefs` code in MarksStream, which was originally added to address this)
-          //marksDao.retrieveById(User(callingUserId), m.id).futureValue // ...and with a MarkRef
-        }
       }
 
       if (i != nMarks - 1) Await.result(reprsDao.insert(r), 8 seconds) // skip one at the end for a better test of Join
@@ -183,7 +174,7 @@ class FacetTests
         QueryOptional() := query
 
         CallingUserId := callingUserId
-        if (differentUsers /*&& subj.isEmpty*/)
+        if (differentUsers)
           SearchUserIdOptional() := Some(searchUserId)
 
         LogLevelOptional() := Some(ch.qos.logback.classic.Level.TRACE)

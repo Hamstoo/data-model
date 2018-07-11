@@ -48,11 +48,11 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
     val mbQuerySeq = mbCleanedQuery.map(_.map(_._1))
     val mbSearchTermVecs = mbQuery2Vecs.map(_._2)
 
-    // if the search & calling users are the same then only show MarkRefs in the search results
-    // if query words exist (o/w we're simply listing the calling user's marks perhaps with a facet arg),
+    // if the search & calling users are the same then only show MarkRefs in the search results if query words
+    // exist (o/w we're simply listing the calling user's marks perhaps with begin/end args as profileDots does),
     // this behavior matches that of the `else` clause in MarksController.list
-//    val includeMarkRefs = mbSearchUserId.value.exists(_ != callingUserId) || mbQuery2Vecs.nonEmpty
-//    logger.debug(s"includeMarkRefs = $includeMarkRefs")
+    val includeMarkRefs = mbSearchUserId.value.exists(_ != callingUserId) || mbQuery2Vecs.nonEmpty
+    logger.debug(s"includeMarkRefs = $includeMarkRefs")
 
     // get a couple of queries off-and-running before we start Future-flatMap-chaining
 
@@ -70,8 +70,8 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
 
     for {
       // MarkRefs (i.e. marks that aren't owned by the calling user)
-      id2Ref <- /*if (!includeMarkRefs) Future.successful(Map.empty[ObjectId, MarkRef])
-                else*/ markDao.retrieveRefed(callingUserId, begin = Some(begin), end = Some(end))
+      id2Ref <- if (!includeMarkRefs) Future.successful(Map.empty[ObjectId, MarkRef])
+                else markDao.retrieveRefed(callingUserId, begin = Some(begin), end = Some(end))
       candidateRefs <- markDao.retrieveInsecureSeq(id2Ref.keys.toSeq, begin = Some(begin), end = Some(end))
                          .map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
 
