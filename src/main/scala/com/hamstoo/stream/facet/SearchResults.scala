@@ -90,7 +90,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
   // repredMarks will arrive according to time, but search results don't need to be ordered after here because we
   // re-order them later anyway, so just forward them on to the next downstream consumer as soon as they're complete
   override val in: SourceType = repredMarks()
-    .map { d => logger.debug(s"repredMarks.out: ${d.sourceTimeMax.tfmt}"); d }
+    .map { d => logger.debug(s"repredMarks.out: ${d.sourceTimeMax.tfmt} (n=${d.size})"); d }
     .mapAsync(4) { d: Data[RepredMarks.typ] =>
       Future.sequence {
         d.map { e: Datum[RepredMarks.typ] =>
@@ -237,7 +237,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
 
     }.map(_.flatten) // remove Nones
       .asInstanceOf[SourceType] // see "BIG NOTE" on JoinWithable
-      .map { d => logger.debug(s"${d.sourceTimeMax.tfmt} (sz=${d.size})"); d }
+      .map { d => logger.debug(s"${d.sourceTimeMax.tfmt} (n=${d.size})"); d }
 
   case class ScoresAndText(raw: Double, similarity: Double, text: String, termText: String)
 

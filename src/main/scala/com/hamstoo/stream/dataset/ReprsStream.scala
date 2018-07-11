@@ -140,7 +140,7 @@ class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
 
   override val in: SourceType = marks().joinWith(reprs()) { case x => x }
     .asInstanceOf[SourceType] // see comment on JoinWithable as to why this cast is necessary
-    .map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
+    .map { d => logger.debug(s"${d.sourceTimeMax.tfmt} (n=${d.size})"); d }
 }
 
 object RepredMarks {

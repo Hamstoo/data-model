@@ -152,7 +152,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
       //val filtered = seq.filter(_.isAuthorizedRead(user))
-      logger.debug(s"${seq.size} marks were successfully retrieved")
+      logger.debug(s"${seq.size} historical marks were successfully retrieved")
       seq
     }
   }
@@ -246,7 +246,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                tags: Set[String] = Set.empty[String],
                begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None,
                requireRepr: Boolean = false): Future[Seq[Mark]] = {
-    logger.debug(s"Retrieving marks for user $user and tags $tags")
+    logger.debug(s"Retrieving marks for user $user and tags $tags between ${begin.fold("None")(_.tfmt)} and ${end.fold("None")(_.tfmt)} (requireRepr=$requireRepr)")
     for {
       c <- dbColl()
 
@@ -340,12 +340,12 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,
     * and potentially filter for specific mark IDs.
     */
-  def search(users: Set[UUID], query: String, ids: Set[ObjectId] = Set.empty[ObjectId],
+  def search(users: Set[UUID], query: String, ids: Option[Set[ObjectId]] = None,
              begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):
                                                                         Future[Set[Mark]] = {
 
-    val which = s"for ${users.size} users (first, at most, 5: ${users.take(5)})" + (if (ids.isEmpty) "" else s", ${ids.size} IDs")
-    logger.debug(s"Searching for marks $which by text query '$query' between ${begin.map(_.tfmt)} and ${end.map(_.tfmt)}")
+    val which = s"for ${users.size} users (first, at most, 5: ${users.take(5)})" + (if (ids.isEmpty) "" else s", ${ids.size} markIds (first, at most, 5: ${ids.take(5)})")
+    logger.debug(s"Searching for marks $which by text query '$query' between ${begin.fold("None")(_.tfmt)} and ${end.fold("None")(_.tfmt)}")
     if (users.isEmpty) Future.successful(Set.empty[Mark]) else {
 
       // this projection doesn't have any effect without this selection
@@ -366,7 +366,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                          begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                          end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts)) :~
                          searchScoreSelection :~
-                         (if (ids.isEmpty) d else d :~ ID -> (d :~ "$in" -> ids))
+                         ids.fold(d)(seq => d :~ ID -> (d :~ "$in" -> seq))
 
           dbColl().flatMap(_.find(sel, searchScoreProjection).coll[Mark, Seq]())
         }

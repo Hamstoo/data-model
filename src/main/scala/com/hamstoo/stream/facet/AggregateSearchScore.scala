@@ -54,7 +54,7 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
     // (i.e. the stream graph that's constructed does not get terminated)
     //searchResults.map(_ => 3.0)
 
-  }.out.map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
+  }.out.map { d => logger.debug(s"${d.sourceTimeMax.tfmt} (n=${d.size})"); d }
 }
 
 object AggregateSearchScore {

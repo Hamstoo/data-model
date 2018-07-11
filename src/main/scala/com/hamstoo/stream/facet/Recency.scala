@@ -53,7 +53,7 @@ class Recency @Inject()(now: Recency.CurrentTimeOptional,
     val nHalfLifes = timeSince / HALF_LIFE
     0.5.pow(nHalfLifes)
 
-  }.out.map { d => logger.debug(s"${d.sourceTimeMax.tfmt}"); d }
+  }.out.map { d => logger.debug(s"${d.sourceTimeMax.tfmt} (n=${d.size})"); d }
 }
 
 object Recency {

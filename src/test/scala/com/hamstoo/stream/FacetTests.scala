@@ -3,6 +3,8 @@
  */
 package com.hamstoo.stream
 
+import java.util.UUID
+
 import akka.stream._
 import akka.stream.scaladsl.Sink
 import com.google.inject.{Provides, Singleton}
@@ -11,6 +13,7 @@ import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
 import com.hamstoo.stream.config.{FacetsModel, StreamModule}
+import com.hamstoo.stream.dataset.MarksStream.SearchUserIdOptional
 import com.hamstoo.stream.facet._
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
@@ -80,26 +83,41 @@ class FacetTests
   // another way to test this is to uncomment the "uncomment this line" line in AggregateSearchScore which
   // causes this test to fail
   it should "complete even when there aren't any data (a \"duplicate key error\" may indicate a timeout)" in {
-    facetsEmpty // asserts that a timeout does not occur
+    val facetName = classOf[AggregateSearchScore].getSimpleName
+    facetsEmpty.count(_._1 == facetName) shouldBe 0 // asserts that a timeout does not occur
+  }
+
+  it should "compute facet values for different 'search' and 'calling' users" in {
+    val facetName = classOf[AggregateSearchScore].getSimpleName
+    val scoreDiffUsers = facetsDiffUsers.filter(_._1 == facetName)
+    val x = scoreDiffUsers
+      .map { d => logger.info(s"\033[37m$facetName (different users): $d\033[0m"); d }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
+    x shouldBe (18.87 +- 0.01) // would be same as above 27.94 if not for access permissions
+    facetsDiffUsers.size shouldBe 15
+    scoreDiffUsers.size shouldBe 3
   }
 
   val query: String = "some query"
-  lazy val facetsSeq: Seq[OutType] = constructFacets(query, "A")
-  lazy val facetsEmpty: Seq[OutType] = constructFacets("", "B")
+  lazy val facetsSeq: Seq[OutType] = constructFacets(query, "a", differentUsers = false)
+  lazy val facetsEmpty: Seq[OutType] = constructFacets("", "b", differentUsers = false)
+  lazy val facetsDiffUsers: Seq[OutType] = constructFacets(query, "c", differentUsers = true)
 
   /**
     * `subj` is the text that allows the marks to be found by the Mongo Text Index search, so if it is empty no
     * marks will be found.
     * @param idSuffix  Used to prevent "duplicate key error" MonboDB exceptions.
     */
-  def constructFacets(subj: String, idSuffix: String): Seq[OutType] = {
+  def constructFacets(subj: String, idSuffix: String, differentUsers: Boolean): Seq[OutType] = {
 
     // config values that stream.ConfigModule will bind for DI
     val config = DataInfo.config
     val clockBegin: TimeStamp = new DateTime(2017, 12, 31, 0, 0).getMillis
     val clockEnd  : TimeStamp = new DateTime(2018,  1, 15, 0, 0).getMillis
     val clockInterval: DurationMils = (1 day).toMillis
-    val userId: CallingUserId.typ = DataInfo.constructUserId()
+    val searchUserId: CallingUserId.typ = UUID.fromString(s"11111111-1111-1111-1111-11111111111$idSuffix")
+    val callingUserId: CallingUserId.typ =
+      if (differentUsers) UUID.fromString(s"22222222-2222-2222-2222-22222222222$idSuffix") else searchUserId
 
     // insert 5 marks with reprs into the database
     val nMarks = 5
@@ -116,7 +134,7 @@ class FacetTests
       val rating = if (i == 0) None else Some(i.toDouble)
       val aux = if (i == 2) None else Some(MarkAux(Some(Seq(RangeMils(0, i * 1000 * 60))), None, nOwnerVisits = Some(i)))
 
-      val m = Mark(userId, s"m_${ts.Gs}_$idSuffix",
+      val m = Mark(searchUserId, s"m_${ts.Gs}_$idSuffix",
                    MarkData(subj, None, rating = rating),
                    aux = aux,
                    reprs = Seq(ReprInfo(r.id, ReprType.PUBLIC)),
@@ -124,6 +142,22 @@ class FacetTests
 
       logger.info(s"\033[37m$m\033[0m")
       Await.result(marksDao.insert(m), 8 seconds)
+
+      if (differentUsers) {
+        val pub :: priv :: Nil = Seq(SharedWith.Level.PUBLIC, SharedWith.Level.PRIVATE).map((_, None))
+        if (i == 1) marksDao.updateSharedWith(m, 0, pub, priv).futureValue // readOnly
+        if (i == 2) marksDao.updateSharedWith(m, 0, priv, pub).futureValue // readWrite
+
+        if (i == 3 /*&& subj.isEmpty*/) {
+          marksDao.updateSharedWith(m, 0, pub, priv).futureValue // readOnly...
+
+          // at one point MarksStream was returning MarkRefs when its query was empty and the calling/search users
+          // were the same, which is what this would ideally test, but I can't figure out how it was doing that anymore
+          // (see commented out `includeMarkRefs` code in MarksStream, which was originally added to address this)
+          //marksDao.retrieveById(User(callingUserId), m.id).futureValue // ...and with a MarkRef
+        }
+      }
+
       if (i != nMarks - 1) Await.result(reprsDao.insert(r), 8 seconds) // skip one at the end for a better test of Join
     }
 
@@ -147,7 +181,11 @@ class FacetTests
         Clock.EndOptional() := clockEnd
         Clock.IntervalOptional() := clockInterval
         QueryOptional() := query
-        CallingUserId := userId
+
+        CallingUserId := callingUserId
+        if (differentUsers /*&& subj.isEmpty*/)
+          SearchUserIdOptional() := Some(searchUserId)
+
         LogLevelOptional() := Some(ch.qos.logback.classic.Level.TRACE)
 
         // fix this value (don't use default DateTime.now) so that computed values don't change every day

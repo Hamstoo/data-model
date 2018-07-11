@@ -49,10 +49,10 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
     val mbSearchTermVecs = mbQuery2Vecs.map(_._2)
 
     // if the search & calling users are the same then only show MarkRefs in the search results
-    // if query words exist (o/w we're simply listing the calling user's marks or something),
+    // if query words exist (o/w we're simply listing the calling user's marks perhaps with a facet arg),
     // this behavior matches that of the `else` clause in MarksController.list
-    val includeMarkRefs = mbSearchUserId.value.exists(_ != callingUserId) || mbQuery2Vecs.nonEmpty
-    logger.debug(s"includeMarkRefs = $includeMarkRefs")
+//    val includeMarkRefs = mbSearchUserId.value.exists(_ != callingUserId) || mbQuery2Vecs.nonEmpty
+//    logger.debug(s"includeMarkRefs = $includeMarkRefs")
 
     // get a couple of queries off-and-running before we start Future-flatMap-chaining
 
@@ -69,25 +69,28 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
                         .flatMap(filterAuthorizedRead(_, callingUserId))
 
     for {
-      // candidate referenced marks (i.e. marks that aren't owned by the calling user)
-      id2Ref <- if (!includeMarkRefs) Future.successful(Map.empty[ObjectId, MarkRef])
-                else markDao.retrieveRefed(callingUserId, begin = Some(begin), end = Some(end))
+      // MarkRefs (i.e. marks that aren't owned by the calling user)
+      id2Ref <- /*if (!includeMarkRefs) Future.successful(Map.empty[ObjectId, MarkRef])
+                else*/ markDao.retrieveRefed(callingUserId, begin = Some(begin), end = Some(end))
       candidateRefs <- markDao.retrieveInsecureSeq(id2Ref.keys.toSeq, begin = Some(begin), end = Some(end))
                          .map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
 
-      // don't show the calling user marks that were shared to the search user (i.e. that the search user doesn't
-      // own) because they're owned by others with (probably) no connection to the calling user
-      refUserIds = if (searchUserId == callingUserId) candidateRefs.map(_.userId).toSet else Set(searchUserId)
+      // if the search/calling users are different, then only include calling user's MarkRefs that refer to search
+      // user's marks (i.e. exclude marks that were shared _to_ the search user) because they're owned by others with
+      // (probably) no connection to the calling user; but if the search/calling user are the same, then include
+      // all of calling user's MarkRefs
+      refUserIds = if (searchUserId != callingUserId) Set(searchUserId) else candidateRefs.map(_.userId).toSet
       refMarkIds = id2Ref.keySet
 
       // perform MongoDB Text Index search over referenced marks (i.e. marks owned by other users) and then impose
       // any rating or label changes this user has made on top of those references
       fscoredRefs = mbQuerySeq.mapOrEmptyFuture { w =>
-        markDao.search(refUserIds, w, ids = refMarkIds).map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
+        markDao.search(refUserIds, w, ids = Some(refMarkIds))
+          .map(maskAndFilterTags(_, tags, id2Ref, User(callingUserId)))
       }
 
       // "candidates" are ALL of the marks viewable to the callingUser (with the appropriate labels), which will
-      // include those that were not returned by MongoDB Text Index search
+      // include even those that were not returned by MongoDB Text Index search
       unscoredMs <- funscoredMs.map(_ ++ candidateRefs)
 
       sms <- fscoredMs; srefs <- fscoredRefs
