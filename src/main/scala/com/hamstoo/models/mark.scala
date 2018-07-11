@@ -481,8 +481,9 @@ case class Mark(override val userId: UUID,
     privExpRating.orElse(pubExpRating)
   }
 
-  /** Returns true if this Mark's MarkData has all of the test tags. */
-  def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.contains(t)))
+  /** Returns true if this Mark's MarkData has all of the test tags.  Should be consistent w/ MarkDao.hasTags. */
+  def hasTags(testTags: Set[String]): Boolean = testTags.forall(t => mark.tags.exists(_.map(_.toLowerCase)
+                                                                                       .contains(t.toLowerCase)))
 
   /**
     * Return latest representation ID, if it exists.  Even though public and user-content reprs are supposed to

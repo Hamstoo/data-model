@@ -95,7 +95,7 @@ class MarkDaoTests
   }
 
   it should "(UNIT) retrieve by userId and tags" in {
-    val tagged = marksDao.retrieveTagged(userA, tagSet.get).futureValue.map(_.id)
+    val tagged = marksDao.retrieveTagged(userA, tagSet.get.map(_.toUpperCase)).futureValue.map(_.id)
     tagged.size shouldEqual 2
     tagged.contains(m1.id) shouldEqual true
     tagged.contains(m2.id) shouldEqual true

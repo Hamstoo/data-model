@@ -219,12 +219,20 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     (mbMark, mbRef)
   }
 
+  /**
+    * Restricts query results to only marks with the given set of (case insensitive) labels/tags.  Should be
+    * consistent w/ Mark.hasTags.
+    */
+  def hasTags(tags: Set[String]): BSONDocument =
+    //d :~ TAGSx -> (d :~ "$all" -> tags)
+    d :~ "$and" -> tags.map(tag => d :~ TAGSx -> BSONRegex(s"^$tag$$", "i"))
+
   /** Retrieves all current marks for the user, constrained by a list of tags. Mark must have all tags to qualify. */
   def retrieveTagged(user: UUID, labels: Set[String]): Future[Seq[Mark]] = {
     logger.debug(s"Retrieving marks for user $user and labels $labels")
     for {
       c <- dbColl()
-      sel = d :~ USR -> user :~ TAGSx -> (d :~ "$all" -> labels) :~ curnt
+      sel = d :~ USR -> user :~ hasTags(labels) :~ curnt
       seq <- c.find(sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} tagged marks were successfully retrieved")
@@ -256,7 +264,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       // maybe we should $and instead of $or
       sel = d :~ USR -> user :~ curnt :~ // TODO: should `curnt` be moved into `reprs` to utilize indexes?
                  (if (!requireRepr) d else d :~ REPRS -> (d :~ "$not" -> (d :~ "$size" -> 0))) :~
-                 (if (tags.isEmpty) d else d :~ TAGSx -> (d :~ "$all" -> tags)) :~
+                 (if (tags.isEmpty) d else hasTags(tags)) :~
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
 
