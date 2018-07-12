@@ -425,6 +425,7 @@ case class Mark(override val userId: UUID,
       // no need to copy facets as they aren't set until the end of search, while MarkRef masking occurs during search
       mdata.bMasked = true // even though mdata is a val we are still allowed to do this--huh!?!
       mdata.ownerRating = mark.rating
+      logger.debug(s"Mark $id masked rating ${mdata.ownerRating}->${mdata.rating} and labels ${unionedTags}")
       copy(mark = mdata)
     }
   }
