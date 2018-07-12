@@ -92,6 +92,9 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
   /** Returns the Profile corresponding to the given LoginInfo. */
   def profileFor(loginInfo: LoginInfo): Option[Profile] = profiles.find(_.loginInfo == loginInfo)
 
+  /** Returns a list of the provider IDs of this user; convenience function. */
+  def providers: Seq[String] = profiles.map(_.loginInfo.providerID)
+
   /** Returns true if the email-address/Profile for the given LoginInfo has been confirmed. */
   def confirmed(loginInfo: LoginInfo): Boolean = profileFor(loginInfo).exists(_.confirmed)
 
