@@ -50,8 +50,10 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
 
     // if the search & calling users are the same then only show MarkRefs in the search results if query words
     // exist (o/w we're simply listing the calling user's marks perhaps with begin/end args as profileDots does),
-    // this behavior matches that of the `else` clause in MarksController.list
-    val includeMarkRefs = mbSearchUserId.value.exists(_ != callingUserId) || mbQuery2Vecs.nonEmpty
+    // this behavior should match that of the `else` clause in MarksController.list (which employs a similar variable)
+    val includeMarkRefs = mbSearchUserId.value.exists(_ != callingUserId) ||
+                          mbQuery2Vecs.nonEmpty ||
+                          labels.value.nonEmpty // e.g. if searching for marks with "SharedWithMe" label
     logger.debug(s"includeMarkRefs = $includeMarkRefs")
 
     // get a couple of queries off-and-running before we start Future-flatMap-chaining
