@@ -44,7 +44,7 @@ class FacetTests
       .foldLeft(0.0) { case (agg, d) =>
         agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
       }
-    x shouldBe (6.98 +- 0.01)
+    x shouldBe (13.21 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
@@ -52,7 +52,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (27.94 +- 0.01)
+    x shouldBe (39.12 +- 0.01)
   }
 
   it should "compute Recency" in {
@@ -77,7 +77,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (2.95 +- 0.01)
+    x shouldBe (3.79 +- 0.01)
   }
 
   // another way to test this is to uncomment the "uncomment this line" line in AggregateSearchScore which
@@ -93,7 +93,7 @@ class FacetTests
     val x = scoreDiffUsers
       .map { d => logger.info(s"\033[37m$facetName (different users): $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (13.69 +- 0.01) // would be same as above 27.94 if not for access permissions
+    x shouldBe (19.17 +- 0.01) // would be same as above 27.94 if not for access permissions
     facetsDiffUsers.size shouldBe 10
     scoreDiffUsers.size shouldBe 2
   }

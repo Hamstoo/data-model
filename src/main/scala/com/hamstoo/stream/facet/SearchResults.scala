@@ -144,21 +144,25 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
             loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=${rst.raw}%.2f/$mscore%.2f/${ust.raw}%.2f similarity(r/u)=${rst.similarity}%.2f/${ust.similarity}%.2f")
 
             // divy up the relevance into named buckets
-            val mbRelevance = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
+            val amigos = (rAggregate.coalesce0 ~= 0.0, mAggregate.coalesce0 ~= 0.0, mark.score.isDefined)
+            val mbRelevance = amigos match {
               case (true, true, true) => // this first case shouldn't ever really happen
                 Some(SearchRelevance(mscore, 0, 0, 0))
 
               case (true, false, _) => // this second case will occur for non-URL marks
-                Some(SearchRelevance(      uraw * 1.6, ust.similarity * 1.6, 0, 0))
+                val factor = if (mark.mark.url.isEmpty) 2.7 else 1.6
+                Some(SearchRelevance(      uraw * factor, ust.similarity * 1.6, 0, 0))
 
               case (false, true, _) => // this case will occur for old-school bookmarks without any user content
-                Some(SearchRelevance(0, 0, rraw * 1.4, rst.similarity * 1.4))
+                                       // update: that's probably no longer accurate as the def'n of user content
+                                       // has changed to include URL and everything in a user-content repr
+                Some(SearchRelevance(0, 0, rraw *    1.4, rst.similarity * 1.4))
 
               case (false, false, _) => // this case should fire for most marks--those with URLs
 
                 // maybe want to do max(0, cosine)?  or incorporate antonyms and compute cosine(query-antonyms)?
                 // because antonyms may be highly correlated with their opposites given similar surrounding words
-                Some(SearchRelevance(uraw, ust.similarity, rraw, rst.similarity))
+                Some(SearchRelevance(uraw, ust.similarity, rraw * 0.5, rst.similarity * 0.5))
 
               case (_, _, false) => None
             }
@@ -169,7 +173,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
             val usrContentRatio = if (ust.raw ~= 0) Double.PositiveInfinity else mscore / ust.raw
 
             // generate text and return values
-            val mbPv = (rAggregate.isNaN, mAggregate.isNaN, mark.score.isDefined) match {
+            val mbPv = amigos match {
               case (true, true, true) => // this first case shouldn't ever really happen
                 val sc = mark.score.getOrElse(Double.NaN)
                 val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b>$relTxt, " +

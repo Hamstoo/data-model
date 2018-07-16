@@ -60,7 +60,7 @@ class FacetsModel @Inject()(clock: Clock)
 
     import com.hamstoo.stream.StreamDSL._
     facets += name -> (beta match {
-      case b if b ~= 0.0 => ds.map(x => if (x.isNaN || x.isInfinite) Double.NaN else 0.0)
+      case b if b ~= 0.0 => ds.map(x => if (x.isReallyNaN) Double.NaN else 0.0)
       case b if b ~= 1.0 => ds
       case b             => ds * b // will only work with DataStream[Double], which is why this function requires it
     })

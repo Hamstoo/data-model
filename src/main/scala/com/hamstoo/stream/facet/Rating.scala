@@ -49,7 +49,7 @@ class ImplicitRating @Inject()(marks: MarksStream)(implicit mat: Materializer) e
 
       // number of times the owner of the mark has visited its full-page view
       val nOwnerVisits = mbAux.flatMap(_.nOwnerVisits).fold(0.5)(_.toDouble)
-      val logOwnerVisits = math.log(nOwnerVisits * 2 + math.E) - 1.0
+      val logOwnerVisits = math.log(nOwnerVisits * 4 + math.E) - 1.0
 
       logTimeSpent + logOwnerVisits
     }
