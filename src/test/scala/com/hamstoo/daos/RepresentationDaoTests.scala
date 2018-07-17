@@ -35,7 +35,8 @@ class RepresentationDaoTests
     othtext = None,
     keywords = None,
     vectors = Map.empty[String, Representation.Vec],
-    autoGenKws = None)
+    autoGenKws = None,
+    recentAutoGenKws = None)
 
   "MongoRepresentationDao" should "(UNIT) save representation" in {
 
@@ -51,7 +52,8 @@ class RepresentationDaoTests
       othtext = None,
       keywords = None,
       vectors = Map("something" -> vec),
-      autoGenKws = None)
+      autoGenKws = None,
+      recentAutoGenKws = None)
     println(s"REPR ID ${reprOrig.id}, versions ${reprOrig.versions}")
 
     val reprCopy = reprOrig.copy(

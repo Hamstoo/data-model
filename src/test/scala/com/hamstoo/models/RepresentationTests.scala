@@ -26,6 +26,7 @@ class RepresentationTests extends FlatSpecWithMatchers {
       keywords = Some(""),
       vectors = Map.empty[String, Vec],
       autoGenKws = Some(Seq("keyword0", "keyword1")),
+      recentAutoGenKws = Some(Seq("keyword0", "keyword1")),
       timeFrom = 0)
 
     val (a, b) = (rep, rep)

@@ -47,6 +47,8 @@ class RSearchable(val id: String,
                   val nWords: Option[Long],
                   val vectors: Map[String, Representation.Vec],
                   val autoGenKws: Option[Seq[String]],
+                 //will containt autoGenKws for only last 2 weeks TBD
+                  val recentAutoGenKws: Option[Seq[String]] = None,
                   val score: Option[Double]) {
 
   import com.hamstoo.models.Representation._
@@ -96,8 +98,9 @@ class RSearchable(val id: String,
             nWords: Option[Long] = nWords,
             vectors: Map[String, Representation.Vec] = vectors,
             autoGenKws: Option[Seq[String]] = autoGenKws,
+            recentAutoGenKws: Option[Seq[String]] = recentAutoGenKws,
             score: Option[Double] = score): RSearchable =
-    new RSearchable(id, header, doctext, nWords, vectors, autoGenKws, score)
+    new RSearchable(id, header, doctext, nWords, vectors, autoGenKws, recentAutoGenKws, score)
 }
 
 /**
@@ -108,13 +111,13 @@ object RSearchable {
 
   def apply(id: String, header: Option[String], doctext: String, nWords: Option[Long],
             vectors: Map[String, Representation.Vec], autoGenKws: Option[Seq[String]],
-            score: Option[Double]): RSearchable =
-    new RSearchable(id, header, doctext, nWords, vectors, autoGenKws, score)
+            recentAutoGenKws: Option[Seq[String]], score: Option[Double]): RSearchable =
+    new RSearchable(id, header, doctext, nWords, vectors, autoGenKws, recentAutoGenKws, score)
 
   def unapply(obj: RSearchable):
            Option[(String, Option[String], String, Option[Long], Map[String, Representation.Vec],
-                  Option[Seq[String]], Option[Double])] =
-    Some(obj.id, obj.header, obj.doctext, obj.nWords, obj.vectors, obj.autoGenKws, obj.score)
+                  Option[Seq[String]], Option[Seq[String]], Option[Double])] =
+    Some(obj.id, obj.header, obj.doctext, obj.nWords, obj.vectors, obj.autoGenKws, obj.recentAutoGenKws, obj.score)
 }
 
 /**
@@ -147,11 +150,12 @@ case class Representation(
                            override val nWords: Option[Long] = None,
                            override val vectors: Map[String, Representation.Vec],
                            override val autoGenKws: Option[Seq[String]],
+                           override val recentAutoGenKws: Option[Seq[String]],
                            timeFrom: TimeStamp = TIME_NOW,
                            timeThru: TimeStamp = INF_TIME,
                            var versions: Option[Map[String, String]] = None,
                            override val score: Option[Double] = None)
-    extends RSearchable(id, header, doctext, nWords, vectors, autoGenKws, score)
+    extends RSearchable(id, header, doctext, nWords, vectors, autoGenKws, recentAutoGenKws, score)
       with ReprEngineProduct[Representation] {
 
   lprefx = link.map(_.binaryPrefix)
