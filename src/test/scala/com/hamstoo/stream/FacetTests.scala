@@ -44,7 +44,7 @@ class FacetTests
       .foldLeft(0.0) { case (agg, d) =>
         agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
       }
-    x shouldBe (13.21 +- 0.01)
+    x shouldBe (56.17 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
@@ -98,7 +98,7 @@ class FacetTests
     scoreDiffUsers.size shouldBe 2
   }
 
-  val query: String = "some query"
+  val query: String = "some query "
   lazy val facetsSeq: Seq[OutType] = constructFacets(query, "a", differentUsers = false)
   lazy val facetsEmpty: Seq[OutType] = constructFacets("", "b", differentUsers = false)
   lazy val facetsDiffUsers: Seq[OutType] = constructFacets(query, "c", differentUsers = true)
@@ -130,7 +130,7 @@ class FacetTests
     (b to e by (e - b) / (nMarks - 1)).zipWithIndex.foreach { case (ts, i) =>
 
       val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
-      val r = baseRepr.copy(id = s"r_${ts.Gs}_$idSuffix", vectors = vs)
+      val r = baseRepr.copy(id = s"r_${ts.Gs}_$idSuffix", vectors = vs, doctext = subj)
       val rating = if (i == 0) None else Some(i.toDouble)
       val aux = if (i == 2) None else Some(MarkAux(Some(Seq(RangeMils(0, i * 1000 * 60))), None, nOwnerVisits = Some(i)))
 
