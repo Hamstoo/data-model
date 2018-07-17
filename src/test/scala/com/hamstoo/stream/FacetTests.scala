@@ -123,7 +123,7 @@ class FacetTests
     val nMarks = 5
     val baseVec = Seq(1.0, 2.0, 3.0)
     val baseVs = Map(VecEnum.PC1.toString -> baseVec)
-    val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None, None)
+    val baseRepr = Representation("", None, None, None, "", None, None, None, baseVs, None)
 
     //val b :: e :: Nil = Seq(ClockBegin.name, ClockEnd.name).map(config.getLong)
     val (b, e) = (clockBegin + clockInterval, clockEnd)

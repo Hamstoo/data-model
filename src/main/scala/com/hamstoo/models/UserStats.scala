@@ -49,7 +49,8 @@ case class ProfileDot(date: String, year: Int, nMarks: Int, userVecSimilarity: D
 case class UserStats(userId: UUID,
                      ts: TimeStamp,
                      vectors: Map[String, Representation.Vec],
-                     autoGenKws: Option[Seq[String]] = None) {
+                     autoGenKws: Option[Seq[String]] = None,
+                     recentAutoGenKws: Option[Seq[String]] = None) {
 
   override def toString: String =
     s"${getClass.getSimpleName}($userId, ${ts.tfmt}, nVectors=${vectors.size}, $autoGenKws)"
