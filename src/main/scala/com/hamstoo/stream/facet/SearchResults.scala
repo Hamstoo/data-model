@@ -217,16 +217,18 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
               val mbPr = preview match {
 
                 case pr if pr.nonEmpty || WHICH_PREVIEW_TEXT == 0 =>
-                  logger.debug(s"Including mark ${mark.id} in search results; has preview text")
+                  loggerI.debug(s"Including mark ${mark.id} in search results; has preview text: '${pr.take(50)}...'")
                   Some(pr)
 
                 // mscore is really only used here to prevent FacetTests from returning all 0s
-                case _ if ((uraw + mscore).coalesce0 + rraw.coalesce0) < 1e-8 =>
-                  logger.debug(s"Excluding mark ${mark.id} from search results; no preview text")
+                // (e.g. exclude search results containing "overcomingbias.com" when searching for "bias")
+                case _ if ((uraw + mscore).coalesce0 + rraw.coalesce0) < 10.0 =>
+                  loggerI.debug(f"Excluding mark ${mark.id} from search results; no preview text: r/m/u=$rraw%.2f/$mscore%.2f/$uraw%.2f")
                   None
 
                 case _ =>
-                  logger.debug(s"Including mark ${mark.id} in search results; has database text matches")
+                  loggerI.debug(f"Including mark ${mark.id} in search results; has database text matches: r/m/u=$rraw%.2f/$mscore%.2f/$uraw%.2f")
+
                   def withDots(s: String): String = if (s.length < PREVIEW_LENGTH) s else s"${s.take(PREVIEW_LENGTH)}..."
                   Some(Seq(rtext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))
               }
