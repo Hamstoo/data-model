@@ -80,6 +80,8 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
     new Logger(logback)
   }
 
+  loggerI.trace(s"anyVsAllArg = ${anyVsAllArg.value}")
+
   // for timing profiling
   private var constructionTime: Option[TimeStamp] = Some(System.currentTimeMillis)
 
@@ -259,14 +261,10 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
                          nWordsMult: Int = 1): ScoresAndText = {
 
     // there must be at least one search term with a representation
-    val mbR: Option[RSearchable] = searchTermReprs.find(_.mbR.isDefined).flatMap(_.mbR)
-
-    // must use `Option.empty[Double]` here, not `None`, else the following compiler error occurs:
-    // "type mismatch; found: similarity.type (with underlying type Option[Double])  required: None.type"
-    mbR.fold(ScoresAndText(0.0, 0.0, "", "")) { repr: RSearchable =>
+    searchTermReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold(ScoresAndText(0.0, 0.0, "", "")) { repr: RSearchable =>
 
       // the repr is the same for all elements of the list per `r.get(reprId)` above so we can just look at head
-      val nWords = repr.nWords.getOrElse(0.toLong) * nWordsMult
+      val nDocWords = repr.nWords.getOrElse(0.toLong) * nWordsMult
       val docVecs: Map[String, Vec] = repr.vectors
 
       // (from the MongoDB Text Index documentation: "For each indexed field in the document, MongoDB multiplies
@@ -283,13 +281,13 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
         if (loggerI.isTraceEnabled) {
           val owm = searchTermVecs.find(_.word == qr.qword) // same documentSimilarity calculation as below
           val mu = owm.map(wm => VecSvc.documentSimilarity(wm.scaledVec, docVecs.map(kv => VecEnum.withName(kv._1) -> kv._2))).getOrElse(Double.NaN)
-          loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim(${qr.qword}): idf=${idfModel.transform(qr.qword)}%.2f bm25=${bm25Tf(qr.dbScore, nWords)}%.2f sim=$mu%.2f")
+          loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim(${qr.qword}): idf=${idfModel.transform(qr.qword)}%.2f bm25=${bm25Tf(qr.dbScore, nDocWords)}%.2f db=${qr.dbScore} n=${qr.count} sim=$mu%.2f nDoc=$nDocWords")
         }
 
-        Score(idfModel.transform(qr.qword), bm25Tf(qr.dbScore, nWords), qr.count)
+        Score(idfModel.transform(qr.qword), bm25Tf(qr.dbScore, nDocWords), qr.count)
       }
       // https://en.wikipedia.org/wiki/Okapi_BM25
-      val searchTermScores = searchTermReprs.map(bm25)
+      val searchTermScores = searchTermReprs.map(bm25) // <- contents logged above
 
       // arithmetic mean (no penalty for not matching all the query words; geo mean imposes about a 12% penalty
       // for missing 1 out of 3 query words and 15% for missing 2 out of 3)
@@ -307,8 +305,10 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
       val gmean2 = math.pow(searchTermScores.map(x => math.pow(x.b + ep, x.idf * x.n)).product,
                       1.0 / searchTermScores.map(x =>                    x.idf * x.n ).sum) - ep
 
-      val wmean = amean * (1.0 - anyVsAllArg) + gmean * anyVsAllArg
-      loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) amean=$amean%.3f, gmean=$gmean%.3f, wmean=$wmean%.3f, anyVsAllArg=$anyVsAllArg%.2f")
+      // weighted
+      val w = amean * (1.0 - anyVsAllArg) + gmean * anyVsAllArg
+      val w2 = math.pow(amean, 1.0 - anyVsAllArg) * math.pow(gmean, anyVsAllArg)
+      val w3 = math.log(math.exp(amean) * (1.0 - anyVsAllArg) + math.exp(gmean) * anyVsAllArg)
 
       // debugging
       // calculate cosine similarities for each of the search terms and sum them (no need to use geometric mean
@@ -331,7 +331,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
         Some(weightedSum / idfs.sum) // always use arithmentic mean as geo mean doesn't make much sense w/ similarities, which range between [-1,1] rather than [0,inf)
       }
 
-      loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim: wsim=${mbSimilarity.getOrElse(Double.NaN)}%.2f wscore=$wmean%.2f (a=$amean%.2f g=$gmean%.2f g2=$gmean2%.2f nWords=$nWords nScores=${searchTermScores.length})")
+      loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim: wsim=${mbSimilarity.getOrElse(Double.NaN)}%.2f wscore=$w%.2f w2=$w2%.2f w3=$w3%.2f (a=$amean%.2f g=$gmean%.2f g2=$gmean2%.2f nDocWords=$nDocWords nScores=${searchTermScores.size}/${searchTermScores.map(_.n).sum})")
 
       // debugging
       var extraText = ""
@@ -347,7 +347,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
       }
 
       // multiply by 6 and 2 to make search relevance a more important component of final search score
-      val rawDbScore = math.max(wmean, 0.0).coalesce0 * 6
+      val rawDbScore = math.max(w, 0.0).coalesce0 * 6
       val similarity = mbSimilarity.getOrElse(0.0) * 2
       ScoresAndText(rawDbScore, similarity, extraText, extraTermText)
     }
