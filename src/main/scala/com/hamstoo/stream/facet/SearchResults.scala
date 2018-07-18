@@ -308,6 +308,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
                       1.0 / searchTermScores.map(x =>                    x.idf * x.n ).sum) - ep
 
       val wmean = amean * (1.0 - anyVsAllArg) + gmean * anyVsAllArg
+      loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) amean=$amean%.3f, gmean=$gmean%.3f, wmean=$wmean%.3f, anyVsAllArg=$anyVsAllArg%.2f")
 
       // debugging
       // calculate cosine similarities for each of the search terms and sum them (no need to use geometric mean
