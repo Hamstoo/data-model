@@ -39,17 +39,17 @@ object VectorEmbeddingsService {
     * This function computes a BM25 "term frequency" which really isn't a term frequency though it is used in
     * place of the term frequency in a TF-IDF model.
     */
-  def bm25Tf(tf: Double, docLength: Double): Double = {
+  def bm25Tf(tf: Double, docLength: Double, b: Double = 0.5, k1: Double = 1.2): Double = {
 
     // "setting B to 0.5 here, which introduces a slight bias back towards" long documents
     //  [http://www.benfrederickson.com/distance-metrics/]
-    val b = 0.5
+    //val b = 0.5
     val medianDocLength = MEDIAN_DOC_LENGTH
     val lengthNorm = (1.0 - b) + b * docLength / medianDocLength
 
     // "The usual value of K1 used in text search is around 1.2, which makes sense for text queries as its more
     // important to match documents containing all of the terms in the query instead of matching repeated terms."
-    val k1 = 1.2
+    //val k1 = 1.2
     tf * (k1 + 1.0) / (k1 * lengthNorm + tf)
   }
 

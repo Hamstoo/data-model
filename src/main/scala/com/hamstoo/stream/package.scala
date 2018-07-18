@@ -94,7 +94,9 @@ package object stream {
     */
   class OptionalInjectId[T :Manifest](_name: String, default: => T = null) extends InjectId[T] {
 
-    override def name: String = _name
+    // hamstoo.ProcessedSearchString lowercase'izes all query args so we need to here also
+    // TODO: is this dumb? or should it be done for InjectId also?
+    override def name: String = _name.toLowerCase
 
     /**
       * So when Guice constructs an OptionalInjectId, it will call this `injector_` mutator, but we don't have to when

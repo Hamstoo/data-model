@@ -44,7 +44,7 @@ class FacetTests
       .foldLeft(0.0) { case (agg, d) =>
         agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
       }
-    x shouldBe (56.17 +- 0.01)
+    x shouldBe (155.17 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {

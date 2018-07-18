@@ -62,6 +62,8 @@ case class SearchRelevance(uraw: Double, usem: Double, rraw: Double, rsem: Doubl
 class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.typ,
                               rawQuery: QueryOptional,
                               anyVsAllArg: SearchResults.AnyVsAllArg,
+                              bBM25: SearchResults.bBM25Arg,
+                              k1BM25: SearchResults.k1BM25Arg,
                               repredMarks: RepredMarks,
                               logLevel: LogLevelOptional)
                              (implicit mat: Materializer,
@@ -80,7 +82,9 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
     new Logger(logback)
   }
 
-  loggerI.trace(s"anyVsAllArg = ${anyVsAllArg.value}")
+  loggerI.trace(s"ARG: anyVsAll = ${anyVsAllArg.value}")
+  loggerI.trace(s"ARG: bBM25 = ${bBM25.value}")
+  loggerI.trace(s"ARG: k1BM25 = ${k1BM25.value}")
 
   // for timing profiling
   private var constructionTime: Option[TimeStamp] = Some(System.currentTimeMillis)
@@ -118,8 +122,10 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
 
             // compute scores aggregated across all search terms
             val ava: Double = anyVsAllArg.value
-            val rst: ScoresAndText = searchTerms2Scores("R", mark.id, ava, siteReprs, searchTermVecs)
-            val ust: ScoresAndText = searchTerms2Scores("U", mark.id, ava, userReprs, searchTermVecs, nWordsMult = 100)
+            val b: Double = bBM25.value
+            val k1: Double = k1BM25.value
+            val rst: ScoresAndText = searchTerms2Scores("R", mark.id, ava, b, k1, siteReprs, searchTermVecs)
+            val ust: ScoresAndText = searchTerms2Scores("U", mark.id, ava, b, k1, userReprs, searchTermVecs, nWordsMult = 100)
 
             // raw (syntactic?) relevances; coalesce0 means that we defer to mscore for isNaN'ness below if uscore is NaN
             val dbscore = Seq(ust.raw, rst.raw).map(math.max(_, 0.0).coalesce0).sum
@@ -256,6 +262,8 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
   def searchTerms2Scores(rOrU: String,
                          mId: String,
                          anyVsAllArg: Double,
+                         b: Double,
+                         k1: Double,
                          searchTermReprs: Seq[ReprQueryResult],
                          searchTermVecs: Seq[VecSvc.WordMass],
                          nWordsMult: Int = 1): ScoresAndText = {
@@ -275,35 +283,42 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
       // (we used to do this by dividing by sqrt(reprText.length) which is similar to BM25 when its `b` parameter
       // is 1--we have `b` hard-coded to 0.5 in `bm25Tf`--and w/out the sqrt)
       import com.hamstoo.services.VectorEmbeddingsService.bm25Tf
-      case class Score(idf: Double, b: Double, n: Int)
+      case class Score(idf: Double, btf: Double, n: Int)
       def bm25(qr: ReprQueryResult): Score = {
+
+        val idf = idfModel.transform(qr.qword)
+
+        // convert from a dbScore "term frequency" into a BM25 one (doesn't become a BM25 until multiplied by IDF)
+        val btf = bm25Tf(qr.dbScore, nDocWords, b = b, k1 = k1)
 
         if (loggerI.isTraceEnabled) {
           val owm = searchTermVecs.find(_.word == qr.qword) // same documentSimilarity calculation as below
           val mu = owm.map(wm => VecSvc.documentSimilarity(wm.scaledVec, docVecs.map(kv => VecEnum.withName(kv._1) -> kv._2))).getOrElse(Double.NaN)
-          loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim(${qr.qword}): idf=${idfModel.transform(qr.qword)}%.2f bm25=${bm25Tf(qr.dbScore, nDocWords)}%.2f db=${qr.dbScore} n=${qr.count} sim=$mu%.2f nDoc=$nDocWords")
+          loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim(${qr.qword}): idf=$idf%.2f btf=$btf%.2f (b=$b%.1f k1=$k1%.1f) db=${qr.dbScore}%.1f n=${qr.count} sim=$mu%.2f nDoc=$nDocWords")
         }
 
-        Score(idfModel.transform(qr.qword), bm25Tf(qr.dbScore, nDocWords), qr.count)
+        // update 2018-7-18: using `b = 0.5, k1 = 10` to differentiate more between different dbScores by making the
+        // bm25-TFs less uniform, without which there often isn't much difference btw amean/gmean below
+        Score(idf, btf, qr.count)
       }
       // https://en.wikipedia.org/wiki/Okapi_BM25
       val searchTermScores = searchTermReprs.map(bm25) // <- contents logged above
 
       // arithmetic mean (no penalty for not matching all the query words; geo mean imposes about a 12% penalty
       // for missing 1 out of 3 query words and 15% for missing 2 out of 3)
-      val amean = searchTermScores.map(x => x.idf * x.n * x.b).sum /
-                  searchTermScores.map(x => x.idf * x.n      ).sum
+      val amean = searchTermScores.map(x => x.idf * x.n * x.btf).sum /
+                  searchTermScores.map(x => x.idf * x.n        ).sum
 
       // geometric mean, computed with logs (using 0.1 here instead of 1.0 imposes a larger penalty on documents
       // that don't match all the query words; e.g. if there are 3 query words, a document that has 1 missing
       // will have about a 25% lower geo mean with 0.1 than with 1.0, and 2 missing out of 3 will be 50% lower)
       val ep = 0.01
-      val gmean = math.exp(searchTermScores.map(x => x.idf * x.n * math.log(x.b + ep)).sum /
-                           searchTermScores.map(x => x.idf * x.n                     ).sum) - ep
+      val gmean = math.exp(searchTermScores.map(x => x.idf * x.n * math.log(x.btf + ep)).sum /
+                           searchTermScores.map(x => x.idf * x.n                       ).sum) - ep
 
       // geometic mean, computed w/out logs (unstable)
-      val gmean2 = math.pow(searchTermScores.map(x => math.pow(x.b + ep, x.idf * x.n)).product,
-                      1.0 / searchTermScores.map(x =>                    x.idf * x.n ).sum) - ep
+      val gmean2 = math.pow(searchTermScores.map(x => math.pow(x.btf + ep, x.idf * x.n)).product,
+                      1.0 / searchTermScores.map(x =>                      x.idf * x.n ).sum) - ep
 
       // weighted
       val w = amean * (1.0 - anyVsAllArg) + gmean * anyVsAllArg
@@ -364,6 +379,9 @@ object SearchResults {
   // scores for each query term ("any") vs. the product of scores ("all").  0 corresponds to 100%
   // "any" while 1 to 100% "all."
   case class AnyVsAllArg() extends OptionalInjectId[Double]("anyall", 0.5)
+
+  case class bBM25Arg() extends OptionalInjectId[Double]("bBM25", 0.5)
+  case class k1BM25Arg() extends OptionalInjectId[Double]("k1BM25", 10) // overrides default bm25 k1 of 1.2
 
   // capital letter regular expression (TODO: https://github.com/Hamstoo/hamstoo/issues/68)
   val capitalRgx: Regex = s"[A-Z]".r.unanchored
