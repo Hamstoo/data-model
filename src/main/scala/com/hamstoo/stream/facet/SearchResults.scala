@@ -126,7 +126,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
             val ava: Double = anyVsAllArg.value
             val b: Double = bBM25.value
             val k1: Double = k1BM25.value
-            val rst: ScoresAndText = searchTerms2Scores("R", mark.id, ava, b, k1, pageReprs, searchTermVecs)
+            val rst: ScoresAndText = searchTerms2Scores("P", mark.id, ava, b, k1, pageReprs, searchTermVecs)
             val ust: ScoresAndText = searchTerms2Scores("U", mark.id, ava, b, k1, userReprs, searchTermVecs, nWordsMult = uMult.value)
 
             // raw (syntactic?) relevances; coalesce0 means that we defer to mscore for isNaN'ness below if uscore is NaN
@@ -261,7 +261,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
     * Convert a list of reprs, one for each search term, into a weighted average MongoDB Text Index search score
     * and a semantic score based on vector cosine similarity.
     */
-  def searchTerms2Scores(rOrU: String,
+  def searchTerms2Scores(pOrU: String,
                          mId: String,
                          anyVsAllArg: Double,
                          b: Double,
@@ -296,7 +296,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
         if (loggerI.isTraceEnabled) {
           val owm = searchTermVecs.find(_.word == qr.qword) // same documentSimilarity calculation as below
           val mu = owm.map(wm => VecSvc.documentSimilarity(wm.scaledVec, docVecs.map(kv => VecEnum.withName(kv._1) -> kv._2))).getOrElse(Double.NaN)
-          loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim(${qr.qword}): idf=$idf%.2f tf'=$btf%.2f (b=$b%.1f k1=$k1%.1f) db=${qr.dbScore}%.1f n=${qr.count} sim=$mu%.2f nDoc=$nDocWords")
+          loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $pOrU-sim(${qr.qword}): idf=$idf%.2f tf'=$btf%.2f (b=$b%.1f k1=$k1%.1f) db=${qr.dbScore}%.1f n=${qr.count} sim=$mu%.2f nDoc=$nDocWords")
         }
 
         // update 2018-7-18: using `b = 0.5, k1 = 10` to differentiate more between different dbScores by making the
@@ -348,7 +348,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
         Some(weightedSum / idfs.sum) // always use arithmentic mean as geo mean doesn't make much sense w/ similarities, which range between [-1,1] rather than [0,inf)
       }
 
-      loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $rOrU-sim: wsim=${mbSimilarity.getOrElse(Double.NaN)}%.2f wscore=$w%.2f w2=$w2%.2f w3=$w3%.2f (a=$amean%.2f g=$gmean%.2f g2=$gmean2%.2f nDocWords=$nDocWords nScores=${searchTermScores.size}/${searchTermScores.map(_.n).sum})")
+      loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $pOrU-sim: wsim=${mbSimilarity.getOrElse(Double.NaN)}%.2f wscore=$w%.2f w2=$w2%.2f w3=$w3%.2f (a=$amean%.2f g=$gmean%.2f g2=$gmean2%.2f nDocWords=$nDocWords nScores=${searchTermScores.size}/${searchTermScores.map(_.n).sum})")
 
       // debugging
       var extraText = ""
