@@ -123,9 +123,9 @@ class FacetTests
     val clockBegin: TimeStamp = new DateTime(2017, 12, 31, 0, 0).getMillis
     val clockEnd  : TimeStamp = new DateTime(2018,  1, 15, 0, 0).getMillis
     val clockInterval: DurationMils = (1 day).toMillis
-    val searchUserId: CallingUserId.typ = UUID.fromString(s"11111111-1111-1111-1111-11111111111$idSuffix")
-    val callingUserId: CallingUserId.typ =
-      if (differentUsers) UUID.fromString(s"22222222-2222-2222-2222-22222222222$idSuffix") else searchUserId
+    val mbSearchUserId: CallingUserId.typ = Some(UUID.fromString(s"11111111-1111-1111-1111-11111111111$idSuffix"))
+    val mbCallingUserId: CallingUserId.typ =
+      if (differentUsers) Some(UUID.fromString(s"22222222-2222-2222-2222-22222222222$idSuffix")) else mbSearchUserId
 
     // insert 5 marks with reprs into the database
     val nMarks = 5
@@ -143,7 +143,7 @@ class FacetTests
       val rating = if (i == 0) None else Some(i.toDouble)
       val aux = if (i == 2) None else Some(MarkAux(Some(Seq(RangeMils(0, i * 1000 * 60))), None, nOwnerVisits = Some(i)))
 
-      val m = Mark(searchUserId, s"m_${ts.Gs}_$idSuffix",
+      val m = Mark(mbSearchUserId.get, s"m_${ts.Gs}_$idSuffix",
                    MarkData(subj, None, rating = rating),
                    aux = aux,
                    reprs = Seq(ReprInfo(r.id, ReprType.PUBLIC)),
@@ -163,7 +163,7 @@ class FacetTests
 
     // insert a UserStats so that the UserSimilarity facet can compute stuff
     val uvecs = Map[String, Vec](VecEnum.PC1.toString -> Seq(1, 2, 3))
-    val ustats = UserStats(callingUserId, TIME_NOW, uvecs, Some(Seq("automobile", "generate", "keywords")))
+    val ustats = UserStats(mbCallingUserId.get, TIME_NOW, uvecs, Some(Seq("automobile", "generate", "keywords")))
     userStatsDao.insert(ustats).futureValue
 
     // this commented out line would have the same effect as below, but in the hamstoo project we already have an
@@ -187,9 +187,9 @@ class FacetTests
         Clock.IntervalOptional() := clockInterval
         QueryOptional() := query
 
-        CallingUserId := callingUserId
+        CallingUserId := mbCallingUserId
         if (differentUsers)
-          SearchUserIdOptional() := Some(searchUserId)
+          SearchUserIdOptional() := mbSearchUserId
 
         LogLevelOptional() := Some(ch.qos.logback.classic.Level.TRACE)
 

@@ -8,6 +8,7 @@ import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.UserStatDao
 import com.hamstoo.models.Representation.VecEnum
+import com.hamstoo.models.UserStats
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.stream.Data.Data
 import com.hamstoo.stream.{CallingUserId, DataStream, Datum}
@@ -17,15 +18,17 @@ import scala.concurrent.Future
 
 /**
   * Similarity of user's typical marked content (from UserStats) to a history of `repredMarks`.
+  * @param mbUserId  Using CallingUserId here because it's the same "calling" user, not "search" user, as used
+  *                  during search, but to compute this facet the ID cannot be None.
   */
 @Singleton
-class UserSimilarityOpt @Inject()(@Named(CallingUserId.name) callingUserId: CallingUserId.typ,
+class UserSimilarityOpt @Inject()(@Named(CallingUserId.name) mbUserId: CallingUserId.typ,
                                   repredMarks: RepredMarks,
                                   userStatDao: UserStatDao)
                                  (implicit mat: Materializer) extends DataStream[Option[Double]] {
 
   // transform UserStats into Map[String, Vec]s
-  private val fmbUserStats = userStatDao.retrieve(callingUserId)
+  private val fmbUserStats = mbUserId.fold(Future.successful(Option.empty[UserStats]))(userStatDao.retrieve)
   private val fmbUserVecs = fmbUserStats.map(_.map(_.vectors.map(kv => VecEnum.withName(kv._1) -> kv._2)))
 
   override val in: SourceType = repredMarks()

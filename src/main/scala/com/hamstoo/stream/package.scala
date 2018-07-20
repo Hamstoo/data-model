@@ -125,7 +125,7 @@ package object stream {
   }
 
   // `final val`s are required so that their values are constants that can be used at compile time in @Named annotations
-  object CallingUserId extends InjectId[UUID] { final val name = "calling.user.id" }
+  object CallingUserId extends InjectId[Option[UUID]] { final val name = "calling.user.id" }
 
   // optional bindings (default values specified in StreamModule.configure)
   case class LogLevelOptional() extends OptionalInjectId[Option[ch.qos.logback.classic.Level]]("", None)

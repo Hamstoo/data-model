@@ -33,9 +33,9 @@ class UserSuggestionDaoTests
 
   def testIt(sharee: Option[String], shareeUsername: Option[String]): Unit = {
     userSuggDao.save(userId, sharee).futureValue.shareeUsername shouldEqual shareeUsername
-    userSuggDao.retrieveUserSuggestions(userId, "du").futureValue shouldEqual Seq(userData.username.get)
+    userSuggDao.retrieveUserSuggestions(Some(userId), "du").futureValue shouldEqual Seq(userData.username.get)
     userSuggDao.delete(userId, sharee).futureValue
-    userSuggDao.retrieveUserSuggestions(userId, "du").futureValue shouldEqual Seq()
+    userSuggDao.retrieveUserSuggestions(Some(userId), "du").futureValue shouldEqual Seq()
   }
 
   "UserSuggestionDao" should "retrieve search suggestions from public share" in {
@@ -73,10 +73,10 @@ class UserSuggestionDaoTests
     userSuggDao.updateUsernamesByEmail(profile.email.get).futureValue shouldEqual 1
 
     // only the shareeUsername, not the ownerUsername, will have been updated so far (so we can still search w/ "du")
-    userSuggDao.retrieveUserSuggestions(userId, "du").futureValue shouldEqual Seq(userData.username.get)
+    userSuggDao.retrieveUserSuggestions(Some(userId), "du").futureValue shouldEqual Seq(userData.username.get)
 
     // now update the ownerUsername, which will be returned by retrieveUserSuggestions
     userSuggDao.updateUsernamesByUsername(userData.username.get, newUserData.username.get).futureValue shouldEqual 1
-    userSuggDao.retrieveUserSuggestions(userId, "Pi").futureValue shouldEqual Seq(newUserData.username.get)
+    userSuggDao.retrieveUserSuggestions(Some(userId), "Pi").futureValue shouldEqual Seq(newUserData.username.get)
   }
 }

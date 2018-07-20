@@ -72,22 +72,22 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
 
   /**
     * Retrieve search suggestion.
-    * @param shareeUserId  current user (used as sharee in this function)
-    * @return              sequence of mark owner usernames starting with prefix
+    * @param mbShareeUserId  current user (used as sharee in this function)
+    * @return                sequence of mark owner usernames starting with prefix
     */
-  def retrieveUserSuggestions(shareeUserId: UUID, ownerUsernamePrefix: String): Future[Seq[String]] = for {
+  def retrieveUserSuggestions(mbShareeUserId: Option[UUID], ownerUsernamePrefix: String): Future[Seq[String]] = for {
     c <- dbColl()
-    _ = logger.debug(s"retrieveUserSuggestions($shareeUserId, $ownerUsernamePrefix)")
+    _ = logger.debug(s"retrieveUserSuggestions($mbShareeUserId, $ownerUsernamePrefix)")
 
-    mbShareeUsername <- userDao.retrieveById(shareeUserId).map(_.flatMap(_.userData.usernameLower))
+    mbShareeUsername <- mbShareeUserId.fold(Future.successful(Option.empty[String])) { id =>
+                          userDao.retrieveById(id).map(_.flatMap(_.userData.usernameLower)) }
 
     // be sure not to use SHAREE here in order to user proper index for search
     isPublic = d :~ SHAREE_UNAME -> (d :~ "$exists" -> false)
 
     // either shared-to the current user directly or completely public
     shareeSel = mbShareeUsername.fold(isPublic) { unl =>
-      d :~ "$or" -> Seq(d :~ SHAREE_UNAME -> BSONRegex("^" + unl + "$", "i"), isPublic)
-    }
+                  d :~ "$or" -> Seq(d :~ SHAREE_UNAME -> BSONRegex("^" + unl + "$", "i"), isPublic) }
 
     ownerSel = if (ownerUsernamePrefix.isEmpty) d
                else d :~ OWNER_UNAME -> BSONRegex("^" + ownerUsernamePrefix + ".*", "i")

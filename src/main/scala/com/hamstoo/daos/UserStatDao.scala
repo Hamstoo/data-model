@@ -68,7 +68,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     implicit val streamInjector = appInjector.createChildInjector(new StreamModule {
       override def configure(): Unit = {
         super.configure()
-        CallingUserId := userId
+        CallingUserId := Some(userId)
         Clock.BeginOptional() := clockBegin
       }
     })
