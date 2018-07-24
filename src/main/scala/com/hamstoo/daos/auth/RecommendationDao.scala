@@ -11,6 +11,8 @@ import play.api.libs.json.Json
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.{Index, IndexType}
+import reactivemongo.bson.{BSONArray, BSONDocument}
+
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -41,12 +43,12 @@ class RecommendationDao @Inject()(implicit db: () => Future[DefaultDB]) {
   def retrive(user: UUID) = {
     logger.info(s"Retrieving last week feeds for user $user")
     val oneWeekAgo = new DateTime() minusDays 7 getMillis
-    val mongoTimeObj = Json.obj(
-      "date" -> Json.obj(
+    val mongoTimeObj = BSONDocument(
+      "date" -> BSONDocument(
         "$gte" -> oneWeekAgo,
         "$lte" -> new DateTime().getMillis
       ))
-    val q = Json.obj("$and" -> Json.arr(mongoTimeObj, Json.obj("userId" -> user)))
+    val q = BSONDocument("$and" -> BSONArray(mongoTimeObj, BSONDocument("userId" -> user.toString)))
     for {
       c <- recommendationDB()
       r <- c.find(q).sort(d :~ "ts" -> -1).coll[Recommendation, Seq]()

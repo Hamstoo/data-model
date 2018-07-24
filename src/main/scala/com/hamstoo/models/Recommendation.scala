@@ -3,6 +3,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.hamstoo.utils.{TIME_NOW, TimeStamp}
+import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 case class Recommendation (
   userId: UUID,
@@ -11,3 +12,7 @@ case class Recommendation (
   url: String,
   ts: TimeStamp = TIME_NOW
 )
+
+object Recommendation extends BSONHandlers {
+  implicit val RecommandeyionJson: BSONDocumentHandler[Recommendation] = Macros.handler[Recommendation]
+}
