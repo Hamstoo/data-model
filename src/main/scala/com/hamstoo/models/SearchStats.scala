@@ -22,7 +22,7 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * @param nPerPage   Number of search results displayed per page.  Not sure it'll ever be useful.
   * @param clicks     The "stats"; the things the user clicked as a result the search.
   */
-case class SearchStats(userId: UUID,
+case class SearchStats(userId: Option[UUID],
                        markId: ObjectId,
                        query: String,
                        labels: Option[Set[String]] = None,

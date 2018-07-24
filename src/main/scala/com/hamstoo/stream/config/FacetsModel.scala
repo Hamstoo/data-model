@@ -151,6 +151,7 @@ object FacetsModel {
     //add(ConfirmationBias)
     add[ImplicitRating]()
     add[Rating]()
+    add[UserSimilarity]()
   }
 
   /**
@@ -168,4 +169,17 @@ object FacetsModel {
     val fieldMirror = companionMirror.reflectField(fieldSymbol)
     fieldMirror.get.asInstanceOf[Double]
   }.getOrElse(1.0)
+
+  /**
+    * TODO: perhaps instead of the reflection above we should require each companion object to extend this trait?
+    * TODO:   though reflection would still be required to get from the class to the companion, wouldn't it?
+    */
+//  trait FacetArg {
+//
+//    def default: Double = 1.0
+//
+//    /** A (overrideable) default implementation to convert a facet argument into a FacetsModel coefficient. */
+//    def coefficient(arg: Double): Double = arg
+//
+//  }
 }

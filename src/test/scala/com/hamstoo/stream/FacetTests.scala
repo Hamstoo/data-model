@@ -17,7 +17,7 @@ import com.hamstoo.stream.dataset.MarksStream.SearchUserIdOptional
 import com.hamstoo.stream.facet._
 import com.hamstoo.test.FutureHandler
 import com.hamstoo.test.env.AkkaMongoEnvironment
-import com.hamstoo.utils.{DataInfo, DurationMils, ExtendedTimeStamp, TimeStamp}
+import com.hamstoo.utils.{DataInfo, DurationMils, ExtendedTimeStamp, TIME_NOW, TimeStamp}
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -44,7 +44,7 @@ class FacetTests
       .foldLeft(0.0) { case (agg, d) =>
         agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
       }
-    x shouldBe (56.17 +- 0.01)
+    x shouldBe (111.78 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
@@ -52,7 +52,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (39.12 +- 0.01)
+    x shouldBe (15.06 +- 0.01)
   }
 
   it should "compute Recency" in {
@@ -80,6 +80,14 @@ class FacetTests
     x shouldBe (3.79 +- 0.01)
   }
 
+  it should "compute UserSimilarity" in {
+    val facetName = classOf[UserSimilarity].getSimpleName
+    val x = facetsSeq.filter(_._1 == facetName)
+      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
+    x shouldBe (2.96 +- 0.01)
+  }
+
   // another way to test this is to uncomment the "uncomment this line" line in AggregateSearchScore which
   // causes this test to fail
   it should "complete even when there aren't any data (a \"duplicate key error\" may indicate a timeout)" in {
@@ -93,8 +101,8 @@ class FacetTests
     val x = scoreDiffUsers
       .map { d => logger.info(s"\033[37m$facetName (different users): $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (19.17 +- 0.01) // would be same as above 27.94 if not for access permissions
-    facetsDiffUsers.size shouldBe 10
+    x shouldBe (7.38 +- 0.01) // would be same as above 27.94 if not for access permissions
+    facetsDiffUsers.size shouldBe 12
     scoreDiffUsers.size shouldBe 2
   }
 
@@ -115,9 +123,9 @@ class FacetTests
     val clockBegin: TimeStamp = new DateTime(2017, 12, 31, 0, 0).getMillis
     val clockEnd  : TimeStamp = new DateTime(2018,  1, 15, 0, 0).getMillis
     val clockInterval: DurationMils = (1 day).toMillis
-    val searchUserId: CallingUserId.typ = UUID.fromString(s"11111111-1111-1111-1111-11111111111$idSuffix")
-    val callingUserId: CallingUserId.typ =
-      if (differentUsers) UUID.fromString(s"22222222-2222-2222-2222-22222222222$idSuffix") else searchUserId
+    val mbSearchUserId: CallingUserId.typ = Some(UUID.fromString(s"11111111-1111-1111-1111-11111111111$idSuffix"))
+    val mbCallingUserId: CallingUserId.typ =
+      if (differentUsers) Some(UUID.fromString(s"22222222-2222-2222-2222-22222222222$idSuffix")) else mbSearchUserId
 
     // insert 5 marks with reprs into the database
     val nMarks = 5
@@ -129,12 +137,13 @@ class FacetTests
     val (b, e) = (clockBegin + clockInterval, clockEnd)
     (b to e by (e - b) / (nMarks - 1)).zipWithIndex.foreach { case (ts, i) =>
 
-      val vs = Map(VecEnum.PC1.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
+      // UserSimilarity only looks at the IDF-weighted vector of the reprs
+      val vs = Map(VecEnum.IDF.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
       val r = baseRepr.copy(id = s"r_${ts.Gs}_$idSuffix", vectors = vs, doctext = subj)
       val rating = if (i == 0) None else Some(i.toDouble)
       val aux = if (i == 2) None else Some(MarkAux(Some(Seq(RangeMils(0, i * 1000 * 60))), None, nOwnerVisits = Some(i)))
 
-      val m = Mark(searchUserId, s"m_${ts.Gs}_$idSuffix",
+      val m = Mark(mbSearchUserId.get, s"m_${ts.Gs}_$idSuffix",
                    MarkData(subj, None, rating = rating),
                    aux = aux,
                    reprs = Seq(ReprInfo(r.id, ReprType.PUBLIC)),
@@ -151,6 +160,11 @@ class FacetTests
 
       if (i != nMarks - 1) Await.result(reprsDao.insert(r), 8 seconds) // skip one at the end for a better test of Join
     }
+
+    // insert a UserStats so that the UserSimilarity facet can compute stuff
+    val uvecs = Map[String, Vec](VecEnum.PC1.toString -> Seq(1, 2, 3))
+    val ustats = UserStats(mbCallingUserId.get, TIME_NOW, uvecs, Some(Seq("automobile", "generate", "keywords")))
+    userStatsDao.insert(ustats).futureValue
 
     // this commented out line would have the same effect as below, but in the hamstoo project we already have an
     // appInjector and we need to call createChildInjector from it, so we do so here also to better mimic that scenario
@@ -173,9 +187,9 @@ class FacetTests
         Clock.IntervalOptional() := clockInterval
         QueryOptional() := query
 
-        CallingUserId := callingUserId
+        CallingUserId := mbCallingUserId
         if (differentUsers)
-          SearchUserIdOptional() := Some(searchUserId)
+          SearchUserIdOptional() := mbSearchUserId
 
         LogLevelOptional() := Some(ch.qos.logback.classic.Level.TRACE)
 

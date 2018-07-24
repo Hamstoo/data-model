@@ -9,12 +9,10 @@ import akka.NotUsed
 import akka.stream.Materializer
 import akka.stream.scaladsl.{Sink, Source}
 import com.google.inject.{Inject, Injector, Singleton}
-import com.hamstoo.models.Representation.{Vec, VecEnum}
 import com.hamstoo.models._
-import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.stream.{CallingUserId, Clock, Datum, injectorly}
 import com.hamstoo.stream.config.StreamModule
-import com.hamstoo.stream.dataset.{MarksStream, ReprsPair, ReprsStream}
+import com.hamstoo.stream.facet.UserSimilarityOpt
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB
@@ -70,33 +68,14 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     implicit val streamInjector = appInjector.createChildInjector(new StreamModule {
       override def configure(): Unit = {
         super.configure()
-        CallingUserId := userId
+        CallingUserId := Some(userId)
         Clock.BeginOptional() := clockBegin
       }
     })
 
-    val marks = injectorly[MarksStream]
-    val reprs = injectorly[ReprsStream]
-
-    // TODO: this should be possible to implement via the StreamDSL?  would need a UserStatsStream of course
-
-    // get external content (web *site*) Representation vector or, if missing, user-content Representation vector
-    val rsource: Source[(TimeStamp, Vec), NotUsed] = reprs.out.mapConcat { _.flatMap { x: Datum[ReprsPair] =>
-      val mbVec = x.value.siteReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString))
-        .orElse(x.value.userReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString)))
-      mbVec.map(x.sourceTime -> _)
-    }}
-
-    // don't rely on reprs being populated for all marks
-    val msource: Source[TimeStamp, NotUsed] = marks.out.mapConcat(_.map { m =>
-      logger.debug(s"profileDots: ${m.value.id} -> ${m.value.timeFrom.tfmt}/${m.sourceTime.tfmt} (${m.value.markRef.fold("none")(_.markId)})")
-      m.sourceTime
-    })
-
-    // TODO: implement a test that ensures reprs' timestamps match marks'
-
-    val mfut = msource.runWith(Sink.seq)(injectorly[Materializer])
-    val rfut = rsource.runWith(Sink.seq)(injectorly[Materializer])
+    type SrcType = Source[Datum[Option[Double]], NotUsed]
+    val src: SrcType = injectorly[UserSimilarityOpt].out.mapConcat(identity) // flatten Data down to individual Datum
+    val fut = src.runWith(Sink.seq)(injectorly[Materializer])
     injectorly[Clock].start()
 
     for {
@@ -108,8 +87,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
       imports <- cI.find(d :~ U_ID -> userId.toString).one[BSONDocument]
 
       mbUserStats <- retrieve(userId)
-      marks <- mfut
-      reprs <- rfut
+      usims <- fut
 
     } yield {
       val extraDays = N_WEEKS * 7 - 1
@@ -118,26 +96,16 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
       // group timestamps into collections by day string
       val format = "MMMM d" // `format` must not include any part of datetime smaller than day
-      val groupedDays = marks.groupBy(new DateTime(_).minusMinutes(tzOffset).toString(format))
+      val groupedDays = usims.groupBy(d => new DateTime(d.sourceTime).minusMinutes(tzOffset).toString(format))
 
       // number of records for each day
       val nPerDay: Map[String, Int] = groupedDays.mapValues(_.size).withDefaultValue(0)
 
       // similarity for each day
       import UserStats.DEFAULT_SIMILARITY
-      val mbUserVecs = mbUserStats.map(_.vectors.map(kv => VecEnum.withName(kv._1) -> kv._2))
-      val similarityByDay: Map[String, Double] = mbUserVecs.fold(Map.empty[String, Double]) { uvecs =>
-        val mappedReprs = reprs.toMap
-        groupedDays.mapValues { timestamps =>
-          import com.hamstoo.models.Representation.VecFunctions
-          val meanSimilarity = timestamps.flatMap {
-
-            // use documentSimilarity rather than IDF-cosine to get a more general sense of the similarity to the user
-            mappedReprs.get(_).map(v => VectorEmbeddingsService.documentSimilarity(v, uvecs)) }.mean
-            //mappedReprs.get(_).flatMap(v => uvecs.get(VecEnum.IDF).map(_ cosine v)) }.mean
-
-          if (meanSimilarity.isNaN) DEFAULT_SIMILARITY else meanSimilarity
-        }
+      val similarityByDay: Map[String, Double] = groupedDays.mapValues { sims =>
+        import com.hamstoo.models.Representation.VecFunctions
+        sims.flatMap(_.value).mean.coalesce(DEFAULT_SIMILARITY)
       }.withDefaultValue(DEFAULT_SIMILARITY)
 
       // get last 28 dates in user's timezone and pair them with numbers of marks

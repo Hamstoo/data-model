@@ -54,9 +54,10 @@ case class ExtensionOptions(autoSync: Option[Boolean] = None,
 
 /**
   * Base user data object.  Each User has one of these, but can have multiple linked social Profiles.
-  * @param username   Publicly-displayed user "handle" or username (issue #139).
-  * @param extOpts    Extension options.
-  * @param tutorial   If true, the user will see the tutorial on next login.
+  * @param username       Publicly-displayed user "handle" or username (issue #139).
+  * @param extOpts        Extension options.
+  * @param tutorial       If true, the user will see the tutorial on next login.
+  * @param markItTooltip  If true, the user will see a tooltip when hovering over the "Mark It" button.
   */
 case class UserData(
                      firstName: Option[String] = None,
@@ -65,7 +66,8 @@ case class UserData(
                      var usernameLower: Option[String] = None,
                      avatar: Option[String] = None,
                      extOpts: Option[ExtensionOptions] = None,
-                     tutorial: Option[Boolean] = Some(true)) {
+                     tutorial: Option[Boolean] = Some(true),
+                     markItTooltip: Option[Boolean] = Some(true)) {
 
   usernameLower = username.map(_.toLowerCase) // impossible to set any other way
 

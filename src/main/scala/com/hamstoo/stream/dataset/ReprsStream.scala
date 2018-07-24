@@ -25,10 +25,10 @@ case class ReprQueryResult(qword: String, mbR: Option[RSearchable], dbScore: Dou
 
 /**
   * The instance type streamed from the ReprsStream.
-  * @param siteReprs  A representation corresponding to the (external) content of the marked site.
+  * @param pageReprs  A representation corresponding to the (external) content of the marked page.
   * @param userReprs  A representation constructed from the user-created content (comments, labels, highlights, notes).
   */
-case class ReprsPair(siteReprs: Seq[ReprQueryResult], userReprs: Seq[ReprQueryResult])
+case class ReprsPair(pageReprs: Seq[ReprQueryResult], userReprs: Seq[ReprQueryResult])
 
 /**
   * A stream of a user's marks' representations.
@@ -98,7 +98,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
           // each element of `scoredReprs` contains a collection of representations for the respective word in
           // `cleanedQuery`, so zip them together, pull out the requested reprId, and multiply the MongoDB search
           // scores `dbScore` by the query word counts `q._2`
-          def searchTermReprs(rOrU: String, reprId: String): Seq[ReprQueryResult] =
+          def searchTermReprs(pOrU: String, reprId: String): Seq[ReprQueryResult] =
 
             // both of these must contain at least 1 element
             cleanedQuery.view.zip(scoredReprs).map { case (q, scoredReprsForThisWord) =>
@@ -109,17 +109,17 @@ class ReprsStream @Inject()(marksStream: MarksStream,
               val dbScore = mbR.flatMap(_.score).getOrElse(0.0)
 
               def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
-              loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $rOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
+              loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $pOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
 
               ReprQueryResult(q._1, mbR, dbScore, q._2)
             }.force
 
-          val siteReprs = searchTermReprs("R", primaryReprId)    // website-content representations
+          val pageReprs = searchTermReprs("P", primaryReprId)    // webpage-content representations
           val userReprs = searchTermReprs("U", usrContentReprId) //    user-content representations
 
           // technically we should update knownTime here to the time of repr computation, but it's not really important
           // in this case b/c what we really want is "time that this data could have been known"
-          val d = dat.withValue(ReprsPair(siteReprs, userReprs))
+          val d = dat.withValue(ReprsPair(pageReprs, userReprs))
           loggerI.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
           d
         }
@@ -138,6 +138,7 @@ class RepredMarks @Inject()(marks: MarksStream, reprs: ReprsStream)
 
   import com.hamstoo.stream.Join.JoinWithable
 
+  // TODO: implement a test that ensures reprs' timestamps match marks'
   override val in: SourceType = marks().joinWith(reprs()) { case x => x }
     .asInstanceOf[SourceType] // see comment on JoinWithable as to why this cast is necessary
     .map { d => logger.debug(s"${d.sourceTimeMax.tfmt} (n=${d.size})"); d }

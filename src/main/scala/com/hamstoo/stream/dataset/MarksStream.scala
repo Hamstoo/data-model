@@ -6,6 +6,7 @@ package com.hamstoo.stream.dataset
 import java.util.UUID
 
 import akka.stream.Materializer
+import ch.qos.logback.classic.{Level, Logger => LogbackLogger}
 import com.google.inject.Inject
 import com.google.inject.name.Named
 import com.hamstoo.daos.{MarkDao, UserDao}
@@ -14,6 +15,7 @@ import com.hamstoo.services.IDFModel
 import com.hamstoo.stream.Data.Data
 import com.hamstoo.stream._
 import com.hamstoo.utils.{ObjectId, TimeStamp}
+import org.slf4j.LoggerFactory
 import play.api.Logger
 
 import scala.collection.immutable
@@ -24,10 +26,11 @@ import scala.concurrent.{ExecutionContext, Future}
   * A stream of marks, sourced from a user's search, though search terms are not required.
   */
 @com.google.inject.Singleton
-class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUserId.typ,
+class MarksStream @Inject()(@Named(CallingUserId.name) mbCallingUserId: CallingUserId.typ,
                             @Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.typ,
                             mbSearchUserId: MarksStream.SearchUserIdOptional,
-                            labels: MarksStream.SearchLabelsOptional)
+                            labels: MarksStream.SearchLabelsOptional,
+                            logLevel: LogLevelOptional)
                            (implicit clock: Clock,
                             mat: Materializer,
                             markDao: MarkDao,
@@ -37,7 +40,8 @@ class MarksStream @Inject()(@Named(CallingUserId.name) callingUserId: CallingUse
 
   /** PreloadSource interface.  `begin` should be inclusive and `end`, exclusive. */
   override def preload(begin: TimeStamp, end: TimeStamp): PreloadType[Mark] = {
-    MarksStream.load(callingUserId, mbQuery2Vecs, mbSearchUserId.value, labels.value, Some(begin), Some(end))
+    MarksStream.load(mbCallingUserId, mbQuery2Vecs, mbSearchUserId.value, labels.value,
+                     Some(begin), Some(end), logLevel.value)
   }
 }
 
@@ -46,16 +50,26 @@ object MarksStream {
   val logger = Logger(classOf[MarksStream])
 
   /** This implementation was moved into the companion object so that it can be accessed from MarksController.search. */
-  def load(callingUserId: UUID,
+  def load(mbCallingUserId: Option[UUID],
            mbQuery2Vecs: Query2Vecs.typ,
-           mbSearchUserId: Option[UUID],
+           mbSearchUserId0: Option[UUID],
            labels: Set[String],
            mbBegin: Option[TimeStamp],
-           mbEnd: Option[TimeStamp])
+           mbEnd: Option[TimeStamp],
+           logLevel: Option[Level])
           (implicit markDao: MarkDao,
            userDao: UserDao,
            idfModel: IDFModel,
            ec: ExecutionContext): Future[Data[Mark]] = {
+
+    // set logging level for this MarksStream *instance* (change prefix w/ "I" to prevent modifying the other logger)
+    // "Note that you can also tell logback to periodically scan your config file"
+    // https://stackoverflow.com/questions/3837801/how-to-change-root-logging-level-programmatically
+    val loggerI: Logger = {
+      val logback = LoggerFactory.getLogger("I" + classOf[MarksStream].getName).asInstanceOf[LogbackLogger]
+      logLevel.filter(_ != logback.getLevel).foreach { lv => logback.setLevel(lv); logback.debug(s"Overriding log level to: $lv") }
+      new Logger(logback)
+    }
 
     // unpack query words/counts/vecs (which there may none of)
     val mbCleanedQuery = mbQuery2Vecs.map(_._1)
@@ -65,53 +79,67 @@ object MarksStream {
     // if the search & calling users are the same then only show MarkRefs in the search results if query words
     // exist (o/w we're simply listing the calling user's marks perhaps with begin/end args as profileDots does),
     // this behavior should match that of the `else` clause in MarksController.list (which employs a similar variable)
-    val searchUserId: UUID = mbSearchUserId.getOrElse(callingUserId)
-    val includeMarkRefs = searchUserId != callingUserId ||
+    val mbSearchUserId1 = mbSearchUserId0.orElse(mbCallingUserId)
+    val includeMarkRefs = mbSearchUserId1 != mbCallingUserId ||
                           mbQuery2Vecs.nonEmpty ||
                           labels.nonEmpty // e.g. if searching for marks with "SharedWithMe" label
     logger.debug(s"includeMarkRefs = $includeMarkRefs")
+
+    def logMarks(whence: String)(ms: Traversable[Mark]): Traversable[Mark] =
+      ms.map { m => loggerI.trace(s"$whence: ${m.id}/${m.markRef.map(_.markId)}"); m }
+
+    // perform filterNot rather than relying on set union because scoredMs will have not only `score` field
+    // populated but could also have different labels/rating due to MarkRef masking
+    def union(set0: Set[Mark], set1: Set[Mark]): Set[Mark] = set0 ++ set1.filterNot(c => set0.exists(_.id == c.id))
 
     // get a couple of queries off-and-running before we start Future-flatMap-chaining
 
     // Mongo Text Index search (e.g. includes stemming) over `entries` collection (and filter results by labels)
     val fscoredMs = mbQuerySeq.mapOrEmptyFuture { w =>
-      markDao.search(Set(searchUserId), w, begin = mbBegin, end = mbEnd)
-        .map(_.toSeq.filter(m => m.markRef.isEmpty && m.hasTags(labels)))
-        .flatMap(filterAuthorizedRead(_, callingUserId))
-    }
+                      markDao.search(mbSearchUserId1.toSet, w, begin = mbBegin, end = mbEnd)
+                        .map(_.toSeq.filter(m => m.markRef.isEmpty && m.hasTags(labels)))
+                        .flatMap(filterAuthorizedRead(_, mbCallingUserId))
+                        .map(logMarks("fscoredMs"))
+                    }
 
     // every single non-ref mark (refs are handled below, and included only if they match search terms)
-    val funscoredMs = markDao.retrieve(searchUserId, tags = labels, begin = mbBegin, end = mbEnd)
-                        .map(_.filter(_.markRef.isEmpty))
-                        .flatMap(filterAuthorizedRead(_, callingUserId))
+    val funscoredMs = mbSearchUserId1.fold(Future.successful(Seq.empty[Mark])) { id =>
+                        markDao.retrieve(id, tags = labels, begin = mbBegin, end = mbEnd)
+                          .map(_.filter(_.markRef.isEmpty))
+                          .flatMap(filterAuthorizedRead(_, mbCallingUserId))
+                          .map(logMarks("funscoredMs")(_).toSeq)
+                      }
 
     for {
       // MarkRefs (i.e. marks that aren't owned by the calling user)
-      id2Ref <- if (!includeMarkRefs) Future.successful(Map.empty[ObjectId, MarkRef])
-                else markDao.retrieveRefed(callingUserId, begin = mbBegin, end = mbEnd)
+      id2Ref <- if (!includeMarkRefs || mbCallingUserId.isEmpty) Future.successful(Map.empty[ObjectId, MarkRef])
+                else markDao.retrieveRefed(mbCallingUserId.get, begin = mbBegin, end = mbEnd)
       candidateRefs <- markDao.retrieveInsecureSeq(id2Ref.keys.toSeq, begin = mbBegin, end = mbEnd)
-                         .map(_.maskAndFilterTags(labels, id2Ref, User(callingUserId)))
+                         .map(_.maskAndFilterTags(labels, id2Ref, mbCallingUserId.flatMap(User.apply)))
+                         .map(logMarks("candidateRefs"))
 
       // if the search/calling users are different, then only include calling user's MarkRefs that refer to search
       // user's marks (i.e. exclude marks that were shared _to_ the search user) because they're owned by others with
       // (probably) no connection to the calling user; but if the search/calling user are the same, then include
       // all of calling user's MarkRefs
-      refUserIds = if (searchUserId != callingUserId) Set(searchUserId) else candidateRefs.map(_.userId).toSet
+      refUserIds = if (mbSearchUserId1 != mbCallingUserId) mbSearchUserId1.toSet else candidateRefs.map(_.userId).toSet
       refMarkIds = id2Ref.keySet
 
       // perform MongoDB Text Index search over referenced marks (i.e. marks owned by other users) and then impose
       // any rating or label changes this user has made on top of those references
       fscoredRefs = mbQuerySeq.mapOrEmptyFuture { w =>
         markDao.search(refUserIds, w, ids = Some(refMarkIds))
-          .map(_.maskAndFilterTags(labels, id2Ref, User(callingUserId)))
+          .map(_.maskAndFilterTags(labels, id2Ref, mbCallingUserId.flatMap(User.apply)))
       }
 
       // "candidates" are ALL of the marks viewable to the callingUser (with the appropriate labels), which will
       // include even those that were not returned by MongoDB Text Index search
-      unscoredMs <- funscoredMs.map(_ ++ candidateRefs)
+      unscoredMs <- funscoredMs.map(ms => union(candidateRefs.toSet, ms.toSet))
+        .map(logMarks("unscoredMs"))
 
       sms <- fscoredMs; srefs <- fscoredRefs
       scoredUngroupedMs = sms.zip(srefs).map { case (ms, refs) => ms ++ refs }
+        .map(logMarks("scoredUngroupedMs"))
 
     } yield {
 
@@ -127,10 +155,14 @@ object MarksStream {
           .map { seqvw => seqvw.head._2.copy(score = Some(seqvw.map(wgtMkScore).sum)) }
       }
 
-      // performing filterNot rather than relying on set union because scoredMs will have not only score
-      // populated but could also have different labels/rating due to MarkRef masking
-      val entries = scoredMs.toSet ++ unscoredMs.filterNot(c => scoredMs.exists(_.id == c.id))
-      entries.map(m => Datum(m, MarkId(m.id), m.timeFrom)).to[immutable.Seq]
+      val entries = union(scoredMs.toSet, unscoredMs.toSet)
+
+      entries.toSeq.map(_.id).groupBy(identity).mapValues(_.size).filter(_._2 > 1)
+        .foreach { kv => logger.error(s"Mark ${kv._1} occurs ${kv._2} times") }
+
+      logMarks("entries")(entries)
+        .map(m => Datum(m, MarkId(m.id), m.timeFrom))
+        .to[immutable.Seq]
     }
   }
 
@@ -144,9 +176,9 @@ object MarksStream {
     * Filter for marks that the calling user is authorized to read.  This function relies on the marks being in
     * a linear Seq, so don't think you can just change it to be an Iterable--i.e. a Set won't work!
     */
-  def filterAuthorizedRead(ms: Seq[Mark], callingUserId: UUID)
+  def filterAuthorizedRead(ms: Seq[Mark], mbCallingUserId: Option[UUID])
                           (implicit userDao: UserDao, ec: ExecutionContext): Future[Seq[Mark]] =
-    Future.sequence(ms.map { _.isAuthorizedRead(User(callingUserId))(userDao, implicitly) })
+    Future.sequence(ms.map { _.isAuthorizedRead(mbCallingUserId.flatMap(User.apply))(userDao, implicitly) })
       .map { auths =>
         val filtered = ms.zip(auths).filter(_._2).map(_._1)
         if (ms.size > filtered.size) logger.debug(s"Filtered ${ms.size} marks down to ${filtered.size}")

@@ -94,7 +94,9 @@ package object stream {
     */
   class OptionalInjectId[T :Manifest](_name: String, default: => T = null) extends InjectId[T] {
 
-    override def name: String = _name
+    // hamstoo.ProcessedSearchString lowercase'izes all query args so we need to here also
+    // TODO: is this dumb? or should it be done for InjectId also?
+    override def name: String = _name.toLowerCase
 
     /**
       * So when Guice constructs an OptionalInjectId, it will call this `injector_` mutator, but we don't have to when
@@ -123,7 +125,7 @@ package object stream {
   }
 
   // `final val`s are required so that their values are constants that can be used at compile time in @Named annotations
-  object CallingUserId extends InjectId[UUID] { final val name = "calling.user.id" }
+  object CallingUserId extends InjectId[Option[UUID]] { final val name = "calling.user.id" }
 
   // optional bindings (default values specified in StreamModule.configure)
   case class LogLevelOptional() extends OptionalInjectId[Option[ch.qos.logback.classic.Level]]("", None)
