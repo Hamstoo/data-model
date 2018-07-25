@@ -297,8 +297,13 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
       if (selections.contains(w + "s")) {
         val i = selections.indexOf(w + "s")
         selections(i) = w
+      } else if (w.endsWith("s") && selections.contains(w.init)) {
+        // do nothing
 
-      } else if (w.endsWith("s") && selections.contains(w.dropRight(1))) {
+      } else if (w.endsWith("y") && selections.contains(w.init + "ies")) {
+        val i = selections.indexOf(w.init + "ies")
+        selections(i) = w
+      } else if (w.endsWith("ies") && selections.contains(w.dropRight(3) + "y")) {
         // do nothing
 
       } else {

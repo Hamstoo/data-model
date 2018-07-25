@@ -44,6 +44,14 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   private def reprsColl(): Future[BSONCollection] = db().map(_ collection "representations")
   private def pagesColl(): Future[BSONCollection] = db().map(_ collection "pages")
 
+  // TODO: issue #344, need a "flat" user-less version of mark+repr to enable text search for non-logged in users
+  // a) this would also enable search for logged-in users of marks with no MarkRefs (not previously visited)
+  // b) other content discovery (e.g. feeds) should be asynchronous, but this might allow for it not to be
+  // c) this isn't really a priority given other versions of content discovery
+  //    1) upcoming feeds impl
+  //    2) existing search for logged in users
+  //    3) existing search within non-logged in users' marks, when specified by username
+
   // indexes with names for this mongo collection
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: TIMETHRU -> Ascending :: Nil) % s"bin-$USR-1-$TIMETHRU-1" ::
