@@ -7,7 +7,6 @@ import com.hamstoo.models.Recommendation
 import javax.inject.Singleton
 import org.joda.time.DateTime
 import play.api.Logger
-import play.api.libs.json.Json
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.{Index, IndexType}
@@ -32,12 +31,17 @@ class RecommendationDao @Inject()(implicit db: () => Future[DefaultDB]) {
   recommendationDB().map(_.indexesManager.ensure(Index(Seq("ts" -> IndexType.Descending), name = Some("ts_idx"))))
 
 
-  def insert(recommendation: Recommendation) = for {
+  def insertOne(recommendation: Recommendation) = for {
     c <- recommendationDB()
     _ = logger.info(s"Inserting: $recommendation")
     wr <- c.insert(recommendation)
     _ <- wr.failIfError
-  } yield logger.info(s"Succesfully inserted: $recommendation")
+  } yield logger.info(s"Successfully inserted: $recommendation")
+
+  def insertMany(recommendations: Seq[Recommendation]) = {
+    recommendations foreach insertOne
+    Future(Unit)
+  }
 
 
   def retrive(user: UUID) = {
