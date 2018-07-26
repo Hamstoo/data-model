@@ -1,4 +1,4 @@
-package com.hamstoo.daos.auth
+package com.hamstoo.daos
 
 import java.util.UUID
 
@@ -12,8 +12,8 @@ import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.{Index, IndexType}
 import reactivemongo.bson.{BSONArray, BSONDocument}
 
-import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 
 
