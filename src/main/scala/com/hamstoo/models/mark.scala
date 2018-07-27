@@ -49,6 +49,10 @@ case class MarkData(subj: String,
   var bMasked: Boolean = false
   var ownerRating: Option[Double] = None
 
+  // <meta> HTML tags cannot appear in <body>, which is where commentEncoded will appear, so extract them into their
+  // own map so that they can be applied later in <head> by the frontend's metaTagsService/metaTags.service.js
+  val metaTags: mutable.Map[String, String] = mutable.Map.empty[String, String]
+
   // populate `commentEncoded` by deriving it from the value of `comment` (no need for this to be in the database)
   val commentEncoded: Option[String] = comment.map { c: String => // example: <IMG SRC=JaVaScRiPt:alert('XSS')>
 
@@ -69,6 +73,21 @@ case class MarkData(subj: String,
     // convert that &ldquo; back to a < character
     val html1 = StringEscapeUtils.unescapeHtml4(html0)
 
+    // reset meta tags
+    metaTags.clear()
+
+    // select all `meta` nodes with a `content` attr (these are later removed by htmlTagsWhitelist as they're not
+    // allowed to appear in HTML <body> anyway)
+    for(node <- Jsoup.parse(html1).select("meta[content]").toArray) yield {
+      val e = node.asInstanceOf[Element]
+
+      // OpenGraph uses `property`, but everything else uses `name`, which doesn't really matter because the attr
+      // names are discarded (the frontend's metaTagsService will correct them either way)
+      val key = e.attr("name") match { case x if x.nonEmpty => x; case x => e.attr("property") }
+      if (key.nonEmpty)
+        metaTags(key) = e.attr("content")
+    }
+
     // example: <p><img></p>
     // must be applied before converting `src` attrs b/c it does special stuff w/ them that it doesn't do w/ http-src
     val html2 = Jsoup.clean(html1, htmlTagsWhitelist)
@@ -78,13 +97,17 @@ case class MarkData(subj: String,
 
     // select all `img` nodes with a `src` attribute (pointing to one of our images) and change attr key to `http-src`
     // (per issue #317 here: https://github.com/Hamstoo/hamstoo/issues/317#issuecomment-387517901)
-    for(obj <- jsoupDoc.select("img[src]").toArray) yield {
-      val e = obj.asInstanceOf[Element]
+    for(node <- jsoupDoc.select("img[src]").toArray) yield {
+      val e = node.asInstanceOf[Element]
       val srcValue = e.attr("src")
       if (srcValue.contains("api/v1/marks/img")) { // identifies "our images"
         e.removeAttr("src")
         e.attr("http-src", srcValue)
       }
+
+      // use the first image as the <meta> tag image
+      if (!metaTags.contains("image"))
+        metaTags("image") = srcValue
     }
 
     // apply whitelist again to remove html/head/body tags that JSoup's Document.toString adds in (super clean!)
