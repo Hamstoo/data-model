@@ -31,14 +31,41 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
   }
 
   it should "(UNIT) image" in {
-    val f = withComment("![filename](http://www.fillmurray.com/100/100)")
-    f.commentEncoded.get shouldEqual "<p><img src=\"http://www.fillmurray.com/100/100\" alt=\"filename\"></p>"
-    val g = withComment("text<img align=\"right\" width=\"100\" height=\"100\" src=\"http://www.fillmurray.com/100/100\">text")
-    g.commentEncoded.get shouldEqual "<p>text<img align=\"right\" width=\"100\" height=\"100\" src=\"http://www.fillmurray.com/100/100\">text</p>"
+
+    var imgUrl = "http://www.fillmurray.com/100/100"
+    val f = withComment("![filename](" + imgUrl + ")")
+    f.commentEncoded.get shouldEqual "<p><img src=\"" + imgUrl + "\" alt=\"filename\"></p>"
+    val g = withComment("text<img align=\"right\" width=\"100\" height=\"100\" src=\"" + imgUrl + "\">text")
+    g.commentEncoded.get shouldEqual "<p>text<img align=\"right\" width=\"100\" height=\"100\" src=\"" + imgUrl + "\">text</p>"
 
     // should change `src` to `http-src` (and ends up swapping attr order b/c it removes and re-inserts)
-    val h = withComment("<img src=\"http://localhost/api/v1/marks/img/skFnwYt41402bNtF\" alt=\"1525871490532\">")
-    h.commentEncoded.get shouldEqual "<img alt=\"1525871490532\" http-src=\"http://localhost/api/v1/marks/img/skFnwYt41402bNtF\">"
+    imgUrl = "http://localhost/api/v1/marks/img/skFnwYt41402bNtF"
+    val h = withComment("<img src=\"" + imgUrl + "\" alt=\"1525871490532\">")
+    h.commentEncoded.get shouldEqual "<img alt=\"1525871490532\" http-src=\"" + imgUrl + "\">"
+
+    h.metaTags.size shouldBe 1
+    h.metaTags("image") shouldEqual imgUrl
+  }
+
+  it should "(UNIT) meta" in {
+
+    var m = withComment("<meta property=\"description\" content=\"testDescription\">")
+    m.metaTags shouldBe Map("description" -> "testDescription")
+    m.commentEncoded shouldBe Some("")
+
+    m = withComment("<meta name=\"testName\" content=\"testNameContent\">")
+    m.metaTags shouldBe Map("testName" -> "testNameContent")
+    m.commentEncoded shouldBe Some("")
+
+    // should be skipped b/c doesn't have a valid `name` or `property` attr
+    m = withComment("<meta noname=\"testNoName\" content=\"testNoNameContent\">")
+    m.metaTags.size shouldBe 0
+    m.commentEncoded shouldBe Some("")
+
+    // should be skipped b/c doesn't have a `content` attr
+    m = withComment("<meta name=\"testNoContent\" nocontent=\"testNoContent\">")
+    m.metaTags.size shouldBe 0
+    m.commentEncoded shouldBe Some("")
   }
 
   val domainLink = "https://www.test.thedomain.level3-internet.com/someendpoint?askdjsk=0&asjdjhj='1'&kjdk9238493kmfdsdfdsf='sdf'"
