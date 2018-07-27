@@ -44,17 +44,18 @@ class RecommendationDao @Inject()(implicit db: () => Future[DefaultDB]) {
   }
 
 
-  def retrive(user: UUID) = {
+  def retrieve(user: UUID) = {
     logger.info(s"Retrieving last week feeds for user $user")
     val oneWeekAgo = new DateTime() minusDays 7 getMillis
     val mongoTimeObj = BSONDocument(
-      "date" -> BSONDocument(
+      "ts" -> BSONDocument(
         "$gte" -> oneWeekAgo,
         "$lte" -> new DateTime().getMillis
       ))
     val q = BSONDocument("$and" -> BSONArray(mongoTimeObj, BSONDocument("userId" -> user.toString)))
     for {
       c <- recommendationDB()
+//      r <- c.find(d :~ "userId" -> user.toString).sort(d :~ "ts" -> -1).coll[Recommendation, Seq]()
       r <- c.find(q).sort(d :~ "ts" -> -1).coll[Recommendation, Seq]()
     } yield r
   }
