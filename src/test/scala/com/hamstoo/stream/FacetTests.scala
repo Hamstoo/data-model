@@ -42,7 +42,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d) =>
-        agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
+        agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.sum
       }
     x shouldBe (111.78 +- 0.01)
   }
