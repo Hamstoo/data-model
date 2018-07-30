@@ -36,7 +36,7 @@ class FacetsModel @Inject()(clock: Clock)
   protected val facets = mutable.Map.empty[String, DataStream[_]]
 
   /** Add a facet to be computed by this model. */
-  def add[T <:DataStream[Double] :ClassTag :TypeTag](mbName: Option[String] = None): Unit = {
+  def add[T <:DataStream[_] :ClassTag :TypeTag](mbName: Option[String] = None): Unit = {
 
     val cls: Class[_] = classTag[T].runtimeClass
     val name: String = mbName.getOrElse(cls.getSimpleName)
@@ -44,6 +44,10 @@ class FacetsModel @Inject()(clock: Clock)
     if (facets.contains(name))
       throw new Exception(s"Duplicate '$name' named facets detected")
 
+    // as of 2018-7-30, all coefficients are now applied outside FacetsModel (in the frontend actually) where they can
+    // be modified without having to re-query the backend with new search parameters
+    facets += name -> injectorly[T]
+/*
     // first lookup a *default* arg, or just 1.0 if there isn't one available
     val default = getDefaultArg[T]
 
@@ -64,6 +68,7 @@ class FacetsModel @Inject()(clock: Clock)
       case b if b ~= 1.0 => ds
       case b             => ds * b // will only work with DataStream[Double], which is why this function requires it
     })
+*/
   }
 
   /**
@@ -136,8 +141,9 @@ object FacetsModel {
     // nodes in the injected Akka stream graph by name.
     //   https://www.google.com/search?q=dynamically+create+type+scala&oq=dynamically+create+type+scala&aqs=chrome..69i57.5239j1j4&sourceid=chrome&ie=UTF-8
 
-    facets += classOf[SearchResults].getSimpleName -> injectorly[SearchResults]
-    //add[SearchResults]() // no longer works now that FacetsModel.add's T isn't a DataStream[_]
+    // switched back to using `add` on 2018-7-30
+    //facets += classOf[SearchResults].getSimpleName -> injectorly[SearchResults]
+    add[SearchResults]() // no longer works now that FacetsModel.add's T isn't a DataStream[_]
 
     // as of 2018-7-30, AggregateSearchScore is no longer a bonafide facet given that its values can be gotten from the
     // SearchResults data stream, in addition all coefficients are now applied outside FacetsModel (in the frontend
