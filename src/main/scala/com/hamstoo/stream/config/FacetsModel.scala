@@ -139,13 +139,10 @@ object FacetsModel {
     facets += classOf[SearchResults].getSimpleName -> injectorly[SearchResults]
     //add[SearchResults]() // no longer works now that FacetsModel.add's T isn't a DataStream[_]
 
-    // TODO: break this up into 2 facets so that the 2 coef-args can be extracted
-    // TODO: not so fast, the problem with having all the coef-args applied in FacetsModel is that we can't control
-    // TODO:  "internal args" from here, like "any-vs-all search terms" so perhaps some params just need to be elsewhere
-    // TODO: the one constant in all of this though is that these values are all configured via OptionalInjectIds
-    // TODO:  whether in AggregateSearchScore companion object or FacetsModel.add
-    // TODO:  so perhaps we should just amend the StreamDSL to work w/ OptionalInjectIds (or see AnyVsAllArg)
-    add[AggregateSearchScore]()
+    // as of 2018-7-30, AggregateSearchScore is no longer a bonafide facet given that its values can be gotten from the
+    // SearchResults data stream, in addition all coefficients are now applied outside FacetsModel (in the frontend
+    // actually) where they can be modified without having to re-query the backend with new search parameters
+    //add[AggregateSearchScore]()
 
     add[Recency]() // see How to Think screenshot
     //add(ConfirmationBias)

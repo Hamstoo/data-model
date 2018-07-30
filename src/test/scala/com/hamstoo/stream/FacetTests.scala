@@ -7,7 +7,7 @@ import java.util.UUID
 
 import akka.stream._
 import akka.stream.scaladsl.Sink
-import com.google.inject.{Provides, Singleton}
+import com.google.inject.{Inject, Injector, Provides, Singleton}
 import com.hamstoo.models.Mark.{MarkAux, RangeMils}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
@@ -199,9 +199,15 @@ class FacetTests
         // we're 100% relying on semantic (vector similarity), marked-content so these inputs quadruple the output value
         AggregateSearchScore.SemanticWeight() := 1.0
         AggregateSearchScore.UserContentWeight() := 0.0
+      }
 
-        // finally, bind the model
-        classOf[FacetsModel] := classOf[FacetsModel.Default]
+      /** Finally, bind the model (via a provider so that AggregateSearchScore can be included). */
+      @Provides @Singleton
+      def provideModel(clock: Clock)
+                      (implicit injector: Injector, mat: Materializer): FacetsModel = {
+        val model = FacetsModel.Default(clock)(injector, mat)
+        model.add[AggregateSearchScore]() // as of 2018-7-30, this is no longer part of FacetsModel.Default
+        model
       }
 
       /** Provides a VectorEmbeddingsService for SearchResults to use via StreamModule.provideQueryVec. */
