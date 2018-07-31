@@ -31,7 +31,8 @@ trait Shareable {
   def nSharedTo: Option[Int]
 
   /** Returns true if the user owns the mark. */
-  def ownedBy(user: User): Boolean = user.id == userId
+  def ownedBy(thatUser: User): Boolean = ownedBy(thatUser.id)
+  def ownedBy(thatUserId: UUID): Boolean = thatUserId == this.userId
   def isAuthorizedDelete(user: Option[User]): Boolean = user.exists(this.ownedBy)
 
   /**

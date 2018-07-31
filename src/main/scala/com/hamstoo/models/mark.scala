@@ -435,8 +435,8 @@ case class Mark(override val userId: UUID,
     * Returns the mark owner's rating in the `ownerRating` field of the returned MarkData.  Note that if `callingUser`
     * owns the mark, the supplied mbRef is completely ignored (even though it should probably be None in that case).
     */
-  def mask(mbRef: Option[MarkRef], callingUser: Option[User]): Mark = {
-    if (callingUser.exists(ownedBy)) this else {
+  def mask(mbRef: Option[MarkRef], callingUserId: Option[UUID]): Mark = {
+    if (callingUserId.exists(ownedBy)) this else {
 
       // still mask even if mbRef is None to ensure that the owner's rating is moved to the `ownerRating` field
       val ref = mbRef.getOrElse(MarkRef(id)) // create an empty MarkRef (id isn't really used)

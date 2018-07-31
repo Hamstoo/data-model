@@ -11,15 +11,13 @@ import com.google.inject.{Inject, Injector, Singleton}
 import com.hamstoo.stream.facet._
 import com.hamstoo.stream.{Clock, DataStream, injectorly}
 import com.hamstoo.stream.Data.{Data, ExtendedData}
-import com.hamstoo.stream.OptionalInjectId
-import com.hamstoo.utils.{ExtendedDouble, ExtendedTimeStamp}
+import com.hamstoo.utils.ExtendedTimeStamp
 import play.api.Logger
 
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.reflect.runtime.universe.TypeTag
 import scala.reflect.{ClassTag, classTag}
-import scala.util.Try
 
 /**
   * A "facets model" is a collection of facet-computing streams.  Running the model generates a merged stream of
@@ -47,28 +45,6 @@ class FacetsModel @Inject()(clock: Clock)
     // as of 2018-7-30, all coefficients are now applied outside FacetsModel (in the frontend actually) where they can
     // be modified without having to re-query the backend with new search parameters
     facets += name -> injectorly[T]
-/*
-    // first lookup a *default* arg, or just 1.0 if there isn't one available
-    val default = getDefaultArg[T]
-
-    // pluck the (non-default, possibly overridden) arg from the injector
-    val argGetter = new OptionalInjectId(name.toLowerCase, default)
-    argGetter.injector_(Some(injector))
-    val arg: Double = argGetter.value
-
-    // coefficients are applied outside of the facet implementations themselves so that they and lower/upper
-    // bounds can be applied independently (o/w applying bounds could involve backing out the coefficients)
-    val ds: T = injectorly[T]
-    val beta = ds.coefficient(arg)
-    logger.info(f"\u001b[33mFACET\u001b[0m: $name($arg%.2f) = $beta%.2f")
-
-    import com.hamstoo.stream.StreamDSL._
-    facets += name -> (beta match {
-      case b if b ~= 0.0 => ds.map(x => if (x.isReallyNaN) Double.NaN else 0.0)
-      case b if b ~= 1.0 => ds
-      case b             => ds * b // will only work with DataStream[Double], which is why this function requires it
-    })
-*/
   }
 
   /**
@@ -162,7 +138,7 @@ object FacetsModel {
     *   https://stackoverflow.com/questions/36290863/get-field-value-of-a-companion-object-from-typetagt
     * TODO: load defaults from a resource file
     */
-  def getDefaultArg[T :ClassTag]: Double = Try {
+  /*def getDefaultArg[T :ClassTag]: Double = Try {
     val cls: Class[_] = classTag[T].runtimeClass
     import scala.reflect.runtime.{currentMirror, universe}
     val companionSymbol = currentMirror.classSymbol(cls).companion.asModule
@@ -171,18 +147,5 @@ object FacetsModel {
     val fieldSymbol = companionSymbol.typeSignature.decl(universe.TermName("DEFAULT_ARG")).asTerm
     val fieldMirror = companionMirror.reflectField(fieldSymbol)
     fieldMirror.get.asInstanceOf[Double]
-  }.getOrElse(1.0)
-
-  /**
-    * TODO: perhaps instead of the reflection above we should require each companion object to extend this trait?
-    * TODO:   though reflection would still be required to get from the class to the companion, wouldn't it?
-    */
-//  trait FacetArg {
-//
-//    def default: Double = 1.0
-//
-//    /** A (overrideable) default implementation to convert a facet argument into a FacetsModel coefficient. */
-//    def coefficient(arg: Double): Double = arg
-//
-//  }
+  }.getOrElse(1.0)*/
 }
