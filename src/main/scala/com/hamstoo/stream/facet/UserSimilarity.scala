@@ -71,7 +71,3 @@ class UserSimilarity @Inject()(userSimilarityOpt: UserSimilarityOpt)
     }
   }
 }
-
-object UserSimilarity {
-  val DEFAULT_ARG = 0.85 // using 0.85 just to keep things interesting
-}

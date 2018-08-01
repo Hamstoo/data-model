@@ -7,7 +7,7 @@ import java.util.UUID
 
 import akka.stream._
 import akka.stream.scaladsl.Sink
-import com.google.inject.{Provides, Singleton}
+import com.google.inject.{Inject, Injector, Provides, Singleton}
 import com.hamstoo.models.Mark.{MarkAux, RangeMils}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
@@ -42,7 +42,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d) =>
-        agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.map(_.sum).getOrElse(0.3)
+        agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.sum
       }
     x shouldBe (111.78 +- 0.01)
   }
@@ -61,7 +61,7 @@ class FacetTests
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
     // see data-model/docs/RecencyTest.xlsx for an independent calculation of this value
-    x shouldBe (16.51 +- 0.01)
+    x shouldBe (4.12 +- 0.01)
   }
 
   it should "compute Rating" in {
@@ -69,7 +69,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (6.25 +- 1e-10)
+    x shouldBe (12.5 +- 1e-10)
   }
 
   it should "compute ImplicitRating" in {
@@ -77,7 +77,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (3.79 +- 0.01)
+    x shouldBe (7.58 +- 0.01)
   }
 
   it should "compute UserSimilarity" in {
@@ -85,7 +85,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (2.96 +- 0.01)
+    x shouldBe (3.49 +- 0.01)
   }
 
   // another way to test this is to uncomment the "uncomment this line" line in AggregateSearchScore which
@@ -199,9 +199,15 @@ class FacetTests
         // we're 100% relying on semantic (vector similarity), marked-content so these inputs quadruple the output value
         AggregateSearchScore.SemanticWeight() := 1.0
         AggregateSearchScore.UserContentWeight() := 0.0
+      }
 
-        // finally, bind the model
-        classOf[FacetsModel] := classOf[FacetsModel.Default]
+      /** Finally, bind the model (via a provider so that AggregateSearchScore can be included). */
+      @Provides @Singleton
+      def provideModel(clock: Clock)
+                      (implicit injector: Injector, mat: Materializer): FacetsModel = {
+        val model = FacetsModel.Default(clock)(injector, mat)
+        model.add[AggregateSearchScore]() // as of 2018-7-30, this is no longer part of FacetsModel.Default
+        model
       }
 
       /** Provides a VectorEmbeddingsService for SearchResults to use via StreamModule.provideQueryVec. */

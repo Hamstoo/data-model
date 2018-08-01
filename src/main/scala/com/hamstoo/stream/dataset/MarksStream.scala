@@ -115,7 +115,7 @@ object MarksStream {
       id2Ref <- if (!includeMarkRefs || mbCallingUserId.isEmpty) Future.successful(Map.empty[ObjectId, MarkRef])
                 else markDao.retrieveRefed(mbCallingUserId.get, begin = mbBegin, end = mbEnd)
       candidateRefs <- markDao.retrieveInsecureSeq(id2Ref.keys.toSeq, begin = mbBegin, end = mbEnd)
-                         .map(_.maskAndFilterTags(labels, id2Ref, mbCallingUserId.flatMap(User.apply)))
+                         .map(_.maskAndFilterTags(labels, id2Ref, mbCallingUserId))
                          .map(logMarks("candidateRefs"))
 
       // if the search/calling users are different, then only include calling user's MarkRefs that refer to search
@@ -129,7 +129,7 @@ object MarksStream {
       // any rating or label changes this user has made on top of those references
       fscoredRefs = mbQuerySeq.mapOrEmptyFuture { w =>
         markDao.search(refUserIds, w, ids = Some(refMarkIds))
-          .map(_.maskAndFilterTags(labels, id2Ref, mbCallingUserId.flatMap(User.apply)))
+          .map(_.maskAndFilterTags(labels, id2Ref, mbCallingUserId))
       }
 
       // "candidates" are ALL of the marks viewable to the callingUser (with the appropriate labels), which will
@@ -193,9 +193,9 @@ object MarksStream {
 
     def maskAndFilterTags(tags: Set[String],
                           id2Ref: Map[ObjectId, MarkRef],
-                          callingUser: Option[User]): Iterable[Mark] = {
+                          callingUserId: Option[UUID]): Iterable[Mark] = {
 
-      def maskOrElse(m: Mark): Mark = m.mask(id2Ref.get(m.id), callingUser)
+      def maskOrElse(m: Mark): Mark = m.mask(id2Ref.get(m.id), callingUserId)
 
       marks.map(maskOrElse).filter(_.hasTags(tags))
     }

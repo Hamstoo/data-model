@@ -31,12 +31,12 @@ import scala.util.matching.Regex
   *
   * @param uraw  User-content raw (non-semantic) score.  Includes MongoDB Text Index search score.
   * @param usem  User-content vector similarity (cosine distance).
-  * @param rraw  Representation raw (non-semantic) score.  Includes MongoDB Text Index search score.
-  * @param rsem  Representation vector similarity (cosine distance).
+  * @param praw  Page-content raw (non-semantic) score.  Includes MongoDB Text Index search score.
+  * @param psem  Page-content vector similarity (cosine distance).
   */
-case class SearchRelevance(uraw: Double, usem: Double, rraw: Double, rsem: Double) {
-  def sum: Double = uraw + usem + rraw + rsem
-  override def toString: String = f"${getClass.getSimpleName}($uraw%.2f, $usem%.2f, $rraw%.2f, $rsem%.2f)"
+case class SearchRelevance(uraw: Double, usem: Double, praw: Double, psem: Double) {
+  def sum: Double = uraw + usem + praw + psem
+  override def toString: String = f"${getClass.getSimpleName}($uraw%.2f, $usem%.2f, $praw%.2f, $psem%.2f)"
 }
 
 /**
@@ -126,38 +126,41 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
             val ava: Double = anyVsAllArg.value
             val b: Double = bBM25.value
             val k1: Double = k1BM25.value
-            val rst: ScoresAndText = searchTerms2Scores("P", mark.id, ava, b, k1, pageReprs, searchTermVecs)
+            val pst: ScoresAndText = searchTerms2Scores("P", mark.id, ava, b, k1, pageReprs, searchTermVecs)
             val ust: ScoresAndText = searchTerms2Scores("U", mark.id, ava, b, k1, userReprs, searchTermVecs, nWordsMult = uMult.value)
 
             // raw (syntactic?) relevances; coalesce0 means that we defer to mscore for isNaN'ness below if uscore is NaN
-            val dbscore = Seq(ust.raw, rst.raw).map(math.max(_, 0.0).coalesce0).sum
+            val dbscore = Seq(ust.raw, pst.raw).map(math.max(_, 0.0).coalesce0).sum
 
             val previewer = Previewer(rawQuery.value, cleanedQuery, mark.id)
             val utext = parse(mark.mark.comment.getOrElse(""))
-            val rtext = parse(pageReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
-            val urtext = utext + " " * PREVIEW_LENGTH + rtext
+            val ptext = parse(pageReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
+            val texts = utext + " " * PREVIEW_LENGTH + ptext
 
             val t0: TimeStamp = System.currentTimeMillis()
-            val (urPhraseBoost, urPreview) = if (WHICH_PREVIEW_TEXT ==  1) previewer(dbscore, urtext)
-                                        else if (WHICH_PREVIEW_TEXT == -1) previewer.old(dbscore, urtext) else DISABLED_PREVIEW
-            val (uPhraseBoost, rPhraseBoost) = (urPhraseBoost * 0.5, urPhraseBoost * 0.5)
+            val (phraseBoosts, previews) = if (WHICH_PREVIEW_TEXT ==  1) previewer(dbscore, texts)
+                                      else if (WHICH_PREVIEW_TEXT == -1) previewer.old(dbscore, texts) else DISABLED_PREVIEW
+            val (uPhraseBoost, pPhraseBoost) = (phraseBoosts * 0.5, phraseBoosts * 0.5)
             val t1: TimeStamp = System.currentTimeMillis()
             logger.debug(f"Previewer[total] for ${mark.id} in ${t1 - t0} ms ($memoryString)")
 
             val uraw = ust.raw + uPhraseBoost
-            val rraw = rst.raw + rPhraseBoost
-            val preview: String = urPreview.sortBy(-_._1).take(N_SPANS).map(_._2).mkString("<br>")
+            val praw = pst.raw + pPhraseBoost
+            val preview: String = previews.sortBy(-_._1).take(N_SPANS).map(_._2).mkString("<br>")
 
             // aggregated
-            val rAggregate = rst.similarity + rraw
+            val pAggregate = pst.similarity + praw
             val mAggregate = ust.similarity + uraw
-            loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(r/m)=$rAggregate%.2f/$mAggregate%.2f text-search(r/m/u)=${rst.raw}%.2f/$mscore%.2f/${ust.raw}%.2f similarity(r/u)=${rst.similarity}%.2f/${ust.similarity}%.2f")
+            loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(p/m)=$pAggregate%.2f/$mAggregate%.2f text-search(p/m/u)=${pst.raw}%.2f/$mscore%.2f/${ust.raw}%.2f similarity(p/u)=${pst.similarity}%.2f/${ust.similarity}%.2f")
 
             // divy up the relevance into named buckets
-            val amigos = (rAggregate.coalesce0 ~= 0.0, mAggregate.coalesce0 ~= 0.0, mark.score.isDefined)
+            val amigos = (pAggregate.coalesce0 ~= 0.0, mAggregate.coalesce0 ~= 0.0, mark.score.isEmpty)
             val mbRelevance = amigos match {
-              case (true, true, true) => // this first case shouldn't ever really happen
-                Some(SearchRelevance(mscore, 0, 0, 0))
+
+              case (true, true, true) => None
+
+              // this case shouldn't ever really happen
+              case (true, true, false) => Some(SearchRelevance(mscore, 0, 0, 0))
 
               case (true, false, _) => // this second case will occur for non-URL marks
                 val factor = if (mark.mark.url.isEmpty) 2.7 else 1.6
@@ -166,25 +169,27 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
               case (false, true, _) => // this case will occur for old-school bookmarks without any user content
                                        // update: that's probably no longer accurate as the def'n of user content
                                        // has changed to include URL and everything in a user-content repr
-                Some(SearchRelevance(0, 0, rraw *    1.4, rst.similarity * 1.4))
+                Some(SearchRelevance(0, 0, praw *    1.4, pst.similarity * 1.4))
 
               case (false, false, _) => // this case should fire for most marks--those with URLs
 
                 // maybe want to do max(0, cosine)?  or incorporate antonyms and compute cosine(query-antonyms)?
                 // because antonyms may be highly correlated with their opposites given similar surrounding words
-                Some(SearchRelevance(uraw, ust.similarity, rraw * 0.5, rst.similarity * 0.5))
+                Some(SearchRelevance(uraw, ust.similarity, praw * 0.5, pst.similarity * 0.5))
 
-              case (_, _, false) => None
             }
             mbRelevance.foreach(rl => loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $rl"))
-            val relTxt = mbRelevance.fold("")(rl => f" (=${rl.uraw}%.1f+${rl.usem}%.1f+${rl.rraw}%.1f+${rl.rsem}%.1f)")
+            val relTxt = mbRelevance.fold("")(rl => f" (=${rl.uraw}%.1f+${rl.usem}%.1f+${rl.praw}%.1f+${rl.psem}%.1f)")
 
             val aggregateScore = mbRelevance.map(_.sum)
             val usrContentRatio = if (ust.raw ~= 0) Double.PositiveInfinity else mscore / ust.raw
 
             // generate text and return values
             val mbPv = amigos match {
-              case (true, true, true) => // this first case shouldn't ever really happen
+
+              case (true, true, true) => None
+
+              case (true, true, false) => // this first case shouldn't ever really happen
                 val sc = mark.score.getOrElse(Double.NaN)
                 val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b>$relTxt, " +
                   f"Raw marks database search score: <b>$sc%.2f</b> (phrase=$uPhraseBoost)"
@@ -198,25 +203,22 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
 
               case (false, true, _) => // this case will occur for old-school bookmarks without any user content
                 val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b>$relTxt, " +
-                  f"Page content similarity: <b>${rst.similarity}%.2f</b>, " +
-                  f"Database search scores: R=<b>${rst.raw}%.2f</b> (phrase=$rPhraseBoost)"
-                Some(s"$scoreText<br>R-similarities: ${rst.termText}&nbsp; ${rst.text}<br>")
+                  f"Page content similarity: <b>${pst.similarity}%.2f</b>, " +
+                  f"Database search scores: P=<b>${pst.raw}%.2f</b> (phrase=$pPhraseBoost)"
+                Some(s"$scoreText<br>P-similarities: ${pst.termText}&nbsp; ${pst.text}<br>")
 
               case (false, false, _) => // this case should fire for most marks--those with URLs
                 val scoreText = f"Aggregate score: <b>${aggregateScore.get}%.2f</b>$relTxt, " +
-                  f"Similarities: R=<b>${rst.similarity}%.2f</b>, U=<b>${ust.similarity}%.2f</b>, " +
-                  f"Database search scores: R=<b>${rst.raw}%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>${ust.raw}%.2f</b>=<b>$usrContentRatio%.2f</b> (phrase=$rPhraseBoost & $uPhraseBoost)"
-                Some(s"$scoreText<br>" + s"R-similarities: ${rst.termText}&nbsp; ${rst.text}<br>" +
+                  f"Similarities: P=<b>${pst.similarity}%.2f</b>, U=<b>${ust.similarity}%.2f</b>, " +
+                  f"Database search scores: P=<b>${pst.raw}%.2f</b>, M/U=<b>$mscore%.2f</b>/<b>${ust.raw}%.2f</b>=<b>$usrContentRatio%.2f</b> (phrase=$pPhraseBoost & $uPhraseBoost)"
+                Some(s"$scoreText<br>" + s"P-similarities: ${pst.termText}&nbsp; ${pst.text}<br>" +
                                          s"U-similarities: ${ust.termText}&nbsp; ${ust.text}<br>")
-
-              case (_, _, false) => None
-
             }
 
             val endTime: TimeStamp = System.currentTimeMillis()
             val elapsed = (endTime - startTime) / 1e3
             if (elapsed > 0.1)
-              loggerI.debug(f"\u001b[35m${mark.id}\u001b[0m: query='${rawQuery.value}', subj='${mark.mark.subj}, textLen=${utext.length + rtext.length}' in $elapsed%.3f seconds")
+              loggerI.debug(f"\u001b[35m${mark.id}\u001b[0m: query='${rawQuery.value}', subj='${mark.mark.subj}, textLen=${utext.length + ptext.length}' in $elapsed%.3f seconds")
 
             mbPv.flatMap { pv =>
 
@@ -232,18 +234,23 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
 
                 // mscore is really only used here to prevent FacetTests from returning all 0s
                 // (e.g. exclude search results containing "overcomingbias.com" when searching for "bias")
-                case _ if ((uraw + mscore).coalesce0 + rraw.coalesce0) < 10.0 =>
-                  loggerI.debug(f"Excluding mark ${mark.id} from search results; no preview text: r/m/u=$rraw%.2f/$mscore%.2f/$uraw%.2f")
+                case _ if ((uraw + mscore).coalesce0 + praw.coalesce0) < 10.0 =>
+                  loggerI.debug(f"Excluding mark ${mark.id} from search results; no preview text: p/m/u=$praw%.2f/$mscore%.2f/$uraw%.2f")
                   None
 
                 case _ =>
-                  loggerI.debug(f"Including mark ${mark.id} in search results; has database text matches: r/m/u=$rraw%.2f/$mscore%.2f/$uraw%.2f")
+                  loggerI.debug(f"Including mark ${mark.id} in search results; has database text matches: p/m/u=$praw%.2f/$mscore%.2f/$uraw%.2f")
 
                   def withDots(s: String): String = if (s.length < PREVIEW_LENGTH) s else s"${s.take(PREVIEW_LENGTH)}..."
-                  Some(Seq(rtext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))
+                  Some(Seq(ptext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))
               }
 
-              mbPr.map { pr => (mark, (if (loggerI.isDebugEnabled) pv else "") + pr, mbRelevance) }
+              mbRelevance map { rel =>
+                mbPr.map { pr => (mark, (if (loggerI.isDebugEnabled) pv else "") + pr, rel) }
+              } getOrElse {
+                logger.error(s"Empty relevance with non-empty preview text for mark ${mark.id}")
+                None
+              }
 
             }.map(e.withValue)
 
@@ -345,7 +352,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
         // idfs could also be backed out from WordMass objects (i.e. mass / tf)
         val idfs = searchTermVecs.map(wm => idfModel.transform(wm.word))
         val weightedSum = similarities.zip(idfs).map { case (a, b) => a * b }.sum
-        Some(weightedSum / idfs.sum) // always use arithmentic mean as geo mean doesn't make much sense w/ similarities, which range between [-1,1] rather than [0,inf)
+        Some(weightedSum / idfs.sum) // always use arithmetic mean as geo mean doesn't make much sense w/ similarities, which range between [-1,1] rather than [0,inf)
       }
 
       loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $pOrU-sim: wsim=${mbSimilarity.getOrElse(Double.NaN)}%.2f wscore=$w%.2f w2=$w2%.2f w3=$w3%.2f (a=$amean%.2f g=$gmean%.2f g2=$gmean2%.2f nDocWords=$nDocWords nScores=${searchTermScores.size}/${searchTermScores.map(_.n).sum})")
@@ -373,7 +380,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
 
 object SearchResults {
 
-  type typ = (Mark, String, Option[SearchRelevance])
+  type typ = (Mark, String, SearchRelevance)
 
   val logger = Logger(getClass)
 

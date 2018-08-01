@@ -145,7 +145,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
           logger.debug(s"Mark $id successfully retrieved")
           val isOwner = user.exists(m.ownedBy) // there might be a MarkRef, if so, find and apply it
           if (isOwner || user.isEmpty) Future.successful(Some(m))
-          else findOrCreateMarkRef(user.get.id, m.id, m.mark.url).map(ref => Some(m.mask(ref.markRef, user)))
+          else findOrCreateMarkRef(user.get.id, m.id, m.mark.url).map(ref => Some(m.mask(ref.markRef, user.map(_.id))))
         case Some(_) => logger.info(s"User $user unauthorized to view mark $id"); fNone
         case None => logger.debug(s"Mark $id not found"); fNone
       }
@@ -466,7 +466,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
         ref <- if (user.exists(!mNew.ownedBy(_))) findOrCreateMarkRef(user.get.id, mNew.id, mNew.mark.url).map(Some(_))
                else fNone
 
-      } yield mNew.mask(ref.flatMap(_.markRef), user) // might be a no-op if user owns the mark
+      } yield mNew.mask(ref.flatMap(_.markRef), user.map(_.id)) // might be a no-op if user owns the mark
     }
   } yield m
 

@@ -7,9 +7,8 @@ import com.hamstoo.stream.Data.Data
 /**
   * Repeatedly emit the same constant value whenever there is demand.
   *
-  * TODO: Is this class needed at all given that the StreamDSL allows binary operations with constants?
-  * TODO:  Perhaps if the constant needs to be computed via an injector it is needed?
-  * TODO:   so instead of having ConstStream perhaps we should just amend the StreamDSL to work w/ OptionalInjectIds
+  * TODO: This class is unnecessary given that the StreamDSL allows binary operations with constants.
+  * TODO: Instead, we should just amend the StreamDSL to work w/ OptionalInjectIds.
   * TODO:    (see comment to the same effect in FacetsModel.Default)
   */
 class ConstStream[T]()(implicit mat: Materializer) extends DataStream[T] {
