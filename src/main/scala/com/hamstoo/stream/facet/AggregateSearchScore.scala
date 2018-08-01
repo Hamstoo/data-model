@@ -13,6 +13,9 @@ import math.{max, min}
 import scala.reflect.classTag
 
 /**
+  * As of 2018-7-30, this class is no longer used anywhere (other than tests).  The same implementation has
+  * been moved to the frontend's ratingHistory.controller.js, however.
+  *
   * For weights above 0.5, this model will give more weight to semantic and user-content search scores.  For
   * weights below 0.5, it will give more weight to syntactic (e.g. exact search words) and marked-content
   * (i.e. website content).

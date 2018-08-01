@@ -24,10 +24,6 @@ class Rating @Inject()(marks: MarksStream)(implicit mat: Materializer) extends D
   }.out
 }
 
-object Rating {
-  val DEFAULT_ARG = 0.5
-}
-
 /**
   * log([mark.aux.totalVisible minutes] + e) + log(nOwnerVisits*2 + e) - 2
   *   both terms of which have a lower bound of 1.0 (when totalVisible and nOwnerVisits are 0).
@@ -54,8 +50,4 @@ class ImplicitRating @Inject()(marks: MarksStream)(implicit mat: Materializer) e
       logTimeSpent + logOwnerVisits
     }
   }.out
-}
-
-object ImplicitRating {
-  val DEFAULT_ARG = 0.5
 }

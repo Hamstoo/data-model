@@ -95,9 +95,6 @@ abstract class DataStream[+T](bufferSize: Int = DEFAULT_BATCH_STREAM_BUFFER_SIZE
                               mbName: Option[String] = None)
                              (implicit mat: Materializer)
     extends ElemStream[Data[T]](bufferSize, mbName) {
-
-  /** A (overrideable) default implementation to convert a facet argument into a FacetsModel coefficient. */
-  def coefficient(arg: Double): Double = arg
 }
 
 /**
