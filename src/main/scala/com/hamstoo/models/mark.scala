@@ -522,18 +522,34 @@ case class Mark(override val userId: UUID,
   /**
     * If the mark has been masked, show the original rating in blue, o/w lookup the mark's expected rating ID in
     * the given `eratings` map and show that in blue.  This allows us to (1) always show the current user's rating
-    * in orange, even when displaying another shared-from user's mark, and (2) hide shared-from users' rating
-    * predictions, which contain information about more than just the mark being shared, from shared-to users.
+    * in orange, even when displaying another shared-from user's mark, and (2) hide shared-from users' expected
+    * ratings, which contain information about more than just the mark being shared, from shared-to users.
     *
     * The reason this takes a map as an argument is because backend search, MarksController.list, performs a single
     * batch query for the rating predictions of all of the search results and passes the batch in here.
+    *
+    * @param mbCallingUserId  Who's asking?  The expected rating is only shown (as blueRating) if the mark is
+    *                         being viewed by its owner.
     */
-  def blueRating(eratings: Map[ObjectId, ExpectedRating]): Option[Double] =
-    if (mark.bMasked) mark.ownerRating else expectedRating.flatMap(eratings.get).flatMap(_.value)
+  def blueRating(eratings: Map[ObjectId, ExpectedRating], mbCallingUserId: Option[UUID]): Option[Double] =
+    if (mark.bMasked) mark.ownerRating
+    else if (mbCallingUserId.exists(ownedBy)) expectedRating.flatMap(eratings.get).flatMap(_.value)
+    else mark.rating
 
   /** Convenience function that converts from an Option to a Map. */
-  def blueRating(mbERating: Option[ExpectedRating]): Option[Double] =
-    blueRating(mbERating.fold(Map.empty[ObjectId, ExpectedRating])(r => Map(r.id -> r)))
+  def blueRating(mbERating: Option[ExpectedRating], mbCallingUserId: Option[UUID]): Option[Double] =
+    blueRating(mbERating.fold(Map.empty[ObjectId, ExpectedRating])(r => Map(r.id -> r)), mbCallingUserId)
+
+  /**
+    * The orange rating should always be the rating of the user who is viewing the mark.  If the mark has been
+    * masked the owner's rating has been moved to the `ownerRating` field and replaced with the viewer's
+    * (calling user's) rating.  If the viewer does not own the mark and it hasn't been masked then don't show
+    * an orange rating at all.
+    */
+  def orangeRating(mbCallingUserId: Option[UUID]): Option[Double] =
+    if (mark.bMasked) mark.rating
+    else if (mbCallingUserId.exists(ownedBy)) mark.rating
+    else None
 
   /** Same as `equals` except ignoring timeFrom/timeThru. */
   def equalsIgnoreTimeStamps(that: Mark): Boolean =

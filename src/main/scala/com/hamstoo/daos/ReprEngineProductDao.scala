@@ -69,7 +69,7 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
     * @param id        Representation ID to delete
     * @param timeFrom  `timeFrom` of representation to delete
     */
-  /*def delete(id: String, timeFrom: Long): Future[Unit] = {
+  /*def delete(id: ObjectId, timeFrom: Long): Future[Unit] = {
     logger.info(s"Deleting $name with ID '$id' [$timeFrom/${timeFrom.dt}]")
     for {
       c <- dbColl()
@@ -83,7 +83,7 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
     * Stores provided representation, optionally updating current state if repr ID already exists in database.
     * @return  a `Future` repr ID of either updated or inserted repr
     */
-  def save(repr: T, now: Long = TIME_NOW): Future[String] = {
+  def save(repr: T, now: Long = TIME_NOW): Future[ObjectId] = {
     retrieve(repr.id).flatMap {
       case Some(_) => update(repr, now = now)
       case _       => insert(repr.withTimeFrom(now))
@@ -91,10 +91,10 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
   }
 
   /** Retrieves a current (latest) representation by ID. */
-  def retrieve(id: String): Future[Option[T]] = retrieve(Set(id)).map(_.get(id))
+  def retrieve(id: ObjectId): Future[Option[T]] = retrieve(Set(id)).map(_.get(id))
 
   /** Given a set of representation IDs, return a mapping from ID to instance. */
-  def retrieve(ids: Set[String]): Future[Map[String, T]] = for {
+  def retrieve(ids: Set[ObjectId]): Future[Map[ObjectId, T]] = for {
     c <- dbColl()
     t0 = System.currentTimeMillis
     _ = logger.debug(s"Retrieving ${name}s (first 5): ${ids.take(5)}")
@@ -105,7 +105,7 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
   }
 
   /** Retrieves all representations, including previous versions, by ID. */
-  def retrieveAll(id: String): Future[Seq[T]] = for {
+  def retrieveAll(id: ObjectId): Future[Seq[T]] = for {
     c <- dbColl()
     seq <- c.find(d :~ ID -> id).coll[T, Seq]()
   } yield seq
