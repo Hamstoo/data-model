@@ -538,7 +538,7 @@ case class Mark(override val userId: UUID,
 
   /** Convenience function that converts from an Option to a Map. */
   def blueRating(mbERating: Option[ExpectedRating], mbCallingUserId: Option[UUID]): Option[Double] =
-    blueRating(mbERating.fold(Map.empty[ObjectId, ExpectedRating])(r => Map(r.id -> r)), mbCallingUserId)
+    blueRating(mbERating.toSeq.map(er => er.id -> er).toMap, mbCallingUserId)
 
   /**
     * The orange rating should always be the rating of the user who is viewing the mark.  If the mark has been
