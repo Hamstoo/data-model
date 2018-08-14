@@ -10,7 +10,7 @@ import com.github.dwickern.macros.NameOf._
 import com.hamstoo.daos.ImageDao
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, MetaType, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, MediaType, MetaType, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -118,8 +118,11 @@ case class MarkData(subj: String,
   }
 
   /**
-    * Mutator method!  Populate `metaTags` map with additional image-related tags, which Facebook may need.
+    * Mutator method!  Populate `metaTags` map with additional image-related tags, which Facebook needs.
     *   https://developers.facebook.com/docs/sharing/opengraph/object-properties/
+    *
+    * Also, Facebook requires an extension (ugh) so just tack it on to the end of the "image" element, and
+    * then take it off in ImageDao (if it's there).  We don't need it for anything.
     */
   def setImageMetaTags(imageDao: ImageDao)(implicit ec: ExecutionContext): Future[Unit] = {
 
@@ -128,10 +131,19 @@ case class MarkData(subj: String,
       .flatMap(_.split('/').lastOption)
       .fold(Future.unit) { imgId =>
 
-        logger.info(s"Setting image meta tags for image ID $imgId")
+        logger.debug(s"Setting image meta tags for image ID $imgId")
 
         imageDao.retrieve(imgId).map { mbImg =>
           mbImg.fold(Unit) { img =>
+
+            // append an extension to satisfy the Facebook gods
+            img.mimeType.filter(_.startsWith(MediaType.IMG_ROOT))
+              .map(_.substring(MediaType.IMG_ROOT.length))
+              .foreach { ext0 =>
+                val ext = if (ext0.nonEmpty && ext0 != "*") ext0 else "png" // exclude "image/*", just guess
+                metaTags(MetaType.IMAGE) += "." + ext
+                logger.debug(s"Extension appended to `${MetaType.IMAGE}` meta tag: ${metaTags(MetaType.IMAGE)}")
+              }
 
             val imgTags = Seq(
               img.width.map(MetaType.OG_IMAGE_WIDTH -> _.toString),
@@ -143,7 +155,7 @@ case class MarkData(subj: String,
 
             // can't do a `copy` b/c metaTags would get overwritten during computation of commentEncoded
             //this.copy(metaTags = withImgTags)
-            this.metaTags ++= imgTags
+            metaTags ++= imgTags
             Unit
           }
         }

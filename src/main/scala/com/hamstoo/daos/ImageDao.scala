@@ -44,8 +44,9 @@ class ImageDao @Inject()(implicit db: () => Future[DefaultDB]) {
   } yield logger.info(s"Successfully upserted image")
 
   /** Retrieves image file bytes by ID (and updates some fields if they're missing in the DB). */
-  def retrieve(id: String): Future[Option[Image]] = for {
+  def retrieve(idWithPossibleExt: String): Future[Option[Image]] = for {
     c <- dbColl()
+    id = idWithPossibleExt.split('.').head
     mbBson <- c.find(d :~ ID -> id).one[BSONDocument]
 
     // update database with width/height/mimeType of image, if not already there
