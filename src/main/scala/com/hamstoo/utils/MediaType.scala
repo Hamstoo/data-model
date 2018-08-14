@@ -148,3 +148,14 @@ object MediaType /*extends Enumeration*/ {
   lazy val PAGES = MediaType("application/x-iwork-pages-sffpages")
   lazy val NUMBERS = MediaType("application/x-iwork-numbers-sffnumbers")
 }
+
+/**
+  * Enumeration of various HTML <meta> tag `property` or `name` attribute values.
+  */
+object MetaType {
+  lazy val IMAGE = "image"
+  lazy val OG_IMAGE: String = "og:" + IMAGE
+  lazy val OG_IMAGE_WIDTH: String = OG_IMAGE + ":width"
+  lazy val OG_IMAGE_HEIGHT: String = OG_IMAGE + ":height"
+  lazy val OG_IMAGE_TYPE: String = OG_IMAGE + ":type"
+}

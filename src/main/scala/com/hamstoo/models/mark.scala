@@ -7,9 +7,10 @@ import java.net.URL
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
+import com.hamstoo.daos.ImageDao
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, MetaType, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -22,6 +23,7 @@ import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 import scala.util.matching.Regex
 
@@ -100,19 +102,52 @@ case class MarkData(subj: String,
     for(node <- jsoupDoc.select("img[src]").toArray) yield {
       val e = node.asInstanceOf[Element]
       val srcValue = e.attr("src")
-      if (srcValue.contains("api/v1/marks/img")) { // identifies "our images"
+      if (MarkData.isHamstooImage(srcValue)) {
         e.removeAttr("src")
         e.attr("http-src", srcValue)
       }
 
       // use the first image as the <meta> tag image
-      if (!metaTags.contains("image"))
-        metaTags("image") = srcValue
+      if (!metaTags.contains(MetaType.IMAGE))
+        metaTags(MetaType.IMAGE) = srcValue
     }
 
     // apply whitelist again to remove html/head/body tags that JSoup's Document.toString adds in (super clean!)
     val html3 = jsoupDoc.toString
     Jsoup.clean(html3, htmlTagsWhitelist)
+  }
+
+  /**
+    * Mutator method!  Populate `metaTags` map with additional image-related tags, which Facebook may need.
+    *   https://developers.facebook.com/docs/sharing/opengraph/object-properties/
+    */
+  def setImageMetaTags(imageDao: ImageDao)(implicit ec: ExecutionContext): Future[Unit] = {
+
+    metaTags.get(MetaType.IMAGE)
+      .filter(MarkData.isHamstooImage)
+      .flatMap(_.split('/').lastOption)
+      .fold(Future.unit) { imgId =>
+
+        logger.info(s"Setting image meta tags for image ID $imgId")
+
+        imageDao.retrieve(imgId).map { mbImg =>
+          mbImg.fold(Unit) { img =>
+
+            val imgTags = Seq(
+              img.width.map(MetaType.OG_IMAGE_WIDTH -> _.toString),
+              img.height.map(MetaType.OG_IMAGE_HEIGHT -> _.toString),
+              img.mimeType.map(MetaType.OG_IMAGE_TYPE -> _)
+            ).flatten
+
+            logger.info(s"Image ID $imgId image meta tags: $imgTags")
+
+            // can't do a `copy` b/c metaTags would get overwritten during computation of commentEncoded
+            //this.copy(metaTags = withImgTags)
+            this.metaTags ++= imgTags
+            Unit
+          }
+        }
+      }
   }
 
   /** Check for `Automarked` label. */
@@ -199,6 +234,9 @@ object MarkData {
       // added 2018-6-8 after retrieveByUrl was found broken due to '&'s being converted to '&amp;'s in URLs
       // in MarksController.add
       .map(StringEscapeUtils.unescapeHtml4)
+
+  /** Identifies "our images" */
+  def isHamstooImage(imgUrl: String): Boolean = imgUrl.contains("api/v1/marks/img")
 }
 
 /**
