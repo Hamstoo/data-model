@@ -28,7 +28,6 @@ class InlineNoteDao @Inject()(implicit db: () => Future[DefaultDB],
   import com.hamstoo.models.InlineNote._
   import com.hamstoo.utils._
 
-  override val logger = Logger(classOf[InlineNoteDao])
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "comments")
 
   Await.result(dbColl() map (_.indexesManager ensure indxs), 366 seconds)
@@ -37,12 +36,14 @@ class InlineNoteDao @Inject()(implicit db: () => Future[DefaultDB],
   def update(usr: UUID,
              id: String,
              pos: InlineNote.Position,
+             anchors: Option[Seq[InlineNote.Anchor]],
              coord: Option[PageCoord]): Future[InlineNote] = for {
     c <- dbColl()
     now = TIME_NOW
     sel = d :~ USR -> usr :~ ID -> id :~ curnt
     wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
     ct = wr.result[InlineNote].get.copy(pos = pos,
+                                        anchors = anchors,
                                         pageCoord = coord,
                                         memeId = None,
                                         timeFrom = now,
