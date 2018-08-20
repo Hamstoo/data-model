@@ -7,9 +7,10 @@ import java.net.URL
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
+import com.hamstoo.daos.ImageDao
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, MediaType, MetaType, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
 import org.commonmark.parser.Parser
@@ -22,6 +23,7 @@ import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.collection.mutable
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 import scala.util.matching.Regex
 
@@ -100,19 +102,64 @@ case class MarkData(subj: String,
     for(node <- jsoupDoc.select("img[src]").toArray) yield {
       val e = node.asInstanceOf[Element]
       val srcValue = e.attr("src")
-      if (srcValue.contains("api/v1/marks/img")) { // identifies "our images"
+      if (MarkData.isHamstooImage(srcValue)) {
         e.removeAttr("src")
         e.attr("http-src", srcValue)
       }
 
       // use the first image as the <meta> tag image
-      if (!metaTags.contains("image"))
-        metaTags("image") = srcValue
+      if (!metaTags.contains(MetaType.IMAGE))
+        metaTags(MetaType.IMAGE) = srcValue
     }
 
     // apply whitelist again to remove html/head/body tags that JSoup's Document.toString adds in (super clean!)
     val html3 = jsoupDoc.toString
     Jsoup.clean(html3, htmlTagsWhitelist)
+  }
+
+  /**
+    * Mutator method!  Populate `metaTags` map with additional image-related tags, which Facebook needs.
+    *   https://developers.facebook.com/docs/sharing/opengraph/object-properties/
+    *
+    * Also, Facebook requires an extension (ugh) so just tack it on to the end of the "image" element, and
+    * then take it off in ImageDao (if it's there).  We don't need it for anything.
+    */
+  def setImageMetaTags(imageDao: ImageDao)(implicit ec: ExecutionContext): Future[Unit] = {
+
+    metaTags.get(MetaType.IMAGE)
+      .filter(MarkData.isHamstooImage)
+      .flatMap(_.split('/').lastOption)
+      .fold(Future.unit) { imgId =>
+
+        logger.debug(s"Setting image meta tags for image ID $imgId")
+
+        imageDao.retrieve(imgId).map { mbImg =>
+          mbImg.fold(Unit) { img =>
+
+            // append an extension to satisfy the Facebook gods
+            img.mimeType.filter(_.startsWith(MediaType.IMG_ROOT))
+              .map(_.substring(MediaType.IMG_ROOT.length))
+              .foreach { ext0 =>
+                val ext = if (ext0.nonEmpty && ext0 != "*") ext0 else "png" // exclude "image/*", just guess
+                metaTags(MetaType.IMAGE) += "." + ext
+                logger.debug(s"Extension appended to `${MetaType.IMAGE}` meta tag: ${metaTags(MetaType.IMAGE)}")
+              }
+
+            val imgTags = Seq(
+              img.width.map(MetaType.OG_IMAGE_WIDTH -> _.toString),
+              img.height.map(MetaType.OG_IMAGE_HEIGHT -> _.toString),
+              img.mimeType.map(MetaType.OG_IMAGE_TYPE -> _)
+            ).flatten
+
+            logger.info(s"Image ID $imgId image meta tags: $imgTags")
+
+            // can't do a `copy` b/c metaTags would get overwritten during computation of commentEncoded
+            //this.copy(metaTags = withImgTags)
+            metaTags ++= imgTags
+            Unit
+          }
+        }
+      }
   }
 
   /** Check for `Automarked` label. */
@@ -199,6 +246,9 @@ object MarkData {
       // added 2018-6-8 after retrieveByUrl was found broken due to '&'s being converted to '&amp;'s in URLs
       // in MarksController.add
       .map(StringEscapeUtils.unescapeHtml4)
+
+  /** Identifies "our images" */
+  def isHamstooImage(imgUrl: String): Boolean = imgUrl.contains("api/v1/marks/img")
 }
 
 /**
@@ -522,18 +572,34 @@ case class Mark(override val userId: UUID,
   /**
     * If the mark has been masked, show the original rating in blue, o/w lookup the mark's expected rating ID in
     * the given `eratings` map and show that in blue.  This allows us to (1) always show the current user's rating
-    * in orange, even when displaying another shared-from user's mark, and (2) hide shared-from users' rating
-    * predictions, which contain information about more than just the mark being shared, from shared-to users.
+    * in orange, even when displaying another shared-from user's mark, and (2) hide shared-from users' expected
+    * ratings, which contain information about more than just the mark being shared, from shared-to users.
     *
     * The reason this takes a map as an argument is because backend search, MarksController.list, performs a single
     * batch query for the rating predictions of all of the search results and passes the batch in here.
+    *
+    * @param mbCallingUserId  Who's asking?  The expected rating is only shown (as blueRating) if the mark is
+    *                         being viewed by its owner.
     */
-  def blueRating(eratings: Map[ObjectId, ExpectedRating]): Option[Double] =
-    if (mark.bMasked) mark.ownerRating else expectedRating.flatMap(eratings.get).flatMap(_.value)
+  def blueRating(eratings: Map[ObjectId, ExpectedRating], mbCallingUserId: Option[UUID]): Option[Double] =
+    if (mark.bMasked) mark.ownerRating
+    else if (mbCallingUserId.exists(ownedBy)) expectedRating.flatMap(eratings.get).flatMap(_.value)
+    else mark.rating
 
   /** Convenience function that converts from an Option to a Map. */
-  def blueRating(mbERating: Option[ExpectedRating]): Option[Double] =
-    blueRating(mbERating.fold(Map.empty[ObjectId, ExpectedRating])(r => Map(r.id -> r)))
+  def blueRating(mbERating: Option[ExpectedRating], mbCallingUserId: Option[UUID]): Option[Double] =
+    blueRating(mbERating.toSeq.map(er => er.id -> er).toMap, mbCallingUserId)
+
+  /**
+    * The orange rating should always be the rating of the user who is viewing the mark.  If the mark has been
+    * masked the owner's rating has been moved to the `ownerRating` field and replaced with the viewer's
+    * (calling user's) rating.  If the viewer does not own the mark and it hasn't been masked then don't show
+    * an orange rating at all.
+    */
+  def orangeRating(mbCallingUserId: Option[UUID]): Option[Double] =
+    if (mark.bMasked) mark.rating
+    else if (mbCallingUserId.exists(ownedBy)) mark.rating
+    else None
 
   /** Same as `equals` except ignoring timeFrom/timeThru. */
   def equalsIgnoreTimeStamps(that: Mark): Boolean =

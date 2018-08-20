@@ -43,10 +43,20 @@ class ImageDao @Inject()(implicit db: () => Future[DefaultDB]) {
     _ <- wr.failIfError
   } yield logger.info(s"Successfully upserted image")
 
-  /** Retrieves file bytes by ID. */
-  def retrieve(id: String): Future[Option[Image]] = for {
+  /** Retrieves image file bytes by ID (and updates some fields if they're missing in the DB). */
+  def retrieve(idWithPossibleExt: String): Future[Option[Image]] = for {
     c <- dbColl()
-    mbImg <- c.find(d :~ ID -> id).one[Image]
+    id = idWithPossibleExt.split('.').head
+    mbBson <- c.find(d :~ ID -> id).one[BSONDocument]
+
+    // update database with width/height/mimeType of image, if not already there
+    mbImg <- mbBson.fold(Future.successful(Option.empty[Image])) { bson =>
+      val img = bson.as[Image]
+      if (bson.get(WIDTH).isEmpty || bson.get(HEIGHT).isEmpty || bson.get(MIME_TYPE).isEmpty)
+        upsert(img).map(_ => Some(img))
+      else
+        Future.successful(Some(img))
+    }
   } yield mbImg
 
   /** Retrieve images for mark.  Same prefix-search-then-filter implementation as MongoUrlDuplicatesDao.retrieve. */

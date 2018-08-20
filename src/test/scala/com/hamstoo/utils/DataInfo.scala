@@ -99,4 +99,6 @@ object DataInfo {
 
   val emptyMarkData = MarkData("", None, None, None, None)
   def withComment(comment: String, init: MarkData = emptyMarkData): MarkData = init.copy(comment = Some(comment))
+
+  val inlineNotePos = InlineNote.Position(Some("text"), "path", None, None, 0, 0)
 }

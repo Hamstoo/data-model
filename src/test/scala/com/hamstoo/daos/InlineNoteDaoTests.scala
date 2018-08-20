@@ -23,7 +23,7 @@ class InlineNoteDaoTests
 
   val userId: UUID = constructUserId()
   val markId: String = constructMarkId()
-  val c = InlineNote(usrId = userId, markId = markId, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
+  val c = InlineNote(usrId = userId, markId = markId, pos = inlineNotePos)
 
   "MongoInlineNotesDao" should "(UNIT) create inline note" in {
     notesDao.insert(c).futureValue shouldEqual c
@@ -38,8 +38,8 @@ class InlineNoteDaoTests
   }
 
   it should "(UNIT) update inline note" in {
-    val newPos = InlineNote.Position("1", "2", 0, 0)
-    notesDao.update(c.usrId, c.id, newPos, None).futureValue.pos shouldEqual newPos
+    val newPos = InlineNote.Position(Some("newtext"), "newpath", Some("newcss"), Some("newnodeval"), 0, 0)
+    notesDao.update(c.usrId, c.id, newPos, None, None).futureValue.pos shouldEqual newPos
   }
 
   it should "(UNIT) delete inline note" in {

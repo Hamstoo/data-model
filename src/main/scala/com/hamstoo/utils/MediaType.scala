@@ -57,16 +57,18 @@ object MediaType /*extends Enumeration*/ {
   lazy val QUICKTIME = MediaType("video/quicktime")
   lazy val WEBM_VIDEO = MediaType("video/webm")
   lazy val WMV = MediaType("video/x-ms-wmv")
-  lazy val BMP = MediaType("image/bmp")
-  lazy val CRW = MediaType("image/x-canon-crw")
-  lazy val GIF = MediaType("image/gif")
-  lazy val ICO = MediaType("image/vnd.microsoft.icon")
-  lazy val JPEG = MediaType("image/jpeg")
-  lazy val PNG = MediaType("image/png")
-  lazy val PSD = MediaType("image/vnd.adobe.photoshop")
-  lazy val SVG_UTF_8 = MediaType("image/svg+xml")
-  lazy val TIFF = MediaType("image/tiff")
-  lazy val WEBP = MediaType("image/webp")
+
+  lazy val IMG_ROOT = "image/"
+  lazy val BMP = MediaType(IMG_ROOT + "bmp")
+  lazy val CRW = MediaType(IMG_ROOT + "x-canon-crw")
+  lazy val GIF = MediaType(IMG_ROOT + "gif")
+  lazy val ICO = MediaType(IMG_ROOT + "vnd.microsoft.icon")
+  lazy val JPEG = MediaType(IMG_ROOT + "jpeg")
+  lazy val PNG = MediaType(IMG_ROOT + "png")
+  lazy val PSD = MediaType(IMG_ROOT + "vnd.adobe.photoshop")
+  lazy val SVG_UTF_8 = MediaType(IMG_ROOT + "svg+xml")
+  lazy val TIFF = MediaType(IMG_ROOT + "tiff")
+  lazy val WEBP = MediaType(IMG_ROOT + "webp")
 
   // text
   lazy val TEXT_ANY = MediaType("text/*")
@@ -147,4 +149,15 @@ object MediaType /*extends Enumeration*/ {
   lazy val KEYNOTE = MediaType("application/x-iwork-keynote-sffkey")
   lazy val PAGES = MediaType("application/x-iwork-pages-sffpages")
   lazy val NUMBERS = MediaType("application/x-iwork-numbers-sffnumbers")
+}
+
+/**
+  * Enumeration of various HTML <meta> tag `property` or `name` attribute values.
+  */
+object MetaType {
+  lazy val IMAGE = "image"
+  lazy val OG_IMAGE: String = "og:" + IMAGE
+  lazy val OG_IMAGE_WIDTH: String = OG_IMAGE + ":width"
+  lazy val OG_IMAGE_HEIGHT: String = OG_IMAGE + ":height"
+  lazy val OG_IMAGE_TYPE: String = OG_IMAGE + ":type"
 }

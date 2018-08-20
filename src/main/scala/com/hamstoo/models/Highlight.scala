@@ -37,11 +37,21 @@ case class Highlight(usrId: UUID,
 
   import Highlight.fmt
 
+  /** Used by backend's MarksController when producing full-page view and share email. */
   override def jsonPreview: JsObject = Json.obj(
     "id" -> id,
     "preview" -> Json.toJson(preview),
     "type" -> "highlight"
   )
+
+  /**
+    * Used by backend's MarksController when producing JSON for the Chrome extension.  `pageCoord` may not be
+    * required here; it's currently only used for sorting (in FPV and share emails), but we may start using it
+    * in the Chrome extension for re-locating highlights and notes on the page.
+    */
+  import HighlightFormatters._
+  def toExtensionJson: JsObject = Json.obj("id" -> id, "pos" -> pos) ++
+    pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x))
 }
 
 object Highlight extends BSONHandlers with AnnotationInfo {
@@ -84,4 +94,10 @@ object Highlight extends BSONHandlers with AnnotationInfo {
   implicit val hlposBsonHandler: BSONDocumentHandler[Position] = Macros.handler[Position]
   implicit val hlprevBsonHandler: BSONDocumentHandler[Preview] = Macros.handler[Preview]
   implicit val highlightHandler: BSONDocumentHandler[Highlight] = Macros.handler[Highlight]
+}
+
+object HighlightFormatters {
+  implicit val pageCoordJFmt: OFormat[PageCoord] = PageCoord.jFormat
+  implicit val hlPosElemJFmt: OFormat[Highlight.PositionElement] = Json.format[Highlight.PositionElement]
+  implicit val hlPosJFmt: OFormat[Highlight.Position] = Json.format[Highlight.Position]
 }

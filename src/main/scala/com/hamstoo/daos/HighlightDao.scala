@@ -27,7 +27,6 @@ class HighlightDao @Inject()(implicit db: () => Future[DefaultDB],
   import com.hamstoo.models.Highlight._
   import com.hamstoo.utils._
 
-  override val logger = Logger(classOf[HighlightDao])
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "highlights")
 
   Await.result(dbColl() map (_.indexesManager ensure indxs), 345 seconds)

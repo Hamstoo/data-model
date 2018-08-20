@@ -36,29 +36,27 @@ class AnnotationTests extends FlatSpecWithMatchers {
 
 object AnnotationTests {
 
+  import com.hamstoo.utils.DataInfo._
+
   val uuid: UUID = UUID.randomUUID()
   val id = "someId"
 
   object FullyDefined {
 
-    val c1 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.5, 0.5)))
-    val c2 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.6, 0.5)))
-    val c3 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.4, 0.8)))
+    val noteSeq: Seq[InlineNote] = Seq(PageCoord(0.5, 0.5), PageCoord(0.6, 0.5), PageCoord(0.4, 0.8)).map(pc =>
+      InlineNote(usrId = uuid, markId = id, pos = inlineNotePos, pageCoord = Some(pc)))
+    val c1 :: c2 :: c3 :: Nil = noteSeq
 
-    val noteSeq: Seq[InlineNote] = Seq(c1, c2, c3)
-
-    val h1 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), pageCoord = Some(PageCoord(0.5, 0.6)), preview = Highlight.Preview("", "", ""))
-    val h2 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), pageCoord = Some(PageCoord(0.7, 0.6)), preview = Highlight.Preview("", "", ""))
-    val h3 = Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), pageCoord = Some(PageCoord(0.9, 0.5)), preview = Highlight.Preview("", "", ""))
-
-    val highlightSeq: Seq[Highlight] = Seq(h1, h2, h3)
+    val highlightSeq: Seq[Highlight] = Seq(PageCoord(0.5, 0.6), PageCoord(0.7, 0.6), PageCoord(0.9, 0.5)).map(pc =>
+      Highlight(usrId = uuid, markId = id, pos = Highlight.Position(Nil), pageCoord = Some(PageCoord(0.9, 0.5)), preview = Highlight.Preview("", "", "")))
+    val h1 :: h2 :: h3 :: Nil = highlightSeq
   }
 
   object PartialDefined {
 
-    val c1 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.5, 0.5)))
-    val c2 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
-    val c3 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0), pageCoord = Some(PageCoord(0.4, 0.8)))
+    val c1 = InlineNote(usrId = uuid, markId = id, pos = inlineNotePos, pageCoord = Some(PageCoord(0.5, 0.5)))
+    val c2 = InlineNote(usrId = uuid, markId = id, pos = inlineNotePos)
+    val c3 = InlineNote(usrId = uuid, markId = id, pos = inlineNotePos, pageCoord = Some(PageCoord(0.4, 0.8)))
 
     val noteSeq: Seq[InlineNote] = Seq(c1, c2, c3)
 
@@ -71,9 +69,9 @@ object AnnotationTests {
 
   object FullyUndefined {
 
-    val c1 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
-    val c2 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
-    val c3 = InlineNote(usrId = uuid, markId = id, pos = InlineNote.Position("sdassd", "sdassd", 0, 0))
+    val c1 = InlineNote(usrId = uuid, markId = id, pos = inlineNotePos)
+    val c2 = InlineNote(usrId = uuid, markId = id, pos = inlineNotePos)
+    val c3 = InlineNote(usrId = uuid, markId = id, pos = inlineNotePos)
 
     val noteSeq: Seq[InlineNote] = Seq(c1, c2, c3)
 

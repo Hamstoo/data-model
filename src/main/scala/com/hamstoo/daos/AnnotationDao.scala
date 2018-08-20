@@ -32,7 +32,7 @@ abstract class AnnotationDao[A <: Annotation: BSONDocumentHandler]
                              pagesDao: PageDao)
                 extends AnnotationInfo {
 
-  val logger: Logger
+  val logger = Logger(getClass)
   def dbColl(): Future[BSONCollection]
   protected def marksColl(): Future[BSONCollection] = db().map(_ collection "entries")
 

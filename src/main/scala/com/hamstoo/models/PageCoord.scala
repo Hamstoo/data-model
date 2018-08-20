@@ -1,11 +1,22 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo.models
 
+import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 /**
-  * Coordinates of a node in a web page.
-  * @param x  Relative horizontal position of annotation--used for annotation sorting.
-  * @param y  Relative vertical position of annotation--used for annotation sorting.
+  * _Fractional/relative_ coordinates of a node in a web page--used for annotation sorting.  These coordinates
+  * are both fractional, i.e. relative to the full height and width of the page, so should range between 0 and 1.
+  *
+  * While `pageCoord` (global page <x,y> coordinates) are passed from the extension to the backend for saving to
+  * the database for each annotation, they are only then used for sorting annotations before returning them in
+  * sorted order to the frontend (full-page view and share email). They aren't ever returned to or used by the
+  * Chrome extension.
+  *
+  * @param x  Relative horizontal position of annotation.
+  * @param y  Relative vertical position of annotation.
   */
 case class PageCoord(x: Double, y: Double)
 
@@ -27,6 +38,7 @@ object PageCoord {
   }
 
   implicit val pageCoordHandler: BSONDocumentHandler[PageCoord] = Macros.handler[PageCoord]
+  implicit val jFormat: OFormat[PageCoord] = Json.format[PageCoord]
 
   final val ZERO_COORD = PageCoord(0.0, 0.0)
 }
