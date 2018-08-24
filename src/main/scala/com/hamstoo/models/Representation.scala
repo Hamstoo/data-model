@@ -164,7 +164,10 @@ case class Representation(
 object Representation extends BSONHandlers {
 
   type Vec = Seq[Double]
-  object Vec { def empty = Seq.empty[Double] }
+  object Vec {
+    def empty = Seq.empty[Double]
+    def fill(n: Int)(elem: => Double = 0.0) = Seq.fill[Double](n)(elem)
+  }
 
   val DUPLICATE_VEC_SIMILARITY_THRESHOLD = 0.95
   val DUPLICATE_EDIT_SIMILARITY_THRESHOLD = 0.85
@@ -210,11 +213,12 @@ object Representation extends BSONHandlers {
 
     def mean: Double = vec.sum / vec.length
 
+    /** sum(x-mu)^2 / (n-1)  ==  (sum(x^2) - sum(x)^2/n) / (n-1)  ~=  mean(x^2) - mean(x)^2 */
     def variance: Double = {
       val mean = vec.mean
       // see `l2Norm` for a more implicit similar `foldLeft` notation
-      val fold = vec.foldLeft(0.0) { case (s, x) => s + math.pow(x - mean, 2) }
-      fold / (vec.size - 1)
+      val sum = vec.foldLeft(0.0) { case (s, x) => s + math.pow(x - mean, 2) } // sum(x-mu)^2
+      sum / (vec.size - 1)
     }
 
     def stdev: Double = math.sqrt(variance) // this was formerly wrong: math.sqrt(fold) / (vec.length - 1)
@@ -273,7 +277,9 @@ object Representation extends BSONHandlers {
         PC4,       // fourth
         KM1,       // most significant k-means cluster by average bm25 score
         KM2,       // second most significant k-means cluster (i.e. don't combine 1st and 2nd at point of construction)
-        KM3        // third
+        KM3,       // third
+        RWT,       // weighted w.r.t. user ratings where a rating of x approximately corresponds to a weight of x-3
+        RWTa       // weighted w.r.t. negative of user ratings (i.e. anti-confirmatory)
       = Value
   }
 

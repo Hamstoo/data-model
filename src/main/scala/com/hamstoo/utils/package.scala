@@ -229,6 +229,7 @@ package object utils {
     */
   implicit class ExtendedDouble(private val d: Double) extends AnyVal {
     def isReallyNaN: Boolean = d.isNaN || d.isInfinite
+    def isFinitey: Boolean = !d.isReallyNaN // think `isTruthy`
     def coalesce(ifNaN: Double): Double = if (d.isReallyNaN) ifNaN else d
     def coalesce0(implicit ev: Numeric[Double]): Double = coalesce(ev.zero) // using Numeric typeclass
     def or0: Double = coalesce0
@@ -322,6 +323,12 @@ package object utils {
     t
   }
 
+  /** I can never remember how to assemble all the Writers to write a simple file in Java, so here it is. */
+  def cleanlyWriteFile[B](filename: String)(doWork: java.io.BufferedWriter => B): Try[B] = {
+    import java.io.{BufferedWriter => BW, FileOutputStream => FOS, OutputStreamWriter => OSW}
+    utils.cleanly[BW, B](new BW(new OSW(new FOS(filename))))(_.close)(doWork)
+  }
+
   /** Returns a string of memory statistics. */
   def memoryString: String =
     f"total: ${Runtime.getRuntime.totalMemory/1e6}%.0f, free: ${Runtime.getRuntime.freeMemory/1e6}%.0f"
@@ -347,12 +354,11 @@ package object utils {
   def principalAxes(weightedVecs: Seq[Vec],
                     nAxes: Int,
                     mbOrientationVec: Option[Vec] = None,
-                    bOrientAxes: Boolean = true): Seq[Vec] = {
+                    bOrientAxes: Boolean = true): Seq[Vec] = weightedVecs.size match { // #words
 
-    val n = weightedVecs.size // #words
-    if (n == 0) Seq.empty[Vec]
-    else if (n == 1) Seq(weightedVecs.head)
-    else {
+    case n if n == 0 => Seq.empty[Vec]
+    case n if n == 1 => Seq(weightedVecs.head)
+    case n =>
       import com.hamstoo.models.Representation.VecFunctions
       val colMeans = weightedVecs.reduce(_ + _) / n
       logger.debug(s"principalAxes: colMeans.take(5) = ${colMeans.take(5)}")
@@ -399,7 +405,6 @@ package object utils {
       }*/
 
       axes
-    }
   }
 
   /** Print a vector similarity matrix to stdout. */
