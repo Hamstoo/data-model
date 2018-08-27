@@ -230,7 +230,7 @@ package object utils {
   implicit class ExtendedDouble(private val d: Double) extends AnyVal {
     def isReallyNaN: Boolean = d.isNaN || d.isInfinite
     def isFinitey: Boolean = !d.isReallyNaN // think `isTruthy`
-    def coalesce(ifNaN: Double): Double = if (d.isReallyNaN) ifNaN else d
+    def coalesce(ifNaN: => Double): Double = if (d.isReallyNaN) ifNaN else d
     def coalesce0(implicit ev: Numeric[Double]): Double = coalesce(ev.zero) // using Numeric typeclass
     def or0: Double = coalesce0
     def ~=(bprecision: (Double, Double)): Boolean = { val (b, p) = bprecision; (d - b).abs < p }

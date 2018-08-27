@@ -44,7 +44,7 @@ class FacetTests
       .foldLeft(0.0) { case (agg, d) =>
         agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.sum
       }
-    x shouldBe (111.78 +- 0.01)
+    x shouldBe (110.84 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
@@ -52,7 +52,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (15.06 +- 0.01)
+    x shouldBe (11.29 +- 0.01)
   }
 
   it should "compute Recency" in {
@@ -101,7 +101,7 @@ class FacetTests
     val x = scoreDiffUsers
       .map { d => logger.info(s"\033[37m$facetName (different users): $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (7.38 +- 0.01) // would be same as above 27.94 if not for access permissions
+    x shouldBe (5.53 +- 0.01) // would be same as above 27.94 if not for access permissions
     facetsDiffUsers.size shouldBe 12
     scoreDiffUsers.size shouldBe 2
   }
