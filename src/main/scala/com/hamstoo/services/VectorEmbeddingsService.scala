@@ -21,6 +21,8 @@ import scala.util.matching.Regex
 
 object VectorEmbeddingsService {
 
+  val logger = Logger(getClass)
+
   /**
     * A word's `mass` can be thought of as its TF-IDF or BM25 score.  `tf` is a function of `count` such as
     * the TF portion of the BM25 formula or log(count) or sqrt(count) as used by Lucene.
@@ -64,6 +66,9 @@ object VectorEmbeddingsService {
   /**
     * Given a word vector and a map of various vector types (that were all constructed from a single
     * document) compute the aggregate similarity of the word to the document.
+    * @param chooseMax  Boolean (default: false).  `aggregateSimilarityScore` will be used if false; max similiarity
+    *                   will be used if true (and in which case all `docVecs` are considered, not just those
+    *                   used in `aggregateSimilarityScore`).
     */
   def documentSimilarity(wordVec: Vec,
                          docVecs: Map[Representation.VecEnum.Value, Vec],
@@ -109,15 +114,111 @@ object VectorEmbeddingsService {
 
   /**
     * Rather than selecting keywords based on a single function, why not select them based on their highest
-    * correlation to any one of the representative vecs.  That way a more diverse set of words might be selected.
+    * correlation to any one of the document (or user) vecs.  That way a more diverse set of words might be selected.
     */
-  def maxSimilarityScore(sims: Map[VecEnum.Value, Double]): Double = {
-    import math.max
-    max(max(max(sims.getOrElse(VecEnum.IDF, -1.0),
-                sims.getOrElse(VecEnum.PC1, -1.0)),
-            max(sims.getOrElse(VecEnum.PC2, -1.0),
-                sims.getOrElse(VecEnum.PC3, -1.0))),
-                sims.getOrElse(VecEnum.KM1, -1.0))
+  def maxSimilarityScore(sims: Map[VecEnum.Value, Double]): Double =
+    if (sims.isEmpty) -1.0 else sims.values.max
+
+  /** Converts from number of unique words in a document to the number that are desired by `text2TopWords`. */
+  def defaultNumTopWords(nUnique: Int): Int = {
+
+    // 100% for a 5-word (or fewer) document, 35% for a 50-word, 11% for a 400-word (see repr-engine/topWords.xlsx)
+    def desiredFraction(n: Int): Double = if (n < 1) 1.0 else 0.6955 + 7.2908e-5*n + 2.3625/n + -0.1035*math.log(n)
+    //(5 to 1000 by 50).foreach { x => println(f"$x -> ${desiredFracWords(x)}") } // debugging
+
+    val fracDesired = desiredFraction(nUnique)
+
+    // intentionally use very few words so that there aren't too many represented by each PC
+    val maxWords = 75
+    val nDesired = math.min(maxWords, fracDesired * nUnique).toInt
+    logger.info(f"Document word mass stats: nUnique = $nUnique, nTop = $nDesired (${fracDesired*100}%.1f%%)")
+    nDesired
+  }
+
+  /**
+    * Given vector representations of a document, generate semantic keywords for that document.  Such keywords
+    * are the ones most highly correlated to the document's vector representations.
+    *
+    * @param docVecs  Document vectors.
+    * @param candidates  Candidate words to match document vectors against.
+    * @return  The 15 words with the highest `aggregateSimilarityScore`s.
+    */
+  def keywords(docVecs: Map[Representation.VecEnum.Value, Vec], candidates: Seq[WordMass]): Seq[String] = {
+
+    // debugging (this commented-out code will produce a file for use by kwsSimilarities.xlsx, also
+    // see HTMLRepresentationServiceSpec)
+    /*if (true) {
+      import java.io.{BufferedWriter, FileOutputStream, OutputStreamWriter}
+      utils.cleanlyWriteFile("kwsSimilarities.csv") { fp =>
+
+        var first = true
+        topWords.sortBy(-_.mass).foreach { wm =>
+          val sims = vecs.flatMap { case (vecType, docVec) =>
+            val cos = wm.scaledVec cosine docVec
+            vecType match {
+              case vt if vt.toString.startsWith("PC") => Some(vt -> math.max(cos, -0.95 * cos))
+              case vt => Some(vt -> cos)
+            }
+          }
+
+          val seqSims = sims.toSeq.sortBy(_._1) // sort by `vecType`
+
+          if (first) {
+            first = false
+            fp.write("TERM,count,bm25Tf,IDF,aggSS," + seqSims.map(_._1.toString).mkString(","))
+          }
+          fp.write(s"\n${wm.word},${wm.count},${wm.tf},${idfModel.transform(wm.word)},${aggregateSimilarityScore(sims)}")
+          seqSims.foreach { case (_, cos) => fp.write(f",$cos%.2f") }
+        }
+      }
+    }*/
+
+    // convert to (word, similarity) pairs
+    val wordsUnsorted = candidates.map { wm => wm.word -> documentSimilarity(wm.scaledVec, docVecs, chooseMax = true) }
+    keywords(wordsUnsorted)
+  }
+
+  // select 15 highest scoring words (with some filtering of words with only a few letters)
+  val N_DESIRED_KEYWORDS = 15
+
+  /** Used to be part of the other `keywords` method.  Moved here to be accessible from outside. */
+  def keywords(wordsUnsorted: Seq[(String, Double)]): Seq[String] = {
+
+    // sort by `aggregateSimilarityScore` (descending)
+    val words = wordsUnsorted.sortBy(-_._2).filterNot(ws => Seq("http", "https").contains(ws._1))
+    if (logger.isDebugEnabled)
+      words.foreach { case (w, s) => logger.debug(f"keywords: $w -> $s%.3f")}
+
+    // not quite sure how to do what follows in a functional programming style
+    val selections = scala.collection.mutable.ListBuffer.empty[String]
+
+    // don't allow any 1- or 2- letter words, only allow a single 3-letter word, etc.
+    val wordLengthLimits = IndexedSeq(0, 0, 1, 2, 4)
+
+    words.foreach { case (w, _) => if (selections.lengthCompare(N_DESIRED_KEYWORDS) < 0) {
+
+      // if the plural of the word is already in the list, then replace it
+      if (selections.contains(w + "s")) {
+        val i = selections.indexOf(w + "s")
+        selections(i) = w
+      } else if (w.endsWith("s") && selections.contains(w.init)) {
+        // do nothing
+
+      } else if (w.endsWith("y") && selections.contains(w.init + "ies")) {
+        val i = selections.indexOf(w.init + "ies")
+        selections(i) = w
+      } else if (w.endsWith("ies") && selections.contains(w.dropRight(3) + "y")) {
+        // do nothing
+
+      } else {
+        // count the number of words of this limit in the list so far
+        val limit = wordLengthLimits.lift(w.length - 1).getOrElse(N_DESIRED_KEYWORDS)
+        if (selections.count(_.length == w.length) < limit)
+          selections += w
+      }
+    }}
+
+    selections
   }
 }
 
@@ -131,7 +232,6 @@ object VectorEmbeddingsService {
 class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFModel) {
 
   import VectorEmbeddingsService._
-  val logger = Logger(classOf[VectorEmbeddingsService])
 
   // for testing only
   var wCount: Int = 0
@@ -194,7 +294,10 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
     * Generate multiple word/vector embeddings from the text representations of the document, one for each
     * of the `Representation.VecEnum`s.
     *
-    * @return  Pair of vectors (for each `VecEnum` type) and keywords (computed from all of them).
+    * @return  3-tuple of:
+    *            (1) vectors (for each `VecEnum` type)
+    *            (2) keywords (computed from all of them)
+    *            (3) aggregate number of words (adjusted for weights in `weightedTopWords`)
     */
   def vectorEmbeddings(hd: String, dt: String, ot: String, kw: String):
                                       Future[(Map[Representation.VecEnum.Value, Vec], Seq[String], Long)] = {
@@ -227,6 +330,8 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
       val vecreprs = VecEnum.values.toList.flatMap {
         case vt if vt == VecEnum.CRPv2_max => None // crpVecs._1.map(vt -> _)
         case vt if vt == VecEnum.CRPv2_2nd => None // crpVecs._2.map(vt -> _)
+        case vt if vt == VecEnum.RWT => None
+        case vt if vt == VecEnum.RWTa => None
         case vt if vt == VecEnum.IDF => idfVecs.map(vt -> _._1)
         case vt if vt == VecEnum.IDF3 => idfVecs.map(vt -> _._2)
         case vt if vt.toString.startsWith("PC") || vt.toString.startsWith("KM") =>
@@ -237,84 +342,6 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
 
       (vecreprs, keywords(vecreprs, topWords), nWords)
     }
-  }
-
-  /**
-    * Given vector representations of a document, generate semantic keywords for that document.  Such keywords
-    * are the ones most highly correlated to the document's vector representations.
-    *
-    * @param docVecs  Document vectors.
-    * @param candidates  Candidate words to match document vectors against.
-    * @return  The 15 words with the highest `aggregateSimilarityScore`s.
-    */
-  def keywords(docVecs: Map[Representation.VecEnum.Value, Vec], candidates: Seq[WordMass]): Seq[String] = {
-
-    // debugging (this commented-out code will produce a file for use by kwsSimilarities.xlsx, also
-    // see HTMLRepresentationServiceSpec)
-    /*if (true) {
-      import java.io.{BufferedWriter, FileOutputStream, OutputStreamWriter}
-      utils.cleanly(new BufferedWriter(new OutputStreamWriter(new FileOutputStream("kwsSimilarities.csv"))))(_.close) { fp =>
-
-        var first = true
-        topWords.sortBy(-_.mass).foreach { wm =>
-          val sims = vecs.flatMap { case (vecType, docVec) =>
-            val cos = wm.scaledVec cosine docVec
-            vecType match {
-              case vt if vt.toString.startsWith("PC") => Some(vt -> math.max(cos, -0.95 * cos))
-              case vt => Some(vt -> cos)
-            }
-          }
-
-          val seqSims = sims.toSeq.sortBy(_._1) // sort by `vecType`
-
-          if (first) {
-            first = false
-            fp.write("TERM,count,bm25Tf,IDF,aggSS," + seqSims.map(_._1.toString).mkString(","))
-          }
-          fp.write(s"\n${wm.word},${wm.count},${wm.tf},${idfModel.transform(wm.word)},${aggregateSimilarityScore(sims)}")
-          seqSims.foreach { case (_, cos) => fp.write(f",$cos%.2f") }
-        }
-      }
-    }*/
-
-    // select 15 highest scoring words (with some filtering of words with only a few letters)
-    val nDesired = 15
-
-    // sort by `aggregateSimilarityScore` (descending)
-    val words = candidates.filterNot(wm => Seq("http", "https").contains(wm.word))
-      .map { wm => wm.word -> documentSimilarity(wm.scaledVec, docVecs, chooseMax = true) }
-      .sortBy(-_._2).map(_._1)
-
-    // not quite sure how to do what follows in a functional programming style
-    val selections = scala.collection.mutable.ListBuffer.empty[String]
-
-    // don't allow any 1- or 2- letter words, only allow a single 3-letter word, etc.
-    val wordLengthLimits = IndexedSeq(0, 0, 1, 2, 4)
-
-    words.foreach { w => if (selections.lengthCompare(nDesired) < 0) {
-
-      // if the plural of the word is already in the list, then replace it
-      if (selections.contains(w + "s")) {
-        val i = selections.indexOf(w + "s")
-        selections(i) = w
-      } else if (w.endsWith("s") && selections.contains(w.init)) {
-        // do nothing
-
-      } else if (w.endsWith("y") && selections.contains(w.init + "ies")) {
-        val i = selections.indexOf(w.init + "ies")
-        selections(i) = w
-      } else if (w.endsWith("ies") && selections.contains(w.dropRight(3) + "y")) {
-        // do nothing
-
-      } else {
-        // count the number of words of this limit in the list so far
-        val limit = wordLengthLimits.lift(w.length - 1).getOrElse(nDesired)
-        if (selections.count(_.length == w.length) < limit)
-          selections += w
-      }
-    }}
-
-    selections
   }
 
   /**
@@ -481,22 +508,6 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
     fseq.map(_.flatten.groupBy(_._1).mapValues(it => (it.map(_._2._1).sum, it.head._2._2)))*/
   }
 
-  /** Converts from number of unique words in a document to the number that are desired by `text2TopWords`. */
-  def defaultNumTopWords(nUnique: Int): Int = {
-
-    // 100% for a 5-word (or fewer) document, 35% for a 50-word, 11% for a 400-word (see repr-engine/topWords.xlsx)
-    def desiredFraction(n: Int): Double = if (n < 1) 1.0 else 0.6955 + 7.2908e-5*n + 2.3625/n + -0.1035*math.log(n)
-    //(5 to 1000 by 50).foreach { x => println(f"$x -> ${desiredFracWords(x)}") } // debugging
-
-    val fracDesired = desiredFraction(nUnique)
-
-    // intentionally use very few words so that there aren't too many represented by each PC
-    val maxWords = 75
-    val nDesired = math.min(maxWords, fracDesired * nUnique).toInt
-    logger.info(f"Document word mass stats: nUnique = $nUnique, nTop = $nDesired (${fracDesired*100}%.1f%%)")
-    nDesired
-  }
-
   // regex that matches all possible valid word delimiters, this includes various punctuation possibly followed or
   // prepended by spaces, it's used in the following word-matching regex and for these spacers replacement later
   val spcrRgx: String = """[-\/_\+—]|(\.\s+)|([\s,:;?!…]\s*)|(\.\.\.\s*)|(\s*["“”\(\)]\s*)"""
@@ -545,7 +556,7 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
       // debugging
       /*if (true) {
         import java.io.{BufferedWriter, FileOutputStream, OutputStreamWriter}
-        utils.cleanly(new BufferedWriter(new OutputStreamWriter(new FileOutputStream("wordCounts.csv"))))(_.close) { fp =>
+        utils.cleanlyWriteFile("wordCounts.csv") { fp =>
           wordCounts.toSeq.sortBy(wn => -wn._2._1 * idfModel.transform(wn._1))
             .foreach { case (w, (n, v)) =>
               fp.write(s"$w,$n,${idfModel.transform(w)}\n")

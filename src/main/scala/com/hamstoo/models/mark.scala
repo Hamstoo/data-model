@@ -755,6 +755,4 @@ object Mark extends BSONHandlers {
   implicit val reprRating: BSONDocumentHandler[ReprInfo] = Macros.handler[ReprInfo]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
   implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
-  //implicit val idBsonHandler: BSONDocumentHandler[Id] = Macros.handler[Id] // TODO: necessary?
-  //implicit val userIdBsonHandler: BSONDocumentHandler[UserId] = Macros.handler[UserId] // TODO: necessary?
 }

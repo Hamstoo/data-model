@@ -126,7 +126,9 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
                   days.reverse.maxBy(_.nMarks),
                   userVecSimMin = Try(nonZeroSimilarities.min).getOrElse(DEFAULT_SIMILARITY),
                   userVecSimMax = Try(nonZeroSimilarities.max).getOrElse(DEFAULT_SIMILARITY),
-                  autoGenKws = mbUserStats.flatMap(_.autoGenKws).map(_.mkString(", ")))
+                  autoGenKws = mbUserStats.flatMap(_.autoGenKws).map(_.mkString(", ")),
+                  confirmatoryKws = mbUserStats.flatMap(_.confirmatoryKws).map(_.mkString(", ")),
+                  antiConfirmatoryKws = mbUserStats.flatMap(_.antiConfirmatoryKws).map(_.mkString(", ")))
     }
   }
 

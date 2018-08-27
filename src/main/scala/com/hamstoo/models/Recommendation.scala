@@ -18,18 +18,16 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * @param url
   * @param ts
   */
-case class Recommendation (
-  userId: UUID,
-  source: String,
-  params: Map[String, String],
-  url: String,
-  ts: TimeStamp = TIME_NOW
-)
+case class Recommendation(userId: UUID,
+                          source: String,
+                          params: Map[String, String],
+                          url: String,
+                          ts: TimeStamp = TIME_NOW)
 
 object Recommendation extends BSONHandlers {
 
-  val USR: String = Mark.USR; assert(USR == nameOf[Recommendation](_.userId))
-  val TIMESTAMP: String = UserStats.TIMESTAMP; assert(TIMESTAMP == nameOf[Recommendation](_.userId))
+  val USR      : String =      Mark.USR;        assert(USR       == nameOf[Recommendation](_.userId))
+  val TIMESTAMP: String = UserStats.TIMESTAMP;  assert(TIMESTAMP == nameOf[Recommendation](_.ts))
 
   /**
     * Enumeration of various sources of recommendations.

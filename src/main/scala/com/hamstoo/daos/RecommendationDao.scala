@@ -5,10 +5,8 @@ package com.hamstoo.daos
 
 import java.util.UUID
 
-import com.google.inject.Inject
+import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Recommendation
-import javax.inject.Singleton
-
 import org.joda.time.DateTime
 import play.api.Logger
 import reactivemongo.api.DefaultDB

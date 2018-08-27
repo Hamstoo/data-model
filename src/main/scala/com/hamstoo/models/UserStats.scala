@@ -29,7 +29,9 @@ case class ProfileDots(nMarks: Int,
                        mostProductive: ProfileDot,
                        userVecSimMin: Double = UserStats.DEFAULT_SIMILARITY,
                        userVecSimMax: Double = UserStats.DEFAULT_SIMILARITY,
-                       autoGenKws: Option[String] = None)
+                       autoGenKws: Option[String] = None,
+                       confirmatoryKws: Option[String] = None,
+                       antiConfirmatoryKws: Option[String] = None)
 
 /**
   * A count of the number of marks that were created on a particular date.
@@ -45,15 +47,22 @@ case class ProfileDot(date: String, year: Int, nMarks: Int, userVecSimilarity: D
   * @param userId   User who the stats are for.
   * @param ts       Time at which the stats were computed.
   * @param vectors  Vectors for this user at that time.  Same as `Representation.vectors`.
+  * @param autoGenKws      Keywords selected from this users' marks that are most similar (see `documentSimilarity`)
+  *                        to content this user typically marks.
+  * @param recentAutoGenKws  TODO 266
+  * @param confirmatoryKws Keywords that are most similar to content this user typically rates high and least
+  *                        similar to content this user typically rates low--think "confirmation bias."
   */
 case class UserStats(userId: UUID,
                      ts: TimeStamp,
                      vectors: Map[String, Representation.Vec],
                      autoGenKws: Option[Seq[String]] = None,
-                     recentAutoGenKws: Option[Seq[String]] = None) {
+                     recentAutoGenKws: Option[Seq[String]] = None,
+                     confirmatoryKws: Option[Seq[String]] = None,
+                     antiConfirmatoryKws: Option[Seq[String]] = None) {
 
   override def toString: String =
-    s"${getClass.getSimpleName}($userId, ${ts.tfmt}, nVectors=${vectors.size}, $autoGenKws)"
+    s"${getClass.getSimpleName}($userId, ${ts.tfmt}, nVectors=${vectors.size}, $autoGenKws, $recentAutoGenKws, $confirmatoryKws, $antiConfirmatoryKws)"
 }
 
 object UserStats extends BSONHandlers {

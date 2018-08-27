@@ -11,6 +11,7 @@ import com.google.inject.Inject
 import com.google.inject.name.Named
 import com.hamstoo.models.Representation.{Vec, VecEnum, VecFunctions}
 import com.hamstoo.models.{Mark, RSearchable, Representation}
+import com.hamstoo.services.VectorEmbeddingsService.WordMass
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream.Data.{Data, ExtendedData}
 import com.hamstoo.stream._
@@ -288,6 +289,9 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
       // the number of matches by the weight and sums the results. Using this sum, MongoDB then calculates the
       // score for the document." note that it just says "using this sum" not *how* it uses the sum)
 
+      val f_sim = (wm: WordMass) =>
+        VecSvc.documentSimilarity(wm.scaledVec, docVecs.map(kv => VecEnum.withName(kv._1) -> kv._2))
+
       // normalize rscore for document length as longer documents are more likely to have matches, by definition,
       // (we used to do this by dividing by sqrt(reprText.length) which is similar to BM25 when its `b` parameter
       // is 1--we have `b` hard-coded to 0.5 in `bm25Tf`--and w/out the sqrt)
@@ -302,8 +306,8 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
 
         if (loggerI.isTraceEnabled) {
           val owm = searchTermVecs.find(_.word == qr.qword) // same documentSimilarity calculation as below
-          val mu = owm.map(wm => VecSvc.documentSimilarity(wm.scaledVec, docVecs.map(kv => VecEnum.withName(kv._1) -> kv._2))).getOrElse(Double.NaN)
-          loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $pOrU-sim(${qr.qword}): idf=$idf%.2f tf'=$btf%.2f (b=$b%.1f k1=$k1%.1f) db=${qr.dbScore}%.1f n=${qr.count} sim=$mu%.2f nDoc=$nDocWords")
+          val sim = owm.map(f_sim).getOrElse(Double.NaN)
+          loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $pOrU-score(${qr.qword}): idf=$idf%.2f tf'=$btf%.2f (b=$b%.1f k1=$k1%.1f) db=${qr.dbScore}%.1f n=${qr.count} sim=$sim%.2f nDoc=$nDocWords")
         }
 
         // update 2018-7-18: using `b = 0.5, k1 = 10` to differentiate more between different dbScores by making the
@@ -334,7 +338,6 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
       val w2 = math.pow(amean, 1.0 - anyVsAllArg) * math.pow(gmean, anyVsAllArg)
       val w3 = math.log(math.exp(amean) * (1.0 - anyVsAllArg) + math.exp(gmean) * anyVsAllArg)
 
-      // debugging
       // calculate cosine similarities for each of the search terms and sum them (no need to use geometric mean
       // here because every document is guaranteed to have some level of semantic similarity to each query term
       // regardless of whether the query term actually appears in the doc)
@@ -344,18 +347,25 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
 
         // there will be one element in this collection for each search term (this collection cannot be a set)
         val similarities = for { wm <- searchTermVecs } yield {
-          val mu = VecSvc.documentSimilarity(wm.scaledVec, docVecs.map(kv => VecEnum.withName(kv._1) -> kv._2))
-          extraTermText += f" ${wm.word}=<b>$mu%.2f</b>" // debugging
-          mu
+          val sim = f_sim(wm)
+          extraTermText += f" ${wm.word}=<b>$sim%.2f</b>" // debugging
+          sim
         }
 
         // idfs could also be backed out from WordMass objects (i.e. mass / tf)
         val idfs = searchTermVecs.map(wm => idfModel.transform(wm.word))
         val weightedSum = similarities.zip(idfs).map { case (a, b) => a * b }.sum
-        Some(weightedSum / idfs.sum) // always use arithmetic mean as geo mean doesn't make much sense w/ similarities, which range between [-1,1] rather than [0,inf)
+
+        // this ratio is dependent on the "anyall"/`anyVsAllArg` parameter value, in particular if the parameter value
+        // is set to 1 a geometric mean is used, which means the ratio can easily be 0
+        val scoreRatio = (w / amean).coalesce(1.0)
+
+        // always use arithmetic mean as geo mean doesn't make much sense w/ similarities, which range between [-1,1]
+        // rather than [0,inf), but then adjust this mean by the same ratio as the scores were adjusted by
+        Some(weightedSum / idfs.sum * scoreRatio)
       }
 
-      loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $pOrU-sim: wsim=${mbSimilarity.getOrElse(Double.NaN)}%.2f wscore=$w%.2f w2=$w2%.2f w3=$w3%.2f (a=$amean%.2f g=$gmean%.2f g2=$gmean2%.2f nDocWords=$nDocWords nScores=${searchTermScores.size}/${searchTermScores.map(_.n).sum})")
+      loggerI.trace(f"  (\u001b[2m${mId}\u001b[0m) $pOrU: wsim=${mbSimilarity.getOrElse(Double.NaN)}%.2f wscore=$w%.2f w2=$w2%.2f w3=$w3%.2f (a=$amean%.2f g=$gmean%.2f g2=$gmean2%.2f nDocWords=$nDocWords nScores=${searchTermScores.size}/${searchTermScores.map(_.n).sum})")
 
       // debugging
       var extraText = ""
