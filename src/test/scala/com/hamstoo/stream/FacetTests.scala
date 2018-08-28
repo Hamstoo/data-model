@@ -88,6 +88,14 @@ class FacetTests
     x shouldBe (3.49 +- 0.01)
   }
 
+  it should "compute ConfirmationBias" in {
+    val facetName = classOf[ConfirmationBias].getSimpleName
+    val x = facetsSeq.filter(_._1 == facetName)
+      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
+      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
+    x shouldBe (0.08 +- 0.01) // close to 0 b/c the RWT and RWTa vectors are nearly co-linear
+  }
+
   // another way to test this is to uncomment the "uncomment this line" line in AggregateSearchScore which
   // causes this test to fail
   it should "complete even when there aren't any data (a \"duplicate key error\" may indicate a timeout)" in {
@@ -102,7 +110,7 @@ class FacetTests
       .map { d => logger.info(s"\033[37m$facetName (different users): $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
     x shouldBe (5.53 +- 0.01) // would be same as above 27.94 if not for access permissions
-    facetsDiffUsers.size shouldBe 12
+    facetsDiffUsers.size shouldBe 14 // this value increases by 2 each time a facet is added to FacetsModel.Default
     scoreDiffUsers.size shouldBe 2
   }
 
@@ -162,7 +170,9 @@ class FacetTests
     }
 
     // insert a UserStats so that the UserSimilarity facet can compute stuff
-    val uvecs = Map[String, Vec](VecEnum.PC1.toString -> Seq(1, 2, 3))
+    val uvecs = Map[String, Vec](VecEnum.PC1.toString -> Seq(1, 2, 3),
+                                 VecEnum.RWT.toString -> Seq(1, 2, 4),
+                                 VecEnum.RWTa.toString -> Seq(1, 2, 5))
     val ustats = UserStats(mbCallingUserId.get, TIME_NOW, uvecs, Some(Seq("automobile", "generate", "keywords")))
     userStatsDao.insert(ustats).futureValue
 
