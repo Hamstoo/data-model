@@ -24,7 +24,7 @@ import reactivemongo.bson._
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 
 object MarkDao {
   var migrateData: Boolean = scala.util.Properties.envOrNone("MIGRATE_DATA").exists(_.toBoolean)

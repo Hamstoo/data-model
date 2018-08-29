@@ -15,7 +15,7 @@ import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.BSONDocumentHandler
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 import scala.concurrent.Future
 
 /**

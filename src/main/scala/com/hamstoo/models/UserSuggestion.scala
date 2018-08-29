@@ -7,7 +7,7 @@ import com.hamstoo.daos.UserDao
 import com.hamstoo.utils.{TIME_NOW, TimeStamp}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 import scala.concurrent.Future
 
 /***

@@ -11,7 +11,7 @@ import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.bson.BSONDocumentHandler
 
 import scala.concurrent.Future
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 
 /**
   * This class defines base MongoDB related functionality for classes that extend the ReprEngineProduct trait.

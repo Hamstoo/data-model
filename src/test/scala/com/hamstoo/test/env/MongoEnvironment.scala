@@ -13,7 +13,7 @@ import org.scalatest.{BeforeAndAfterAll, Suite}
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.{DefaultDB, MongoConnection}
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 import scala.concurrent.Future
 
 /**

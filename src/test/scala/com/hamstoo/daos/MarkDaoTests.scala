@@ -15,7 +15,7 @@ import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils._
 import org.scalatest.OptionValues
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 
 /**
   * MongoMarksDao tests.

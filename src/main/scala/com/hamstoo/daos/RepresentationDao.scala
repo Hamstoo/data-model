@@ -13,7 +13,7 @@ import reactivemongo.api.indexes.IndexType.{Ascending, Text}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 
 object RepresentationDao {
 

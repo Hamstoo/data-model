@@ -14,7 +14,7 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.bson.BSONDocument
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 import scala.concurrent.Future
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe.{TypeTag, typeOf}

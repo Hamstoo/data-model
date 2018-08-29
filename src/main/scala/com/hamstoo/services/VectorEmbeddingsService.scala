@@ -13,7 +13,7 @@ import com.hamstoo.utils
 import play.api.Logger
 
 import scala.annotation.tailrec
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 import scala.concurrent.Future
 import scala.util.Random
 import scala.util.matching.Regex

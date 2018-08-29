@@ -8,7 +8,7 @@ import com.hamstoo.test.env.AkkaEnvironment
 import com.hamstoo.utils.ObjectId
 import play.api.libs.ws.ahc.AhcWSClient
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 
 /**
   * ContentRetriever tests.  These tests were implemented to address the implementation of ContentRetriever

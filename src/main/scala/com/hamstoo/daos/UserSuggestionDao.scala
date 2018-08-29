@@ -16,7 +16,7 @@ import reactivemongo.bson.BSONRegex
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 
 /**
   * Provide methods for operation with username-suggestion collection
