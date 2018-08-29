@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 import sbt._
 
 object Dependencies {

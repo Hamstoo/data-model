@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo.utils
 
 import javax.activation.MimeType

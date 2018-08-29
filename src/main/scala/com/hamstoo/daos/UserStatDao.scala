@@ -124,7 +124,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
         import com.hamstoo.models.Representation.VecFunctions
         val mu = nonZeroSimilarities0.mean
-        logger.warn(f"nonZeroSimilarities0.mean = $mu%.2f")
+        logger.info(f"nonZeroSimilarities0.mean = $mu%.2f")
 
         val days1 = days0.map { x => if (x.userVecSimilarity ~= DEFAULT_SIMILARITY) x else {
 
@@ -142,7 +142,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
 
             // put Humpty Dumpty back together again
             val sign = if (diff < 0) -1 else 1
-            logger.warn(f"${x.date} (n=${x.nMarks}): ${x.userVecSimilarity}%.2f -> $abs%.2f * ${correctedAbs / abs}%.1f = $correctedAbs%.2f -> ${correctedAbs * sign + mu}%.2f")
+            logger.info(f"${x.date} (n=${x.nMarks}): ${x.userVecSimilarity}%.2f -> $abs%.2f * ${correctedAbs / abs}%.1f = $correctedAbs%.2f -> ${correctedAbs * sign + mu}%.2f")
             correctedAbs * sign + mu
           }
 
