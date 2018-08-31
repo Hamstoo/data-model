@@ -204,6 +204,12 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
     recget(link)
   }
 
+  /** Convenience method as we're doing this in more than one place now. */
+  def getTitle(url: String): Future[(String, Option[String])] = digest(url).map { case (redirectedUrl, response) =>
+    redirectedUrl ->
+      Page("", ReprType.PRIVATE, response.bodyAsBytes.toArray).getTitle // ReprType doesn't matter here
+  }
+
   /**
     * Detects known WAFs and Captchas.
     *
