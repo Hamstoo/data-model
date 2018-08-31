@@ -44,10 +44,6 @@ class RecommendationDao @Inject()(implicit db: () => Future[DefaultDB]) {
     _ <- wr.failIfError
   } yield logger.info(s"Successfully inserted: $recommendation")
 
-  /** Save multiple recommendations in MongoDB. */
-  def insert(recommendations: Seq[Recommendation]): Future[Unit] =
-    Future.sequence(recommendations.map(insert)).map(_ => Unit)
-
   /**
     * Get recommendations assigned to a user, saved in the past `nDaysBack` days.
     * @param userId     Every recommendation is linked to an user, by given UUID.

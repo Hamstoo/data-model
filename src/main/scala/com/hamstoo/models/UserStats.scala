@@ -76,6 +76,7 @@ object UserStats extends BSONHandlers {
   val USR: String = Mark.USR; assert(USR == nameOf[UserStats](_.userId))
   val TIMESTAMP: String = nameOf[UserStats](_.ts)
   val VECS: String = Representation.VECS; assert(VECS == nameOf[UserStats](_.vectors))
+  val RECENT_AUTO_GEN_KWS: String = nameOf[UserStats](_.recentAutoGenKws)
 
   implicit val userStatsHandler: BSONDocumentHandler[UserStats] = Macros.handler[UserStats]
 }

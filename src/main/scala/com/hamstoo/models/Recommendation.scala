@@ -21,12 +21,26 @@ case class Recommendation(userId: UUID,
                           source: String,
                           params: Map[String, String],
                           url: String,
-                          ts: TimeStamp = TIME_NOW)
+                          ts: TimeStamp = TIME_NOW) {
+
+  /**
+    * Search terms, if they exist (e.g. the generation method may not have utilized search terms at all), that were
+    * used to generate the recommendation.
+    */
+  def searchTerms: Set[String] =
+    params.getOrElse(Recommendation.PARAM_SEARCH_TERMS, "").split(" ").map(_.trim.toLowerCase).filterNot(_.isEmpty).toSet
+
+}
 
 object Recommendation extends BSONHandlers {
 
+  // field names for DAO usage
   val USR      : String =      Mark.USR;        assert(USR       == nameOf[Recommendation](_.userId))
   val TIMESTAMP: String = UserStats.TIMESTAMP;  assert(TIMESTAMP == nameOf[Recommendation](_.ts))
+
+  // arbitrary parameter names to be used as keys in Recommendation.params maps
+  val PARAM_QUERY_TYPE = "queryType"
+  val PARAM_SEARCH_TERMS: String = nameOf[Recommendation](_.searchTerms)
 
   implicit val recommendationHandler: BSONDocumentHandler[Recommendation] = Macros.handler[Recommendation]
 }
