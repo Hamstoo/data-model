@@ -164,13 +164,13 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
               case (true, true, false) => Some(SearchRelevance(mscore, 0, 0, 0))
 
               case (true, false, _) => // this second case will occur for non-URL marks
-                val factor = if (mark.mark.url.isEmpty) 2.7 else 1.6
-                Some(SearchRelevance(      uraw * factor, ust.similarity * 1.6, 0, 0))
+                val factor = if (mark.mark.url.isEmpty) 2.3 else 1.4
+                Some(SearchRelevance(      uraw * factor, ust.similarity * 1.4, 0, 0))
 
               case (false, true, _) => // this case will occur for old-school bookmarks without any user content
                                        // update: that's probably no longer accurate as the def'n of user content
                                        // has changed to include URL and everything in a user-content repr
-                Some(SearchRelevance(0, 0, praw *    1.4, pst.similarity * 1.4))
+                Some(SearchRelevance(0, 0, praw *    1.2, pst.similarity * 1.2))
 
               case (false, false, _) => // this case should fire for most marks--those with URLs
 

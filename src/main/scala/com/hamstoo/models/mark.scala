@@ -546,13 +546,21 @@ case class Mark(override val userId: UUID,
     */
   def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
 
-  /** Basically the same impl as `primaryRepr` except that it returns an expected rating ID (as an Option). */
+  /**
+    * Basically the same impl as `primaryRepr` except that it returns an expected rating ID (as an Option).
+    * Update, 2018-8-31: Now returns user-content repr's expected rating if both private & public are missing.
+    */
   def expectedRating: Option[ObjectId] = {
-    val privExpRating = reprs
-      .filter(x => x.isPrivate && !NON_IDS.contains(x.expRating.getOrElse("")))
+
+    def mostRecentValidExpRatingOfType(isType: ReprInfo => Boolean): Option[ObjectId] = reprs
+      .filter(x => isType(x) && !NON_IDS.contains(x.expRating.getOrElse("")))
       .sortBy(_.created).lastOption.flatMap(_.expRating)
-    lazy val pubExpRating = reprs.find(_.isPublic).flatMap(_.expRating)
-    privExpRating.orElse(pubExpRating)
+
+    val privExpRating             = mostRecentValidExpRatingOfType(_.isPrivate)
+    lazy val pubExpRating         = mostRecentValidExpRatingOfType(_.isPublic)
+    lazy val userContentExpRating = mostRecentValidExpRatingOfType(_.isUserContent)
+
+    privExpRating.orElse(pubExpRating).orElse(userContentExpRating)
   }
 
   /** Returns true if this Mark's MarkData has all of the test tags.  Should be consistent w/ MarkDao.hasTags. */
