@@ -49,7 +49,7 @@ case class ProfileDot(date: String, year: Int, nMarks: Int, userVecSimilarity: D
   * @param vectors  Vectors for this user at that time.  Same as `Representation.vectors`.
   * @param autoGenKws      Keywords selected from this users' marks that are most similar (see `documentSimilarity`)
   *                        to content this user typically marks.
-  * @param recentAutoGenKws  TODO 266
+  * @param recentAutoGenKws  Keywords computed from marks that are at most RECENT_KWS_DAYS_BACK days old.
   * @param confirmatoryKws Keywords that are most similar to content this user typically rates high and least
   *                        similar to content this user typically rates low--think "confirmation bias."
   */
@@ -69,6 +69,9 @@ object UserStats extends BSONHandlers {
 
   // can't default to NaN (java.lang.NumberFormatException when passing to frontend)
   val DEFAULT_SIMILARITY = 0.0
+
+  // UserStats.recentAutoGenKws get computed from marks at most this many days old
+  val RECENT_KWS_DAYS_BACK = 7
 
   val USR: String = Mark.USR; assert(USR == nameOf[UserStats](_.userId))
   val TIMESTAMP: String = nameOf[UserStats](_.ts)

@@ -28,21 +28,5 @@ object Recommendation extends BSONHandlers {
   val USR      : String =      Mark.USR;        assert(USR       == nameOf[Recommendation](_.userId))
   val TIMESTAMP: String = UserStats.TIMESTAMP;  assert(TIMESTAMP == nameOf[Recommendation](_.ts))
 
-  /**
-    * Enumeration of various sources of recommendations.
-    * See Representation.VecEnum for something similar.
-    *
-    * TODO 266: if we're comparing request URLs against these values in mediumPostsToRecommendation, then we may
-    *           need to use Value("DuckDuckGo") but that should really be made more obvious via a defined function
-    *
-    * (Elias note): I don't think data-model should keep track of the sources. That's repr-engine job to store this
-    * field properly so I would say this should be moved to repr-engine. Fred to weigh on this.
-    */
-  object SrcEnum extends Enumeration {
-    val DUCK_DUCK_GO,
-        MEDIUM
-      = Value
-  }
-
   implicit val recommendationHandler: BSONDocumentHandler[Recommendation] = Macros.handler[Recommendation]
 }
