@@ -835,6 +835,13 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     sel = d :~ USR -> m.userId :~ ID -> m.id :~ TIMEFROM -> m.timeFrom :~
                REPRS -> (d :~ "$elemMatch" -> (d :~ REPR_ID -> reprId))
     mod = d :~ "$set" -> (d :~ EXP_RATINGxp -> expRatingId)
+
+    // TODO: this only updates the first repr in the array (which is tricky to do o/w until MongoDB version 3.6)
+    // see also:
+    //   https://stackoverflow.com/questions/4669178/how-to-update-multiple-array-elements-in-mongodb
+    //   https://stackoverflow.com/questions/4669178/how-to-update-multiple-array-elements-in-mongodb/46054172#46054172
+    // TODO: could also check for missing expRating in $elemMatch above, but would have to consider case when overwriting is desired
+
     wr <- c.update(sel, mod)
     _ <- wr.failIfError
   } yield logger.debug(s"${wr.nModified} $reprId expected ratings were updated for mark ${m.id}")
