@@ -129,7 +129,7 @@ object Data {
 
     /** `maxBy` inconveniently throws an exception when its passed sequence is empty. */
     def maxOrElse[Y :Ordering](default: => Y)(f: Datum[X] => Y): Y =
-      if (x.isEmpty) default else f(x.maxBy(f))
+      if (x.isEmpty) default else x.map(f).max // also see VecFunctions.maxOption, which only operates on Doubles
 
     def knownTimeMax: TimeStamp = x.maxOrElse(0L)(_.knownTime)
     def sourceTimeMax: TimeStamp = x.maxOrElse(0L)(_.sourceTime)

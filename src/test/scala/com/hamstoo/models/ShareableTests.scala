@@ -5,7 +5,7 @@ import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.TIME_NOW
 import org.scalatest.mockito.MockitoSugar
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 
 /**
   * Shareable trait and UserGroup model unit tests

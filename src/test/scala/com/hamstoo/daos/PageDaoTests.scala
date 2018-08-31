@@ -15,7 +15,7 @@ import reactivemongo.core.errors.DatabaseException
 
 import scala.collection.immutable.Nil
 import scala.concurrent.Await
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 import scala.concurrent.duration._
 import scala.util.Failure
 

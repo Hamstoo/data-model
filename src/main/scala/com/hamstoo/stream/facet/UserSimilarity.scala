@@ -7,8 +7,8 @@ import akka.stream.Materializer
 import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.UserStatDao
-import com.hamstoo.models.Representation.VecEnum
-import com.hamstoo.models.UserStats
+import com.hamstoo.models.Representation.{Vec, VecEnum}
+import com.hamstoo.models.{Representation, UserStats}
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.stream.Data.Data
 import com.hamstoo.stream.{CallingUserId, DataStream, Datum}
@@ -21,15 +21,16 @@ import scala.concurrent.Future
   * @param mbUserId  Using CallingUserId here because it's the same "calling" user, not "search" user, as used
   *                  during search, but to compute this facet the ID cannot be None.
   */
-@Singleton
-class UserSimilarityOpt @Inject()(@Named(CallingUserId.name) mbUserId: CallingUserId.typ,
-                                  repredMarks: RepredMarks,
-                                  userStatDao: UserStatDao)
-                                 (implicit mat: Materializer) extends DataStream[Option[Double]] {
+private class UserSimilarityBase(vectorGetter: UserStats => Map[Representation.VecEnum.Value, Vec])
+                                (implicit mbUserId: CallingUserId.typ,
+                                 repredMarks: RepredMarks,
+                                 userStatDao: UserStatDao,
+                                 mat: Materializer)
+    extends DataStream[Option[Double]] {
 
   // transform UserStats into Map[String, Vec]s
   private val fmbUserStats = mbUserId.fold(Future.successful(Option.empty[UserStats]))(userStatDao.retrieve)
-  private val fmbUserVecs = fmbUserStats.map(_.map(_.vectors.map(kv => VecEnum.withName(kv._1) -> kv._2)))
+  private val fmbUserVecs = fmbUserStats.map(_.map(vectorGetter))
 
   override val in: SourceType = repredMarks()
     .mapAsync(4) { d: Data[RepredMarks.typ] =>
@@ -58,16 +59,63 @@ class UserSimilarityOpt @Inject()(@Named(CallingUserId.name) mbUserId: CallingUs
       .asInstanceOf[SourceType] // see "BIG NOTE" on JoinWithable
 }
 
+
 /**
-  * Flatten Option[Doubles] down to just Doubles.
+  * UserSimilarity as Option[Double]s, for use by UserStatDao.profileDots, for proper counting of recent marks.
+  */
+@Singleton
+class UserSimilarityOpt @Inject()(implicit @Named(CallingUserId.name) mbUserId: CallingUserId.typ,
+                                  repredMarks: RepredMarks,
+                                  userStatDao: UserStatDao,
+                                  mat: Materializer) extends DataStream[Option[Double]] {
+
+  private val base = new UserSimilarityBase(_.vectors.map(kv => VecEnum.withName(kv._1) -> kv._2))
+  override val in: SourceType = base.out
+}
+
+
+/**
+  * Flatten Option[Doubles] down to just Doubles (i.e. remove Nones).
   */
 @Singleton
 class UserSimilarity @Inject()(userSimilarityOpt: UserSimilarityOpt)
                               (implicit mat: Materializer) extends DataStream[Double] {
 
-  override val in: SourceType = userSimilarityOpt().map {
-    _.flatMap { d: Datum[Option[Double]] =>
-      d.value.map(v => d.withValue(v)) // if `d.value` the Option is None then map to an Option.empty[Datum]
+  import com.hamstoo.stream.StreamDSL._
+  override val in: SourceType = userSimilarityOpt.flatten.out
+
+  // here's another way to implement the above line of code, but if you ever catch yourself operating on raw Akka
+  // Streams (not DataStreams) and their Data[_]s that's a good sign you're probably doing something wrong (or
+  // there's something missing from StreamDSL)
+  //override val in: SourceType = userSimilarityOpt().map { dat: Data[_] =>
+  //  dat.filter(_.value.isDefined).map(x => x.withValue(x.value.get)) // filter out Nones
+  //}
+}
+
+
+/**
+  * Confirmation Bias facet is the difference between the similarity to (a vector derived from) confirmatory
+  * keywords and the similarity to (a vector derived from) anti-confirmatory keywords.
+  */
+@Singleton
+class ConfirmationBias @Inject()(implicit @Named(CallingUserId.name) mbUserId: CallingUserId.typ,
+                                 repredMarks: RepredMarks,
+                                 userStatDao: UserStatDao,
+                                 mat: Materializer) extends DataStream[Double] {
+
+  // Option[Double] similarities for each of the rating-weighted (RWT) user vectors
+  private val confirmatoryOpt :: antiConfirmatoryOpt :: Nil =
+    Seq(VecEnum.RWT, VecEnum.RWTa).map { enumVal =>
+
+      // map to IDF vectors because those are what are used in VectorEmbeddingsService.documentSimilarity
+      new UserSimilarityBase(_.vectors.collect { case (k, v) if k == enumVal.toString => VecEnum.IDF -> v })
     }
-  }
+
+  import com.hamstoo.stream.StreamDSL._
+
+  // filter out Nones (a.k.a. flatten the DataStreams)
+  private val confirmatory :: antiConfirmatory :: Nil: Seq[DataStream[Double]] =
+    Seq(confirmatoryOpt, antiConfirmatoryOpt).map(_.flatten)
+
+  override val in: SourceType = (confirmatory - antiConfirmatory).out
 }

@@ -53,14 +53,14 @@ object Join {
     *
     * See BIG NOTE below.
     *
-    * The implementations here were mostly copied from FlowOps.zipWith and zipWithGraph in
+    * The implementations here were originally derived from FlowOps.zipWith and zipWithGraph in
     * akka/stream/scaladsl/Flow.scala.
     *
     * `val imp` cannot be `private` because of `imp.Repr` being returned from `joinWith` which causes the following
     * compiler error: "private value imp escapes its defining scope as part of type
     * JoinWithable.this.imp.Repr[com.hamstoo.stream.Data.Data[O]]"
     *
-    * Neither A0 nor O can be covariant types (e.g. +A0) as they are in FlowOps because they both "occur in invariant
+    * Neither A0 nor O can be covariant types (e.g. +A0), as they are in FlowOps, because they both "occur in invariant
     * positions."
     */
   implicit class JoinWithable[-In, A0, +Mat](/*private*/ val imp: FlowOps[Data[A0], Mat]) {

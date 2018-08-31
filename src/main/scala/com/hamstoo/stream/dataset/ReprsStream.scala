@@ -74,7 +74,17 @@ class ReprsStream @Inject()(marksStream: MarksStream,
 
       //val approxBegin = if (marks.isEmpty) 0L else marks.map(_.timeFrom).min
       //val approxEnd   = if (marks.isEmpty) 0L else marks.map(_.timeFrom).max
-      logger.info(s"Performing ReprsStream.observerPreload between ${begin.tfmt} and ${end.tfmt} for ${marks.size} marks, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, and ${reprIds.size} reprIds")
+      logger.info(s"Performing observerPreload between ${begin.tfmt} and ${end.tfmt} for ${marks.size} marks, ${mbQuerySeq.map(_.size)} search terms, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, ${reprIds.size} reprIds, and with ${Runtime.getRuntime.availableProcessors} available processors")
+
+
+      // TODO: if a timeout occurs after the above log message then it's possible that the threadpool has been starved
+      // TODO:   of threads and a deadlock has occurred b/c the next ReprsDao I/O methods all log debug messages
+      // TODO:   immediately (but from inside their own threads)
+      // TODO:   > Performing ReprsStream.observerPreload between 2017-02-05Z [1486.2528] and 2017-08-07Z [1502.064] for 84 marks,
+      // TODO:   >   84 primaryReprIds, 84 usrContentReprIds, and 77 reprIds
+      // TODO:   > FAILURE Attempt to compute user statistics (57425 [1535558.22501]) timed out
+      // TODO: UPDATE - data-model has been changed to use a CachedThreadPool, which will hopefully solve this problem
+
 
       // run a separate MongoDB Text Index search over `representations` collection for each query word
       val fscoredReprs = mbQuerySeq.mapOrEmptyFuture(reprDao.search(reprIds, _)).flatMap { seqOfMaps =>
@@ -89,6 +99,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
       val funscoredReprs = reprDao.retrieve(reprIds)
 
       for(scoredReprs <- fscoredReprs; unscoredReprs <- funscoredReprs) yield {
+        logger.debug(s"observerPreload: nScoredReprs = ${scoredReprs.map(_.size).sum}, nUnscoredReprs = ${unscoredReprs.size}") // debugging timeout
         subjectData.map { dat =>
 
           val mark = dat.value

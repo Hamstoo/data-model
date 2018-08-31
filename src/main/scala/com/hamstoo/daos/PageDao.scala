@@ -19,7 +19,7 @@ import reactivemongo.bson._
 
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 
 /**
   * Website page content MongoDB data access object.  These used to be stored on the Marks themselves and

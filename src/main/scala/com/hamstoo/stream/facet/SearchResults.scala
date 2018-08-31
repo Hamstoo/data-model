@@ -235,8 +235,9 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
 
                 // mscore is really only used here to prevent FacetTests from returning all 0s
                 // (e.g. exclude search results containing "overcomingbias.com" when searching for "bias")
-                case _ if ((uraw + mscore).coalesce0 + praw.coalesce0) < 10.0 =>
-                  loggerI.debug(f"Excluding mark ${mark.id} from search results; no preview text: p/m/u=$praw%.2f/$mscore%.2f/$uraw%.2f")
+                case _ if uraw.coalesce0 + mscore.coalesce0 + praw.coalesce0 < 10.0 =>
+                  if (uraw.coalesce0 + mscore.coalesce0 + praw.coalesce0 > 0.5)
+                    loggerI.debug(f"Excluding mark ${mark.id} from search results; no preview text: p/m/u=$praw%.2f/$mscore%.2f/$uraw%.2f")
                   None
 
                 case _ =>

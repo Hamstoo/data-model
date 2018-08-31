@@ -21,7 +21,7 @@ import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson._
 
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 import scala.util.Try
@@ -109,14 +109,48 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
       }.withDefaultValue(DEFAULT_SIMILARITY)
 
       // get last 28 dates in user's timezone and pair them with numbers of marks
-      val days: Seq[ProfileDot] = for (i <- 0 to extraDays) yield {
+      val days0: Seq[ProfileDot] = for (i <- 0 to extraDays) yield {
         val dt = firstDay.plusDays(i)
         val str = dt.toString(format)
         ProfileDot(str, dt.getYear, nPerDay(str), userVecSimilarity = similarityByDay(str))
       }
 
-      // don't use `similarityByDay` to compute this in case it includes more days than `days` does
-      val nonZeroSimilarities = days.map(_.userVecSimilarity).filter(_ !~= 0.0)
+      // don't use `similarityByDay` to compute this in case it includes more days than `days0` does; we really do want
+      // to be filtering for DEFAULT_SIMILARITY, not for nMarks == 0, b/c the former can occur for other reasons
+      val nonZeroSimilarities0 = days0.map(_.userVecSimilarity).filter(_ !~= DEFAULT_SIMILARITY)
+
+      // correct for the bias that days with fewer marks will have more extreme similarity values
+      val (days, nonZeroSimilarities) = if (nonZeroSimilarities0.isEmpty) (days0, nonZeroSimilarities0) else {
+
+        import com.hamstoo.models.Representation.VecFunctions
+        val mu = nonZeroSimilarities0.mean
+        logger.info(f"nonZeroSimilarities0.mean = $mu%.2f")
+
+        val days1 = days0.map { x => if (x.userVecSimilarity ~= DEFAULT_SIMILARITY) x else {
+
+          val correctedSim = {
+
+            // adjust differences from the mean by n, i.e. correct for the bias that smaller n will have larger diffs
+            // (see hamstoo/docs/profileDots_n_vs_similarity.xlsx for construction of this model)
+            val adj = 0.342 / math.sqrt((if (x.nMarks < 1) 1 else x.nMarks).toDouble)
+            val diff = x.userVecSimilarity - mu
+            val abs = math.abs(diff)
+
+            // effectively we're multiplying `abs * sqrt(n)` here, increasing the abs difference from mean for large n
+            // 0.5 => correct only by half
+            val correctedAbs = math.min(2.0, abs / adj * 0.5 + abs * 0.5)
+
+            // put Humpty Dumpty back together again
+            val sign = if (diff < 0) -1 else 1
+            logger.info(f"${x.date} (n=${x.nMarks}): ${x.userVecSimilarity}%.2f -> $abs%.2f * ${correctedAbs / abs}%.1f = $correctedAbs%.2f -> ${correctedAbs * sign + mu}%.2f")
+            correctedAbs * sign + mu
+          }
+
+          x.copy(userVecSimilarity = correctedSim)
+        }}
+
+        (days1, days1.map(_.userVecSimilarity).filter(_ !~= DEFAULT_SIMILARITY))
+      }
 
       val nImported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
       ProfileDots(nUserTotalMarks,

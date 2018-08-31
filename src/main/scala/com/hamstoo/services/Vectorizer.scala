@@ -14,7 +14,7 @@ import play.api.Logger
 import play.api.libs.ws._
 
 import scala.collection.mutable
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 import scala.util.matching.Regex

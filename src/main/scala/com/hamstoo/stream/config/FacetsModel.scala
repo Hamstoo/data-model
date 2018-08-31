@@ -131,6 +131,7 @@ object FacetsModel {
     add[ImplicitRating]()
     add[Rating]()
     add[UserSimilarity]()
+    add[ConfirmationBias]()
   }
 
   /**

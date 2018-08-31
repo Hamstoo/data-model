@@ -7,6 +7,7 @@ import java.util.Locale
 
 import breeze.linalg.{DenseMatrix, DenseVector, svd}
 import com.hamstoo.models.Representation.Vec
+import monix.execution.Scheduler
 import org.joda.time.{DateTime, DateTimeZone}
 import play.api.Logger
 import play.api.libs.json.Json
@@ -21,8 +22,7 @@ import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
 import scala.collection.mutable
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration._
 import scala.language.higherKinds
 import scala.util.matching.{Regex, UnanchoredRegex}
@@ -32,6 +32,26 @@ import scala.util.{Failure, Random, Success, Try}
 package object utils {
 
   val logger = Logger(getClass)
+
+  /**
+    * A "cached" thread pool with unlimited size for database I/O which ReactiveMongo says is not blocking, but
+    * which appears to block.  Note that cached thread pools can be dangerous due to the fact that they have
+    * unlimited size queues.
+    *
+    * "For example even Scala’s ExecutionContext.Implicits.global has an upper limit to the number of threads
+    * spawned, which means that you can end up in a dead-lock, because all of your threads can end up blocked,
+    * with no threads available in the pool to finish the required callbacks.
+    *   [https://monix.io/docs/3x/best-practices/blocking.html]
+    *
+    * See also:
+    *   http://blog.jessitron.com/2014/01/choosing-executorservice.html
+    *   https://stackoverflow.com/questions/17957382/fixedthreadpool-vs-cachedthreadpool-the-lesser-of-two-evils
+    */
+  object ExecutionContext {
+    object CachedThreadPool {
+      implicit lazy val global: ExecutionContext = Scheduler.io(name = "hamstoo-io")
+    }
+  }
 
   /** Singleton database driver (actor system) instance. */
   private var dbDriver: Option[MongoDriver] = None
@@ -122,7 +142,9 @@ package object utils {
       * short for "collection" analogous to `GenericQueryBuilder.one`.  Either way, it works.
       */
     def coll[E, C[_] <: Iterable[_]](n: Int = -1)
-                                    (implicit r: Reader[E], cbf: CanBuildFrom[C[_], E, C[E]]): Future[C[E]] = {
+                                    (implicit r: Reader[E],
+                                     cbf: CanBuildFrom[C[_], E, C[E]],
+                                     ec: ExecutionContext): Future[C[E]] = {
 
       // "In most cases, modifying the batch size will not affect the user or the application, as the mongo shell and
       // most drivers return results as if MongoDB returned a single batch."
@@ -137,14 +159,14 @@ package object utils {
     }*/
   }
 
+  /** Extend ReactiveMongo Index with a `%` method for naming indexes. */
   implicit class ExtendedIndex(private val i: Index) extends AnyVal {
-    /** */
     def %(name: String): (String, Index) = name -> i.copy(name = Some(name))
   }
 
+  /** Extend ReactiveMongo CollectionIndexesManager with an `ensure` indexes method. */
   implicit class ExtendedIM(private val im: CollectionIndexesManager) extends AnyVal {
-    /** */
-    def ensure(indxs: Map[String, Index]): Unit = for (is <- im.list) {
+    def ensure(indxs: Map[String, Index])(implicit ec: ExecutionContext): Unit = for (is <- im.list) {
       val exIs = is.flatMap(_.name).toSet
       exIs -- indxs.keySet - "_id_" foreach im.drop
       indxs.keySet -- exIs foreach { n => im.ensure(indxs(n)) }

@@ -18,7 +18,7 @@ import reactivemongo.bson._
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
-import scala.concurrent.ExecutionContext.Implicits.global
+import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 
 /**
   * DAO to maintain a bi-directional mapping of URLs to lists of duplicates of those URLs.  These duplicates

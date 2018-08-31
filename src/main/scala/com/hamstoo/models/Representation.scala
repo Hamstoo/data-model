@@ -232,6 +232,13 @@ object Representation extends BSONHandlers {
 
     def kurt: Double = vec.centralMoment(4) / math.pow(vec.stdev, 4)
 
+    /**
+      * TraversableOnce.max/min inconveniently throw an exception when sequence is empty.  Think headOption.
+      * Also see Datum.maxOrElse, which operates on more than just Doubles.
+      */
+    def maxOption: Option[Double] = if (vec.isEmpty) None else Some(vec.max)
+    def minOption: Option[Double] = if (vec.isEmpty) None else Some(vec.min)
+
     def dot(that: Vec): Double = {
       @tailrec
       def rec(a: Vec, b: Vec, sum: Double): Double =
