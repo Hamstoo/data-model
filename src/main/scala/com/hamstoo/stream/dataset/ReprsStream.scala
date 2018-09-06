@@ -19,16 +19,23 @@ import scala.concurrent.Future
 
 
 /**
-  * A MongoDB Text Index search score for a search term / query word along with its corresponding repr.
+  * A MongoDB Text Index search score for a search term / query word.
   */
-case class ReprQueryResult(qword: String, mbR: Option[RSearchable], dbScore: Double, count: Int)
+case class ReprQueryWord(qword: String, dbScore: Double, count: Int)
+
+/**
+  * A repr with a list of search terms / query words.
+  * @param mbR    Optional repr with score=None.  MongoDB Text Index search scores have been moved into `words`.
+  * @param words  Parallel to mbQuery2Vecs, one repr search result for each query word.
+  */
+case class ReprQueryResult(mbR: Option[RSearchable], words: Seq[ReprQueryWord])
 
 /**
   * The instance type streamed from the ReprsStream.
-  * @param pageReprs  A representation corresponding to the (external) content of the marked page.
-  * @param userReprs  A representation constructed from the user-created content (comments, labels, highlights, notes).
+  * @param page  A representation corresponding to the (external) content of the marked page.
+  * @param user  A representation constructed from the user-created content (comments, labels, highlights, notes).
   */
-case class ReprsPair(pageReprs: Seq[ReprQueryResult], userReprs: Seq[ReprQueryResult])
+case class ReprsPair(page: ReprQueryResult, user: ReprQueryResult)
 
 /**
   * A stream of a user's marks' representations.
@@ -109,28 +116,38 @@ class ReprsStream @Inject()(marksStream: MarksStream,
           // each element of `scoredReprs` contains a collection of representations for the respective word in
           // `cleanedQuery`, so zip them together, pull out the requested reprId, and multiply the MongoDB search
           // scores `dbScore` by the query word counts `q._2`
-          def searchTermReprs(pOrU: String, reprId: String): Seq[ReprQueryResult] =
+          def searchTermReprs(pOrU: String, reprId: String): ReprQueryResult = {
+
+            var mbR: Option[RSearchable] = None
 
             // both of these must contain at least 1 element
-            cleanedQuery.view.zip(scoredReprs).map { case (q, scoredReprsForThisWord) =>
+            val words = cleanedQuery.view.zip(scoredReprs).map { case (q, scoredReprsForThisWord) =>
 
               // only use unscored repr if a scored repr was not found by MongoDB Text Index search
               lazy val mbUnscored = unscoredReprs.get(reprId)
-              val mbR = scoredReprsForThisWord.get(reprId).orElse(mbUnscored)
-              val dbScore = mbR.flatMap(_.score).getOrElse(0.0)
+              val mbR_i = scoredReprsForThisWord.get(reprId).orElse(mbUnscored)
+              val dbScore = mbR_i.flatMap(_.score).getOrElse(0.0)
+
+              // it doesn't matter which repr we choose, all of them will have the same reprId and vectors, just with
+              // different MongoDB Text Index search scores, which is why we're inside this function to begin with
+              if (mbR.isEmpty && mbR_i.isDefined)
+                mbR = mbR_i.map(_.xcopy(score = None))
 
               def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
               loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $pOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
 
-              ReprQueryResult(q._1, mbR, dbScore, q._2)
+              ReprQueryWord(q._1, dbScore, q._2)
             }.force
 
-          val pageReprs = searchTermReprs("P", primaryReprId)    // webpage-content representations
-          val userReprs = searchTermReprs("U", usrContentReprId) //    user-content representations
+            ReprQueryResult(mbR, words)
+          }
+
+          val pageQueryResult = searchTermReprs("P", primaryReprId)    // webpage-content representations
+          val userQueryResult = searchTermReprs("U", usrContentReprId) //    user-content representations
 
           // technically we should update knownTime here to the time of repr computation, but it's not really important
           // in this case b/c what we really want is "time that this data could have been known"
-          val d = dat.withValue(ReprsPair(pageReprs, userReprs))
+          val d = dat.withValue(ReprsPair(pageQueryResult, userQueryResult))
           loggerI.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
           d
         }

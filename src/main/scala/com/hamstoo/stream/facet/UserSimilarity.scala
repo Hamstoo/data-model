@@ -12,7 +12,7 @@ import com.hamstoo.models.{Representation, UserStats}
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.stream.Data.Data
 import com.hamstoo.stream.{CallingUserId, DataStream, Datum}
-import com.hamstoo.stream.dataset.{RepredMarks, ReprsPair}
+import com.hamstoo.stream.dataset.{ReprQueryResult, RepredMarks, ReprsPair}
 
 import scala.concurrent.Future
 
@@ -38,15 +38,15 @@ private class UserSimilarityBase(vectorGetter: UserStats => Map[Representation.V
         d.map { e: Datum[RepredMarks.typ] =>
 
           // unpack the pair datum
-          val (mark, ReprsPair(pageReprs, userReprs)) = e.value
+          val (mark, ReprsPair(page, user)) = e.value
 
           // generate a single user similarity from the user's (future) vecs (which should already be complete by now)
           fmbUserVecs.map {
             _.fold(e.withValue(Option.empty[Double])) { uvecs =>
 
               // get external content (web *page*) Representation vector or, if missing, user-content Representation vec
-              val mbVec = pageReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString))
-                  .orElse(userReprs.headOption.flatMap(_.mbR).flatMap(_.vectors.get(VecEnum.IDF.toString)))
+              val mbVec = page.mbR.flatMap(_.vectors.get(VecEnum.IDF.toString))
+                  .orElse(user.mbR.flatMap(_.vectors.get(VecEnum.IDF.toString)))
 
               // use documentSimilarity rather than IDF-cosine to get a more general sense of the similarity to the user
               e.withValue(mbVec.map(v => VectorEmbeddingsService.documentSimilarity(v, uvecs)))
@@ -94,11 +94,41 @@ class UserSimilarity @Inject()(userSimilarityOpt: UserSimilarityOpt)
 
 
 /**
-  * Confirmation Bias facet is the difference between the similarity to (a vector derived from) confirmatory
-  * keywords and the similarity to (a vector derived from) anti-confirmatory keywords.
+  * Confirmation Bias facet is the difference between the similarity to (a vector derived from) a
+  * user's confirmatory keywords minus the similarity to (a vector derived from) that user's
+  * anti-confirmatory keywords.
   */
 @Singleton
 class ConfirmationBias @Inject()(implicit @Named(CallingUserId.name) mbUserId: CallingUserId.typ,
+                                 repredMarks: RepredMarks,
+                                 userStatDao: UserStatDao,
+                                 mat: Materializer) extends DataStream[Double] {
+
+  // Option[Double] similarities for each of the rating-weighted (RWT) user vectors
+  private val confirmatoryOpt :: antiConfirmatoryOpt :: Nil =
+    Seq(VecEnum.RWT, VecEnum.RWTa).map { enumVal =>
+
+      // map to IDF vectors because those are what are used in VectorEmbeddingsService.documentSimilarity
+      new UserSimilarityBase(_.vectors.collect { case (k, v) if k == enumVal.toString => VecEnum.IDF -> v })
+    }
+
+  import com.hamstoo.stream.StreamDSL._
+
+  // filter out Nones (a.k.a. flatten the DataStreams)
+  private val confirmatory :: antiConfirmatory :: Nil: Seq[DataStream[Double]] =
+    Seq(confirmatoryOpt, antiConfirmatoryOpt).map(_.flatten)
+
+  override val in: SourceType = (confirmatory - antiConfirmatory).out
+}
+
+
+/**
+  * Endowment Bias facet is the difference between the similarity to (a vector derived from) a
+  * user's own content confirmatory keywords minus the similarity to (a vector derived from) that user's
+  * anti-confirmatory keywords.
+  */
+@Singleton
+class EndowmentBias @Inject()(implicit @Named(CallingUserId.name) mbUserId: CallingUserId.typ,
                                  repredMarks: RepredMarks,
                                  userStatDao: UserStatDao,
                                  mat: Materializer) extends DataStream[Double] {

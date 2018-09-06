@@ -15,7 +15,7 @@ import com.hamstoo.services.VectorEmbeddingsService.WordMass
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService => VecSvc}
 import com.hamstoo.stream.Data.{Data, ExtendedData}
 import com.hamstoo.stream._
-import com.hamstoo.stream.dataset.{ReprQueryResult, RepredMarks, ReprsPair}
+import com.hamstoo.stream.dataset.{ReprQueryResult, ReprQueryWord, RepredMarks, ReprsPair}
 import com.hamstoo.utils.{ExtendedDouble, ExtendedTimeStamp, TimeStamp, memoryString, parse}
 import org.slf4j.LoggerFactory
 import play.api.Logger
@@ -105,7 +105,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
         d.map { e: Datum[RepredMarks.typ] =>
 
           // unpack the pair datum
-          val (mark, ReprsPair(pageReprs, userReprs)) = e.value
+          val (mark, ReprsPair(pageQueryResult, userQueryResult)) = e.value
 
           // the `marks` collection includes the users own input (assuming the user chose to provide any input
           // in the first place) so it should be weighted pretty high if a word match is found, the fuzzy reasoning
@@ -127,15 +127,15 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
             val ava: Double = anyVsAllArg.value
             val b: Double = bBM25.value
             val k1: Double = k1BM25.value
-            val pst: ScoresAndText = searchTerms2Scores("P", mark.id, ava, b, k1, pageReprs, searchTermVecs)
-            val ust: ScoresAndText = searchTerms2Scores("U", mark.id, ava, b, k1, userReprs, searchTermVecs, nWordsMult = uMult.value)
+            val pst: ScoresAndText = searchTerms2Scores("P", mark.id, ava, b, k1, pageQueryResult, searchTermVecs)
+            val ust: ScoresAndText = searchTerms2Scores("U", mark.id, ava, b, k1, userQueryResult, searchTermVecs, nWordsMult = uMult.value)
 
             // raw (syntactic?) relevances; coalesce0 means that we defer to mscore for isNaN'ness below if uscore is NaN
             val dbscore = Seq(ust.raw, pst.raw).map(math.max(_, 0.0).coalesce0).sum
 
             val previewer = Previewer(rawQuery.value, cleanedQuery, mark.id)
             val utext = parse(mark.mark.comment.getOrElse(""))
-            val ptext = parse(pageReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold("")(_.doctext))
+            val ptext = parse(pageQueryResult.mbR.fold("")(_.doctext))
             val texts = utext + " " * PREVIEW_LENGTH + ptext
 
             val t0: TimeStamp = System.currentTimeMillis()
@@ -275,12 +275,12 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
                          anyVsAllArg: Double,
                          b: Double,
                          k1: Double,
-                         searchTermReprs: Seq[ReprQueryResult],
+                         reprQueryResult: ReprQueryResult,
                          searchTermVecs: Seq[VecSvc.WordMass],
                          nWordsMult: Int = 1): ScoresAndText = {
 
     // there must be at least one search term with a representation
-    searchTermReprs.find(_.mbR.isDefined).flatMap(_.mbR).fold(ScoresAndText(0.0, 0.0, "", "")) { repr: RSearchable =>
+    reprQueryResult.mbR.fold(ScoresAndText(0.0, 0.0, "", "")) { repr: RSearchable =>
 
       // the repr is the same for all elements of the list per `r.get(reprId)` above so we can just look at head
       val nDocWords = repr.nWords.getOrElse(0.toLong) * nWordsMult
@@ -298,7 +298,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
       // is 1--we have `b` hard-coded to 0.5 in `bm25Tf`--and w/out the sqrt)
       import com.hamstoo.services.VectorEmbeddingsService.{bm25Tf, logTf}
       case class Score(idf: Double, btf: Double, n: Int)
-      def bm25(qr: ReprQueryResult): Score = {
+      def bm25(qr: ReprQueryWord): Score = {
 
         val idf = idfModel.transform(qr.qword)
 
@@ -316,7 +316,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
         Score(idf, btf, qr.count)
       }
       // https://en.wikipedia.org/wiki/Okapi_BM25
-      val searchTermScores = searchTermReprs.map(bm25) // <- contents logged above
+      val searchTermScores = reprQueryResult.words.map(bm25) // <- contents logged above
 
       // arithmetic mean (no penalty for not matching all the query words; geo mean imposes about a 12% penalty
       // for missing 1 out of 3 query words and 15% for missing 2 out of 3)
