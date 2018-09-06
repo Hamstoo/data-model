@@ -12,7 +12,7 @@ import com.hamstoo.models.{Representation, UserStats}
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.stream.Data.Data
 import com.hamstoo.stream.{CallingUserId, DataStream, Datum}
-import com.hamstoo.stream.dataset.{ReprQueryResult, RepredMarks, ReprsPair}
+import com.hamstoo.stream.dataset.{ReprQueryResult, RepredMarks, ReprsPair, ReprsStream}
 
 import scala.concurrent.Future
 
@@ -23,40 +23,40 @@ import scala.concurrent.Future
   */
 private class UserSimilarityBase(vectorGetter: UserStats => Map[Representation.VecEnum.Value, Vec])
                                 (implicit mbUserId: CallingUserId.typ,
-                                 repredMarks: RepredMarks,
+                                 reprs: ReprsStream,
                                  userStatDao: UserStatDao,
                                  mat: Materializer)
     extends DataStream[Option[Double]] {
 
   // transform UserStats into Map[String, Vec]s
-  private val fmbUserStats = mbUserId.fold(Future.successful(Option.empty[UserStats]))(userStatDao.retrieve)
-  private val fmbUserVecs = fmbUserStats.map(_.map(vectorGetter))
+  val fmbUserStats = mbUserId.fold(Future.successful(Option.empty[UserStats]))(userStatDao.retrieve)
+  val fmbUserVecs = fmbUserStats.map(_.map(vectorGetter))
 
-  override val in: SourceType = repredMarks()
-    .mapAsync(4) { d: Data[RepredMarks.typ] =>
-      Future.sequence {
-        d.map { e: Datum[RepredMarks.typ] =>
+  import com.hamstoo.stream.StreamDSL._
 
-          // unpack the pair datum
-          val (mark, ReprsPair(page, user)) = e.value
+  override val in: SourceType = reprs.map { case ReprsPair(page, user) =>
 
-          // generate a single user similarity from the user's (future) vecs (which should already be complete by now)
-          fmbUserVecs.map {
-            _.fold(e.withValue(Option.empty[Double])) { uvecs =>
+    // generate a single user similarity from the user's (future) vecs (which should already be complete by now)
+    fmbUserVecs.map {
+      _.fold(Option.empty[Double]) { uvecs =>
 
-              // get external content (web *page*) Representation vector or, if missing, user-content Representation vec
-              val mbVec = page.mbR.flatMap(_.vectors.get(VecEnum.IDF.toString))
-                  .orElse(user.mbR.flatMap(_.vectors.get(VecEnum.IDF.toString)))
+        // get external content (web *page*) Representation vector or, if missing, user-content Representation vec
+        val mbVec = page.mbR.flatMap(_.vectors.get(VecEnum.IDF.toString))
+            .orElse(user.mbR.flatMap(_.vectors.get(VecEnum.IDF.toString)))
 
-              // use documentSimilarity rather than IDF-cosine to get a more general sense of the similarity to the user
-              e.withValue(mbVec.map(v => VectorEmbeddingsService.documentSimilarity(v, uvecs)))
-            }
-          }
-        }
+        // use documentSimilarity rather than IDF-cosine to get a more general sense of the similarity to the user
+        mbVec.map(v => VectorEmbeddingsService.documentSimilarity(v, uvecs))
       }
+    }
 
-    }//.map(_.flatten) // do NOT remove Nones; UserStatsDao.profileDots needs them to generate proper daily mark counts
-      .asInstanceOf[SourceType] // see "BIG NOTE" on JoinWithable
+  }
+    .out
+
+    // all of this to flatten the Future (i.e. "pivot" from Seq[Datum[Future]] to Future[Seq[Datum]])
+    // TODO: add this to StreamDSL (can probably just overload `flatten` or call it `flattenAsync(4)`)
+    .mapAsync(4) { dat: Data[Future[Option[Double]]] => Future.sequence(dat.map(x => x.value.map(x.withValue))) }
+
+    .asInstanceOf[SourceType] // see "BIG NOTE" on JoinWithable
 }
 
 
@@ -65,7 +65,7 @@ private class UserSimilarityBase(vectorGetter: UserStats => Map[Representation.V
   */
 @Singleton
 class UserSimilarityOpt @Inject()(implicit @Named(CallingUserId.name) mbUserId: CallingUserId.typ,
-                                  repredMarks: RepredMarks,
+                                  reprs: ReprsStream,
                                   userStatDao: UserStatDao,
                                   mat: Materializer) extends DataStream[Option[Double]] {
 
@@ -100,7 +100,7 @@ class UserSimilarity @Inject()(userSimilarityOpt: UserSimilarityOpt)
   */
 @Singleton
 class ConfirmationBias @Inject()(implicit @Named(CallingUserId.name) mbUserId: CallingUserId.typ,
-                                 repredMarks: RepredMarks,
+                                 reprs: ReprsStream,
                                  userStatDao: UserStatDao,
                                  mat: Materializer) extends DataStream[Double] {
 
@@ -129,9 +129,9 @@ class ConfirmationBias @Inject()(implicit @Named(CallingUserId.name) mbUserId: C
   */
 @Singleton
 class EndowmentBias @Inject()(implicit @Named(CallingUserId.name) mbUserId: CallingUserId.typ,
-                                 repredMarks: RepredMarks,
-                                 userStatDao: UserStatDao,
-                                 mat: Materializer) extends DataStream[Double] {
+                              reprs: ReprsStream,
+                              userStatDao: UserStatDao,
+                              mat: Materializer) extends DataStream[Double] {
 
   // Option[Double] similarities for each of the rating-weighted (RWT) user vectors
   private val confirmatoryOpt :: antiConfirmatoryOpt :: Nil =
