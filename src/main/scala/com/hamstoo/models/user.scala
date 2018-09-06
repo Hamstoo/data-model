@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.daos.UserDao
+import com.hamstoo.utils.{TIME_NOW, TimeStamp}
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
@@ -22,17 +23,17 @@ import scala.util.matching.Regex
   * @param oAuth2Info   `accessToken`, `tokenType` (e.g. "Bearer"), and `expiresIn` (e.g. 3600).
   * @param avatarUrl    Link to an avatar image.
   */
-case class Profile(
-                    loginInfo: LoginInfo,
-                    confirmed: Boolean,
-                    email: Option[String],
-                    firstName: Option[String],
-                    lastName: Option[String],
-                    fullName: Option[String],
-                    passwordInfo: Option[PasswordInfo] = None,
-                    oAuth1Info: Option[OAuth1Info] = None,
-                    oAuth2Info: Option[OAuth2Info] = None,
-                    avatarUrl: Option[String] = None)
+case class Profile(loginInfo: LoginInfo,
+                   confirmed: Boolean,
+                   email: Option[String],
+                   firstName: Option[String],
+                   lastName: Option[String],
+                   fullName: Option[String],
+                   passwordInfo: Option[PasswordInfo] = None,
+                   oAuth1Info: Option[OAuth1Info] = None,
+                   oAuth2Info: Option[OAuth2Info] = None,
+                   avatarUrl: Option[String] = None,
+                   created: TimeStamp = TIME_NOW)
 
 object Profile {
   implicit val loginInfHandler: BSONDocumentHandler[LoginInfo] = Macros.handler[LoginInfo]
@@ -59,15 +60,15 @@ case class ExtensionOptions(autoSync: Option[Boolean] = None,
   * @param tutorial       If true, the user will see the tutorial on next login.
   * @param markItTooltip  If true, the user will see a tooltip when hovering over the "Mark It" button.
   */
-case class UserData(
-                     firstName: Option[String] = None,
-                     lastName: Option[String] = None,
-                     username: Option[String] = None,
-                     var usernameLower: Option[String] = None,
-                     avatar: Option[String] = None,
-                     extOpts: Option[ExtensionOptions] = None,
-                     tutorial: Option[Boolean] = Some(true),
-                     markItTooltip: Option[Boolean] = Some(true)) {
+case class UserData(firstName: Option[String] = None,
+                    lastName: Option[String] = None,
+                    username: Option[String] = None,
+                    var usernameLower: Option[String] = None,
+                    avatar: Option[String] = None,
+                    extOpts: Option[ExtensionOptions] = None,
+                    tutorial: Option[Boolean] = Some(true),
+                    markItTooltip: Option[Boolean] = Some(true),
+                    created: TimeStamp = TIME_NOW) {
 
   usernameLower = username.map(_.toLowerCase) // impossible to set any other way
 
