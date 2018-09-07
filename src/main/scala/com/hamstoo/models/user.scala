@@ -33,7 +33,7 @@ case class Profile(loginInfo: LoginInfo,
                    oAuth1Info: Option[OAuth1Info] = None,
                    oAuth2Info: Option[OAuth2Info] = None,
                    avatarUrl: Option[String] = None,
-                   created: TimeStamp = TIME_NOW)
+                   created: Option[TimeStamp] = Some(TIME_NOW))
 
 object Profile {
   implicit val loginInfHandler: BSONDocumentHandler[LoginInfo] = Macros.handler[LoginInfo]
@@ -68,7 +68,7 @@ case class UserData(firstName: Option[String] = None,
                     extOpts: Option[ExtensionOptions] = None,
                     tutorial: Option[Boolean] = Some(true),
                     markItTooltip: Option[Boolean] = Some(true),
-                    created: TimeStamp = TIME_NOW) {
+                    created: Option[TimeStamp] = Some(TIME_NOW)) {
 
   usernameLower = username.map(_.toLowerCase) // impossible to set any other way
 
