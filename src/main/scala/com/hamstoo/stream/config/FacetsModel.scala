@@ -127,11 +127,11 @@ object FacetsModel {
     //add[AggregateSearchScore]()
 
     add[Recency]() // see How to Think screenshot
-    //add(ConfirmationBias)
     add[ImplicitRating]()
     add[Rating]()
     add[UserSimilarity]()
     add[ConfirmationBias]()
+    add[EndowmentBias]()
   }
 
   /**

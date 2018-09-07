@@ -25,7 +25,7 @@ case class ReprQueryWord(qword: String, dbScore: Double, count: Int)
 
 /**
   * A repr with a list of search terms / query words.
-  * @param mbR    Optional repr with score=None.  MongoDB Text Index search scores have been moved into `words`.
+  * @param mbR    Optional repr with score == None.  MongoDB Text Index search scores have been moved into `words`.
   * @param words  Parallel to mbQuery2Vecs, one repr search result for each query word.
   */
 case class ReprQueryResult(mbR: Option[RSearchable], words: Seq[ReprQueryWord])

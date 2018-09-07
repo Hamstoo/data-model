@@ -24,6 +24,7 @@ import reactivemongo.api.DefaultDB
 
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
+import scala.reflect.{ClassTag, classTag}
 
 /**
   * FacetTests
@@ -41,59 +42,45 @@ class FacetTests
     val facetName = classOf[SearchResults].getSimpleName
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
-      .foldLeft(0.0) { case (agg, d) =>
-        agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.sum
-      }
+      .foldLeft(0.0) { case (agg, d) => agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.sum }
     x shouldBe (95.00 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
-    val facetName = classOf[AggregateSearchScore].getSimpleName
-    val x = facetsSeq.filter(_._1 == facetName)
-      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
-      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (9.67 +- 0.01)
+    sumFacetValues[AggregateSearchScore] shouldBe (9.67 +- 0.01)
   }
 
   it should "compute Recency" in {
-    val facetName = classOf[Recency].getSimpleName
-    val x = facetsSeq.filter(_._1 == facetName)
-      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
-      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
     // see data-model/docs/RecencyTest.xlsx for an independent calculation of this value
-    x shouldBe (4.12 +- 0.01)
+    sumFacetValues[Recency] shouldBe (4.12 +- 0.01)
   }
 
   it should "compute Rating" in {
-    val facetName = classOf[Rating].getSimpleName
-    val x = facetsSeq.filter(_._1 == facetName)
-      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
-      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (12.5 +- 1e-10)
+    sumFacetValues[Rating] shouldBe (12.5 +- 1e-10)
   }
 
   it should "compute ImplicitRating" in {
-    val facetName = classOf[ImplicitRating].getSimpleName
-    val x = facetsSeq.filter(_._1 == facetName)
-      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
-      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (7.58 +- 0.01)
+    sumFacetValues[ImplicitRating] shouldBe (7.58 +- 0.01)
   }
 
   it should "compute UserSimilarity" in {
-    val facetName = classOf[UserSimilarity].getSimpleName
-    val x = facetsSeq.filter(_._1 == facetName)
-      .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
-      .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (3.49 +- 0.01)
+    sumFacetValues[UserSimilarity] shouldBe (3.49 +- 0.01)
   }
 
   it should "compute ConfirmationBias" in {
-    val facetName = classOf[ConfirmationBias].getSimpleName
-    val x = facetsSeq.filter(_._1 == facetName)
+    // close to 0 b/c the RWT and RWTa vectors are nearly co-linear
+    sumFacetValues[ConfirmationBias] shouldBe (0.08 +- 0.01)
+  }
+
+  it should "compute EndowmentBias" in {
+    sumFacetValues[EndowmentBias] shouldBe (0.08 +- 0.01)
+  }
+
+  def sumFacetValues[A :ClassTag]: Double = {
+    val facetName = classTag[A].runtimeClass.getSimpleName
+    facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (0.08 +- 0.01) // close to 0 b/c the RWT and RWTa vectors are nearly co-linear
   }
 
   // another way to test this is to uncomment the "uncomment this line" line in AggregateSearchScore which
@@ -110,7 +97,7 @@ class FacetTests
       .map { d => logger.info(s"\033[37m$facetName (different users): $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
     x shouldBe (4.74 +- 0.01) // would be same as above 27.94 if not for access permissions
-    facetsDiffUsers.size shouldBe 14 // this value increases by 2 each time a facet is added to FacetsModel.Default
+    facetsDiffUsers.size shouldBe 16 // this value increases by 2 each time a facet is added to FacetsModel.Default
     scoreDiffUsers.size shouldBe 2
   }
 

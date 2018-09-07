@@ -285,8 +285,13 @@ object Representation extends BSONHandlers {
         KM1,       // most significant k-means cluster by average bm25 score
         KM2,       // second most significant k-means cluster (i.e. don't combine 1st and 2nd at point of construction)
         KM3,       // third
+
+          // the following are used when computing aggregate vectors for a user (aggregated across a user's marks),
+          // as opposed to the above, which are used when computing vectors for marks
         RWT,       // weighted w.r.t. user ratings where a rating of x approximately corresponds to a weight of x-3
-        RWTa       // weighted w.r.t. negative of user ratings (i.e. anti-confirmatory)
+        RWTa,      // weighted w.r.t. negative of user ratings (i.e. anti-confirmatory)
+        PAGEc,     // computed only from web "page" content reprs
+        USERc      // computed only from user-content reprs
       = Value
   }
 
