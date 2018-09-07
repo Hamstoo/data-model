@@ -204,6 +204,12 @@ object VectorEmbeddingsService {
       } else if (w.endsWith("s") && selections.contains(w.init)) {
         // do nothing
 
+      } else if (selections.contains(w + "ing")) {
+        val i = selections.indexOf(w + "ing")
+        selections(i) = w
+      } else if (w.endsWith("ing") && selections.contains(w.dropRight(3))) {
+        // do nothing
+
       } else if (w.endsWith("y") && selections.contains(w.init + "ies")) {
         val i = selections.indexOf(w.init + "ies")
         selections(i) = w
