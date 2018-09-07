@@ -330,8 +330,6 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
       val vecreprs = VecEnum.values.toList.flatMap {
         case vt if vt == VecEnum.CRPv2_max => None // crpVecs._1.map(vt -> _)
         case vt if vt == VecEnum.CRPv2_2nd => None // crpVecs._2.map(vt -> _)
-        case vt if vt == VecEnum.RWT => None
-        case vt if vt == VecEnum.RWTa => None
         case vt if vt == VecEnum.IDF => idfVecs.map(vt -> _._1)
         case vt if vt == VecEnum.IDF3 => idfVecs.map(vt -> _._2)
         case vt if vt.toString.startsWith("PC") || vt.toString.startsWith("KM") =>

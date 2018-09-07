@@ -10,7 +10,7 @@ import akka.stream.scaladsl.Sink
 import com.google.inject.{Inject, Injector, Provides, Singleton}
 import com.hamstoo.models.Mark.{MarkAux, RangeMils}
 import com.hamstoo.models._
-import com.hamstoo.models.Representation.{ReprType, Vec, VecEnum}
+import com.hamstoo.models.Representation.{ReprType, UserVecEnum, Vec, VecEnum}
 import com.hamstoo.services.{IDFModel, VectorEmbeddingsService}
 import com.hamstoo.stream.config.{FacetsModel, StreamModule}
 import com.hamstoo.stream.dataset.MarksStream.SearchUserIdOptional
@@ -69,11 +69,12 @@ class FacetTests
 
   it should "compute ConfirmationBias" in {
     // close to 0 b/c the RWT and RWTa vectors are nearly co-linear
-    sumFacetValues[ConfirmationBias] shouldBe (0.08 +- 0.01)
+    sumFacetValues[ConfirmationBias] shouldBe (0.089 +- 0.001)
   }
 
   it should "compute EndowmentBias" in {
-    sumFacetValues[EndowmentBias] shouldBe (0.08 +- 0.01)
+    // same vectors as ConfirmationBias lead to the same answer
+    sumFacetValues[EndowmentBias] shouldBe (0.089 +- 0.001)
   }
 
   def sumFacetValues[A :ClassTag]: Double = {
@@ -158,8 +159,10 @@ class FacetTests
 
     // insert a UserStats so that the UserSimilarity facet can compute stuff
     val uvecs = Map[String, Vec](VecEnum.PC1.toString -> Seq(1, 2, 3),
-                                 VecEnum.RWT.toString -> Seq(1, 2, 4),
-                                 VecEnum.RWTa.toString -> Seq(1, 2, 5))
+                                 UserVecEnum.RWT.toString -> Seq(1, 2, 4),
+                                 UserVecEnum.RWTa.toString -> Seq(1, 2, 5),
+                                 UserVecEnum.USERc.toString -> Seq(1, 2, 4),
+                                 UserVecEnum.PAGEc.toString -> Seq(1, 2, 5))
     val ustats = UserStats(mbCallingUserId.get, TIME_NOW, uvecs, Some(Seq("automobile", "generate", "keywords")))
     userStatsDao.insert(ustats).futureValue
 

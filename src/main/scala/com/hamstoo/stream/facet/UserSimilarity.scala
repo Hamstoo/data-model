@@ -7,37 +7,40 @@ import akka.stream.Materializer
 import com.google.inject.name.Named
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.UserStatDao
-import com.hamstoo.models.Representation.{Vec, VecEnum}
-import com.hamstoo.models.{RSearchable, Representation, UserStats}
+import com.hamstoo.models.Representation.{UserVecEnum, Vec, VecEnum}
+import com.hamstoo.models.{RSearchable, UserStats}
 import com.hamstoo.services.VectorEmbeddingsService
 import com.hamstoo.stream.Data.Data
 import com.hamstoo.stream.{CallingUserId, DataStream}
 import com.hamstoo.stream.dataset.{ReprsPair, ReprsStream}
 
 import scala.concurrent.Future
+import scala.util.Try
 
 object UserSimilarity {
 
-  type VectorGetterType = UserStats => Map[Representation.VecEnum.Value, Vec]
+  type VectorMapType = Map[String, Vec]
+  type VectorGetterType = UserStats => VectorMapType
 
   /** Default vectorGetter parameter value for UserSimilarityBase. */
-  val DEFAULT_VECTOR_GETTER: VectorGetterType = _.vectors.map(kv => VecEnum.withName(kv._1) -> kv._2)
+  val DEFAULT_VECTOR_GETTER: VectorGetterType = _.vectors
 
-  type VectorOpType = (Option[RSearchable],
-                       Option[RSearchable],
-                       Map[Representation.VecEnum.Value, Vec]) => Option[Double]
+  type VectorOpType = (Option[RSearchable], Option[RSearchable], VectorMapType) => Option[Double]
 
   /** Default vectorOp parameter value for UserSimilarityBase. */
   val DEFAULT_VECTOR_OP: VectorOpType = (mbPageRepr: Option[RSearchable],
                                          mbUserContentRepr: Option[RSearchable],
-                                         userVecs: Map[Representation.VecEnum.Value, Vec]) => {
+                                         userVecs: VectorMapType) => {
 
     // get external content (web *page*) Representation vector or, if missing, user-content Representation vec
     val mbVec =      mbPageRepr.flatMap(_.vectors.get(VecEnum.IDF.toString))
       .orElse(mbUserContentRepr.flatMap(_.vectors.get(VecEnum.IDF.toString)))
 
     // use documentSimilarity rather than IDF-cosine to get a more general sense of the similarity to the user
-    mbVec.map(v => VectorEmbeddingsService.documentSimilarity(v, userVecs))
+    mbVec.map { v =>
+      val vecEnumVecs = userVecs.map(kv => Try(VecEnum.withName(kv._1)).toOption.map(_ -> kv._2)).flatten.toMap
+      VectorEmbeddingsService.documentSimilarity(v, vecEnumVecs)
+    }
   }
 }
 
@@ -121,11 +124,11 @@ class ConfirmationBias @Inject()(implicit @Named(CallingUserId.name) mbUserId: C
 
   // Option[Double] similarities for each of the rating-weighted (RWT) user vectors
   private val confirmatoryOpt :: antiConfirmatoryOpt :: Nil =
-    Seq(VecEnum.RWT, VecEnum.RWTa).map { enumVal =>
+    Seq(UserVecEnum.RWT, UserVecEnum.RWTa).map { enumVal =>
 
       // map to IDF vectors because those are what are used in VectorEmbeddingsService.documentSimilarity
       val vectorGetter: UserSimilarity.VectorGetterType =
-        _.vectors.collect { case (k, v) if k == enumVal.toString => VecEnum.IDF -> v }
+        _.vectors.collect { case (k, v) if k == enumVal.toString => VecEnum.IDF.toString -> v }
 
       new UserSimilarityBase(vectorGetter = vectorGetter)
     }
@@ -141,13 +144,14 @@ class ConfirmationBias @Inject()(implicit @Named(CallingUserId.name) mbUserId: C
 
 
 /**
-  * Endowment Bias facet is the difference between the similarity of a user's aggregate vectors (i.e.
-  * UserStats.vectors) to a mark's user-content repr minus the similarity of a user's aggregate vectors to
-  * the same mark's page-content repr.  In other words, a user is "endowed" with her own content (text she
-  * highlights or notes/comments she writes herself; see RepresentationController.processUserContent) but
-  * not "endowed" with the content she is marking (stuff she doesn't touch).
+  * Endowment Bias facet is the difference between the similarity to (a vector derived from) a user's own
+  * content (e.g. notes, comments, labels, highlights; see RepresentationController.processUserContent) minus
+  * the similarity to (a vector derived from) that user's web "page" content (i.e. marked web page content
+  * that the user doesn't do anything with).  In other words, a user is "endowed" with her own content (text she
+  * highlights or notes/comments she writes herself) and "anti-endowed" with the content she is marking (stuff
+  * she doesn't touch).
   *
-  * TODO: we could compute the same for ratings-weighted (confirmatoryKws) endowment bias?
+  * This is effectively a copy-and-pasted implementation from ConfirmationBias.
   */
 @Singleton
 class EndowmentBias @Inject()(implicit @Named(CallingUserId.name) mbUserId: CallingUserId.typ,
@@ -155,22 +159,22 @@ class EndowmentBias @Inject()(implicit @Named(CallingUserId.name) mbUserId: Call
                               userStatDao: UserStatDao,
                               mat: Materializer) extends DataStream[Double] {
 
-  private val vectorOp: UserSimilarity.VectorOpType = (mbPageRepr: Option[RSearchable],
-                                                       mbUserContentRepr: Option[RSearchable],
-                                                       userVecs: Map[Representation.VecEnum.Value, Vec]) => {
+  // Option[Double] similarities for each of the rating-weighted (RWT) user vectors
+  private val userContentOpt :: pageContentOpt :: Nil =
+    Seq(UserVecEnum.USERc, UserVecEnum.PAGEc).map { enumVal =>
 
-    val mbPageSimilarity :: mbUserContentSimilarity :: Nil = Seq(mbPageRepr, mbUserContentRepr).map { mbRepr =>
-      val mbVec = mbRepr.flatMap(_.vectors.get(VecEnum.IDF.toString))
-      mbVec.map(v => VectorEmbeddingsService.documentSimilarity(v, userVecs))
+      // map to IDF vectors because those are what are used in VectorEmbeddingsService.documentSimilarity
+      val vectorGetter: UserSimilarity.VectorGetterType =
+        _.vectors.collect { case (k, v) if k == enumVal.toString => VecEnum.IDF.toString -> v }
+
+      new UserSimilarityBase(vectorGetter = vectorGetter)
     }
 
-    // difference between user-content repr similarity and page-content repr similarity
-    if (mbPageSimilarity.isEmpty || mbUserContentSimilarity.isEmpty) None
-    else Some(mbUserContentSimilarity.get - mbPageSimilarity.get)
-  }
-
-  private val base = new UserSimilarityBase(vectorOp = vectorOp)
-
   import com.hamstoo.stream.StreamDSL._
-  override val in: SourceType = base.flatten.out
+
+  // filter out Nones (a.k.a. flatten the DataStreams)
+  private val userContent :: pageContent :: Nil: Seq[DataStream[Double]] =
+    Seq(userContentOpt, pageContentOpt).map(_.flatten)
+
+  override val in: SourceType = (userContent - pageContent).out
 }
