@@ -81,7 +81,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
 
       //val approxBegin = if (marks.isEmpty) 0L else marks.map(_.timeFrom).min
       //val approxEnd   = if (marks.isEmpty) 0L else marks.map(_.timeFrom).max
-      logger.info(s"Performing observerPreload between ${begin.tfmt} and ${end.tfmt} for ${marks.size} marks, ${mbQuerySeq.map(_.size)} search terms, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, ${reprIds.size} reprIds, and with ${Runtime.getRuntime.availableProcessors} available processors")
+      logger.info(s"[3] Performing observerPreload between ${begin.tfmt} and ${end.tfmt} for ${marks.size} marks, ${mbQuerySeq.map(_.size)} search terms, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, ${reprIds.size} reprIds, and with ${Runtime.getRuntime.availableProcessors} available processors")
 
 
       // TODO: if a timeout occurs after the above log message then it's possible that the threadpool has been starved
@@ -106,7 +106,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
       val funscoredReprs = reprDao.retrieve(reprIds)
 
       for(scoredReprs <- fscoredReprs; unscoredReprs <- funscoredReprs) yield {
-        logger.debug(s"observerPreload: nScoredReprs = ${scoredReprs.map(_.size).sum}, nUnscoredReprs = ${unscoredReprs.size}") // debugging timeout
+        logger.debug(s"[3.1] observerPreload: nScoredReprs = ${scoredReprs.map(_.size).sum}, nUnscoredReprs = ${unscoredReprs.size}") // debugging timeout
         subjectData.map { dat =>
 
           val mark = dat.value

@@ -32,7 +32,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
     this(beginOpt.value, endOpt.value, intervalOpt.value) // redirect to primary constructor
 
   override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.tfmt}, ${interval.dfmt})"
-  logger.info(s"\033[33mConstructing $this\033[0m ($hashCode)")
+  logger.info(s"\033[33mConstructing $this\033[0m (hashCode=$hashCode)")
 
   /**
     * Since a DataStream employs an Akka BroadcastHub under the covers, the clock ticks will begin progressing as soon
@@ -44,7 +44,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
     */
   val started: Promise[Unit] = Promise()
   def start(): Unit = {
-    logger.info(s"\033[33mStarting $this\033[0m ($hashCode)")
+    logger.info(s"\033[33mStarting $this\033[0m")
     started.success {}
   }
 
@@ -60,7 +60,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
         // inclusive end: shouldn't hurt anything and could help (conservative), but note that we could skip
         // over end, making this point moot, if `end - start` is not an exact number of `interval`s
         val bool = currentTime < end
-        if (!bool) logger.info(s"\033[33mClock complete\033[0m ($hashCode)")
+        if (!bool) logger.info(s"\033[33mClock complete\033[0m")
         bool
       }
 
@@ -73,7 +73,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
         // would it ever make sense to have a clock Datum's knownTime be different from its sourceTime or val?
         val previousTime = currentTime
         currentTime = math.min(currentTime + interval, end) // ensure we don't go beyond `end`
-        logger.debug(s"\033[33mTICK: ${currentTime.tfmt}\033[0m ($hashCode)")
+        logger.debug(s"\033[33mTICK: ${currentTime.tfmt}\033[0m")
         Tick(currentTime, previousTime)
       }
     }

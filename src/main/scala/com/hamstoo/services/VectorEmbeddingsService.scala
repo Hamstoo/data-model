@@ -131,7 +131,7 @@ object VectorEmbeddingsService {
     // intentionally use very few words so that there aren't too many represented by each PC
     val maxWords = 75
     val nDesired = math.min(maxWords, fracDesired * nUnique).toInt
-    logger.info(f"Document word mass stats: nUnique = $nUnique, nTop = $nDesired (${fracDesired*100}%.1f%%)")
+    logger.info(f"Document word mass stats: nUnique = $nUnique, nTop = $nDesired (${fracDesired*100}%.1f%%) (${utils.memoryString})")
     nDesired
   }
 
