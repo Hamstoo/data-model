@@ -224,7 +224,7 @@ class Join2[A0, A1, O](val joiner: (A0, A1) => O,
 
           (if (d0.isEmpty && d1.isEmpty) {
             logger.trace(s"  \u001b[33mempties (${namesStr.length})\u001b[0m$namesStr")
-            Some(Join.Pairwised(immutable.Seq.empty[Datum[(A0, A1)]], true, true))
+            Some(Join.Pairwised(Data.empty[(A0, A1)], true, true))
           }
            else pairwise(d0, d1))
             .map((d0, d1, _))
