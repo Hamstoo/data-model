@@ -15,6 +15,8 @@ import play.api.libs.ws._
 
 import scala.collection.mutable
 import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
+import play.api.http.Status
+
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 import scala.util.matching.Regex
@@ -143,9 +145,9 @@ class Vectorizer @Inject()(httpClient: WSClient,
   /** Handle vector response from APIs that return vectors. */
   private def handleResponse[T](f: WSResponse => T)(response: WSResponse): Option[T] = {
     response.status match {
-      case 200 => Some(f(response))
-      case 404 => None
-      case 500 => None
+      case Status.OK => Some(f(response))
+      case Status.NOT_FOUND => None
+      //case Status.INTERNAL_SERVER_ERROR => None
       case x =>
         val msg = s"Unexpected vector service response: $x"
         logger.warn(msg)
@@ -153,11 +155,15 @@ class Vectorizer @Inject()(httpClient: WSClient,
     }
   }
 
-  /** Only used for testing the `health` endpoint. */
+  /**
+    * Used for (1) testing the `health` endpoint and (2) during repr-engine startup to wait until conceptnet-vectors
+    * container has started, which can take a long time if repr-engine starts processing reprs right away.
+    */
   def health: Future[Boolean] =
     httpClient.url(s"$vectorsLink/health").get
       .map(handleResponse(_ => ()))
       .map(_.nonEmpty)
+      // this `recover` means that it should be impossible for this function to return a Future.failed
       .recover { case _ => false }
 
   /**
