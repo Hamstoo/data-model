@@ -69,7 +69,7 @@ abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE,
     // will receive their elements from the original [in]."
     val hub = in
       .map(logElem("in"))
-      .runWith(BroadcastHub.sink(bufferSize = bufferSize)) // upper bound on how far two consumers can be apart
+      .runWith(BroadcastHub.sink(bufferSize, name = name)) // upper bound on how far two consumers can be apart
 
     // re: async: this will/may create a separate actor for each attached consumer
     // re: buffer: "behavior can be tweaked" [https://doc.akka.io/docs/akka/current/stream/stream-dynamic.html]
@@ -268,7 +268,15 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
   /** Groups preloaded data into clock tick intervals and throttles it to the pace of the ticks. */
   override protected val in: SourceType = {
 
-    clock.out
+
+
+    // TODO: filter out clock ticks that have already been seen (by maintaining a high water mark)
+    // TODO:   this can be done entirely in the Clock by maintaining a high water mark for each attached observer
+
+
+
+
+    clock(this) // clock this!
       //.async.buffer(1, OverflowStrategy.backpressure) // causes entire clock to be pulled immediately
       .map { t => logger.debug(s"PreloadSource: $t"); t }
 
@@ -283,9 +291,10 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       // this should probably stay at 1 b/c there's no need to overload the database with concurrent calls to preload
       // especially when we want the first ones to finish fastest (so that the graph execution can progress) anyway
       .mapAsync(1) { w: KnownData =>
-          if (logger.isDebugEnabled) w.buffer.map(buf => logger.debug(s"Elements: n=${buf.size}, $w"))
-          w.buffer
-        }
+        if (logger.isDebugEnabled) w.buffer.map(buf => logger.debug(s"Elements: n=${buf.size}, $w"))
+        clock.tickCompleteFor(this)
+        w.buffer
+      }
 
       // allocate each PreloadSource its own Actor (http://blog.colinbreck.com/maximizing-throughput-for-akka-streams/)
       // as there won't be many of these and they'll all typically be doing IO
@@ -324,8 +333,8 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I],
     .map { x => logger.debug(s"PreloadObserver.subject(${subject.getClass.getSimpleName}): ${x.knownTimeMax.tfmt}") }
     .runWith(Sink.ignore)
 
-  // cache of previous calls to `encacheFutureObserverData` (using TrieMap rather than faster ConcurrentHashMap b/c the former
-  // has `getOrElseUpdate`)
+  // cache of previous calls to `encacheFutureObserverData` (using TrieMap rather than faster ConcurrentHashMap b/c
+  // the former has `getOrElseUpdate`)
   private[this] val cache = new scala.collection.concurrent.TrieMap[TimeStamp, Promise[Data[O]]]
 
   /**
@@ -404,6 +413,6 @@ abstract class ThrottledSource[T](bufferSize: Int = DEFAULT_BUFFER_SIZE)
     def joiner(v: T, t: TimeStamp): T = v
 
     // throttle the `throttlee` with the clock (see comment on JoinWithable as to why the cast is necessary here)
-    JoinWithable(throttlee).joinWith(clock().map(t => Data(t)))(joiner, pairwise).asInstanceOf[SourceType]
+    JoinWithable(throttlee).joinWith(clock.out.map(t => Data(t)))(joiner, pairwise).asInstanceOf[SourceType]
   }
 }
