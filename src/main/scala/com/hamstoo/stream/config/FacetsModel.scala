@@ -87,7 +87,7 @@ class FacetsModel @Inject()(clock: Clock)
     facets.zipWithIndex.foreach { case ((name, ds), i) =>
 
       // label the source with its facet name so that we can tell them apart on the other side
-      val labeledSource = ds.out
+      val labeledSource = ds()
         .map { d => logger.debug(s"(\u001b[2m${name}\u001b[0m) ${d.sourceTimeMax.tfmt} (n=${d.size})"); d }
         .map { d => (name, d) }
         .named(name)

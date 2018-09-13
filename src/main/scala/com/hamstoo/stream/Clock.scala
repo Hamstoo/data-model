@@ -4,24 +4,21 @@
 package com.hamstoo.stream
 
 import akka.NotUsed
-import akka.pattern.after
-import akka.stream.{ActorMaterializer, Materializer}
+import akka.stream.Materializer
 import akka.stream.scaladsl.Source
 import com.google.inject.Inject
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TIME_NOW, TimeStamp}
 import org.joda.time.DateTime
 
-import scala.collection.mutable
 import scala.concurrent.duration._
-import scala.concurrent.{Await, Future, Promise, TimeoutException}
-import scala.util.{Failure, Success, Try}
+import scala.concurrent.{Await, Promise}
 
 /**
   * A mocked clock, implemented as an Akka Source.
   */
 @com.google.inject.Singleton
 case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: DurationMils)
-                (implicit mat: ActorMaterializer)
+                (implicit mat: Materializer)
 
     extends ElemStream[Datum[TimeStamp]](bufferSize = 1) {
       // we use 1 here because there appears to be a bug in BroadcastHub where if the buffer consumes the
@@ -31,7 +28,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
 
   /** Dependency injection constructor--there can be only one.  Convert from OptionalInjectIds to their values. */
   @Inject def this(beginOpt: Clock.BeginOptional, endOpt: Clock.EndOptional, intervalOpt: Clock.IntervalOptional)
-                  (implicit mat: ActorMaterializer) =
+                  (implicit mat: Materializer) =
     this(beginOpt.value, endOpt.value, intervalOpt.value) // redirect to primary constructor
 
   override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.tfmt}, ${interval.dfmt})"
@@ -70,52 +67,9 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
       /** Iterator protocol. */
       override def next(): Tick = {
 
-        // TODO: are these blocking Awaits causing the deadlock in MarksStream?
-        // TODO:   if, for example, MarksStream gets assigned the same thread as the Clock while it's blocking
-
         // wait for `started` to be true before ticks start ticking
         if (!started.future.isCompleted)
           Await.result(started.future, Duration.Inf)
-
-        // wait for all clock observers to receive their ticks before ticking again (issue #340)
-        def waitForClockObsvrs(nAttempts: Int = 10): Future[Unit] = {
-
-          val fSuccess = Future.sequence(clockObsvrsWithCompletedTicks.values.map(_.future)).map(_ => ())
-
-          // https://stackoverflow.com/questions/47574526/scala-how-to-use-a-timer-without-blocking-on-futures-with-await-result
-          lazy val ex = new TimeoutException({
-            val uf = clockObsvrsWithCompletedTicks.filterNot(_._2.future.isCompleted).keys.map(_.getClass.getSimpleName)
-            s"Clock timed out waiting for observers to receive ticks; unfinished observers: $uf"
-          })
-          lazy val fTimeout = after(duration = 98 millis, using = mat.system.scheduler)(Future.failed(ex))
-
-          // why doesn't this work the same as what's below?  the recoverWith doesn't seem to ever be invoked; the
-          // exception gets passed straight to the Akka supervisor instead:
-          //   > [ERROR] [09/11/2018 19:35:09.643] [aux-system-akka.actor.default-dispatcher-8]
-          //   > [akka://aux-system/system/StreamSupervisor-0/flow-0-0-unnamed]
-          //   > Error in stage [StatefulMapConcat]: Futures timed out after [9 milliseconds]
-          //Await.ready(f, 9 millis).recoverWith { case _ => waitForClockObsvrs() }
-
-          val result = Promise[Unit]()
-
-          Future.firstCompletedOf(Seq(fSuccess, fTimeout)).onComplete {
-          //Try(Await.result(f, 49 millis)) match {
-            case Success(_) => result.success {}
-            case Failure(_) if nAttempts > 0 =>
-              val n = clockObsvrsWithCompletedTicks.values.count(_.future.isCompleted)
-              logger.info(s"Waiting on clock observers (nComplete=$n/${clockObsvrs.size})")
-              result.completeWith(waitForClockObsvrs(nAttempts = nAttempts - 1))
-            case Failure(t) =>
-              logger.error(t.getMessage)
-              result.failure(t)
-          }
-
-          result.future
-        }
-
-        Await.result(waitForClockObsvrs(), Duration.Inf)
-        clockObsvrsWithCompletedTicks.clear()
-        clockObsvrsWithCompletedTicks ++= clockObsvrs.map(_ -> Promise[Unit]())
 
         // would it ever make sense to have a clock Datum's knownTime be different from its sourceTime or val?
         val previousTime = currentTime
@@ -125,25 +79,6 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
       }
     }
   }.named("Clock")
-
-  // data structures to ensure BroadcastHub doesn't forget to send messages to any of its spokes (issue #340)
-  private val clockObsvrsWithCompletedTicks = new scala.collection.concurrent.TrieMap[PreloadSource[_], Promise[Unit]]
-  private val clockObsvrs = mutable.Set.empty[PreloadSource[_]]
-
-  /** Same as base class' apply but with an observer argument, which gets added to the clock's observer set. */
-  def apply(clockObsvr: PreloadSource[_]): SourceType = {
-    clockObsvrs += clockObsvr
-    this.out
-  }
-
-  /** Called by PreloadSource once it's had a chance to process the current clock tick. (issue #340) */
-  def tickCompleteFor(clockObsvr: PreloadSource[_]): Unit = {
-    //clockObsvrsWithCompletedTicks.getOrElseUpdate(clockObsvr, Promise[Unit]()).completeWith(Future.unit)
-    clockObsvrsWithCompletedTicks.getOrElseUpdate(clockObsvr, Promise[Unit]()).success {}
-    val n = clockObsvrsWithCompletedTicks.values.count(_.future.isCompleted)
-    logger.debug(s"Tick completed for '${clockObsvr.getClass.getSimpleName}' (nComplete=$n/${clockObsvrs.size})")
-  }
-
 }
 
 object Clock {

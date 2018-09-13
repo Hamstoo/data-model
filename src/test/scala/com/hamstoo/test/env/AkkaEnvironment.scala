@@ -17,7 +17,7 @@ abstract class AkkaEnvironment(actorSystemName: String)
 
   self: Suite =>
 
-  implicit val materializer: ActorMaterializer = ActorMaterializer()
+  implicit val materializer: Materializer = ActorMaterializer()
 
   override def afterAll(): Unit = {
 

@@ -268,15 +268,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
   /** Groups preloaded data into clock tick intervals and throttles it to the pace of the ticks. */
   override protected val in: SourceType = {
 
-
-
-    // TODO: filter out clock ticks that have already been seen (by maintaining a high water mark)
-    // TODO:   this can be done entirely in the Clock by maintaining a high water mark for each attached observer
-
-
-
-
-    clock(this) // clock this!
+    clock.out
       //.async.buffer(1, OverflowStrategy.backpressure) // causes entire clock to be pulled immediately
       .map { t => logger.debug(s"PreloadSource: $t"); t }
 
@@ -292,7 +284,6 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       // especially when we want the first ones to finish fastest (so that the graph execution can progress) anyway
       .mapAsync(1) { w: KnownData =>
         if (logger.isDebugEnabled) w.buffer.map(buf => logger.debug(s"Elements: n=${buf.size}, $w"))
-        clock.tickCompleteFor(this)
         w.buffer
       }
 

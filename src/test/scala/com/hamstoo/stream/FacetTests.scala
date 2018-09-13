@@ -179,7 +179,6 @@ class FacetTests
 
         classOf[ExecutionContext] := system.dispatcher
         classOf[Materializer] := materializer
-        classOf[ActorMaterializer] := materializer
         classOf[() => Future[DefaultDB]] := db
 
         //Val("clock.begin"):~ TimeStamp =~ clockBegin // alternative syntax? more like Scala?
