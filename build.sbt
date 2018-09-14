@@ -56,12 +56,7 @@ resolvers ++= Seq(
   "Atlassian Releases" at "https://maven.atlassian.com/public/")
 
 val reactiveMongoVersion = "0.12.5"
-val akkaVersion = "2.5-SNAPSHOT"
-
-// to force the usage of this version [https://stackoverflow.com/questions/45531198/warnings-while-building-scala-spark-project-with-sbt]
-dependencyOverrides ++= Seq(
-  "com.typesafe.akka" %% "akka-stream" % akkaVersion
-)
+val akkaVersion = "2.5.9"
 
 // dependencies
 libraryDependencies ++= Seq(

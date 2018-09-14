@@ -69,7 +69,7 @@ abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE,
     // will receive their elements from the original [in]."
     val hub = in
       .map(logElem("in"))
-      .runWith(BroadcastHub.sink(bufferSize, name = name)) // upper bound on how far two consumers can be apart
+      .runWith(BroadcastHub.sink(bufferSize = bufferSize)) // upper bound on how far two consumers can be apart
 
     // re: async: this will/may create a separate actor for each attached consumer
     // re: buffer: "behavior can be tweaked" [https://doc.akka.io/docs/akka/current/stream/stream-dynamic.html]
@@ -88,7 +88,7 @@ abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE,
   }
 
   /** Shortcut to the source.  Think of a ElemStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
-  def apply(): SourceType = this.out
+  final def apply(): SourceType = this.out
 
   /** Log a streamed element. */
   protected def logElem[EE](inOut: String)(elem: EE): EE = {
