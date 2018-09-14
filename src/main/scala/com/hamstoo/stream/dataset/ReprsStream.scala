@@ -19,16 +19,23 @@ import scala.concurrent.Future
 
 
 /**
-  * A MongoDB Text Index search score for a search term / query word along with its corresponding repr.
+  * A MongoDB Text Index search score for a search term / query word.
   */
-case class ReprQueryResult(qword: String, mbR: Option[RSearchable], dbScore: Double, count: Int)
+case class ReprQueryWord(qword: String, dbScore: Double, count: Int)
+
+/**
+  * A repr with a list of search terms / query words.
+  * @param mbR    Optional repr with score == None.  MongoDB Text Index search scores have been moved into `words`.
+  * @param words  Parallel to mbQuery2Vecs, one repr search result for each query word.
+  */
+case class ReprQueryResult(mbR: Option[RSearchable], words: Seq[ReprQueryWord])
 
 /**
   * The instance type streamed from the ReprsStream.
-  * @param pageReprs  A representation corresponding to the (external) content of the marked page.
-  * @param userReprs  A representation constructed from the user-created content (comments, labels, highlights, notes).
+  * @param page  A representation corresponding to the (external) content of the marked page.
+  * @param user  A representation constructed from the user-created content (comments, labels, highlights, notes).
   */
-case class ReprsPair(pageReprs: Seq[ReprQueryResult], userReprs: Seq[ReprQueryResult])
+case class ReprsPair(page: ReprQueryResult, user: ReprQueryResult)
 
 /**
   * A stream of a user's marks' representations.
@@ -74,17 +81,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
 
       //val approxBegin = if (marks.isEmpty) 0L else marks.map(_.timeFrom).min
       //val approxEnd   = if (marks.isEmpty) 0L else marks.map(_.timeFrom).max
-      logger.info(s"Performing observerPreload between ${begin.tfmt} and ${end.tfmt} for ${marks.size} marks, ${mbQuerySeq.map(_.size)} search terms, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, ${reprIds.size} reprIds, and with ${Runtime.getRuntime.availableProcessors} available processors")
-
-
-      // TODO: if a timeout occurs after the above log message then it's possible that the threadpool has been starved
-      // TODO:   of threads and a deadlock has occurred b/c the next ReprsDao I/O methods all log debug messages
-      // TODO:   immediately (but from inside their own threads)
-      // TODO:   > Performing ReprsStream.observerPreload between 2017-02-05Z [1486.2528] and 2017-08-07Z [1502.064] for 84 marks,
-      // TODO:   >   84 primaryReprIds, 84 usrContentReprIds, and 77 reprIds
-      // TODO:   > FAILURE Attempt to compute user statistics (57425 [1535558.22501]) timed out
-      // TODO: UPDATE - data-model has been changed to use a CachedThreadPool, which will hopefully solve this problem
-
+      logger.info(s"[3] Performing observerPreload between ${begin.tfmt} and ${end.tfmt} for ${marks.size} marks, ${mbQuerySeq.map(_.size)} search terms, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, ${reprIds.size} reprIds, and with ${Runtime.getRuntime.availableProcessors} available processors")
 
       // run a separate MongoDB Text Index search over `representations` collection for each query word
       val fscoredReprs = mbQuerySeq.mapOrEmptyFuture(reprDao.search(reprIds, _)).flatMap { seqOfMaps =>
@@ -99,7 +96,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
       val funscoredReprs = reprDao.retrieve(reprIds)
 
       for(scoredReprs <- fscoredReprs; unscoredReprs <- funscoredReprs) yield {
-        logger.debug(s"observerPreload: nScoredReprs = ${scoredReprs.map(_.size).sum}, nUnscoredReprs = ${unscoredReprs.size}") // debugging timeout
+        logger.debug(s"[3.1] observerPreload: nScoredReprs = ${scoredReprs.map(_.size).sum}, nUnscoredReprs = ${unscoredReprs.size}") // debugging timeout
         subjectData.map { dat =>
 
           val mark = dat.value
@@ -109,28 +106,38 @@ class ReprsStream @Inject()(marksStream: MarksStream,
           // each element of `scoredReprs` contains a collection of representations for the respective word in
           // `cleanedQuery`, so zip them together, pull out the requested reprId, and multiply the MongoDB search
           // scores `dbScore` by the query word counts `q._2`
-          def searchTermReprs(pOrU: String, reprId: String): Seq[ReprQueryResult] =
+          def searchTermReprs(pOrU: String, reprId: String): ReprQueryResult = {
+
+            var mbR: Option[RSearchable] = None
 
             // both of these must contain at least 1 element
-            cleanedQuery.view.zip(scoredReprs).map { case (q, scoredReprsForThisWord) =>
+            val words = cleanedQuery.view.zip(scoredReprs).map { case (q, scoredReprsForThisWord) =>
 
               // only use unscored repr if a scored repr was not found by MongoDB Text Index search
               lazy val mbUnscored = unscoredReprs.get(reprId)
-              val mbR = scoredReprsForThisWord.get(reprId).orElse(mbUnscored)
-              val dbScore = mbR.flatMap(_.score).getOrElse(0.0)
+              val mbR_i = scoredReprsForThisWord.get(reprId).orElse(mbUnscored)
+              val dbScore = mbR_i.flatMap(_.score).getOrElse(0.0)
+
+              // it doesn't matter which repr we choose, all of them will have the same reprId and vectors, just with
+              // different MongoDB Text Index search scores, which is why we're inside this function to begin with
+              if (mbR.isEmpty && mbR_i.isDefined)
+                mbR = mbR_i.map(_.xcopy(score = None))
 
               def toStr(opt: Option[RSearchable]) = opt.map(x => (x.nWords.getOrElse(0), x.score.fold("NaN")(s => f"$s%.2f")))
               loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) $pOrU-db$q: dbScore=$dbScore%.2f reprs=${toStr(scoredReprsForThisWord.get(reprId))}/${toStr(mbUnscored)}")
 
-              ReprQueryResult(q._1, mbR, dbScore, q._2)
+              ReprQueryWord(q._1, dbScore, q._2)
             }.force
 
-          val pageReprs = searchTermReprs("P", primaryReprId)    // webpage-content representations
-          val userReprs = searchTermReprs("U", usrContentReprId) //    user-content representations
+            ReprQueryResult(mbR, words)
+          }
+
+          val pageQueryResult = searchTermReprs("P", primaryReprId)    // webpage-content representations
+          val userQueryResult = searchTermReprs("U", usrContentReprId) //    user-content representations
 
           // technically we should update knownTime here to the time of repr computation, but it's not really important
           // in this case b/c what we really want is "time that this data could have been known"
-          val d = dat.withValue(ReprsPair(pageReprs, userReprs))
+          val d = dat.withValue(ReprsPair(pageQueryResult, userQueryResult))
           loggerI.trace(s"\u001b[32m${dat.id}\u001b[0m: ${dat.knownTime.Gs}")
           d
         }

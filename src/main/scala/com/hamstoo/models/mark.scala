@@ -546,13 +546,39 @@ case class Mark(override val userId: UUID,
     */
   def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
 
-  /** Basically the same impl as `primaryRepr` except that it returns an expected rating ID (as an Option). */
+  /**
+    * Same implementation as `expectedRating` but for reprId, as opposed to the older `primaryRepr` impl.
+    * Useful for getting a representative repr for approximate stuff like autoGenKws.
+    */
+  def primaryReprInclUserContent: Option[ObjectId] = {
+
+    def mostRecentValidReprOfType(isType: ReprInfo => Boolean): Option[ObjectId] = reprs
+      .filter(x => isType(x) && !NON_IDS.contains(x.reprId))
+      .sortBy(_.created).lastOption.map(_.reprId)
+
+    val priv             = mostRecentValidReprOfType(_.isPrivate)
+    lazy val pub         = mostRecentValidReprOfType(_.isPublic)
+    lazy val userContent = mostRecentValidReprOfType(_.isUserContent)
+
+    priv.orElse(pub).orElse(userContent)
+  }
+
+  /**
+    * Basically the same impl as `primaryRepr` except that it returns an expected rating ID (as an Option).
+    * Update, 2018-8-31: Now returns user-content repr's expected rating if both private & public are missing.
+    */
   def expectedRating: Option[ObjectId] = {
-    val privExpRating = reprs
-      .filter(x => x.isPrivate && !NON_IDS.contains(x.expRating.getOrElse("")))
+
+    def mostRecentValidExpRatingOfType(isType: ReprInfo => Boolean): Option[ObjectId] = reprs
+      .filter(x => isType(x) && !NON_IDS.contains(x.expRating.getOrElse("")))
+      .filter(_.expRating.isDefined)
       .sortBy(_.created).lastOption.flatMap(_.expRating)
-    lazy val pubExpRating = reprs.find(_.isPublic).flatMap(_.expRating)
-    privExpRating.orElse(pubExpRating)
+
+    val priv             = mostRecentValidExpRatingOfType(_.isPrivate)
+    lazy val pub         = mostRecentValidExpRatingOfType(_.isPublic)
+    lazy val userContent = mostRecentValidExpRatingOfType(_.isUserContent)
+
+    priv.orElse(pub).orElse(userContent)
   }
 
   /** Returns true if this Mark's MarkData has all of the test tags.  Should be consistent w/ MarkDao.hasTags. */

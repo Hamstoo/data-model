@@ -32,7 +32,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
     this(beginOpt.value, endOpt.value, intervalOpt.value) // redirect to primary constructor
 
   override def toString: String = s"${getClass.getSimpleName}(${begin.tfmt}, ${end.tfmt}, ${interval.dfmt})"
-  logger.info(s"\033[33mConstructing $this\033[0m ($hashCode)")
+  logger.info(s"\033[33mConstructing $this\033[0m (hashCode=$hashCode)")
 
   /**
     * Since a DataStream employs an Akka BroadcastHub under the covers, the clock ticks will begin progressing as soon
@@ -42,9 +42,9 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
     *
     * Using a Promise here has the extra benefit that `start` can only be called once.
     */
-  val started: Promise[Unit] = Promise()
+  private[this] val started = Promise[Unit]()
   def start(): Unit = {
-    logger.info(s"\033[33mStarting $this\033[0m ($hashCode)")
+    logger.info(s"\033[33mStarting $this\033[0m")
     started.success {}
   }
 
@@ -60,24 +60,48 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
         // inclusive end: shouldn't hurt anything and could help (conservative), but note that we could skip
         // over end, making this point moot, if `end - start` is not an exact number of `interval`s
         val bool = currentTime < end
-        if (!bool) logger.info(s"\033[33mClock complete\033[0m ($hashCode)")
+        if (!bool) logger.info(s"\033[33mClock complete\033[0m")
         bool
       }
 
       /** Iterator protocol. */
       override def next(): Tick = {
 
-        // wait for `started` to be true before ticks start incrementing
-        Await.result(started.future, Duration.Inf)
+        // send a nullTick that consumers won't ever see (due to the filter in `out`) but which will trigger
+        // BroadcastHub's GraphStageLogic.createLogic if it didn't run upon hub construction (issue #340)
+        if (!nullTickSent) {
+          logger.info(s"Sending clock's null tick")
+          nullTickSent = true
+          nullTick
 
-        // would it ever make sense to have a clock Datum's knownTime be different from its sourceTime or val?
-        val previousTime = currentTime
-        currentTime = math.min(currentTime + interval, end) // ensure we don't go beyond `end`
-        logger.debug(s"\033[33mTICK: ${currentTime.tfmt}\033[0m ($hashCode)")
-        Tick(currentTime, previousTime)
+        } else {
+
+          // wait for `started` to be true before ticks start ticking
+          if (!started.future.isCompleted) {
+            logger.info(s"Infinitely awaiting clock to start")
+            Await.result(started.future, Duration.Inf)
+          }
+
+          // would it ever make sense to have a clock Datum's knownTime be different from its sourceTime or val?
+          val previousTime = currentTime
+          currentTime = math.min(currentTime + interval, end) // ensure we don't go beyond `end`
+          logger.debug(s"\033[33mTICK: ${currentTime.tfmt}\033[0m")
+          Tick(currentTime, previousTime)
+        }
       }
     }
   }.named("Clock")
+
+  /**
+    * We send a "null" timestamp, even before started.isCompleted, to trigger registration of BroadcastHub
+    * consumers, if they happen to be too slow to register themselves on their own.
+    * See also:
+    *   https://github.com/akka/akka/issues/25608
+    *   https://github.com/fcrimins/akka/tree/wip-hub-deadlock-akka-stream
+    */
+  private[this] var nullTickSent: Boolean = false
+  private[this] val nullTick = Tick(0, 0)
+  override def out: SourceType = super.out.filter(_ != nullTick)
 }
 
 object Clock {

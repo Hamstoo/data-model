@@ -131,7 +131,7 @@ object VectorEmbeddingsService {
     // intentionally use very few words so that there aren't too many represented by each PC
     val maxWords = 75
     val nDesired = math.min(maxWords, fracDesired * nUnique).toInt
-    logger.info(f"Document word mass stats: nUnique = $nUnique, nTop = $nDesired (${fracDesired*100}%.1f%%)")
+    logger.info(f"Document word mass stats: nUnique = $nUnique, nTop = $nDesired (${fracDesired*100}%.1f%%) (${utils.memoryString})")
     nDesired
   }
 
@@ -202,6 +202,12 @@ object VectorEmbeddingsService {
         val i = selections.indexOf(w + "s")
         selections(i) = w
       } else if (w.endsWith("s") && selections.contains(w.init)) {
+        // do nothing
+
+      } else if (selections.contains(w + "ing")) {
+        val i = selections.indexOf(w + "ing")
+        selections(i) = w
+      } else if (w.endsWith("ing") && selections.contains(w.dropRight(3))) {
         // do nothing
 
       } else if (w.endsWith("y") && selections.contains(w.init + "ies")) {
@@ -330,8 +336,6 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
       val vecreprs = VecEnum.values.toList.flatMap {
         case vt if vt == VecEnum.CRPv2_max => None // crpVecs._1.map(vt -> _)
         case vt if vt == VecEnum.CRPv2_2nd => None // crpVecs._2.map(vt -> _)
-        case vt if vt == VecEnum.RWT => None
-        case vt if vt == VecEnum.RWTa => None
         case vt if vt == VecEnum.IDF => idfVecs.map(vt -> _._1)
         case vt if vt == VecEnum.IDF3 => idfVecs.map(vt -> _._2)
         case vt if vt.toString.startsWith("PC") || vt.toString.startsWith("KM") =>

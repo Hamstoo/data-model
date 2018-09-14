@@ -123,6 +123,8 @@ object Datum {
 object Data {
   type Data[+TT] = immutable.Seq[Datum[TT]]
 
+  def empty[T] = immutable.Seq.empty[Datum[T]]
+
   def apply[T](data: Datum[T]*): Data[T] = data.to[immutable.Seq]
 
   implicit class ExtendedData[X](private val x: Data[X]) extends AnyVal {

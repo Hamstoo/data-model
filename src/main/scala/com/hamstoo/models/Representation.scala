@@ -284,9 +284,21 @@ object Representation extends BSONHandlers {
         PC4,       // fourth
         KM1,       // most significant k-means cluster by average bm25 score
         KM2,       // second most significant k-means cluster (i.e. don't combine 1st and 2nd at point of construction)
-        KM3,       // third
-        RWT,       // weighted w.r.t. user ratings where a rating of x approximately corresponds to a weight of x-3
-        RWTa       // weighted w.r.t. negative of user ratings (i.e. anti-confirmatory)
+        KM3       // third
+      = Value
+  }
+
+  /**
+    * The following are used when computing aggregate vectors for a user (aggregated across a user's marks),
+    * as opposed to the above, which are used when computing vectors for marks.
+    */
+  object UserVecEnum extends Enumeration {
+
+    val RWT,   // derived from a document containing words where each word is included in proportion to a
+                 // "corrected" average rating that word has received across all marks that it appears in
+        RWTa,  // derived from a document where the proportions are opposite the average ratings
+        PAGEc, // computed only from the web "page" content reprs of marks
+        USERc  // computed only from the user-content reprs of marks
       = Value
   }
 

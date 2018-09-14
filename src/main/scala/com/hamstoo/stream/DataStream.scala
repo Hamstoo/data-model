@@ -3,7 +3,7 @@
  */
 package com.hamstoo.stream
 
-import akka.NotUsed
+import akka.{Done, NotUsed}
 import akka.stream.Materializer
 import akka.stream.scaladsl.{BroadcastHub, Sink, Source, SourceQueue}
 import com.hamstoo.stream.ElemStream._
@@ -58,7 +58,7 @@ abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE,
     * as many Flows or Sinks as desired at runtime.
     * See also: https://doc.akka.io/docs/akka/2.5/stream/stream-dynamic.html
     */
-  final lazy val out: SourceType = {
+  protected final lazy val _out: SourceType = {
     assert(in != null) // this assertion will fail if `source` is not `lazy`
 
     // the BroadcastHub does not appear to create an asynchronous stream boundary so everything before it
@@ -67,7 +67,9 @@ abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE,
 
     // "This Source [hub] can be materialized an arbitrary number of times, where each of the new materializations
     // will receive their elements from the original [in]."
-    val hub = in.runWith(BroadcastHub.sink(bufferSize = bufferSize)) // upper bound on how far two consumers can be apart
+    val hub = in
+      .map(logElem("in"))
+      .runWith(BroadcastHub.sink(bufferSize = bufferSize)) // upper bound on how far two consumers can be apart
 
     // re: async: this will/may create a separate actor for each attached consumer
     // re: buffer: "behavior can be tweaked" [https://doc.akka.io/docs/akka/current/stream/stream-dynamic.html]
@@ -76,8 +78,33 @@ abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE,
     hub.named(name) // `named` should be last, no matter what (b/c it's what the outside world sees)
   }
 
+  protected var nAttached = 0
+
+  /** `out` is now a method so that we can log when stuff gets attached. */
+  def out: SourceType = {
+    nAttached += 1
+    logger.debug(s"Attaching to hub (nAttached=$nAttached)")
+    _out.map(logElem("out"))
+  }
+
   /** Shortcut to the source.  Think of a ElemStream as being a lazily-evaluated pointer to a Source[Data[T]]. */
-  def apply(): SourceType = this.out
+  final def apply(): SourceType = this.out
+
+  /** Log a streamed element. */
+  protected def logElem[EE](inOut: String)(elem: EE): EE = {
+    elem match {
+      case t: Tick => logger.debug(s"hub.$inOut: $t")
+      case dat: Seq[_] =>
+        if (dat.nonEmpty) dat.head match {
+          case _: Datum[_] => logger.debug(s"hub.$inOut: ${dat.asInstanceOf[Data[_]].knownTimeMax.tfmt}")
+          case x => logger.debug(s"hub.$inOut (unknown): $x")
+        } else logger.debug(s"hub.$inOut (empty): ${dat.getClass.getName}")
+      //case t => logger.debug(s"hub.$inOut: unknown / ${t.getClass.getName} / $t")
+      //case dat: Data[_] @unchecked => logger.debug(s"hub.$inOut: ${dat.knownTimeMax.tfmt}")
+    }
+
+    elem
+  }
 }
 
 object ElemStream {
@@ -122,9 +149,12 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
   type PreloadType[+TT] = Future[Data[TT]]
   protected def preload(begin: TimeStamp, end: TimeStamp): PreloadType[T]
 
-  /** PreloadSources' preloads are _subjects_ that are _observable_ by other PreloadSources' preloads. */
-  private val preloadObservers = mutable.Set.empty[PreloadObserver[_, _]] // TODO: see "existential" below
-  private[stream] def registerPreloadObserver(observer: PreloadObserver[T, _]): Unit = preloadObservers += observer
+  /** PreloadSources' preloads are _subjects_ that are _observable_ by these other PreloadSources' preloads. */
+  private val observers = mutable.Set.empty[PreloadObserver[_, _]] // TODO: see "existential" below
+  private[stream] def registerPreloadObserver(observer: PreloadObserver[T, _]): Unit = {
+    observers += observer
+    logger.debug(s"Registering observer '${observer.getClass.getSimpleName}' of subject '${this.getClass.getSimpleName}' (nObservers=${observers.size})")
+  }
 
   /** Similar to a TimeWindow (i.e. simple range) but with a mutable buffer reference to access upon CloseGroup. */
   class KnownData(b: TimeStamp, e: TimeStamp,
@@ -150,14 +180,17 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
     private var buffer = Seq.empty[PreloadType[_]] // TODO: this existential `_` should really be a T, but how?
 
     // if anyone wants to peek at the data that are being preloaded (so, for example, they can perform their own
-    // dependent preload) then they can listen to this source as a PreloadObserver
+    // dependent preload) then they can listen to this source (which is really just a "pipe" between subject and
+    // observers) as a PreloadObserver
     // see also: http://loicdescotte.github.io/posts/play-akka-streams-queue/
     private val overflowStrategy = akka.stream.OverflowStrategy.backpressure
-    private val observers: SourceQueue[(PreloadType[_], TimeStamp)] = // TODO: see "existential" above
+    private val observerPipe: SourceQueue[(PreloadType[_], TimeStamp)] = // TODO: see "existential" above
       Source.queue[(PreloadType[_], TimeStamp)](1, overflowStrategy).to(Sink.foreach { case (batch, end_i) =>
-        preloadObservers.foreach { ob =>
-          ob.asInstanceOf[PreloadObserver[T, _]].preloadUpdate(batch.asInstanceOf[PreloadType[T]],
-                                                               end_i - loadInterval, end_i)
+
+        // this gets triggered when `observerPipe.offer` is called below
+        observers.foreach { ob =>
+          val fSubjectData = batch.asInstanceOf[PreloadType[T]]
+          ob.asInstanceOf[PreloadObserver[T, _]].encacheFutureObserverData(fSubjectData, end_i - loadInterval, end_i)
         }
       }).run()
 
@@ -181,28 +214,28 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       // `firstPreloadEnd = lastPreloadEnd` in the next call to `knownDataFor`
       lastPreloadEnd = lastPreloadEnd.map(_ + loadInterval)
 
-      // don't start querying the database for the next batch until at least the previous batch has completed for
-      // 2 reasons: (1) we don't want a lot of concurrent database contention and (2) PreloadObserver.preload
-      // always waits on the head of its queue (though this won't have much effect in practice because most
-      // consecutive preloads occur during subsequent calls to knownDataFor)
-      var batch: PreloadType[_] = Future.successful(immutable.Seq.empty[Datum[T]])
+      // update the preload buffer by preloading new data, but don't start querying the database for the next batch
+      // until at least the previous batch has completed
+      (firstPreloadEnd until lastPreloadEnd.get by loadInterval)
+        .foldLeft(Future.successful(Data.empty[T])) { case (batches, end_i) =>
 
-      // update the preload buffer by preloading new data
-      (firstPreloadEnd until lastPreloadEnd.get by loadInterval).foreach { end_i =>
+          // `preload` returns a Future, but it--the Future--immediately gets pushed to observerPipe (rather than
+          // waiting), so we can be sure that they get pushed onto the observerPipe's queue in order
+          val fBatch = batches.flatMap { _ =>
 
-        // `preload` returns a Future, but it--the Future--immediately gets pushed to observers (rather than waiting)
-        // so we can be sure that they get pushed onto the observers' queues in order
-        batch = batch.flatMap { _ =>
+            // No longer true: ~~these calls to `preload` will be executed in parallel, but~~
+            // Still true: the buffer appending (and observer notification) won't be
+            logger.debug(s"Calling preload[${(end_i - loadInterval).tfmt}, ${end_i.tfmt}) from knownDataFor(${ts.tfmt})")
 
-          // ~~these calls to `preload` will be executed in parallel, but~~ the buffer appending won't be
-          logger.debug(s"(\033[2m${PreloadSource.this.getClass.getSimpleName}\033[0m) Calling preload[${(end_i - loadInterval).tfmt}, ${end_i.tfmt}) from knownDataFor(${ts.tfmt})")
+            preload(end_i - loadInterval, end_i)
+          }
 
-          preload(end_i - loadInterval, end_i)
+          if (observers.nonEmpty)
+            logger.debug(s"Notifying ${observers.size} observer(s) of future batch: preload[${(end_i - loadInterval).tfmt}, ${end_i.tfmt}) from knownDataFor(${ts.tfmt})")
+          observerPipe.offer((fBatch, end_i)) // notify observers
+          buffer = buffer :+ fBatch
+          fBatch
         }
-
-        observers.offer((batch, end_i)) // notify observers
-        buffer = buffer :+ batch
-      }
 
       val bufferT = buffer.asInstanceOf[Seq[PreloadType[T]]] // TODO: see "existential" above (remove asInstanceOf)
 
@@ -217,7 +250,7 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
         logger.debug(s"Partitioned ${flat.size} elements into sets of ${x._1.size} and ${x._2.size}")
         if (logger.isTraceEnabled)
           Seq((x._1, "inside"), (x._2, "outside")).foreach { case (seq, which) =>
-            logger.trace(s"(\033[2m${PreloadSource.this.getClass.getSimpleName}\033[0m) fpartitionedBuffer($which): ${seq.map(_.knownTime).sorted.map(_.tfmt)}") }
+            logger.trace(s"fpartitionedBuffer($which): ${seq.map(_.knownTime).sorted.map(_.tfmt)}") }
         x
       }
 
@@ -250,10 +283,9 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
       // this should probably stay at 1 b/c there's no need to overload the database with concurrent calls to preload
       // especially when we want the first ones to finish fastest (so that the graph execution can progress) anyway
       .mapAsync(1) { w: KnownData =>
-          if (logger.isDebugEnabled) w.buffer.map(buf =>
-            logger.debug(s"(\033[2m${getClass.getSimpleName}\033[0m) Elements: n=${buf.size}, $w"))
-          w.buffer
-        }
+        if (logger.isDebugEnabled) w.buffer.map(buf => logger.debug(s"Elements: n=${buf.size}, $w"))
+        w.buffer
+      }
 
       // allocate each PreloadSource its own Actor (http://blog.colinbreck.com/maximizing-throughput-for-akka-streams/)
       // as there won't be many of these and they'll all typically be doing IO
@@ -267,9 +299,9 @@ abstract class PreloadSource[+T](val loadInterval: DurationMils,
 }
 
 /**
-  * This class is a PreloadSource, but one that observes another with access to the outcomes of its calls to
-  * `preload`.  It is useful in the case when large blocks of data are buffered by one stream and large dependent
-  * blocks need to be buffered by another.
+  * This class is a PreloadSource, but one that observes another, a subject, with access to the outcomes of the
+  * subject's calls to `preload`.  It is useful in the case when large blocks of data are buffered by one stream,
+  * the subject, and large dependent blocks need to be buffered by another, the observer(s).
   * @tparam I The type of data being observed--or streamed (I)n.
   * @tparam O The type of data being streamed (O)ut.
   */
@@ -281,26 +313,47 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I],
   // don't forget to observe the subject, which is the whole reason why we're here
   subject.registerPreloadObserver(this)
 
-  // must signal demand from primary `out` source, o/w there might not be any data produced by the `subject` to observe
-  subject.out.runWith(Sink.ignore)
+  // must signal demand from primary `out` source, o/w there might not be any data produced by the `subject` to
+  // observe (`subject` is a PreloadSource, so it depends on the clock, which means there's no chance of Sink.ignore
+  // chewing through BroadcastHub subject.out's messages as they can't be constructed w/out clock)
+  // [https://blog.softwaremill.com/akka-streams-pitfalls-to-avoid-part-2-f93e60746c58]
+  // Note: This isn't working properly for some reason.  We aren't seeing the first couple MarksStream logs when
+  // computing UserStats.  And then, nondeterministically, sometimes MarksStream misses the first clock tick causing
+  // a timeout to occur.
+  val _: Future[Done] = subject.out
+    .map { x => logger.debug(s"PreloadObserver.subject(${subject.getClass.getSimpleName}): ${x.knownTimeMax.tfmt}") }
+    .runWith(Sink.ignore)
 
-  // cache of previous calls to `preloadUpdate` (using TrieMap rather than faster ConcurrentHashMap b/c the former
-  // has `getOrElseUpdate`)
+  // cache of previous calls to `encacheFutureObserverData` (using TrieMap rather than faster ConcurrentHashMap b/c
+  // the former has `getOrElseUpdate`)
   private[this] val cache = new scala.collection.concurrent.TrieMap[TimeStamp, Promise[Data[O]]]
 
-  /** Calls to this method are triggered by the `subject` after it performs one of its own calls to `preload`. */
-  def preloadUpdate(fSubjectData: PreloadType[I], begin: TimeStamp, end: TimeStamp): Unit = {
-    logger.debug(s"PreloadObserver encache (${begin.tfmt} to ${end.tfmt})")
-    val fut = observerPreload(fSubjectData, begin, end)
-    cache.getOrElseUpdate(end, Promise[Data[O]]()).completeWith(fut)
+  /**
+    * Calls to this method are triggered by the `subject` after it creates a Future for one of its own
+    * calls to `preload`.
+    */
+  def encacheFutureObserverData(fSubjectData: PreloadType[I], begin: TimeStamp, end: TimeStamp): Unit = {
+    logger.debug(s"[2] PreloadObserver.encacheFutureObserverData (${begin.tfmt} to ${end.tfmt}, nCached=${cache.size})")
+    val fObserverData = observerPreload(fSubjectData, begin, end)
+
+    // if `preload` hasn't been called yet, then there won't yet be a Promise in the cache, which should be OK (so just log)
+    if (cache.get(end).isEmpty)
+      logger.info(s"[2.1] PreloadObserver.encacheFutureObserverData: not yet waiting, constructing NEW Promise (${begin.tfmt} to ${end.tfmt}, nCached=${cache.size})")
+
+    cache.getOrElseUpdate(end, Promise[Data[O]]()).completeWith(fObserverData)
   }
 
-  /** Override the typical `preload` implementation with one that waits on the appropriate cache element. */
+  /**
+    * Override the typical `preload` implementation with one that waits on the subject via the appropriate
+    * cache element.
+    */
   override def preload(begin: TimeStamp, end: TimeStamp): PreloadType[O] = {
-    logger.debug(s"Commence PreloadObserver wait (${begin.tfmt} to ${end.tfmt})")
+    logger.debug(s"[1] PreloadObserver.preload wait (${begin.tfmt} to ${end.tfmt}, nCached=${cache.size})")
     cache.getOrElseUpdate(end, Promise[Data[O]]()).future.map { x =>
-      logger.debug(s"PreloadObserver decache, wait complete (${begin.tfmt} to ${end.tfmt})")
-      cache.remove(end)
+
+      // remove myself from the cache
+      val mb = cache.remove(end)
+      logger.debug(s"[4] PreloadObserver cache.remove/decache (${begin.tfmt} to ${end.tfmt}, nCached=${cache.size}, bRemoved=${mb.isDefined})")
       x
     }
   }
@@ -351,6 +404,6 @@ abstract class ThrottledSource[T](bufferSize: Int = DEFAULT_BUFFER_SIZE)
     def joiner(v: T, t: TimeStamp): T = v
 
     // throttle the `throttlee` with the clock (see comment on JoinWithable as to why the cast is necessary here)
-    JoinWithable(throttlee).joinWith(clock().map(t => Data(t)))(joiner, pairwise).asInstanceOf[SourceType]
+    JoinWithable(throttlee).joinWith(clock.out.map(t => Data(t)))(joiner, pairwise).asInstanceOf[SourceType]
   }
 }
