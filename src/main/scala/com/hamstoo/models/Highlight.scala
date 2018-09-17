@@ -66,13 +66,17 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     *   {"path": "body/p/span", "text": "e"  , "index": 5},
     *   {"path": "body/p"     , "text": "fin", "index": 11
     * ]
+    *
+    * See the following issue/comment for a description of neighbors/anchors/outerAnchors.
+    *   https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-422162287
     */
   case class PositionElement(path: String,
                              text: String,
                              index: Int,
                              cssSelector: Option[String] = None,
                              neighbors: Option[Neighbors] = None,
-                             anchors: Option[Anchors] = None)
+                             anchors: Option[Anchors] = None,
+                             outerAnchors: Option[Anchors] = None)
 
   case class Neighbors(left: Neighbor, right: Neighbor)
   case class Neighbor(path: String, cssSelector: String, elementText: String)
