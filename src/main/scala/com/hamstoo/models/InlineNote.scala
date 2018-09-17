@@ -34,10 +34,10 @@ case class InlineNote(usrId: UUID,
                       pageCoord: Option[PageCoord] = None,
                       memeId: Option[String] = None,
                       timeFrom: TimeStamp = TIME_NOW,
-                      timeThru: TimeStamp = INF_TIME) extends Annotation with HasJsonPreview {
+                      timeThru: TimeStamp = INF_TIME) extends Annotation {
 
   /** Used by backend's MarksController when producing full-page view and share email. */
-  override def jsonPreview: JsObject = Json.obj(
+  override def toFrontendJson: JsObject = Json.obj(
     "id" -> id,
     "preview" -> pos.text,
     "type" -> "comment"
@@ -79,7 +79,7 @@ object InlineNote extends BSONHandlers with AnnotationInfo {
                       cssSelector: Option[String],
                       nodeValue: Option[String],
                       offsetX: Double,
-                      offsetY: Double) extends Positions {
+                      offsetY: Double) extends Annotation.Position {
 
     /** Coordinates (offset) of an inline note in a node.  Useful for sorting. */
     def nodeCoord = PageCoord(offsetX, offsetY)

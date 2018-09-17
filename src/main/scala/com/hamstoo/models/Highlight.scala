@@ -33,12 +33,12 @@ case class Highlight(usrId: UUID,
                      preview: Highlight.Preview,
                      memeId: Option[String] = None,
                      timeFrom: TimeStamp = TIME_NOW,
-                     timeThru: TimeStamp = INF_TIME) extends Annotation with HasJsonPreview {
+                     timeThru: TimeStamp = INF_TIME) extends Annotation {
 
   import Highlight.fmt
 
   /** Used by backend's MarksController when producing full-page view and share email. */
-  override def jsonPreview: JsObject = Json.obj(
+  override def toFrontendJson: JsObject = Json.obj(
     "id" -> id,
     "preview" -> Json.toJson(preview),
     "type" -> "highlight"
@@ -60,17 +60,26 @@ object Highlight extends BSONHandlers with AnnotationInfo {
 
   /**
     * XML XPath and text located at that path.  `index` is the character index where the highlighted text
-    * begins relative to the text of XPath *and all of its descendant nodes*.  So if we have the following HTML
+    * begins relative to the text of XPath **and all of its descendant nodes**.  So if we have the following HTML
     * `<p>Start<span>middle</span>finish</p>` and the user highlights "efin" then we'll have the following two
     * elements: [
     *   {"path": "body/p/span", "text": "e"  , "index": 5},
     *   {"path": "body/p"     , "text": "fin", "index": 11
     * ]
     */
-  case class PositionElement(path: String, text: String, index: Int)
+  case class PositionElement(path: String,
+                             text: String,
+                             index: Int,
+                             cssSelector: Option[String] = None,
+                             neighbors: Option[Neighbors] = None,
+                             anchors: Option[Anchors] = None)
 
-  /** A highlight can stretch over a series of XPaths. */
-  case class Position(elements: Seq[PositionElement]) extends Positions {
+  case class Neighbors(left: Neighbor, right: Neighbor)
+  case class Neighbor(path: String, cssSelector: String, elementText: String)
+  case class Anchors(left: String, right: String)
+
+  /** A highlight can stretch over a series of XPaths, hence the Sequence. */
+  case class Position(elements: Seq[PositionElement]) extends Annotation.Position {
     def nonEmpty: Boolean = elements.nonEmpty
   }
 
@@ -90,6 +99,9 @@ object Highlight extends BSONHandlers with AnnotationInfo {
   assert(nameOf[Highlight](_.timeThru) == com.hamstoo.models.Mark.TIMETHRU)
   implicit val shareGroupHandler: BSONDocumentHandler[ShareGroup] = Macros.handler[ShareGroup]
   implicit val sharedWithHandler: BSONDocumentHandler[SharedWith] = Macros.handler[SharedWith]
+  implicit val anchorsBsonHandler: BSONDocumentHandler[Anchors] = Macros.handler[Anchors]
+  implicit val neighborBsonHandler: BSONDocumentHandler[Neighbor] = Macros.handler[Neighbor]
+  implicit val neighborsBsonHandler: BSONDocumentHandler[Neighbors] = Macros.handler[Neighbors]
   implicit val hlposElemBsonHandler: BSONDocumentHandler[PositionElement] = Macros.handler[PositionElement]
   implicit val hlposBsonHandler: BSONDocumentHandler[Position] = Macros.handler[Position]
   implicit val hlprevBsonHandler: BSONDocumentHandler[Preview] = Macros.handler[Preview]
@@ -98,6 +110,9 @@ object Highlight extends BSONHandlers with AnnotationInfo {
 
 object HighlightFormatters {
   implicit val pageCoordJFmt: OFormat[PageCoord] = PageCoord.jFormat
+  implicit val anchorsJFmt: OFormat[Highlight.Anchors] = Json.format[Highlight.Anchors]
+  implicit val neighborJFmt: OFormat[Highlight.Neighbor] = Json.format[Highlight.Neighbor]
+  implicit val neighborsJFmt: OFormat[Highlight.Neighbors] = Json.format[Highlight.Neighbors]
   implicit val hlPosElemJFmt: OFormat[Highlight.PositionElement] = Json.format[Highlight.PositionElement]
   implicit val hlPosJFmt: OFormat[Highlight.Position] = Json.format[Highlight.Position]
 }

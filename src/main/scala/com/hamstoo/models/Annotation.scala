@@ -4,6 +4,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.utils.{ObjectId, TimeStamp}
+import play.api.libs.json.JsObject
 
 /**
   * An Annotation is user content that is created right on top of the web pages themselves (e.g. highlights
@@ -17,7 +18,7 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
   val usrId: UUID
   val id: ObjectId
   val markId: ObjectId
-  val pos: Positions
+  val pos: Annotation.Position
   val pageCoord: Option[PageCoord]
   val memeId: Option[String]
   val timeFrom: TimeStamp
@@ -25,6 +26,17 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
 
   /** We unfortunately used different variable names for this one in different model classes. */
   def userId: UUID = usrId
+
+  /**
+    * @return - Json object that contain data object preview information,
+    *           based on template described below
+    *             {
+    *               "id": "String based identifier"
+    *               "preview": "String or another Json object"
+    *               "type": "For example `comment` or `highlight`"
+    *             }
+    */
+  def toFrontendJson: JsObject
 }
 
 object Annotation {
@@ -34,7 +46,34 @@ object Annotation {
     * First sort by `y`, then if they are equal, trying to make comparision by `x`.
     */
   def sort(a: Annotation, b: Annotation): Boolean =
-    PageCoord.sort(a.pageCoord, b.pageCoord).getOrElse(Positions.sort(a.pos, b.pos))
+    PageCoord.sort(a.pageCoord, b.pageCoord).getOrElse(Position.sort(a.pos, b.pos))
+
+  /**
+    * Trait marked of position instances
+    */
+  trait Position
+
+  object Position {
+
+    /**
+      * If two Annotations start in the same node, and thus have identical page coordinates, then resort to their
+      * Positions to determine sort order.
+      */
+    def sort(a: Position, b: Position): Boolean = (a, b) match {
+
+      // use highlight head node start index to order two highlights
+      case (a1: Highlight.Position, b1: Highlight.Position) =>
+        a1.elements.headOption.fold(0)(_.index) <= b1.elements.headOption.fold(0)(_.index)
+
+      // use inline note coordinates to order two inline notes
+      case (a1: InlineNote.Position, b1: InlineNote.Position) =>
+        PageCoord.sort(Some(a1.nodeCoord), Some(b1.nodeCoord)).getOrElse(true)
+
+      // i guess we'll put highlights before inline notes--can't think of any sensible way to compare their Positions
+      case (_: Highlight.Position, _) => true
+      case _ => false
+    }
+  }
 }
 
 trait AnnotationInfo extends BSONHandlers {
