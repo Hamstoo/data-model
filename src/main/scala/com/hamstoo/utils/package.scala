@@ -262,6 +262,22 @@ package object utils {
   }
 
   /**
+    * Extended scala.util.Random
+    */
+  implicit class ExtendedRandom(private val rand: Random) extends AnyVal {
+
+    /**
+      * Given a sequence of bins with associated probabilities, return a pseudorandom bin index per the
+      * given probability distribution.
+      */
+    def nextBin(bins: IndexedSeq[Double]): Option[Int] = if (bins.isEmpty) None else {
+      val cumulativeSums = bins.scanLeft(0.0)(_ + _).tail // remove leading 0.0
+      val x = rand.nextDouble * cumulativeSums.last
+      cumulativeSums.zipWithIndex.find(x <= _._1).map(_._2)
+    }
+  }
+
+  /**
     * MongoDB documents with TimeThrus equal to this value are current.  Those with lesser TimeThrus were either
     * deleted or have been updated, in which case there should be a new document with a matching TimeFrom.
     *
