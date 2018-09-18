@@ -53,9 +53,35 @@ case class Highlight(usrId: UUID,
   def toExtensionJson: JsObject = Json.obj("id" -> id, "pos" -> pos) ++
     pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x))
 
-  /** Return a copy with the provided fields. */
-  def copyWith(id: ObjectId, pos: Highlight.Position, prv: Highlight.Preview, coord: Option[PageCoord]): Highlight =
-    this.copy(id = id, pos = pos, preview = prv, pageCoord = coord)
+  /**
+    * Merges two positioning sequences and previews of two intersecting highlights.  At this point we know that
+    * hlA appears before, and overlaps with, hlB.  This is different from how A and B are used in the other methods
+    * of this class.
+    */
+  def union(hlB: Highlight): Highlight = {
+
+    val hlA = this
+
+    // look for longest paths sequence that is a tail of highlight A and a start of highlight B
+    val intersection = hlB.pos.startsWith(hlA.pos).elements
+
+    val tailB = hlB.pos.elements.drop(intersection.size - 1)
+
+    // eA and eB are the same XPath node, so join them
+    val eA = hlA.pos.elements.last
+    val eB = tailB.head
+
+    // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5
+    val joinedText = eA.text + eB.text.substring(eA.index + eA.text.length - eB.index, eB.text.length)
+    val joinedElem: Highlight.PositionElement = eA.copy(text = joinedText) // use eA's `index`
+
+    // drop last element of highlight A (which could include only part of that element's text while highlight B is
+    // guaranteed to include more) and first n - 1 intersecting elements of highlight B
+    val posUnion = Highlight.Position(hlA.pos.elements.init ++ Seq(joinedElem) ++ tailB.tail)
+
+    val prvUnion = Highlight.Preview(hlA.preview.lead, posUnion.elements.foldLeft("")(_ + _.text), hlB.preview.tail)
+    hlA.copy(pos = posUnion, preview = prvUnion, pageCoord = hlA.pageCoord.orElse(hlB.pageCoord))
+  }
 }
 
 object Highlight extends BSONHandlers with AnnotationInfo {

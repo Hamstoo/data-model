@@ -89,11 +89,11 @@ class HighlightsIntersectionServiceTests
     hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
     hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
 
-    val (positionUnion, previewUnion, _) = hlIntersectionSvc.union(highlightA, highlightB)
+    val u = highlightA.union(highlightB)
 
     val intended = makeHighlight(2, 7, 0, 10)
-    positionUnion shouldEqual intended.pos
-    previewUnion shouldEqual intended.preview
+    u.pos shouldEqual intended.pos
+    u.preview shouldEqual intended.preview
   }
 
   it should "(UNIT) case 2: join highlights with intersection on 2 elements with text overlap" in {
@@ -107,11 +107,11 @@ class HighlightsIntersectionServiceTests
     hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
     hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
 
-    val (positionUnion, previewUnion, _) = hlIntersectionSvc.union(highlightA, highlightB)
+    val u = highlightA.union(highlightB)
 
     val intended = makeHighlight(1, 8, 0, 10)
-    positionUnion shouldEqual intended.pos
-    previewUnion shouldEqual intended.preview
+    u.pos shouldEqual intended.pos
+    u.preview shouldEqual intended.preview
   }
 
   it should "(UNIT) case 3: join highlights with intersection on all elements" in {
@@ -125,11 +125,11 @@ class HighlightsIntersectionServiceTests
     hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
     hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
 
-    val (positionUnion, previewUnion, _) = hlIntersectionSvc.union(highlightA, highlightB)
+    val u = highlightA.union(highlightB)
 
     val intended = makeHighlight(1, 7, 0, length - 10)
-    positionUnion shouldEqual intended.pos
-    previewUnion shouldEqual intended.preview
+    u.pos shouldEqual intended.pos
+    u.preview shouldEqual intended.preview
   }
 
   it should "(UNIT) case 4: join highlights with intersection in the only element with text overlap" in {
@@ -143,11 +143,11 @@ class HighlightsIntersectionServiceTests
     hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
     hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
 
-    val (positionUnion, previewUnion, _) = hlIntersectionSvc.union(highlightA, highlightB)
+    val u = highlightA.union(highlightB)
 
     val intended = makeHighlight(1, 7, 0, length - 25)
-    positionUnion shouldEqual intended.pos
-    previewUnion shouldEqual intended.preview
+    u.pos shouldEqual intended.pos
+    u.preview shouldEqual intended.preview
   }
 
   it should "(UNIT) case 5: detect subset highlight with intersection in the only edge element" in {

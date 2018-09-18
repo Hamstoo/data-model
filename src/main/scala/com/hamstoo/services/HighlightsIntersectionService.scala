@@ -63,10 +63,8 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
 
             // update a single existing highlight with a union of the two
             else {
-              val (pos, prv, coord) = if (isEdgeWithOrigFirst.contains(true)) union(origHl, hl) else union(hl, origHl)
-
-              // apply copyWith to the new one in case it has any new fields that the old one might not
-              add(hl.copyWith(origHl.id, pos, prv, coord))
+              val u = if (isEdgeWithOrigFirst.contains(true)) origHl.union(hl) else hl.union(origHl)
+              add(u.copy(id = origHl.id)) // maintain the same id as a sanity check
             }
           }
         } yield newHl
@@ -96,34 +94,6 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
         f.index + f.text.length <= s.index + s.text.length // first must stop before second (o/w second would be subseq)
       }}.get // rely on the empty tail always forall'ing to true if a non-empty tail does not
     }
-  }
-
-  /**
-    * Merges two positioning sequences and previews of two intersecting highlights.  At this point we know that
-    * hlA appears before, and overlaps with, hlB.  This is different from how A and B are used in the other methods
-    * of this class.
-    */
-  def union(hlA: Highlight, hlB: Highlight): (Highlight.Position, Highlight.Preview, Option[PageCoord]) = {
-
-    // look for longest paths sequence that is a tail of highlight A and a start of highlight B
-    val intersection = hlB.pos.startsWith(hlA.pos).elements
-
-    val tailB = hlB.pos.elements.drop(intersection.size - 1)
-
-    // eA and eB are the same XPath node, so join them
-    val eA = hlA.pos.elements.last
-    val eB = tailB.head
-
-    // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5
-    val joinedText = eA.text + eB.text.substring(eA.index + eA.text.length - eB.index, eB.text.length)
-    val joinedElem: Highlight.PositionElement = eA.copy(text = joinedText) // use eA's `index`
-
-    // drop last element of highlight A (which could include only part of that element's text while highlight B is
-    // guaranteed to include more) and first n - 1 intersecting elements of highlight B
-    val elsUnion = hlA.pos.elements.init ++ Seq(joinedElem) ++ tailB.tail
-
-    val prvUnion = Highlight.Preview(hlA.preview.lead, ("" /: elsUnion) (_ + _.text), hlB.preview.tail)
-    (Highlight.Position(elsUnion), prvUnion, hlA.pageCoord.orElse(hlB.pageCoord))
   }
 
   /** Checks whether one position is a subset of another. */
