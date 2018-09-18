@@ -130,8 +130,19 @@ object Highlight extends BSONHandlers with AnnotationInfo {
         f.path == s.path &&
           f.index <= s.index && // first must start before second
           f.index + f.text.length >= s.index && // first must stop after or at where second starts (a.k.a. overlap)
-          f.index + f.text.length <= s.index + s.text.length // first must stop before second (o/w second would be subseq)
+          f.index + f.text.length <= s.index + s.text.length // first must stop before second ends (o/w second would be subseq)
       }}.get // rely on the empty tail always forall'ing to true if a non-empty tail does not
+    }
+
+    /** Very similar to ExtendedPosition0.startsWith, but some important minor differences. */
+    def isSubseq(outer: Highlight.Position): Boolean = {
+      val inner = this
+      outer.elements.tails.exists { tail => tail.size >= inner.elements.size &&
+        tail.zip(inner.elements).forall { case (o, i) => // outer/inner elements
+          o.path == i.path &&
+            o.index <= i.index && // outer must start before inner
+            o.index + o.text.length >= i.index + i.text.length // outer must stop after inner
+        }}
     }
   }
 

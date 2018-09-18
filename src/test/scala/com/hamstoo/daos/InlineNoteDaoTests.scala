@@ -43,6 +43,6 @@ class InlineNoteDaoTests
   }
 
   it should "(UNIT) delete inline note" in {
-    notesDao.delete(c.usrId, c.id).futureValue shouldEqual {}
+    notesDao.delete(c.usrId, c.id).futureValue should be > 1537302565805L
   }
 }

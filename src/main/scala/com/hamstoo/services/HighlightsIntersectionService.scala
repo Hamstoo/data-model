@@ -99,23 +99,8 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
   /** Checks whether one position is a subset of another. */
   def isSubset(posA: Highlight.Position, posB: Highlight.Position): Option[Boolean] = {
 
-    implicit class ExtendedPosition1(private val inner: Highlight.Position) /*extends AnyVal*/ {
-
-      /** Very similar to ExtendedPosition0.startsWith, but some important minor differences. */
-      def isSubseq(outer: Highlight.Position): Boolean = {
-        outer.elements.tails.exists { tail => tail.size >= inner.elements.size &&
-          tail.zip(inner.elements).forall { case (o, i) => // outer/inner elements
-            o.path == i.path &&
-            o.index <= i.index && // outer must start before inner
-            o.index + o.text.length >= i.index + i.text.length // outer must stop after inner
-        }}
-      }
-    }
-
     // test if sets of paths are subsets and whether edge elements completely overlap
-    val subsetAofB: Boolean = posA.isSubseq(posB)
-    val subsetBofA: Boolean = posB.isSubseq(posA)
-    if (subsetAofB) Some(false) else if (subsetBofA) Some(true) else None
+    if (posA.isSubseq(posB)) Some(false) else if (posB.isSubseq(posA)) Some(true) else None
   }
 
   /**
