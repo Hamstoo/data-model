@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo.models
 
 import java.util.UUID
@@ -35,7 +38,7 @@ case class Highlight(usrId: UUID,
                      timeFrom: TimeStamp = TIME_NOW,
                      timeThru: TimeStamp = INF_TIME) extends Annotation {
 
-  import Highlight.fmt
+  import HighlightFormatters.hlPrevJFmt
 
   /** Used by backend's MarksController when producing full-page view and share email. */
   override def toFrontendJson: JsObject = Json.obj(
@@ -71,9 +74,26 @@ case class Highlight(usrId: UUID,
     val eA = hlA.pos.elements.last
     val eB = tailB.head
 
-    // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5
+    // if this function is defined with T and U as type parameters of the same function (as opposed to a closure)
+    // then T cannot be inferred by the compiler and has to be provided explicitly
+    def joinLeftRightOpts[T] = {
+      import scala.language.reflectiveCalls
+      def f[U <: {def left : T; def right : T}](mbA: Option[U], mbB: Option[U]): Option[(T, T)] = {
+        val mbLeft = mbA.map(_.left).orElse(mbB.map(_.left)) // take left first from A
+        val mbRight = mbB.map(_.right).orElse(mbA.map(_.right)) // take right first from B
+        if (mbLeft.isDefined) Some(mbLeft.get, mbRight.get) else None // if either isDefined then both must be
+      }
+      f _
+    }
+
+    val jnNeighbors = joinLeftRightOpts(eA.neighbors   , eB.neighbors   ).map((Highlight.Neighbors.apply _).tupled)
+    val jnAnchors   = joinLeftRightOpts(eA.anchors     , eB.anchors     ).map((Highlight.  Anchors.apply _).tupled)
+    val jnOAnchors  = joinLeftRightOpts(eA.outerAnchors, eB.outerAnchors).map((Highlight.  Anchors.apply _).tupled)
+
+    // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5 (before 2018.9.18)
     val joinedText = eA.text + eB.text.substring(eA.index + eA.text.length - eB.index, eB.text.length)
-    val joinedElem: Highlight.PositionElement = eA.copy(text = joinedText) // use eA's `index`
+    val joinedElem = eA.copy(text = joinedText, // use eA's `index`
+                             neighbors = jnNeighbors, anchors = jnAnchors, outerAnchors = jnOAnchors)
 
     // drop last element of highlight A (which could include only part of that element's text while highlight B is
     // guaranteed to include more) and first n - 1 intersecting elements of highlight B
@@ -92,8 +112,6 @@ case class Highlight(usrId: UUID,
 }
 
 object Highlight extends BSONHandlers with AnnotationInfo {
-
-  implicit val fmt: OFormat[Preview] = Json.format[Preview]
 
   /**
     * XML XPath and text located at that path.  `index` is the character index where the highlighted text
