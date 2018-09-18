@@ -79,7 +79,14 @@ case class Highlight(usrId: UUID,
     // guaranteed to include more) and first n - 1 intersecting elements of highlight B
     val posUnion = Highlight.Position(hlA.pos.elements.init ++ Seq(joinedElem) ++ tailB.tail)
 
-    val prvUnion = Highlight.Preview(hlA.preview.lead, posUnion.elements.foldLeft("")(_ + _.text), hlB.preview.tail)
+    // Highlight.Positions have been stripped of some of their whitespace chars, e.g. '\n's, so try unioning
+    // preview texts first before resorting to position texts
+    val mbOverlap = hlA.preview.text.tails.find(hlB.preview.text.startsWith).filter(_.nonEmpty)
+    val prvUnionTxt = mbOverlap.fold(posUnion.elements.foldLeft("")(_ + _.text)) { overlap =>
+      hlA.preview.text + hlB.preview.text.substring(overlap.length)
+    }
+
+    val prvUnion = Highlight.Preview(hlA.preview.lead, prvUnionTxt, hlB.preview.tail)
     hlA.copy(pos = posUnion, preview = prvUnion, pageCoord = hlA.pageCoord.orElse(hlB.pageCoord))
   }
 }
@@ -154,10 +161,13 @@ object Highlight extends BSONHandlers with AnnotationInfo {
 }
 
 object HighlightFormatters {
+  import com.hamstoo.models.ShareableFormatters._
   implicit val pageCoordJFmt: OFormat[PageCoord] = PageCoord.jFormat
   implicit val anchorsJFmt: OFormat[Highlight.Anchors] = Json.format[Highlight.Anchors]
   implicit val neighborJFmt: OFormat[Highlight.Neighbor] = Json.format[Highlight.Neighbor]
   implicit val neighborsJFmt: OFormat[Highlight.Neighbors] = Json.format[Highlight.Neighbors]
   implicit val hlPosElemJFmt: OFormat[Highlight.PositionElement] = Json.format[Highlight.PositionElement]
   implicit val hlPosJFmt: OFormat[Highlight.Position] = Json.format[Highlight.Position]
+  implicit val hlPrevJFmt: OFormat[Highlight.Preview] = Json.format[Highlight.Preview]
+  implicit val hlFmt: OFormat[Highlight] = Json.format[Highlight]
 }

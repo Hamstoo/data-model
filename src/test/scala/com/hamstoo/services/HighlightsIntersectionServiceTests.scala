@@ -8,6 +8,7 @@ import com.hamstoo.models.Highlight.{PositionElement => PosElem}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.DataInfo._
+import play.api.libs.json.{Json, JsValue}
 
 /**
   * Tests of highlights intersection code.
@@ -256,6 +257,49 @@ class HighlightsIntersectionServiceTests
     val merged = hlIntersectionSvc.add(hl1).futureValue
 
     val expected = "o be wary if you hear people within the media bubble13 assert that “everyone” presumed Clinton was sure to win. Instead, that presumption reflected elite groupthink — and it came despite the polls as much as "
+    merged.preview.text shouldEqual expected
+  }
+
+  it should "(UNIT) case 12: chrome-extension issue #35" in {
+
+    val sharedPath = "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[3]"
+
+    val json0: JsValue = Json.parse(
+      """
+        |{ "usrId" : "44444444-4444-4444-4444-444444444444", "id" : "issue35hl0", "markId" : "issue35test", "pos" : { "elements" : [
+        |
+        |{ "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]",
+        |"text" : "If I set up an ExecutorService like this:", "index" : 3885, "outerAnchors" : { "left" : "tted to the ExecutorService, the level goes up.\n\n\n", "right" : "\n\nnew ThreadPoolExecutor(\n  5, // core pool size\n " }, "anchors" : { "left" : "\n", "right" : "" }, "neighbors" : { "left" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div", "cssSelector" : "#Blog1 .uncustomized-post-template.hentry.post .post-header", "elementText" : "\n\n" }, "right" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[3]", "cssSelector" : "#Blog1 .uncustomized-post-template.hentry.post .post-footer", "elementText" : "\n\n\nPosted by\n\n\n\nJessiTRON\n\n\n\n\nat\n\n8:47 PM\n\n\n\n\n\n\n\n\n\n\n\nEmail ThisBlogThis!Share to TwitterShare to FacebookShare to Pinterest\n\n\n\n\nLabels:\nconcurrency,\nJava,\nscala\n\n\n\n\n\n\n" } }, "cssSelector" : "#post-body-3913631965276660434" },
+        |
+        |{ "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[3]", "text" : "new ThreadPool", "index" : 0, "outerAnchors" : { "left" : " up.\n\n\nIf I set up an ExecutorService like this:\n\n", "right" : "Executor(\n  5, // core pool size\n  8, // max pool " }, "anchors" : { "left" : "", "right" : "Executor(" }, "neighbors" : { "left" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/div[9]", "cssSelector" : "#post-body-3913631965276660434 .separator", "elementText" : "\n" }, "right" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[4]", "cssSelector" : "#post-body-3913631965276660434 span", "elementText" : "  5, // core pool size" } }, "cssSelector" : "#post-body-3913631965276660434 span" } ] },
+        |"preview" : { "lead" : "tted to the ExecutorService, the level goes up.\n\n\n", "text" : "If I set up an ExecutorService like this:\n\nnew ThreadPool", "tail" : "Executor(\n  5, // core pool size\n  8, // max pool " }, "timeFrom" : 1537302155273, "timeThru" : 9223372036854775807,
+        |
+        |"pageCoord" : { "x" : 0.13734049697783748, "y" : 0.06582579185520362 }, "nSharedTo" : 0, "nSharedFrom" : 0 }
+      """.stripMargin)
+
+    val json1: JsValue = Json.parse(
+      """
+        |{ "usrId" : "44444444-4444-4444-4444-444444444444", "id" : "issue35hl1", "markId" : "issue35test", "pos" : { "elements" : [
+        |
+        |{ "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[3]",
+        |"text" : "PoolExecutor(", "index" : 10,
+        |"outerAnchors" : { "left" : "I set up an ExecutorService like this:\n\nnew Thread", "right" : "Executor(\n  5, // core pool size\n  8, // max pool " },
+        |"anchors" : { "left" : "new Thread", "right" : "" },
+        |"neighbors" : { "left" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/div[9]", "cssSelector" : "#post-body-3913631965276660434 .separator", "elementText" : "\n" }, "right" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[4]", "cssSelector" : "#post-body-3913631965276660434 span", "elementText" : "  5, // core pool size" } },
+        |"cssSelector" : "#post-body-3913631965276660434 span" },
+        |
+        |{ "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[4]/span", "text" : "5", "index" : 0, "outerAnchors" : { "left" : "utorService like this:\n\nnew ThreadPoolExecutor(\n  ", "right" : ", // core pool size\n  8, // max pool size, for at " }, "anchors" : { "left" : "", "right" : "" }, "neighbors" : { "left" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[3]", "cssSelector" : "#post-body-3913631965276660434 span", "elementText" : "new ThreadPoolExecutor(" }, "right" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[4]/span[2]", "cssSelector" : "#post-body-3913631965276660434 span", "elementText" : "core pool size" } }, "cssSelector" : "#post-body-3913631965276660434 span" }, { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[4]", "text" : ", // ", "index" : 3, "outerAnchors" : { "left" : "torService like this:\n\nnew ThreadPoolExecutor(\n  5", "right" : "core pool size\n  8, // max pool size, for at most " }, "anchors" : { "left" : "", "right" : "" }, "neighbors" : { "left" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[3]", "cssSelector" : "#post-body-3913631965276660434 span", "elementText" : "new ThreadPoolExecutor(" }, "right" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[5]", "cssSelector" : "#post-body-3913631965276660434 span", "elementText" : "  8, // max pool size, for at most (8 - 5 = 3) red threads" } }, "cssSelector" : "#post-body-3913631965276660434 span" }, { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[4]/span[2]", "text" : "core pool s", "index" : 0, "outerAnchors" : { "left" : "rvice like this:\n\nnew ThreadPoolExecutor(\n  5, // ", "right" : "ize\n  8, // max pool size, for at most (8 - 5 = 3)" }, "anchors" : { "left" : "", "right" : "ize" }, "neighbors" : { "left" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[4]/span", "cssSelector" : "#post-body-3913631965276660434 span", "elementText" : "5" }, "right" : { "path" : "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[5]", "cssSelector" : "#post-body-3913631965276660434 span", "elementText" : "  8, // max pool size, for at most (8 - 5 = 3) red threads" } }, "cssSelector" : "#post-body-3913631965276660434 span" } ] },
+        |"preview" : { "lead" : "I set up an ExecutorService like this:\n\nnew Thread", "text" : "PoolExecutor(\n  5, // core pool s", "tail" : "ize\n  8, // max pool size, for at most (8 - 5 = 3)" }, "timeFrom" : 1537302217965, "timeThru" : 9223372036854775807, "pageCoord" : { "x" : 0.13734049697783748, "y" : 0.7273642533936652 }, "nSharedTo" : 0, "nSharedFrom" : 0 }
+      """.stripMargin)
+
+    import com.hamstoo.models.HighlightFormatters._
+    val hl0 = json0.as[Highlight]
+    val hl1 = json1.as[Highlight]
+
+    hlightsDao.insert(hl0).futureValue
+    val merged = hlIntersectionSvc.add(hl1).futureValue
+
+    val expected = "If I set up an ExecutorService like this:\n\nnew ThreadPoolExecutor(\n  5, // core pool s"
     merged.preview.text shouldEqual expected
   }
 }

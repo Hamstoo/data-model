@@ -5,6 +5,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.daos.UserDao
 import com.hamstoo.utils.{ObjectId, TIME_NOW, TimeStamp, fNone, ffalse, ftrue, generateDbId}
+import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -302,6 +303,11 @@ object UserGroup extends BSONHandlers {
     val d = None
     (a > b && b > c && c > d) && !(d > c || c > b || b > a || a > a || b > b || c > c || d > d)
   }
+}
+
+object ShareableFormatters {
+  implicit val sgFmt: OFormat[ShareGroup] = Json.format[ShareGroup]
+  implicit val swFmt: OFormat[SharedWith] = Json.format[SharedWith]
 }
 
 

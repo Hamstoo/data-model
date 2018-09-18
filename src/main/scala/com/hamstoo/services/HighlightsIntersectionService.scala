@@ -5,7 +5,7 @@ package com.hamstoo.services
 
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.HighlightDao
-import com.hamstoo.models.{Highlight, PageCoord, User}
+import com.hamstoo.models.{Highlight, User}
 import play.api.Logger
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -49,22 +49,22 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
         // ... otherwise delete the existing original and recurse
         case (origHl, isEdgeWithOrigFirst, isNewSubsetOfOrig) => for {
 
-          _ <- db.delete(origHl.usrId, origHl.id)
+          delTime <- db.delete(origHl.usrId, origHl.id)
           _ = logger.debug(s"Deleted original highlight ${origHl.id} (isEdgeWithOrigFirst=$isEdgeWithOrigFirst, isNewSubsetOfOrig=$isNewSubsetOfOrig)")
 
           newHl <- {
 
             // recurse with existing highlight, if the new one is a subset of it (recursive step should really just
             // lead to an (re)insert, if all previous inserts/intersections went okay, but recurse anyway, just in case)
-            if (isNewSubsetOfOrig.contains(true)) add(origHl)
+            if (isNewSubsetOfOrig.contains(true)) add(origHl.copy(timeFrom = delTime))
 
             // update existing highlight if it's a subset of the new one (hl)
-            else if (isNewSubsetOfOrig.contains(false)) add(hl)
+            else if (isNewSubsetOfOrig.contains(false)) add(hl.copy(timeFrom = delTime))
 
             // update a single existing highlight with a union of the two
             else {
               val u = if (isEdgeWithOrigFirst.contains(true)) origHl.union(hl) else hl.union(origHl)
-              add(u.copy(id = origHl.id)) // maintain the same id as a sanity check
+              add(u.copy(id = origHl.id, timeFrom = delTime)) // maintain the same id as a sanity check
             }
           }
         } yield newHl

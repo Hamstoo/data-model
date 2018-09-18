@@ -108,24 +108,28 @@ abstract class AnnotationDao[A <: Annotation: BSONDocumentHandler]
 
   /**
     * Delete annotation object from mongodb collection by several parameters
-    * @param usr - unique owner identifier
-    * @param id - unique annotation identifier
-    * @return - empty future
+    * @param usr  unique owner identifier
+    * @param id   unique annotation identifier
+    * @return     Future[timeThru]
     */
-  def delete(usr: UUID, id: String): Future[Unit] = {
+  def delete(usr: UUID, id: String): Future[TimeStamp] = {
     logger.debug(s"Deleting $name $id for user $usr")
     for {
       c <- dbColl()
-      wr <- c.findAndUpdate(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> TIME_NOW))
+      timeThru = TIME_NOW
+      wr <- c.findAndUpdate(d :~ USR -> usr :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> timeThru))
       annotation <- wr.result[A].map(Future.successful).getOrElse(
         Future.failed(new Exception(s"MongoAnnotationDao.delete: unable to find $name $id")))
       _ <- updateUserContentReprInfo(annotation)
-    } yield logger.debug(s"$name was successfully deleted")
+    } yield {
+      logger.debug(s"$name was successfully deleted")
+      timeThru
+    }
   }
 
   /**
     * Retrive all annotations from mongodb collection.
-    * @return - future with sequence of annotations
+    * @return  future with sequence of annotations
     */
   @deprecated("Not really deprecated, but sure seems expensive, so warn if it's being used.", "0.9.34")
   def retrieveAll(): Future[Seq[A]] = {
