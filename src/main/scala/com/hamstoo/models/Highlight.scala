@@ -52,6 +52,10 @@ case class Highlight(usrId: UUID,
   import HighlightFormatters._
   def toExtensionJson: JsObject = Json.obj("id" -> id, "pos" -> pos) ++
     pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x))
+
+  /** Return a copy with the provided fields. */
+  def copyWith(id: ObjectId, pos: Highlight.Position, prv: Highlight.Preview, coord: Option[PageCoord]): Highlight =
+    this.copy(id = id, pos = pos, preview = prv, pageCoord = coord)
 }
 
 object Highlight extends BSONHandlers with AnnotationInfo {
@@ -85,6 +89,17 @@ object Highlight extends BSONHandlers with AnnotationInfo {
   /** A highlight can stretch over a series of XPaths, hence the Sequence. */
   case class Position(elements: Seq[PositionElement]) extends Annotation.Position {
     def nonEmpty: Boolean = elements.nonEmpty
+
+    /** Returns a new Highlight.Position consisting of elements of `first` that overlap w/ start of `second`. */
+    def startsWith(first: Highlight.Position) = Highlight.Position {
+      val second = this
+      first.elements.tails.find { _.zip(second.elements).forall { case (f, s) => // first/second elements
+        f.path == s.path &&
+          f.index <= s.index && // first must start before second
+          f.index + f.text.length >= s.index && // first must stop after or at where second starts (a.k.a. overlap)
+          f.index + f.text.length <= s.index + s.text.length // first must stop before second (o/w second would be subseq)
+      }}.get // rely on the empty tail always forall'ing to true if a non-empty tail does not
+    }
   }
 
   /** Text that occurs before and after the highlighted text, along with the highlighted `text` itself. */

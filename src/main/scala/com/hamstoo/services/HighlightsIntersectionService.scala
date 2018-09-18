@@ -15,15 +15,15 @@ import scala.concurrent.{ExecutionContext, Future}
   * intersections with existing highlights on the same page and to join them if such intersections are detected.
   */
 @Singleton
-class HighlightsIntersectionService @Inject()(implicit hlightsDao: HighlightDao, ec: ExecutionContext) {
+class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: ExecutionContext) {
 
-  val logger: Logger = Logger(classOf[HighlightsIntersectionService])
+  val logger: Logger = Logger(getClass)
 
   /** Checks for intersections with existing highlights and rejects insert, inserts, or updates existing. */
   def add(highlight: Highlight): Future[Highlight] = for {
 
-    // get all highlights by markId
-    hls <- hlightsDao.retrieve(User(highlight.usrId), highlight.markId)
+    // get all existing highlights by markId
+    origHls <- db.retrieve(User(highlight.usrId), highlight.markId)
 
     // merge same-element text of the new highlight (It's assumed that frontend sends xpaths sorted by their position
     // in the document. Ideally there should be a check leading to rejecting requests to add highlights with error
@@ -31,42 +31,48 @@ class HighlightsIntersectionService @Inject()(implicit hlightsDao: HighlightDao,
     //   [https://github.com/Hamstoo/hamstoo/issues/178#issuecomment-339381263])
     hl = highlight.copy(pos = highlight.pos.copy(elements = mergeSameElems(highlight.pos.elements)))
 
-    // collect overlapping/touching/joinable existing highlights
-    filtered = for {
-      origHl <- hls // for each existing highlight in the DB
-      edge = isEdgeIntsc(origHl.pos, hl.pos) // check for edge intersections
-      subs = isSubset(origHl.pos, hl.pos) // check for inclusion
-      if edge != 0 || subs != 0 // filter highlights for joining (i.e. ignore non-joining)
-    } yield origHl -> (edge -> subs) // add comparison results to filtered highlights
+    // find a single overlapping/touching/joinable existing highlight
+    mbOverlap = origHls.view.map { origHl =>
 
-    h <- filtered match {
-      // just insert the new highlight if none intersect with it
-      case Nil => hlightsDao insert hl map (_ => hl)
+                  // check for edge intersections as well as inclusion
+                  (origHl, isEdgeIntsc(origHl.pos, hl.pos), isSubset(origHl.pos, hl.pos))
 
-      // return original highlight if the new one is a subset of it
-      case (origHl, (_, 1)) :: Nil => Future successful origHl
+                }.find { case (_, edge, subs) => edge.isDefined || subs.isDefined }
 
-      // update existing (origHl) if it's a subset of the new one (hl)
-      case (origHl, (_, -1)) :: Nil => hlightsDao update(origHl.usrId, origHl.id, hl.pos, hl.preview, hl.pageCoord)
+    _ = if (mbOverlap.isDefined) logger.debug(s"Found existing highlight ${mbOverlap.get} ... that overlaps with new highlight $hl")
 
-      // update existing with a union of the two
-      case (origHl, (e, _)) :: Nil =>
-        val (pos, prv, coord) = if (e > 0) union(origHl, hl) else union(hl, origHl)
-        hlightsDao update(origHl.usrId, origHl.id, pos, prv, coord)
+    newHl <- {
 
-      // fold all intersecting highlights while removing existing entries and insert a new aggregate highlight
-      case seq =>
-        val h = (hl /: seq) { case (nHl, (oHl, (_, s))) =>
-          hlightsDao delete(oHl.usrId, oHl.id)
-          if (s < 0) nHl else if (s > 0) nHl.copy(pos = oHl.pos, preview = oHl.preview)
-          else {
-            val (pos, prv, coord) = if (s > 0) union(oHl, nHl) else union(nHl, oHl)
-            nHl.copy(pos = pos, preview = prv, pageCoord = coord)
+      // just insert the new highlight if none intersect with it ...
+      mbOverlap.fold(db.insert(hl).map(_ => hl)) {
+
+        // ... otherwise delete the existing original and recurse
+        case (origHl, isEdgeWithOrigFirst, isNewSubsetOfOrig) => for {
+
+          _ <- db.delete(origHl.usrId, origHl.id)
+          _ = logger.debug(s"Deleted original highlight ${origHl.id} (isEdgeWithOrigFirst=$isEdgeWithOrigFirst, isNewSubsetOfOrig=$isNewSubsetOfOrig)")
+
+          newHl <- {
+
+            // recurse with existing highlight, if the new one is a subset of it (recursive step should really just
+            // lead to an (re)insert, if all previous inserts/intersections went okay, but recurse anyway, just in case)
+            if (isNewSubsetOfOrig.contains(true)) add(origHl)
+
+            // update existing highlight if it's a subset of the new one (hl)
+            else if (isNewSubsetOfOrig.contains(false)) add(hl)
+
+            // update a single existing highlight with a union of the two
+            else {
+              val (pos, prv, coord) = if (isEdgeWithOrigFirst.contains(true)) union(origHl, hl) else union(hl, origHl)
+
+              // apply copyWith to the new one in case it has any new fields that the old one might not
+              add(hl.copyWith(origHl.id, pos, prv, coord))
+            }
           }
-        }
-        hlightsDao insert h map (_ => h)
+        } yield newHl
+      }
     }
-  } yield h // return produced, updated, or existing highlight
+  } yield newHl // return produced, updated, or existing highlight
 
   /** Recursively joins same-XPath-elements to ensure there are no consecutive elements with the same XPath. */
   def mergeSameElems(
@@ -107,6 +113,8 @@ class HighlightsIntersectionService @Inject()(implicit hlightsDao: HighlightDao,
     // eA and eB are the same XPath node, so join them
     val eA = hlA.pos.elements.last
     val eB = tailB.head
+
+    // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5
     val joinedText = eA.text + eB.text.substring(eA.index + eA.text.length - eB.index, eB.text.length)
     val joinedElem: Highlight.PositionElement = eA.copy(text = joinedText) // use eA's `index`
 
@@ -119,7 +127,7 @@ class HighlightsIntersectionService @Inject()(implicit hlightsDao: HighlightDao,
   }
 
   /** Checks whether one position is a subset of another. */
-  def isSubset(posA: Highlight.Position, posB: Highlight.Position): Int = {
+  def isSubset(posA: Highlight.Position, posB: Highlight.Position): Option[Boolean] = {
 
     implicit class ExtendedPosition1(private val inner: Highlight.Position) /*extends AnyVal*/ {
 
@@ -137,7 +145,7 @@ class HighlightsIntersectionService @Inject()(implicit hlightsDao: HighlightDao,
     // test if sets of paths are subsets and whether edge elements completely overlap
     val subsetAofB: Boolean = posA.isSubseq(posB)
     val subsetBofA: Boolean = posB.isSubseq(posA)
-    if (subsetAofB) -1 else if (subsetBofA) 1 else 0
+    if (subsetAofB) Some(false) else if (subsetBofA) Some(true) else None
   }
 
   /**
@@ -147,12 +155,12 @@ class HighlightsIntersectionService @Inject()(implicit hlightsDao: HighlightDao,
     *          1 if    overlap with A before B
     *         -1 if    overlap with B before A
     */
-  def isEdgeIntsc(posA: Highlight.Position, posB: Highlight.Position): Int = {
+  def isEdgeIntsc(posA: Highlight.Position, posB: Highlight.Position): Option[Boolean] = {
 
     // look for sequences of paths that are tails of one Position and start of another
     val cont: Boolean = posB.startsWith(posA).nonEmpty
     val prep: Boolean = posA.startsWith(posB).nonEmpty
 
-    if (cont) 1 else if (prep) -1 else 0
+    if (cont) Some(true) else if (prep) Some(false) else None
   }
 }
