@@ -84,10 +84,10 @@ class HighlightsIntersectionServiceTests
     val highlightA = makeHighlight(2, 5, 0, length - 10)
     val highlightB = makeHighlight(5, 7, length - 20, 10)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB, highlightA) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA, highlightB) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightB, highlightA) shouldBe Some(false)
 
     val u = highlightA.union(highlightB)
 
@@ -102,10 +102,10 @@ class HighlightsIntersectionServiceTests
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(6, 8, 5, 10)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB, highlightA) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA, highlightB) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightB, highlightA) shouldBe Some(false)
 
     val u = highlightA.union(highlightB)
 
@@ -120,10 +120,10 @@ class HighlightsIntersectionServiceTests
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(5, 7, 0, length - 10)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB, highlightA) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA, highlightB) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightB, highlightA) shouldBe Some(false)
 
     val u = highlightA.union(highlightB)
 
@@ -138,10 +138,10 @@ class HighlightsIntersectionServiceTests
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(7, 7, 10, length - 35)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB, highlightA) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA, highlightB) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightB, highlightA) shouldBe Some(false)
 
     val u = highlightA.union(highlightB)
 
@@ -156,10 +156,10 @@ class HighlightsIntersectionServiceTests
     val highlightA = makeHighlight(1, 7, 0, length - 10)
     val highlightB = makeHighlight(7, 7, 10, length - 20)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe Some(false)
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe Some(false)
+    hlIntersectionSvc.isSubset(highlightA, highlightB) shouldBe Some(true)
+    hlIntersectionSvc.isSubset(highlightB, highlightA) shouldBe Some(false)
+    hlIntersectionSvc.isEdgeIntsc(highlightA, highlightB) shouldBe Some(true)
+    hlIntersectionSvc.isEdgeIntsc(highlightB, highlightA) shouldBe Some(false)
   }
 
   it should "(UNIT) case 6: detect subset highlight with intersection in 2 inside elements" in {
@@ -168,10 +168,10 @@ class HighlightsIntersectionServiceTests
     val highlightA = makeHighlight(1, 7, 20, length - 10)
     val highlightB = makeHighlight(5, 6, 10, 20)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe Some(true)
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe Some(false)
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightA, highlightB) shouldBe Some(true)
+    hlIntersectionSvc.isSubset(highlightB, highlightA) shouldBe Some(false)
+    hlIntersectionSvc.isEdgeIntsc(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightB, highlightA) shouldBe None
   }
 
   it should "(UNIT) case 7: detect non-intersecting highlight in 1 element overlapped but no text overlap" in {
@@ -180,10 +180,10 @@ class HighlightsIntersectionServiceTests
     val highlightA = makeHighlight(1, 5, 20, length - 20)
     val highlightB = makeHighlight(5, 6, length - 10, 20)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB, highlightA) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightB, highlightA) shouldBe None
   }
 
   it should "(UNIT) case 8: detect non-subset non-intersection highlight in single element overlapped but no text " +
@@ -193,10 +193,10 @@ class HighlightsIntersectionServiceTests
     val highlightA = makeHighlight(1, 5, 20, length - 20)
     val highlightB = makeHighlight(5, 5, length - 10, 10)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB, highlightA) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightB, highlightA) shouldBe None
   }
 
   it should "(UNIT) case 9: detect non-intersecting same element highlights without text overlap" in {
@@ -204,10 +204,10 @@ class HighlightsIntersectionServiceTests
     val highlightA = makeHighlight(3, 3, 0, 5)
     val highlightB = makeHighlight(3, 3, 10, 15)
 
-    hlIntersectionSvc.isSubset(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isSubset(highlightB.pos, highlightA.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightA.pos, highlightB.pos) shouldBe None
-    hlIntersectionSvc.isEdgeIntsc(highlightB.pos, highlightA.pos) shouldBe None
+    hlIntersectionSvc.isSubset(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isSubset(highlightB, highlightA) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightA, highlightB) shouldBe None
+    hlIntersectionSvc.isEdgeIntsc(highlightB, highlightA) shouldBe None
   }
 
   it should "(UNIT) case 10: correctly merge same elements in highlight position sequence" in {

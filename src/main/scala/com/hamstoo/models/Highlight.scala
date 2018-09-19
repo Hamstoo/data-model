@@ -57,6 +57,10 @@ case class Highlight(usrId: UUID,
   def toExtensionJson: JsObject = Json.obj("id" -> id, "pos" -> pos) ++
     pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x))
 
+  /** Defer to Highlight.Position. */
+  def startsWith(first: Highlight): Seq[Highlight.PositionElement] = pos.startsWith(first.pos)
+  def isSubseq(outer: Highlight): Boolean = pos.isSubseq(outer.pos)
+
   /**
     * Merges two positioning sequences and previews of two intersecting highlights.  At this point we know that
     * hlA appears before, and overlaps with, hlB.  This is different from how A and B are used in the other methods
@@ -67,7 +71,7 @@ case class Highlight(usrId: UUID,
     val hlA = this
 
     // look for longest paths sequence that is a tail of highlight A and a start of highlight B
-    val intersection = hlB.pos.startsWith(hlA.pos).elements
+    val intersection = hlB.pos.startsWith(hlA.pos)
 
     val tailB = hlB.pos.elements.drop(intersection.size - 1)
 
@@ -182,7 +186,7 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     }
 
     /** Returns a new Highlight.Position consisting of elements of `first` that overlap w/ start of `second`. */
-    def startsWith(first: Highlight.Position) = Highlight.Position {
+    def startsWith(first: Highlight.Position): Seq[Highlight.PositionElement] = {
       val second = this
       // `forall` here will restrict `second.elements` to the same size as the current tail of `first.elements`
       first.elements.tails.find { _.zip(second.elements).forall { case (f, s) => // first/second elements

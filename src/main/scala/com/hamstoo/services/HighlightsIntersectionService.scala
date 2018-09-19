@@ -35,7 +35,7 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
     mbOverlap = origHls.view.map { origHl =>
 
                   // check for edge intersections as well as inclusion
-                  (origHl, isEdgeIntsc(origHl.pos, hl.pos), isSubset(origHl.pos, hl.pos))
+                  (origHl, isEdgeIntsc(origHl, hl), isSubset(origHl, hl))
 
                 }.find { case (_, edge, subs) => edge.isDefined || subs.isDefined }
 
@@ -74,10 +74,10 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
   } yield newHl // return produced, updated, or existing highlight
 
   /** Checks whether one position is a subset of another. */
-  def isSubset(posA: Highlight.Position, posB: Highlight.Position): Option[Boolean] = {
+  def isSubset(hlA: Highlight, hlB: Highlight): Option[Boolean] = {
 
     // test if sets of paths are subsets and whether edge elements completely overlap
-    if (posA.isSubseq(posB)) Some(false) else if (posB.isSubseq(posA)) Some(true) else None
+    if (hlA.isSubseq(hlB)) Some(false) else if (hlB.isSubseq(hlA)) Some(true) else None
   }
 
   /**
@@ -87,9 +87,9 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
     *          1 if    overlap with A before B
     *         -1 if    overlap with B before A
     */
-  def isEdgeIntsc(posA: Highlight.Position, posB: Highlight.Position): Option[Boolean] = {
+  def isEdgeIntsc(hlA: Highlight, hlB: Highlight): Option[Boolean] = {
 
     // look for sequences of paths that are tails of one Position and start of another
-    if (posB.startsWith(posA).nonEmpty) Some(true) else if (posA.startsWith(posB).nonEmpty) Some(false) else None
+    if (hlB.startsWith(hlA).nonEmpty) Some(true) else if (hlA.startsWith(hlB).nonEmpty) Some(false) else None
   }
 }
