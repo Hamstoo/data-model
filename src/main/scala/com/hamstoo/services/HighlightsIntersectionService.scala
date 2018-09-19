@@ -29,7 +29,7 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
     // in the document. Ideally there should be a check leading to rejecting requests to add highlights with error
     // message for a frontend dev to be aware of invalid requests.
     //   [https://github.com/Hamstoo/hamstoo/issues/178#issuecomment-339381263])
-    hl = highlight.copy(pos = highlight.pos.copy(elements = mergeSameElems(highlight.pos.elements)))
+    hl = highlight.copy(pos = highlight.pos.mergeSameElems())
 
     // find a single overlapping/touching/joinable existing highlight
     mbOverlap = origHls.view.map { origHl =>
@@ -71,30 +71,6 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
       }
     }
   } yield newHl // return produced, updated, or existing highlight
-
-  /** Recursively joins same-XPath-elements to ensure there are no consecutive elements with the same XPath. */
-  def mergeSameElems(
-      es: Seq[Highlight.PositionElement],
-      acc: Seq[Highlight.PositionElement] = Nil): Seq[Highlight.PositionElement] = {
-    if (es.size < 2) (es ++ acc).reverse else {
-      val t = es.tail
-      if (es.head.path == t.head.path) mergeSameElems(es.head.copy(text = es.head.text + t.head.text) +: t.tail, acc)
-      else mergeSameElems(t, es.head +: acc)
-    }
-  }
-
-  implicit class ExtendedPosition0(private val second: Highlight.Position) /*extends AnyVal*/ {
-
-    /** Returns a new Highlight.Position consisting of elements of `first` that overlap w/ start of `second`. */
-    def startsWith(first: Highlight.Position) = Highlight.Position {
-      first.elements.tails.find { _.zip(second.elements).forall { case (f, s) => // first/second elements
-        f.path == s.path &&
-        f.index <= s.index && // first must start before second
-        f.index + f.text.length >= s.index && // first must stop after or at where second starts (a.k.a. overlap)
-        f.index + f.text.length <= s.index + s.text.length // first must stop before second (o/w second would be subseq)
-      }}.get // rely on the empty tail always forall'ing to true if a non-empty tail does not
-    }
-  }
 
   /** Checks whether one position is a subset of another. */
   def isSubset(posA: Highlight.Position, posB: Highlight.Position): Option[Boolean] = {

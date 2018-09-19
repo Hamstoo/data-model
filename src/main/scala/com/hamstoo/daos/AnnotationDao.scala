@@ -21,7 +21,6 @@ import scala.concurrent.Future
 /**
   * This class defines base MongoDB related functionality for classes that extend the Annotation trait.
   * @param name name of annotation object like 'highlight' or 'inline note' for logging purpose only
-  * @param ec   execution context thread pool
   * @tparam A   this type param must be subtype of Annotation and have a defined BSONDocument handler
   */
 abstract class AnnotationDao[A <: Annotation: BSONDocumentHandler]

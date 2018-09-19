@@ -7,6 +7,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.utils.{INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import play.api.Logger
 import play.api.libs.json.{JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -70,34 +71,12 @@ case class Highlight(usrId: UUID,
 
     val tailB = hlB.pos.elements.drop(intersection.size - 1)
 
-    // eA and eB are the same XPath node, so join them
-    val eA = hlA.pos.elements.last
-    val eB = tailB.head
-
-    // if this function is defined with T and U as type parameters of the same function (as opposed to a closure)
-    // then T cannot be inferred by the compiler and has to be provided explicitly
-    def joinLeftRightOpts[T] = {
-      import scala.language.reflectiveCalls
-      def f[U <: {def left : T; def right : T}](mbA: Option[U], mbB: Option[U]): Option[(T, T)] = {
-        val mbLeft = mbA.map(_.left).orElse(mbB.map(_.left)) // take left first from A
-        val mbRight = mbB.map(_.right).orElse(mbA.map(_.right)) // take right first from B
-        if (mbLeft.isDefined) Some(mbLeft.get, mbRight.get) else None // if either isDefined then both must be
-      }
-      f _
-    }
-
-    val jnNeighbors = joinLeftRightOpts(eA.neighbors   , eB.neighbors   ).map((Highlight.Neighbors.apply _).tupled)
-    val jnAnchors   = joinLeftRightOpts(eA.anchors     , eB.anchors     ).map((Highlight.  Anchors.apply _).tupled)
-    val jnOAnchors  = joinLeftRightOpts(eA.outerAnchors, eB.outerAnchors).map((Highlight.  Anchors.apply _).tupled)
-
-    // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5 (before 2018.9.18)
-    val joinedText = eA.text + eB.text.substring(eA.index + eA.text.length - eB.index, eB.text.length)
-    val joinedElem = eA.copy(text = joinedText, // use eA's `index`
-                             neighbors = jnNeighbors, anchors = jnAnchors, outerAnchors = jnOAnchors)
+    // eA and eB are the same XPath node, so merge them
+    val mergedElem = hlA.pos.elements.last.merge(tailB.head)
 
     // drop last element of highlight A (which could include only part of that element's text while highlight B is
     // guaranteed to include more) and first n - 1 intersecting elements of highlight B
-    val posUnion = Highlight.Position(hlA.pos.elements.init ++ Seq(joinedElem) ++ tailB.tail)
+    val posUnion = Highlight.Position(hlA.pos.elements.init ++ Seq(mergedElem) ++ tailB.tail)
 
     // Highlight.Positions have been stripped of some of their whitespace chars, e.g. '\n's, so try unioning
     // preview texts first before resorting to position texts
@@ -113,6 +92,8 @@ case class Highlight(usrId: UUID,
 
 object Highlight extends BSONHandlers with AnnotationInfo {
 
+  val logger = Logger(getClass)
+
   /**
     * XML XPath and text located at that path.  `index` is the character index where the highlighted text
     * begins relative to the text of XPath **and all of its descendant nodes**.  So if we have the following HTML
@@ -121,6 +102,9 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     *   {"path": "body/p/span", "text": "e"  , "index": 5},
     *   {"path": "body/p"     , "text": "fin", "index": 11
     * ]
+    *
+    * TODO: Does this mean that two consecutive PositionElements with the same path must have the same index also to be joined?
+    * A: No, because there can be consecutive PositionElements with the same path as evidenced by mergeSameElems
     *
     * See the following issue/comment for a description of neighbors/anchors/outerAnchors.
     *   https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-422162287
@@ -131,7 +115,37 @@ object Highlight extends BSONHandlers with AnnotationInfo {
                              cssSelector: Option[String] = None,
                              neighbors: Option[Neighbors] = None,
                              anchors: Option[Anchors] = None,
-                             outerAnchors: Option[Anchors] = None)
+                             outerAnchors: Option[Anchors] = None) {
+
+    /** Union two overlapping or edge-touching PositionElements. */
+    def merge(eB: PositionElement): PositionElement = {
+      val eA = this
+
+      // if this function is defined with T and U as type parameters of the same function (as opposed to a closure)
+      // then T cannot be inferred by the compiler and has to be provided explicitly
+      def joinLeftRightOpts[T] = {
+        import scala.language.reflectiveCalls
+        def f[U <: {def left : T; def right : T}](mbA: Option[U], mbB: Option[U]): Option[(T, T)] = {
+          val mbLeft = mbA.map(_.left).orElse(mbB.map(_.left)) // take left first from A
+          val mbRight = mbB.map(_.right).orElse(mbA.map(_.right)) // take right first from B
+          if (mbLeft.isDefined) Some(mbLeft.get, mbRight.get) else None // if either isDefined then both must be
+        }
+        f _
+      }
+
+      val jnNeighbors = joinLeftRightOpts(eA.neighbors   , eB.neighbors   ).map((Highlight.Neighbors.apply _).tupled)
+      val jnAnchors   = joinLeftRightOpts(eA.anchors     , eB.anchors     ).map((Highlight.  Anchors.apply _).tupled)
+      val jnOAnchors  = joinLeftRightOpts(eA.outerAnchors, eB.outerAnchors).map((Highlight.  Anchors.apply _).tupled)
+
+      // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5 (before 2018.9.18)
+      logger.debug(s"mergedText = '${eA.text}' + '${eB.text}'.substring(${eA.index} + ${eA.text.length} - ${eB.index}, ${eB.text.length})")
+      val mergedText = eA.text + eB.text.substring(eA.index + eA.text.length - eB.index, eB.text.length)
+      logger.debug(s"mergedText == '$mergedText'")
+
+      // use eA's `index`
+      eA.copy(text = mergedText, neighbors = jnNeighbors, anchors = jnAnchors, outerAnchors = jnOAnchors)
+    }
+  }
 
   case class Neighbors(left: Neighbor, right: Neighbor)
   case class Neighbor(path: String, cssSelector: String, elementText: String)
@@ -139,16 +153,33 @@ object Highlight extends BSONHandlers with AnnotationInfo {
 
   /** A highlight can stretch over a series of XPaths, hence the Sequence. */
   case class Position(elements: Seq[PositionElement]) extends Annotation.Position {
+
+    /** Returns true if the Position's elements sequence is nonEmpty. */
     def nonEmpty: Boolean = elements.nonEmpty
+
+    /** Recursively joins same-XPath-elements to ensure there are no consecutive elements with the same XPath. */
+    def mergeSameElems(acc: Position = Position(Nil)): Position = {
+      if (elements.size < 2) Position(acc.elements ++ elements)
+      else {
+        val t = elements.tail
+
+        // if first 2 paths in the list are the same, then merge/union them and prepend them to the remaining tail
+        if (elements.head.path == t.head.path) {
+          Position(elements.head.copy(text = elements.head.text + t.head.text) +: t.tail).mergeSameElems(acc)
+          //Position(elements.head.merge(t.head) +: t.tail).mergeSameElems(acc)
+        }
+        else Position(t).mergeSameElems(Position(acc.elements :+ elements.head))
+      }
+    }
 
     /** Returns a new Highlight.Position consisting of elements of `first` that overlap w/ start of `second`. */
     def startsWith(first: Highlight.Position) = Highlight.Position {
       val second = this
       first.elements.tails.find { _.zip(second.elements).forall { case (f, s) => // first/second elements
         f.path == s.path &&
-          f.index <= s.index && // first must start before second
-          f.index + f.text.length >= s.index && // first must stop after or at where second starts (a.k.a. overlap)
-          f.index + f.text.length <= s.index + s.text.length // first must stop before second ends (o/w second would be subseq)
+        f.index <= s.index && // first must start before second
+        f.index + f.text.length >= s.index && // first must stop after or at where second starts (a.k.a. overlap)
+        f.index + f.text.length <= s.index + s.text.length // first must stop before second ends (o/w second would be subseq)
       }}.get // rely on the empty tail always forall'ing to true if a non-empty tail does not
     }
 

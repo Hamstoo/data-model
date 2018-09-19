@@ -4,11 +4,11 @@
 package com.hamstoo.services
 
 import com.hamstoo.models.Highlight
-import com.hamstoo.models.Highlight.{PositionElement => PosElem}
+import com.hamstoo.models.Highlight.{Position, PositionElement => PosElem}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import com.hamstoo.utils.DataInfo._
-import play.api.libs.json.{Json, JsValue}
+import play.api.libs.json.{JsValue, Json}
 
 /**
   * Tests of highlights intersection code.
@@ -39,14 +39,13 @@ class HighlightsIntersectionServiceTests
     "notice the writer’s choice of adjectives, adverbs, and verbs." :: Nil
 
   val lens: Seq[Int] = texts.map(_.length)
-  val indexes: Seq[Int] = lens.inits.toList.reverse.map(_.sum).init
+  val indexes: Seq[Int] = lens.scanLeft(0)(_ + _).init
+  val htmlMock: Seq[PosElem] = paths.zip(texts).zip(indexes) map { case ((p, t), i) => PosElem(p, t, i) }
 
-  val htmlMock: Seq[((String, String), Int)] = paths.zip(texts).zip(indexes)
-
+  /** Create a highlight over elements [fromEl,toEl] (end inclusive) starting with initIndx in fromEl element. */
   def makeHighlight(fromEl: Int, toEl: Int, initIndx: Int, endLen: Int): Highlight = {
     assert(fromEl <= toEl)
-    val slice: Seq[PosElem] =
-      htmlMock.slice(fromEl, toEl + 1) map { case ((p, t), i) => PosElem(p, t, i) }
+    val slice: Seq[PosElem] = htmlMock.slice(fromEl, toEl + 1)
     val els: Seq[PosElem] = {
       val h = slice.head
       val wh = PosElem(h.path, h.text.substring(initIndx), h.index + initIndx) +: slice.tail // change head start index
@@ -76,12 +75,12 @@ class HighlightsIntersectionServiceTests
       PosElem(paths(2), texts(2), 0) ::
       PosElem(paths(3), texts(3), 0) :: Nil
 
-    hlIntersectionSvc.mergeSameElems(elementsWithRepetitions) shouldEqual mergedElems
+    Position(elementsWithRepetitions).mergeSameElems().elements shouldEqual mergedElems
   }
 
   it should "(UNIT) case 1: join highlight with intersection on 1 element with text overlap" in {
 
-    val length = htmlMock(5)._1._2.length
+    val length = htmlMock(5).text.length
     val highlightA = makeHighlight(2, 5, 0, length - 10)
     val highlightB = makeHighlight(5, 7, length - 20, 10)
 
@@ -99,7 +98,7 @@ class HighlightsIntersectionServiceTests
 
   it should "(UNIT) case 2: join highlights with intersection on 2 elements with text overlap" in {
 
-    val length = htmlMock(7)._1._2.length
+    val length = htmlMock(7).text.length
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(6, 8, 5, 10)
 
@@ -117,7 +116,7 @@ class HighlightsIntersectionServiceTests
 
   it should "(UNIT) case 3: join highlights with intersection on all elements" in {
 
-    val length = htmlMock(7)._1._2.length
+    val length = htmlMock(7).text.length
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(5, 7, 0, length - 10)
 
@@ -135,7 +134,7 @@ class HighlightsIntersectionServiceTests
 
   it should "(UNIT) case 4: join highlights with intersection in the only element with text overlap" in {
 
-    val length = htmlMock(7)._1._2.length
+    val length = htmlMock(7).text.length
     val highlightA = makeHighlight(1, 7, 0, length - 30)
     val highlightB = makeHighlight(7, 7, 10, length - 35)
 
@@ -153,7 +152,7 @@ class HighlightsIntersectionServiceTests
 
   it should "(UNIT) case 5: detect subset highlight with intersection in the only edge element" in {
 
-    val length = htmlMock(7)._1._2.length
+    val length = htmlMock(7).text.length
     val highlightA = makeHighlight(1, 7, 0, length - 10)
     val highlightB = makeHighlight(7, 7, 10, length - 20)
 
@@ -165,7 +164,7 @@ class HighlightsIntersectionServiceTests
 
   it should "(UNIT) case 6: detect subset highlight with intersection in 2 inside elements" in {
 
-    val length = htmlMock(7)._1._2.length
+    val length = htmlMock(7).text.length
     val highlightA = makeHighlight(1, 7, 20, length - 10)
     val highlightB = makeHighlight(5, 6, 10, 20)
 
@@ -177,7 +176,7 @@ class HighlightsIntersectionServiceTests
 
   it should "(UNIT) case 7: detect non-intersecting highlight in 1 element overlapped but no text overlap" in {
 
-    val length = htmlMock(5)._1._2.length
+    val length = htmlMock(5).text.length
     val highlightA = makeHighlight(1, 5, 20, length - 20)
     val highlightB = makeHighlight(5, 6, length - 10, 20)
 
@@ -190,7 +189,7 @@ class HighlightsIntersectionServiceTests
   it should "(UNIT) case 8: detect non-subset non-intersection highlight in single element overlapped but no text " +
     "overlap" in {
 
-    val length = htmlMock(5)._1._2.length
+    val length = htmlMock(5).text.length
     val highlightA = makeHighlight(1, 5, 20, length - 20)
     val highlightB = makeHighlight(5, 5, length - 10, 10)
 
@@ -212,14 +211,16 @@ class HighlightsIntersectionServiceTests
   }
 
   it should "(UNIT) case 10: correctly merge same elements in highlight position sequence" in {
-    val highlight = makeHighlight(1, 2, 10, htmlMock(2)._1._2.length - 10)
+    val highlight = makeHighlight(1, 2, 10, htmlMock(2).text.length - 10)
     val es = highlight.pos.elements
-    val sliced = highlight.copy(pos = highlight.pos.copy(
-      elements = es.head.copy(text = es.head.text.substring(0, 20)) +:
-        es.head.copy(text = es.head.text.substring(20, 40)) +:
-        es.head.copy(text = es.head.text.substring(40)) +: es.tail))
 
-    hlIntersectionSvc.mergeSameElems(sliced.pos.elements) shouldEqual highlight.pos.elements
+    // slice the head into 3 separate elements
+    val sliced = es.head.copy(text = es.head.text.substring(0, 19)) +:
+                 es.head.copy(text = es.head.text.substring(19, 39)) +:
+                 es.head.copy(text = es.head.text.substring(39)) +:
+                 es.tail
+
+    Position(sliced).mergeSameElems() shouldEqual highlight.pos
   }
 
   it should "(UNIT) case 11: issue #215 (and #178)" in {
@@ -243,13 +244,13 @@ class HighlightsIntersectionServiceTests
       PosElem("/html/p[23]/i", "despite", 178),
                          //  85 7 991 3 5 7 901 3 5 7
       PosElem("/html/p[23]", " the polls as much as ", 185))
-    
+
     val pos0 = Highlight.Position(elems0)
     val pos1 = Highlight.Position(elems1)
 
     val prv0 = Highlight.Preview("S", "o be wary if you hear people within the media bubble13 assert that “everyone” presumed Clinton wa", "s sure to win. Instead, that presumption reflected")
     val prv1 = Highlight.Preview(" assert that “everyone” presumed Cli", "nton was sure to win. Instead, that presumption reflected elite groupthink — and it came despite the polls as much as ", "because of the polls. There was a bewilderingly large array of polling")
-    
+
     val hl0 = Highlight(constructUserId(), markId = "case11markId", pos = pos0, preview = prv0)
     val hl1 = Highlight(      hl0.usrId  , markId =    hl0.markId , pos = pos1, preview = prv1)
 
