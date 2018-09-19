@@ -136,17 +136,17 @@ object Highlight extends BSONHandlers with AnnotationInfo {
         f _
       }
 
-      val jnNeighbors = joinLeftRightOpts(eA.neighbors   , eB.neighbors   ).map((Highlight.Neighbors.apply _).tupled)
-      val jnAnchors   = joinLeftRightOpts(eA.anchors     , eB.anchors     ).map((Highlight.  Anchors.apply _).tupled)
-      val jnOAnchors  = joinLeftRightOpts(eA.outerAnchors, eB.outerAnchors).map((Highlight.  Anchors.apply _).tupled)
+      val mgNeighbors = joinLeftRightOpts(eA.neighbors   , eB.neighbors   ).map((Highlight.Neighbors.apply _).tupled)
+      val mgAnchors   = joinLeftRightOpts(eA.anchors     , eB.anchors     ).map((Highlight.  Anchors.apply _).tupled)
+      val mgOAnchors  = joinLeftRightOpts(eA.outerAnchors, eB.outerAnchors).map((Highlight.  Anchors.apply _).tupled)
 
       // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5 (before 2018.9.18)
       logger.debug(s"mergedText = '${eA.text}' + '${eB.text}'.substring(${eA.index} + ${eA.text.length} - ${eB.index}, ${eB.text.length})")
       val mergedText = eA.text + eB.text.substring(eA.index + eA.text.length - eB.index, eB.text.length)
       logger.debug(s"mergedText == '$mergedText'")
 
-      // use eA's `index`
-      eA.copy(text = mergedText, neighbors = jnNeighbors, anchors = jnAnchors, outerAnchors = jnOAnchors)
+      // use eA's `index` and `cssSelector`
+      eA.copy(text = mergedText, neighbors = mgNeighbors, anchors = mgAnchors, outerAnchors = mgOAnchors)
     }
   }
 
@@ -175,6 +175,7 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     /** Returns a new Highlight.Position consisting of elements of `first` that overlap w/ start of `second`. */
     def startsWith(first: Highlight.Position) = Highlight.Position {
       val second = this
+      // `forall` here will restrict `second.elements` to the same size as the current tail of `first.elements`
       first.elements.tails.find { _.zip(second.elements).forall { case (f, s) => // first/second elements
         f.path == s.path &&
         f.index <= s.index && // first must start before second
@@ -189,8 +190,8 @@ object Highlight extends BSONHandlers with AnnotationInfo {
       outer.elements.tails.exists { tail => tail.size >= inner.elements.size &&
         tail.zip(inner.elements).forall { case (o, i) => // outer/inner elements
           o.path == i.path &&
-            o.index <= i.index && // outer must start before inner
-            o.index + o.text.length >= i.index + i.text.length // outer must stop after inner
+          o.index <= i.index && // outer must start before inner
+          o.index + o.text.length >= i.index + i.text.length // outer must stop after inner
         }}
     }
   }

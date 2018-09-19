@@ -58,10 +58,11 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
             // lead to an (re)insert, if all previous inserts/intersections went okay, but recurse anyway, just in case)
             if (isNewSubsetOfOrig.contains(true)) add(origHl.copy(timeFrom = delTime))
 
-            // update existing highlight if it's a subset of the new one (hl)
-            else if (isNewSubsetOfOrig.contains(false)) add(hl.copy(timeFrom = delTime))
+            // update existing highlight if it's a subset of the new one (hl), and use origHl.id which the
+            // chrome-extension depends on
+            else if (isNewSubsetOfOrig.contains(false)) add(hl.copy(id = origHl.id, timeFrom = delTime))
 
-            // update a single existing highlight with a union of the two
+            // if neither is a complete subset of the other, update existing highlight with a union of the two
             else {
               val u = if (isEdgeWithOrigFirst.contains(true)) origHl.union(hl) else hl.union(origHl)
               add(u.copy(id = origHl.id, timeFrom = delTime)) // maintain the same id as a sanity check
