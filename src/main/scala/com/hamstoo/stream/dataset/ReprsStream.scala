@@ -81,7 +81,7 @@ class ReprsStream @Inject()(marksStream: MarksStream,
 
       //val approxBegin = if (marks.isEmpty) 0L else marks.map(_.timeFrom).min
       //val approxEnd   = if (marks.isEmpty) 0L else marks.map(_.timeFrom).max
-      logger.info(s"[3] Performing observerPreload between ${begin.tfmt} and ${end.tfmt} for ${marks.size} marks, ${mbQuerySeq.map(_.size)} search terms, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, ${reprIds.size} reprIds, and with ${Runtime.getRuntime.availableProcessors} available processors")
+      logger.debug(s"[3] Performing observerPreload between ${begin.tfmt} and ${end.tfmt} for ${marks.size} marks, ${mbQuerySeq.map(_.size)} search terms, ${primaryReprIds.size} primaryReprIds, ${usrContentReprIds.size} usrContentReprIds, ${reprIds.size} reprIds, and with ${Runtime.getRuntime.availableProcessors} available processors")
 
       // run a separate MongoDB Text Index search over `representations` collection for each query word
       val fscoredReprs = mbQuerySeq.mapOrEmptyFuture(reprDao.search(reprIds, _)).flatMap { seqOfMaps =>

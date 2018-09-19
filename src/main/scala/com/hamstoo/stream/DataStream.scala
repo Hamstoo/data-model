@@ -338,7 +338,7 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I],
 
     // if `preload` hasn't been called yet, then there won't yet be a Promise in the cache, which should be OK (so just log)
     if (cache.get(end).isEmpty)
-      logger.info(s"[2.1] PreloadObserver.encacheFutureObserverData: not yet waiting, constructing NEW Promise (${begin.tfmt} to ${end.tfmt}, nCached=${cache.size})")
+      logger.debug(s"[2.1] PreloadObserver.encacheFutureObserverData: not yet waiting, constructing NEW Promise (${begin.tfmt} to ${end.tfmt}, nCached=${cache.size})")
 
     cache.getOrElseUpdate(end, Promise[Data[O]]()).completeWith(fObserverData)
   }

@@ -36,7 +36,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
   val logger: Logger = Logger(classOf[UserStatDao])
 
   // database collections
-  private def userstatsColl(): Future[BSONCollection] = db().map(_.collection("userstats2"))
+  private def userstatsColl0(): Future[BSONCollection] = db().map(_.collection("userstats2"))
   private def importsColl(): Future[BSONCollection] = db().map(_.collection("imports"))
   private def marksColl(): Future[BSONCollection] = db().map(_.collection("entries"))
 
@@ -172,7 +172,8 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
   private val indxs: Map[String, Index] =
     Index(USR -> Ascending :: TIMESTAMP -> Ascending :: Nil) % s"bin-$USR-1-$TIMESTAMP-1" ::
     Nil toMap;
-  Await.result(userstatsColl().map(_.indexesManager.ensure(indxs)), 93 seconds)
+  private val ensureIndxs = userstatsColl0().map(_.indexesManager.ensure(indxs))
+  private def userstatsColl() = ensureIndxs.flatMap(_ => userstatsColl0())
 
   /** Retrieves most recent UserStats for given user ID. */
   def retrieve(userId: UUID): Future[Option[UserStats]] = {
