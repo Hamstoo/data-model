@@ -66,13 +66,17 @@ case class Highlight(usrId: UUID,
     * hlA appears before, and overlaps with, hlB.  This is different from how A and B are used in the other methods
     * of this class.
     */
-  def union(hlB: Highlight): Highlight = {
+  def union(hlB: Highlight, mbIntersection: Option[Seq[Highlight.PositionElement]] = None): Highlight = {
 
     val hlA = this
 
     // look for longest paths sequence that is a tail of highlight A and a start of highlight B
-    val intersection = hlB.pos.startsWith(hlA.pos)
+    // (optionally use a passed-in intersection to ensure same is being used everywhere expected)
+    val intersection = mbIntersection getOrElse { hlB.startsWith(hlA) }
+    assert(intersection.nonEmpty)
 
+    if (intersection.size <= 0 || intersection.size - 1 >= hlB.pos.elements.size)
+      logger.error(s"Invalid intersection size ${intersection.size} (hlB.pos.elements.size=${hlB.pos.elements.size}) for highlight positions ${hlA.pos} ... and ... ${hlB.pos} ")
     val tailB = hlB.pos.elements.drop(intersection.size - 1)
 
     // elemA and elemB are the same XPath node, so merge them
@@ -189,12 +193,16 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     def startsWith(first: Highlight.Position): Seq[Highlight.PositionElement] = {
       val second = this
       // `forall` here will restrict `second.elements` to the same size as the current tail of `first.elements`
-      first.elements.tails.find { _.zip(second.elements).forall { case (f, s) => // first/second elements
-        f.path == s.path &&
-        f.index <= s.index && // first must start before second
-        f.index + f.text.length >= s.index && // first must stop after or at where second starts (a.k.a. overlap)
-        f.index + f.text.length <= s.index + s.text.length // first must stop before second ends (o/w second would be subseq)
-      }}.get // rely on the empty tail always forall'ing to true if a non-empty tail does not
+      first.elements.tails.find { _.zip(second.elements)
+        .forall { case (f, s) => // first/second elements
+          f.path == s.path &&
+          f.index <= s.index && // first must start before second
+          f.index + f.text.length >= s.index && // first must stop after or at where second starts (a.k.a. overlap)
+          f.index + f.text.length <= s.index + s.text.length // first must stop before second ends (o/w second would be subseq)
+        }
+
+      // okay to call `get` b/c we're relying on the empty tail always forall'ing to true (if a non-empty tail does not)
+      }.get
     }
 
     /** Very similar to ExtendedPosition0.startsWith, but some important minor differences. */

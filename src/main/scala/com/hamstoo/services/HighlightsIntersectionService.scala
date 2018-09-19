@@ -50,13 +50,13 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
         // if neither is a complete subset of the other, update existing highlight with a union of the two
         } else if (origFirstIntersection.nonEmpty) Some {
           () => {
-            val u = origHl.union(hl)
+            val u = origHl.union(hl, mbIntersection = Some(origFirstIntersection))
             db.delete(origHl.usrId, origHl.id).flatMap(delAt => add(u.copy(id = origHl.id, timeFrom = delAt)))
           }
 
         } else if (newFirstIntersection.nonEmpty) Some {
           () => {
-            val u = hl.union(origHl)
+            val u = hl.union(origHl, mbIntersection = Some(newFirstIntersection))
             db.delete(origHl.usrId, origHl.id).flatMap(delAt => add(u.copy(id = origHl.id, timeFrom = delAt)))
           }
 
@@ -65,10 +65,12 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
 
       }.find(_.isDefined).flatten // flatten the double Options
 
-    _ = if (mbOverlap.isDefined) logger.debug(s"Found existing highlight ${mbOverlap.get} ... that overlaps with new highlight $hl")
+    _ = if (mbOverlap.isDefined) logger.debug(s"Found existing highlight that overlaps with new highlight: $hl")
 
     // just insert the new highlight if none intersect with it
     newHl <- mbOverlap.fold(db.insert(hl).map(_ => hl))(_())
+
+    _ = if (mbOverlap.isDefined) logger.debug(s"New (possibly merged or subsumed) highlight: $newHl")
 
   } yield newHl // return produced, updated, or existing highlight
 }
