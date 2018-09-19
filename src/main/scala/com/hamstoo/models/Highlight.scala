@@ -39,7 +39,8 @@ case class Highlight(usrId: UUID,
                      timeFrom: TimeStamp = TIME_NOW,
                      timeThru: TimeStamp = INF_TIME) extends Annotation {
 
-  import HighlightFormatters.hlPrevJFmt
+  import Highlight.logger
+  import HighlightFormatters._
 
   /** Used by backend's MarksController when producing full-page view and share email. */
   override def toFrontendJson: JsObject = Json.obj(
@@ -53,7 +54,6 @@ case class Highlight(usrId: UUID,
     * required here; it's currently only used for sorting (in FPV and share emails), but we may start using it
     * in the Chrome extension for re-locating highlights and notes on the page.
     */
-  import HighlightFormatters._
   def toExtensionJson: JsObject = Json.obj("id" -> id, "pos" -> pos) ++
     pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x))
 
@@ -83,8 +83,17 @@ case class Highlight(usrId: UUID,
     // Highlight.Positions have been stripped of some of their whitespace chars, e.g. '\n's, so try unioning
     // preview texts first before resorting to position texts
     val mbOverlap = hlA.preview.text.tails.find(hlB.preview.text.startsWith).filter(_.nonEmpty)
+
     val prvUnionTxt = mbOverlap.fold(posUnion.elements.foldLeft("")(_ + _.text)) { overlap =>
-      hlA.preview.text + hlB.preview.text.substring(overlap.length)
+
+      // we know that highlight B occurs after A in the document with some overlap, and if the user created B after
+      // A, then B might start with two '\n' chars as a result of this `selectedText = selected.toString();` (in
+      // chrome-extension's annotations.js) which seems to detect these chars following existing highlights
+      //   [https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-422840050]
+      val subPrevB0 = hlB.preview.text.substring(overlap.length)
+      val subPrevB = if (subPrevB0.startsWith("\n\n")) subPrevB0.substring(2) else subPrevB0
+
+      hlA.preview.text + subPrevB
     }
 
     val prvUnion = Highlight.Preview(hlA.preview.lead, prvUnionTxt, hlB.preview.tail)
@@ -197,7 +206,9 @@ object Highlight extends BSONHandlers with AnnotationInfo {
   }
 
   /** Text that occurs before and after the highlighted text, along with the highlighted `text` itself. */
-  case class Preview(lead: String, text: String, tail: String)
+  case class Preview(lead: String, text: String, tail: String) {
+    override def toString: String = s"${getClass.getSimpleName}(lead='$lead', text='$text', tail='$tail')"
+  }
 
   val ID_LENGTH: Int = 16
 

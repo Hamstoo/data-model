@@ -90,9 +90,6 @@ class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: Exe
   def isEdgeIntsc(posA: Highlight.Position, posB: Highlight.Position): Option[Boolean] = {
 
     // look for sequences of paths that are tails of one Position and start of another
-    val cont: Boolean = posB.startsWith(posA).nonEmpty
-    val prep: Boolean = posA.startsWith(posB).nonEmpty
-
-    if (cont) Some(true) else if (prep) Some(false) else None
+    if (posB.startsWith(posA).nonEmpty) Some(true) else if (posA.startsWith(posB).nonEmpty) Some(false) else None
   }
 }
