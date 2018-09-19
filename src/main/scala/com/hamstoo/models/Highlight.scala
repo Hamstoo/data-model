@@ -71,8 +71,10 @@ case class Highlight(usrId: UUID,
 
     val tailB = hlB.pos.elements.drop(intersection.size - 1)
 
-    // eA and eB are the same XPath node, so merge them
-    val mergedElem = hlA.pos.elements.last.merge(tailB.head)
+    // elemA and elemB are the same XPath node, so merge them
+    val elemA = hlA.pos.elements.last
+    val elemB = tailB.head // java.util.NoSuchElementException: head of empty list
+    val mergedElem = elemA.merge(elemB)
 
     // drop last element of highlight A (which could include only part of that element's text while highlight B is
     // guaranteed to include more) and first n - 1 intersecting elements of highlight B
@@ -105,6 +107,7 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     *
     * TODO: Does this mean that two consecutive PositionElements with the same path must have the same index also to be joined?
     * A: No, because there can be consecutive PositionElements with the same path as evidenced by mergeSameElems
+    * Q: But what if a "middle span" is skipped, like in the example above?
     *
     * See the following issue/comment for a description of neighbors/anchors/outerAnchors.
     *   https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-422162287
@@ -164,10 +167,7 @@ object Highlight extends BSONHandlers with AnnotationInfo {
         val t = elements.tail
 
         // if first 2 paths in the list are the same, then merge/union them and prepend them to the remaining tail
-        if (elements.head.path == t.head.path) {
-          Position(elements.head.copy(text = elements.head.text + t.head.text) +: t.tail).mergeSameElems(acc)
-          //Position(elements.head.merge(t.head) +: t.tail).mergeSameElems(acc)
-        }
+        if (elements.head.path == t.head.path) Position(elements.head.merge(t.head) +: t.tail).mergeSameElems(acc)
         else Position(t).mergeSameElems(Position(acc.elements :+ elements.head))
       }
     }

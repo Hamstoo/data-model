@@ -215,9 +215,9 @@ class HighlightsIntersectionServiceTests
     val es = highlight.pos.elements
 
     // slice the head into 3 separate elements
-    val sliced = es.head.copy(text = es.head.text.substring(0, 19)) +:
-                 es.head.copy(text = es.head.text.substring(19, 39)) +:
-                 es.head.copy(text = es.head.text.substring(39)) +:
+    val sliced = es.head.copy(text = es.head.text.substring( 0, 19)) +:
+                 es.head.copy(text = es.head.text.substring(19, 39), index = es.head.index + 19) +:
+                 es.head.copy(text = es.head.text.substring(39)    , index = es.head.index + 39) +:
                  es.tail
 
     Position(sliced).mergeSameElems() shouldEqual highlight.pos
