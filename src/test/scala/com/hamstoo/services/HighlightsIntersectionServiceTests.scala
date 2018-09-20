@@ -261,7 +261,7 @@ class HighlightsIntersectionServiceTests
     merged.preview.text shouldEqual expected
   }
 
-  it should "(UNIT) case 12: chrome-extension issue #35" in {
+  it should "(UNIT) case 12: chrome-extension issue #35 (https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-422840050)" in {
 
     val sharedPath = "/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]/span[3]"
 
@@ -302,5 +302,33 @@ class HighlightsIntersectionServiceTests
 
     val expected = "If I set up an ExecutorService like this:\n\nnew ThreadPoolExecutor(\n  5, // core pool s"
     merged.preview.text shouldEqual expected
+  }
+
+  it should "(UNIT) case 13: chrome-extension issue #35 (https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-423266260)" in {
+
+    val json: JsValue = Json.parse(
+      """
+         |{"usrId":"44444444-4444-4444-4444-444444444444","nSharedFrom":0,"nSharedTo":0,"id":"Xgw0cGqweY0x9VRC","markId":"kneYyQ6ExrZ1wrfv",
+         |"pos":{"elements":[{
+         |  "path":"/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]","text":"good choice.","index":603,"cssSelector":"#post-body-3913631965276660434",
+         |    "neighbors":{"left":{"path":"/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div","cssSelector":"#Blog1 .uncustomized-post-template.hentry.post .post-header","elementText":"\n\n"},"right":{"path":"/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[3]","cssSelector":"#Blog1 .uncustomized-post-template.hentry.post .post-footer","elementText":"\n\n\nPosted by\n\n\n\nJessiTRON\n\n\n\n\nat\n\n8:47 PM\n\n\n\n\n\n\n\n\n\n\n\nEmail ThisBlogThis!Share to TwitterShare to FacebookShare to Pinterest\n\n\n\n\nLabels:\nconcurrency,\nJava,\nscala\n\n\n\n\n\n\n"}},"anchors":{"left":" I/O, and then Executors.newCachedThreadPool is a ","right":""},"outerAnchors":{"left":" I/O, and then Executors.newCachedThreadPool is a ","right":"\n\nWhen you would like to limit the number of threa"}},{
+         |  "path":"/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[2]","text":"\nWhen you","index":616,"cssSelector":"#post-body-3913631965276660434",
+         |    "neighbors":{"left":{"path":"/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div","cssSelector":"#Blog1 .uncustomized-post-template.hentry.post .post-header","elementText":"\n\n"},"right":{"path":"/html/body/div[3]/div[2]/div[2]/div[2]/div[2]/div[2]/div[2]/div/div[4]/div/div/div/div/div/div/div/div/div/div[3]","cssSelector":"#Blog1 .uncustomized-post-template.hentry.post .post-footer","elementText":"\n\n\nPosted by\n\n\n\nJessiTRON\n\n\n\n\nat\n\n8:47 PM\n\n\n\n\n\n\n\n\n\n\n\nEmail ThisBlogThis!Share to TwitterShare to FacebookShare to Pinterest\n\n\n\n\nLabels:\nconcurrency,\nJava,\nscala\n\n\n\n\n\n\n"}},"anchors":{"left":"","right":" would like to limit the number of threads you sta"},"outerAnchors":{"left":"n Executors.newCachedThreadPool is a good choice.\n","right":" would like to limit the number of threads you sta"}}]},
+         |"pageCoord":{"x":0.14285714285714285,"y":0.06582579185520362},
+         |"preview":{"lead":" I/O, and then Executors.newCachedThreadPool is a ","text":"good choice.\n\nWhen you","tail":" would like to limit the number of threads you sta"},"timeFrom":1537453928728,"timeThru":9223372036854775807}
+      """.stripMargin)
+
+    import com.hamstoo.models.HighlightFormatters._
+    val hl = json.as[Highlight]
+
+    val merged = hlIntersectionSvc.add(hl).futureValue
+
+    val elems = merged.pos.elements
+    elems.size shouldBe 1 // test mergeSameElems
+
+    // preview text and pos text should be the same
+    val expected = "good choice.\n\nWhen you"
+    merged.preview.text shouldEqual expected
+    elems.head.text shouldEqual expected
   }
 }

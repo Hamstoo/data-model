@@ -157,10 +157,19 @@ object Highlight extends BSONHandlers with AnnotationInfo {
       val mgAnchors   = joinLeftRightOpts(eA.anchors     , eB.anchors     ).map((Highlight.  Anchors.apply _).tupled)
       val mgOAnchors  = joinLeftRightOpts(eA.outerAnchors, eB.outerAnchors).map((Highlight.  Anchors.apply _).tupled)
 
+      // to prevent the below StringIndexOutOfBoundsException: if eB starts with a sequence of '\n's, its index
+      // could be too large by that many chars (which may be due to missing/phantom \n chars at the end of eA.text)
+      //   [https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-423266260]
+      //val indexPad = (4 to 0 by -1) find { i => eB.text.startsWith("\n" * i) } getOrElse 0
+      val startB = eA.index + eA.text.length - eB.index
+      val indexPad = if (startB < 0) -startB else 0
+
       // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5 (before 2018.9.18)
-      logger.debug(s"mergedText = '${eA.text}' + '${eB.text}'.substring(${eA.index} + ${eA.text.length} - ${eB.index}, ${eB.text.length})")
-      val mergedText = eA.text + eB.text.substring(eA.index + eA.text.length - eB.index, eB.text.length)
-      logger.debug(s"mergedText == '$mergedText'")
+      //  When you would like to limit the number of threads you'.substring(407 + 208 - 616, 55)
+      val log = if (indexPad == 0) { logger.debug(_: String) } else { logger.warn(_: String) }
+      log(s"PositionElement.merge = '${eA.text}' + ('\n' * $indexPad) + '${eB.text}'.substring(${eA.index} + ${eA.text.length} - ${eB.index} + $indexPad, ${eB.text.length})")
+      val mergedText = eA.text + ("\n" * indexPad) + eB.text.substring(eA.index + eA.text.length - eB.index + indexPad, eB.text.length)
+      log(s"PositionElement.merge == '$mergedText'")
 
       // use eA's `index` and `cssSelector`
       eA.copy(text = mergedText, neighbors = mgNeighbors, anchors = mgAnchors, outerAnchors = mgOAnchors)
