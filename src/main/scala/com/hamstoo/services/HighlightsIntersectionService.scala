@@ -7,6 +7,7 @@ import com.google.inject.{Inject, Singleton}
 import com.hamstoo.daos.HighlightDao
 import com.hamstoo.models.{Highlight, User}
 import play.api.Logger
+import play.api.libs.json.Json
 
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -18,18 +19,23 @@ import scala.concurrent.{ExecutionContext, Future}
 class HighlightsIntersectionService @Inject()(implicit db: HighlightDao, ec: ExecutionContext) {
 
   val logger: Logger = Logger(getClass)
+  import com.hamstoo.models.HighlightFormatters._
 
   /** Checks for intersections with existing highlights and rejects insert, inserts, or updates existing. */
-  def add(highlight: Highlight): Future[Highlight] = for {
+  def add(hl0: Highlight): Future[Highlight] = for {
 
     // get all existing highlights by markId
-    origHls <- db.retrieve(User(highlight.usrId), highlight.markId)
+    origHls <- db.retrieve(User(hl0.usrId), hl0.markId)
+
+    _ = logger.debug(s"New highlight before mergeSameElems: ${Json.toJson(hl0)}")
 
     // merge same-element text of the new highlight (It's assumed that frontend sends xpaths sorted by their position
     // in the document. Ideally there should be a check leading to rejecting requests to add highlights with error
     // message for a frontend dev to be aware of invalid requests.
     //   [https://github.com/Hamstoo/hamstoo/issues/178#issuecomment-339381263])
-    hl = highlight.copy(pos = highlight.pos.mergeSameElems())
+    hl = hl0.mergeSameElems()
+
+    _ = logger.debug(s"New highlight after mergeSameElems: ${Json.toJson(hl)}")
 
     // find a single overlapping/touching/joinable existing highlight
     mbOverlap = origHls.view.map { origHl =>

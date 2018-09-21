@@ -75,7 +75,7 @@ class HighlightsIntersectionServiceTests
       PosElem(paths(2), texts(2), 0) ::
       PosElem(paths(3), texts(3), 0) :: Nil
 
-    Position(elementsWithRepetitions).mergeSameElems().elements shouldEqual mergedElems
+    Position(elementsWithRepetitions).mergeSameElems("").elements shouldEqual mergedElems
   }
 
   it should "(UNIT) case 1: join highlight with intersection on 1 element with text overlap" in {
@@ -220,7 +220,7 @@ class HighlightsIntersectionServiceTests
                  es.head.copy(text = es.head.text.substring(39)    , index = es.head.index + 39) +:
                  es.tail
 
-    Position(sliced).mergeSameElems() shouldEqual highlight.pos
+    Position(sliced).mergeSameElems("") shouldEqual highlight.pos
   }
 
   it should "(UNIT) case 11: issue #215 (and #178)" in {
@@ -328,6 +328,48 @@ class HighlightsIntersectionServiceTests
 
     // preview text and pos text should be the same
     val expected = "good choice.\n\nWhen you"
+    merged.preview.text shouldEqual expected
+    elems.head.text shouldEqual expected
+  }
+
+  it should "(UNIT) case 14: chrome-extension issue #35 (merging)" in {
+
+    val json0: JsValue = Json.parse(
+      """
+        |{"usrId":"0fb521ba-918e-47e4-91aa-e6cffaa47af7","nSharedFrom":0,"nSharedTo":0,"id":"H5tgthdGyusCmrS8","markId":"vswAC0wjQdju7jqT","pos":{"elements":[
+        |{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[5]/ul/li","text":"not","index":50,"cssSelector":"#readme .entry-content.markdown-body li","neighbors":{"left":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[4]","cssSelector":"#readme .entry-content.markdown-body li","elementText":"Install Node: $ nvm install 8.11.4"},"right":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[3]","cssSelector":"#readme .entry-content.markdown-body li","elementText":"Clone this repo."}},"anchors":{"left":"","right":""},"outerAnchors":{"left":"You may need to install version 7.10.1 (\"npm does ","right":" support Node.js v7.10.1\") or 8.11.4 instead.\n\n\n\n\n"}}]},"pageCoord":{"x":0.2665343915343915,"y":0.13207126826262983},"preview":{"lead":"You may need to install version 7.10.1 (\"npm does ","text":"not","tail":" support Node.js v7.10.1\") or 8.11.4 instead.\n\n\n\n\n"},"timeFrom":1537473571932,"timeThru":9223372036854775807}
+      """.stripMargin)
+
+    val json1: JsValue = Json.parse(
+      """
+        |{"usrId":"0fb521ba-918e-47e4-91aa-e6cffaa47af7","nSharedFrom":0,"nSharedTo":0,"id":"xsyCoolWiCBYWjmb","markId":"vswAC0wjQdju7jqT","pos":{"elements":[
+        |{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[5]/ul/li","text":"support","index":54,"cssSelector":"#readme .entry-content.markdown-body li","neighbors":{"left":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[4]","cssSelector":"#readme .entry-content.markdown-body li","elementText":"Install Node: $ nvm install 8.11.4"},"right":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[3]","cssSelector":"#readme .entry-content.markdown-body li","elementText":"Clone this repo."}},"anchors":{"left":"","right":""},"outerAnchors":{"left":"may need to install version 7.10.1 (\"npm does not ","right":" Node.js v7.10.1\") or 8.11.4 instead.\n\n\n\n\nClone th"}}]},"pageCoord":{"x":0.2665343915343915,"y":0.13207126826262983},"preview":{"lead":"may need to install version 7.10.1 (\"npm does not ","text":"support","tail":" Node.js v7.10.1\") or 8.11.4 instead.\n\n\n\n\nClone th"},"timeFrom":1537473581470,"timeThru":9223372036854775807}
+      """.stripMargin)
+
+    val json2: JsValue = Json.parse(
+      """
+        |{"usrId":"0fb521ba-918e-47e4-91aa-e6cffaa47af7","nSharedFrom":0,"nSharedTo":0,"id":"qd9W7FWCfbqfEV1t","markId":"vswAC0wjQdju7jqT",
+        |"pos":{"elements":[
+        |{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[5]/ul/li","text":"does ","index":45,"cssSelector":"#readme .entry-content.markdown-body li","neighbors":{"left":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[4]","cssSelector":"#readme .entry-content.markdown-body li","elementText":"Install Node: $ nvm install 8.11.4"},"right":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[3]","cssSelector":"#readme .entry-content.markdown-body li","elementText":"Clone this repo."}},"anchors":{"left":"","right":""},"outerAnchors":{"left":"rs.\n\nYou may need to install version 7.10.1 (\"npm ","right":"not support Node.js v7.10.1\") or 8.11.4 instead.\n\n"}},
+        |{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[5]/ul/li","text":"not","index":50,"cssSelector":"#readme .entry-content.markdown-body li","neighbors":{"left":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[5]/ul/li/del","cssSelector":"#readme .entry-content.markdown-body del","elementText":"7.10.1"},"right":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[5]/ul/li/hamstoo-highlight[2]","cssSelector":"#readme .entry-content.markdown-body li","elementText":"support"}},"anchors":{"left":"","right":""},"outerAnchors":{"left":"You may need to install version 7.10.1 (\"npm does ","right":" support Node.js v7.10.1\") or 8.11.4 instead.\n\n\n\n\n"}},
+        |{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[5]/ul/li","text":"support","index":54,"cssSelector":"#readme .entry-content.markdown-body li","neighbors":{"left":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[5]/ul/li/hamstoo-highlight","cssSelector":"#readme .entry-content.markdown-body li","elementText":"not"},"right":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[3]","cssSelector":"#readme .entry-content.markdown-body li","elementText":"Clone this repo."}},"anchors":{"left":"","right":""},"outerAnchors":{"left":"may need to install version 7.10.1 (\"npm does not ","right":" Node.js v7.10.1\") or 8.11.4 instead.\n\n\n\n\nClone th"}},
+        |{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[5]/ul/li","text":" Nod","index":61,"cssSelector":"#readme .entry-content.markdown-body li","neighbors":{"left":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[2]/ul/li[4]","cssSelector":"#readme .entry-content.markdown-body li","elementText":"Install Node: $ nvm install 8.11.4"},"right":{"path":"/html/body/div[4]/div/div/div[2]/div/div[7]/div[2]/article/ol/li[3]","cssSelector":"#readme .entry-content.markdown-body li","elementText":"Clone this repo."}},"anchors":{"left":"","right":""},"outerAnchors":{"left":"d to install version 7.10.1 (\"npm does not support","right":"e.js v7.10.1\") or 8.11.4 instead.\n\n\n\n\nClone this r"}}]},"pageCoord":{"x":0.2665343915343915,"y":0.13207126826262983},"preview":{"lead":"rs.\n\nYou may need to install version 7.10.1 (\"npm ","text":"does not support Nod","tail":"e.js v7.10.1\") or 8.11.4 instead.\n\n\n\n\nClone this r"},"timeFrom":1537473588218,"timeThru":9223372036854775807}
+      """.stripMargin)
+
+    import com.hamstoo.models.HighlightFormatters._
+    val hl0 = json0.as[Highlight]
+    val hl1 = json1.as[Highlight]
+    val hl2 = json2.as[Highlight]
+
+    hlIntersectionSvc.add(hl0).futureValue
+    hlIntersectionSvc.add(hl1).futureValue
+    val merged = hlIntersectionSvc.add(hl2).futureValue
+
+    val elems = merged.pos.elements
+    elems.size shouldBe 1 // test mergeSameElems
+
+    // preview text and pos text should be the same
+    val expected = "does not support Nod"
     merged.preview.text shouldEqual expected
     elems.head.text shouldEqual expected
   }

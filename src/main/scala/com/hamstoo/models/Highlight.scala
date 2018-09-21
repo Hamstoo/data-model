@@ -11,6 +11,8 @@ import play.api.Logger
 import play.api.libs.json.{JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
+import scala.util.matching.Regex
+
 /**
   * Data model of a text highlight.
   *
@@ -58,6 +60,7 @@ case class Highlight(usrId: UUID,
     pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x))
 
   /** Defer to Highlight.Position. */
+  def mergeSameElems(): Highlight = copy(pos = pos.mergeSameElems(preview.text))
   def startsWith(first: Highlight): Seq[Highlight.PositionElement] = pos.startsWith(first.pos)
   def isSubseq(outer: Highlight): Boolean = pos.isSubseq(outer.pos)
 
@@ -82,27 +85,35 @@ case class Highlight(usrId: UUID,
     // elemA and elemB are the same XPath node, so merge them
     val elemA = hlA.pos.elements.last
     val elemB = tailB.head // java.util.NoSuchElementException: head of empty list
-    val mergedElem = elemA.merge(elemB)
-
-    // drop last element of highlight A (which could include only part of that element's text while highlight B is
-    // guaranteed to include more) and first n - 1 intersecting elements of highlight B
-    val posUnion = Highlight.Position(hlA.pos.elements.init ++ Seq(mergedElem) ++ tailB.tail)
 
     // Highlight.Positions have been stripped of some of their whitespace chars, e.g. '\n's, so try unioning
     // preview texts first before resorting to position texts
     val mbOverlap = hlA.preview.text.tails.find(hlB.preview.text.startsWith).filter(_.nonEmpty)
 
-    val prvUnionTxt = mbOverlap.fold(posUnion.elements.foldLeft("")(_ + _.text)) { overlap =>
+    val prvUnionTxt = mbOverlap
+      .fold {
+        val mergedElem0 = elemA.merge(elemB, "") // using empty string b/c no prvUnionText to be had yet at this point
 
-      // we know that highlight B occurs after A in the document with some overlap, and if the user created B after
-      // A, then B might start with two '\n' chars as a result of this `selectedText = selected.toString();` (in
-      // chrome-extension's annotations.js) which seems to detect these chars following existing highlights
-      //   [https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-422840050]
-      val subPrevB0 = hlB.preview.text.substring(overlap.length)
-      val subPrevB = if (subPrevB0.startsWith("\n\n")) subPrevB0.substring(2) else subPrevB0
+        // drop last element of highlight A (which could include only part of that element's text while highlight B is
+        // guaranteed to include more) and first n - 1 intersecting elements of highlight B
+        val posUnion0 = Highlight.Position(hlA.pos.elements.init ++ Seq(mergedElem0) ++ tailB.tail)
+        posUnion0.elements.foldLeft("")(_ + _.text)
 
-      hlA.preview.text + subPrevB
-    }
+      }{ overlap =>
+
+        // we know that highlight B occurs after A in the document with some overlap, and if the user created B after
+        // A, then B might start with two '\n' chars as a result of this `selectedText = selected.toString();` (in
+        // chrome-extension's annotations.js) which seems to detect these chars following existing highlights
+        //   [https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-422840050]
+        val subPrevB0 = hlB.preview.text.substring(overlap.length)
+        val subPrevB = if (subPrevB0.startsWith("\n\n")) subPrevB0.substring(2) else subPrevB0
+
+        hlA.preview.text + subPrevB
+      }
+
+    // use prvUnionTxt to help fill in any missing chars from the pos.elements.texts
+    val mergedElem = elemA.merge(elemB, prvUnionTxt)
+    val posUnion = Highlight.Position(hlA.pos.elements.init ++ Seq(mergedElem) ++ tailB.tail)
 
     val prvUnion = Highlight.Preview(hlA.preview.lead, prvUnionTxt, hlB.preview.tail)
     hlA.copy(pos = posUnion, preview = prvUnion, pageCoord = hlA.pageCoord.orElse(hlB.pageCoord))
@@ -138,7 +149,7 @@ object Highlight extends BSONHandlers with AnnotationInfo {
                              outerAnchors: Option[Anchors] = None) {
 
     /** Union two overlapping or edge-touching PositionElements. */
-    def merge(eB: PositionElement): PositionElement = {
+    def merge(eB: PositionElement, previewText: String): PositionElement = {
       val eA = this
 
       // if this function is defined with T and U as type parameters of the same function (as opposed to a closure)
@@ -164,11 +175,28 @@ object Highlight extends BSONHandlers with AnnotationInfo {
       val startB = eA.index + eA.text.length - eB.index
       val indexPad = if (startB < 0) -startB else 0
 
-      // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5 (before 2018.9.18)
-      //  When you would like to limit the number of threads you'.substring(407 + 208 - 616, 55)
+      // use previewText to try to figure out what the missing whitespace chars are (see comment in
+      // chrome-extension's annotations.js)
+      val pad = if (indexPad == 0) "" else {
+
+        // Regex.quote doesn't properly quote '\n's (nor '\t's, I'm guessing) and since we're really only interested
+        // in missing whitespace, performing these substitutions should be okay (using uppercase subs even safer)
+        val substitutes = Map("\n" -> "N", "\t" -> "T")
+        val textA :: textB :: prvText :: Nil = Seq(eA.text, eB.text, previewText)
+          .map { t => substitutes.foldLeft(t) { case (ti, (k, v)) => ti.replaceAll(k, v) } }
+
+        val rgx = (Regex.quote(textA) + s"(.{$indexPad})" + Regex.quote(textB)).r
+        rgx.findFirstMatchIn(prvText).map { mtch =>
+          val pad = substitutes.foldLeft(mtch.group(1)) { case (ti, (k, v)) => ti.replaceAll(v, k) }
+          logger.warn(s"Derived $indexPad-char pad string '$pad' from '$rgx'")
+          pad
+        }.getOrElse(" " * indexPad)
+      }
+
+      // java.lang.StringIndexOutOfBoundsException: begin 248, end 5, length 5 (before 2018.9.19, see above)
       val log = if (indexPad == 0) { logger.debug(_: String) } else { logger.warn(_: String) }
-      log(s"PositionElement.merge = '${eA.text}' + ('\n' * $indexPad) + '${eB.text}'.substring(${eA.index} + ${eA.text.length} - ${eB.index} + $indexPad, ${eB.text.length})")
-      val mergedText = eA.text + ("\n" * indexPad) + eB.text.substring(eA.index + eA.text.length - eB.index + indexPad, eB.text.length)
+      log(s"PositionElement.merge = '${eA.text}' + '$pad' + '${eB.text}'.substring(${eA.index} + ${eA.text.length} - ${eB.index} + $indexPad, ${eB.text.length})")
+      val mergedText = eA.text + pad + eB.text.substring(eA.index + eA.text.length - eB.index + indexPad, eB.text.length)
       log(s"PositionElement.merge == '$mergedText'")
 
       // use eA's `index` and `cssSelector`
@@ -187,14 +215,16 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     def nonEmpty: Boolean = elements.nonEmpty
 
     /** Recursively joins same-XPath-elements to ensure there are no consecutive elements with the same XPath. */
-    def mergeSameElems(acc: Position = Position(Nil)): Position = {
+    def mergeSameElems(previewText: String, acc: Position = Position(Nil)): Position = {
       if (elements.size < 2) Position(acc.elements ++ elements)
       else {
         val t = elements.tail
 
         // if first 2 paths in the list are the same, then merge/union them and prepend them to the remaining tail
-        if (elements.head.path == t.head.path) Position(elements.head.merge(t.head) +: t.tail).mergeSameElems(acc)
-        else Position(t).mergeSameElems(Position(acc.elements :+ elements.head))
+        if (elements.head.path == t.head.path)
+          Position(elements.head.merge(t.head, previewText) +: t.tail).mergeSameElems(previewText, acc)
+        else
+          Position(t).mergeSameElems(previewText, Position(acc.elements :+ elements.head))
       }
     }
 
