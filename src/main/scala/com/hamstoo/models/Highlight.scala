@@ -130,9 +130,11 @@ object Highlight extends BSONHandlers with AnnotationInfo {
     *   {"path": "body/p"     , "text": "fin", "index": 11
     * ]
     *
-    * TODO: Does this mean that two consecutive PositionElements with the same path must have the same index also to be joined?
-    * A: No, because there can be consecutive PositionElements with the same path as evidenced by mergeSameElems
-    * Q: But what if a "middle span" is skipped, like in the example above?
+    * > > I realize we don't do it this way--it might be too slow, for example--but it would be possible.
+    * > Yeah, it's possible to check if page has this text, but in order to find which exact elements contain which
+    * > part of highlight, we'll have to go through so many elements that it will significantly slow down the process.
+    * > That's exactly why we use paths and selectors - to make a short list of elements where to look
+    *    https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-424015773
     *
     * See the following issue/comment for a description of neighbors/anchors/outerAnchors.
     *   https://github.com/Hamstoo/chrome-extension/issues/35#issuecomment-422162287
