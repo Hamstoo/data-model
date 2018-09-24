@@ -24,6 +24,8 @@ class IDFModelTests extends FlatSpecWithMatchers {
     idfModel.transform("of") shouldEqual 0.005 +- deviation
     idfModel.transform("the") shouldEqual 0.0056 +- deviation
     idfModel.transform("anarchy") shouldEqual 6.3723 +- deviation
+    idfModel.transform("likelihood") shouldEqual 6.1745 +- deviation
+    idfModel.transform("likable") shouldEqual 9.3272 +- deviation // issue #370
     idfModel.transform("transrapid") shouldEqual 9.3272 +- deviation
     idfModel.transform("fawevzsdirweckivb") shouldEqual 9.3272 +- deviation
   }

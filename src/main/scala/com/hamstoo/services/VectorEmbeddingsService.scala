@@ -143,10 +143,10 @@ object VectorEmbeddingsService {
     * @param candidates  Candidate words to match document vectors against.
     * @return  The 15 words with the highest `aggregateSimilarityScore`s.
     */
-  def keywords(docVecs: Map[Representation.VecEnum.Value, Vec], candidates: Seq[WordMass]): Seq[String] = {
+  def keywords0(docVecs: Map[Representation.VecEnum.Value, Vec], candidates: Seq[WordMass], mbIdfModel: Option[IDFModel] = None): Seq[String] = {
 
-    // debugging (this commented-out code will produce a file for use by kwsSimilarities.xlsx, also
-    // see HTMLRepresentationServiceSpec)
+    // debugging (this commented-out code will produce a file for use by kwsSimilarities.xlsx,
+    //            also see HTMLRepresentationServiceSpec)
     /*if (true) {
       import java.io.{BufferedWriter, FileOutputStream, OutputStreamWriter}
       utils.cleanlyWriteFile("kwsSimilarities.csv") { fp =>
@@ -175,19 +175,21 @@ object VectorEmbeddingsService {
 
     // convert to (word, similarity) pairs
     val wordsUnsorted = candidates.map { wm => wm.word -> documentSimilarity(wm.scaledVec, docVecs, chooseMax = true) }
-    keywords(wordsUnsorted)
+    keywords(wordsUnsorted, mbIdfModel)
   }
 
   // select 15 highest scoring words (with some filtering of words with only a few letters)
   val N_DESIRED_KEYWORDS = 15
 
   /** Used to be part of the other `keywords` method.  Moved here to be accessible from outside. */
-  def keywords(wordsUnsorted: Seq[(String, Double)]): Seq[String] = {
+  def keywords(wordsUnsorted: Seq[(String, Double)], mbIdfModel: Option[IDFModel] = None): Seq[String] = {
 
     // sort by `aggregateSimilarityScore` (descending)
     val words = wordsUnsorted.sortBy(-_._2).filterNot(ws => Seq("http", "https").contains(ws._1))
-    if (logger.isDebugEnabled)
-      words.foreach { case (w, s) => logger.debug(f"keywords: $w -> $s%.3f")}
+    if (logger.isDebugEnabled) {
+      if (mbIdfModel.isDefined) words.foreach { case (w, s) => logger.debug(f"keywords: $w -> $s%.3f (idf=${mbIdfModel.get.transform(w)}%.2f})") }
+      else words.foreach { case (w, s) => logger.debug(f"keywords: $w -> $s%.3f") }
+    }
 
     // not quite sure how to do what follows in a functional programming style
     val selections = scala.collection.mutable.ListBuffer.empty[String]
@@ -344,7 +346,7 @@ class VectorEmbeddingsService @Inject()(vectorizer: Vectorizer, idfModel: IDFMod
           (if (pk == "PC") pcVecs else kmVecs).lift(i.toInt - 1).map(vt -> _)
       }.toMap.mapValues(_.l2Normalize)
 
-      (vecreprs, keywords(vecreprs, topWords), nWords)
+      (vecreprs, keywords0(vecreprs, topWords, Some(idfModel)), nWords)
     }
   }
 
