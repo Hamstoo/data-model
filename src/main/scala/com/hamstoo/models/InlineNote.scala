@@ -37,11 +37,7 @@ case class InlineNote(usrId: UUID,
                       timeThru: TimeStamp = INF_TIME) extends Annotation {
 
   /** Used by backend's MarksController when producing full-page view and share email. */
-  override def toFrontendJson: JsObject = Json.obj(
-    "id" -> id,
-    "preview" -> pos.text,
-    "type" -> "comment"
-  )
+  override def toFrontendJson: JsObject = Json.obj("id" -> id, "preview" -> pos.text, "type" -> "comment")
 
   /**
     * Used by backend's MarksController when producing JSON for the Chrome extension.  `pageCoord` may not be
@@ -49,9 +45,10 @@ case class InlineNote(usrId: UUID,
     * in the Chrome extension for re-locating highlights and notes on the page.
     */
   import InlineNoteFormatters._
-  def toExtensionJson: JsObject = Json.obj("id" -> id, "pos" -> pos) ++
-    anchors.fold(Json.obj())(x => Json.obj("anchors" -> x)) ++
-    pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x))
+  override def toExtensionJson(implicit callingUserId: UUID) =
+    super.toExtensionJson ++
+    Json.obj("pos" -> pos) ++
+    anchors.fold(Json.obj())(x => Json.obj("anchors" -> x))
 }
 
 object InlineNote extends BSONHandlers with AnnotationInfo {

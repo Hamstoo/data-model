@@ -1,10 +1,13 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo.models
 
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.utils.{ObjectId, TimeStamp}
-import play.api.libs.json.JsObject
+import play.api.libs.json.{JsObject, Json}
 
 /**
   * An Annotation is user content that is created right on top of the web pages themselves (e.g. highlights
@@ -37,6 +40,16 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
     *             }
     */
   def toFrontendJson: JsObject
+
+  /**
+    * Used by backend's MarksController when producing JSON for the Chrome extension.  `pageCoord` may not be
+    * required here; it's currently only used for sorting (in FPV and share emails), but we may start using it
+    * in the Chrome extension for re-locating highlights and notes on the page.
+    */
+  def toExtensionJson(implicit callingUserId: UUID): JsObject = Json.obj(
+    "id" -> id,
+    "color" -> (if (callingUserId == usrId) "orange" else "blue")) ++
+    pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x))
 }
 
 object Annotation {

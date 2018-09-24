@@ -45,19 +45,16 @@ case class Highlight(usrId: UUID,
   import HighlightFormatters._
 
   /** Used by backend's MarksController when producing full-page view and share email. */
-  override def toFrontendJson: JsObject = Json.obj(
-    "id" -> id,
-    "preview" -> Json.toJson(preview),
-    "type" -> "highlight"
-  )
+  override def toFrontendJson: JsObject = Json.obj("id" -> id, "preview" -> preview, "type" -> "highlight")
 
   /**
     * Used by backend's MarksController when producing JSON for the Chrome extension.  `pageCoord` may not be
     * required here; it's currently only used for sorting (in FPV and share emails), but we may start using it
     * in the Chrome extension for re-locating highlights and notes on the page.
     */
-  def toExtensionJson: JsObject = Json.obj("id" -> id, "pos" -> pos) ++
-    pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x))
+  override def toExtensionJson(implicit callingUserId: UUID): JsObject =
+    super.toExtensionJson ++
+    Json.obj("pos" -> pos, "preview" -> preview)
 
   /** Defer to Highlight.Position. */
   def mergeSameElems(): Highlight = copy(pos = pos.mergeSameElems(preview.text))
