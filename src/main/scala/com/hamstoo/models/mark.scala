@@ -7,7 +7,7 @@ import java.net.URL
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.daos.ImageDao
+import com.hamstoo.daos.{ImageDao, RepresentationDao}
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, MediaType, MetaType, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
@@ -547,20 +547,32 @@ case class Mark(override val userId: UUID,
   def primaryRepr: ObjectId  = privRepr.orElse(pubRepr).getOrElse("")
 
   /**
-    * Same implementation as `expectedRating` but for reprId, as opposed to the older `primaryRepr` impl.
-    * Useful for getting a representative repr for approximate stuff like autoGenKws.
+    * Auto-generated keywords for a mark depend on the size of its primary page repr and user-content repr.
+    * User content is generally much more relevant to a mark than the webpage text, which we still haven't yet
+    * refined (issue #214).  So this method reconciles the two into a single list of keywords.  Very roughly,
+    * it takes about 2/3 of the user-content repr keywords and combines them with 1/3 of the page repr keywords.
     */
-  def primaryReprInclUserContent: Option[ObjectId] = {
+  def autoGenKws(implicit reprDao: RepresentationDao): Future[Option[Seq[String]]] = {
+    import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
+    val fprimary = reprDao.retrieve(primaryRepr)
+    val fuser = reprDao.retrieve(userContentRepr.getOrElse(""))
+    for { rP <- fprimary; rU <- fuser } yield {
 
-    def mostRecentValidReprOfType(isType: ReprInfo => Boolean): Option[ObjectId] = reprs
-      .filter(x => isType(x) && !NON_IDS.contains(x.reprId))
-      .sortBy(_.created).lastOption.map(_.reprId)
+      val nP = rP.flatMap(_.nWords).getOrElse(0L)
+      val nU = rU.flatMap(_.nWords).getOrElse(0L)
+      val kwsP = rP.flatMap(_.autoGenKws).getOrElse(Seq.empty[String])
+      val kwsU = rU.flatMap(_.autoGenKws).getOrElse(Seq.empty[String])
+      logger.debug(s"Mark.autoGenKws: nP=$nP, nU=$nU, kwsP.size=${kwsP.size}, kwsU.size=${kwsU.size}")
 
-    val priv             = mostRecentValidReprOfType(_.isPrivate)
-    lazy val pub         = mostRecentValidReprOfType(_.isPublic)
-    lazy val userContent = mostRecentValidReprOfType(_.isUserContent)
-
-    priv.orElse(pub).orElse(userContent)
+      import com.hamstoo.services.VectorEmbeddingsService.{N_DESIRED_KEYWORDS => N}
+      //val halfN = N / 2
+      //val kws = if (nU > 100 && kwsU.size > halfN) kwsU // if there are lots of user keywords, use those
+      //          else if (nU < 10 || kwsU.size < 3) kwsP // if there aren't many user keywords, use page keywords
+      //          else (kwsU.take(halfN) ++ kwsP).take(N) // if there are a few user keywords, use half and half
+      val subsetU = kwsU.filterNot(kwsP.contains).take(math.min(nU / 5, N * 2 / 3).toInt)
+      val kws = (subsetU ++ kwsP).take(N)
+      if (kws.isEmpty) None else Some(kws)
+    }
   }
 
   /**
@@ -569,6 +581,7 @@ case class Mark(override val userId: UUID,
     */
   def expectedRating: Option[ObjectId] = {
 
+    /** Analogous to `primary def repr`. */
     def mostRecentValidExpRatingOfType(isType: ReprInfo => Boolean): Option[ObjectId] = reprs
       .filter(x => isType(x) && !NON_IDS.contains(x.expRating.getOrElse("")))
       .filter(_.expRating.isDefined)
@@ -589,11 +602,11 @@ case class Mark(override val userId: UUID,
     * Return latest representation ID, if it exists.  Even though public and user-content reprs are supposed to
     * be singletons, it doesn't hurt to be conservative and return the most recent rather than just using `find`.
     */
-  def privRepr: Option[ObjectId] = repr(x => x.isPrivate && !NON_IDS.contains(x.reprId))
+  def privRepr: Option[ObjectId] = repr(x => x.isPrivate)
   def pubRepr: Option[ObjectId] = repr(_.isPublic)
   def userContentRepr: Option[ObjectId] = repr(_.isUserContent)
   private def repr(pred: ReprInfo => Boolean): Option[ObjectId] =
-    reprs.filter(pred).sortBy(_.created).lastOption.map(_.reprId)
+    reprs.filter(x => pred(x) && !NON_IDS.contains(x.reprId)).sortBy(_.created).lastOption.map(_.reprId)
 
   /**
     * If the mark has been masked, show the original rating in blue, o/w lookup the mark's expected rating ID in
