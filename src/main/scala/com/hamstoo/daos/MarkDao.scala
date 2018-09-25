@@ -355,6 +355,11 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   /**
     * Perform Text Index search over the marks of more than one user, which is useful for searching referenced marks,
     * and potentially filter for specific mark IDs.
+    *
+    * Note the difference in behavior from when `ids` is None vs. Some(Set.empty); in the former case the the `ids`
+    * are effectively ignored while in the latter case they are used to filter the results, which given an empty set
+    * would result in no marks being returned.  This may be the cause of the recurring issue #339.  Simple changes
+    * to the construction of the `ids` parameter (such as the change to Mark.pubRepr on  can easily lead to conflating None and Some(Set.empty).
     */
   def search(users: Set[UUID], query: String, ids: Option[Set[ObjectId]] = None,
              begin: Option[TimeStamp] = None, end: Option[TimeStamp] = None):

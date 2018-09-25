@@ -76,13 +76,14 @@ object MarksStream {
     val mbQuerySeq = mbCleanedQuery.map(_.map(_._1))
     val mbSearchTermVecs = mbQuery2Vecs.map(_._2)
 
-    // if the search & calling users are the same then only show MarkRefs in the search results if query words
-    // exist (o/w we're simply listing the calling user's marks perhaps with begin/end args as profileDots does)
+    // if the search & calling users are the same then only show MarkRefs in the search results if query words or labels
+    // exist (o/w we're simply *listing* the calling user's marks, perhaps with begin/end args as profileDots does; this
+    // cannot be tested in FacetTests because the alternate listing impl is in hamstoo/MarksController.list)
     val mbSearchUserId1 = mbSearchUserId0.orElse(mbCallingUserId)
-    val includeMarkRefs = mbSearchUserId1 != mbCallingUserId ||
-                          mbQuery2Vecs.nonEmpty ||
-                          labels.nonEmpty // e.g. if searching for marks with "SharedWithMe" label
-    logger.trace(s"includeMarkRefs = $includeMarkRefs")
+    val hasQuery = mbQuery2Vecs.nonEmpty || labels.nonEmpty // e.g. if searching for marks with "SharedWithMe" label
+    //val includeMarkRefs = mbSearchUserId1 != mbCallingUserId || hasQuery // old buggy impl (issue #339)
+    val includeMarkRefs = mbSearchUserId1 == mbCallingUserId && hasQuery
+    logger.info(s"includeMarkRefs:$includeMarkRefs = usersEqual:${mbSearchUserId1 == mbCallingUserId} && hasQuery:$hasQuery")
 
     def logMarks(whence: String)(ms: Traversable[Mark]): Traversable[Mark] =
       ms.map { m => loggerI.trace(s"$whence: ${m.id}/${m.markRef.map(_.markId)}"); m }
