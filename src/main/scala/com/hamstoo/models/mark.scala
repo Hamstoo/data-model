@@ -7,7 +7,7 @@ import java.net.URL
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
-import com.hamstoo.daos.{ImageDao, RepresentationDao}
+import com.hamstoo.daos.{ImageDao, MarkDao, RepresentationDao}
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, MediaType, MetaType, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
@@ -446,7 +446,7 @@ case class Mark(override val userId: UUID,
                 override val sharedWith: Option[SharedWith] = None,
                 override val nSharedFrom: Option[Int] = Some(0),
                 override val nSharedTo: Option[Int] = Some(0),
-                created: Option[TimeStamp] = Some(TIME_NOW),
+                private val created: Option[TimeStamp] = Some(TIME_NOW),
                 score: Option[Double] = None)
     extends Shareable {
 
@@ -454,6 +454,13 @@ case class Mark(override val userId: UUID,
 
   // Even though this is stored in the database, it still can't hurt to enforce that it's kept inline with url.
   urlPrfx = mark.url map (_.binaryPrefix)
+
+  /**
+    * We haven't always been storing `created` field in the database, so it's a little trickier for those marks
+    * for which it doesn't exist.  TODO: Update the database across the board.
+    */
+  def created1(implicit markDao: MarkDao): Future[Option[TimeStamp]] =
+    created.fold(markDao.retrieveCreationTime(id))(t => Future.successful(Some(t)))
 
   /** A mark has representable user content if it doesn't have a USER_CONTENT repr. */
   def representableUserContent: Boolean = !reprs.exists(_.isUserContent)

@@ -77,8 +77,7 @@ object MarksStream {
     val mbSearchTermVecs = mbQuery2Vecs.map(_._2)
 
     // if the search & calling users are the same then only show MarkRefs in the search results if query words
-    // exist (o/w we're simply listing the calling user's marks perhaps with begin/end args as profileDots does),
-    // this behavior should match that of the `else` clause in MarksController.list (which employs a similar variable)
+    // exist (o/w we're simply listing the calling user's marks perhaps with begin/end args as profileDots does)
     val mbSearchUserId1 = mbSearchUserId0.orElse(mbCallingUserId)
     val includeMarkRefs = mbSearchUserId1 != mbCallingUserId ||
                           mbQuery2Vecs.nonEmpty ||
