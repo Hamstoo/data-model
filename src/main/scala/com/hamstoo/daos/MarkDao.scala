@@ -619,7 +619,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     * same `timeFrom`.
     */
   def merge(oldMark: Mark, newMark: Mark, now: Long = TIME_NOW): Future[Mark] = {
-    logger.debug(s"Merge marks (oldOne: $oldMark.id and newOne: $newMark.id")
+    logger.debug(s"Merge marks (old: ${oldMark.id} and new: ${newMark.id}")
 
     for {
       c <- dbColl()
@@ -641,10 +641,22 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
       } yield ()
     } yield {
-      logger.debug(s"Marks $oldMark.id and $newMark.id were successfully merged")
+      logger.debug(s"Marks ${oldMark.id} and ${newMark.id} were successfully merged")
       mergedMk
     }
   }
+
+  /**
+    * Increment PUBLIC page retrieval attempts (as performed by repr-engine's PageRetrieverController) so that we
+    * can eventually stop trying if it's really not working.
+    */
+  def incrementRetrievalAttempts(id: ObjectId): Future[Int] = for {
+    c <- dbColl()
+    fieldName = "nRetrievalAttempts"
+    sel = d :~ ID -> id :~ curnt
+    upd = d :~ "$inc" -> (d :~ fieldName -> 1)
+    wr <- c.findAndUpdate(sel, upd, fetchNewObject = true)
+  } yield wr.result[BSONDocument].flatMap(_.getAs[Int](fieldName)).getOrElse(0)
 
   /** Increment one of the MarkAux visit counts by 1, depending on who is visiting--or attempting to. */
   def updateVisits(id: ObjectId, isOwner: Option[Boolean]): Future[Unit] = for {
