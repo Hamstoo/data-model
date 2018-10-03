@@ -27,6 +27,12 @@ import scala.util.matching.Regex
   * @param memeId   'highlight representation' id, to be implemented
   * @param timeFrom timestamp
   * @param timeThru version validity time
+  * @param pageNumber  Annotations recovery might produce corrupted data for PDF files. It happens because of the way
+  *                    PDF.js renders the pages.  It loads pages progressively as the user navigates through pages.
+  *                    So when extension tries to display annotation (both highlight and comment) on the page that
+  *                    wasn't loaded yet, it can't find the annotation and tries to recover it.  To prevent that from
+  *                    happening we might add 'page' field for PDF annotations--to display annotations only when its
+  *                    page is loaded. [https://github.com/Hamstoo/chrome-extension/issues/55]
   */
 case class Highlight(usrId: UUID,
                      sharedWith: Option[SharedWith] = None,
@@ -36,6 +42,7 @@ case class Highlight(usrId: UUID,
                      markId: ObjectId,
                      pos: Highlight.Position,
                      pageCoord: Option[PageCoord] = None,
+                     pageNumber: Option[Int] = None,
                      preview: Highlight.Preview,
                      memeId: Option[String] = None,
                      timeFrom: TimeStamp = TIME_NOW,
@@ -45,7 +52,7 @@ case class Highlight(usrId: UUID,
   import HighlightFormatters._
 
   /** Used by backend's MarksController when producing full-page view and share email. */
-  override def toFrontendJson: JsObject = Json.obj("id" -> id, "preview" -> preview, "type" -> "highlight")
+  override def toFrontendJson: JsObject = super.toFrontendJson ++ Json.obj("preview" -> preview, "type" -> "highlight")
 
   /**
     * Used by backend's MarksController when producing JSON for the Chrome extension.  `pageCoord` may not be

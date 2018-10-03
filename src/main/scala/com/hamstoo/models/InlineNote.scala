@@ -22,6 +22,7 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   * @param memeId   'comment representation' id, to be implemented
   * @param timeFrom timestamp
   * @param timeThru version validity time
+  * @param pageNumber  See description of this parameter in Highlight.scala.
   */
 case class InlineNote(usrId: UUID,
                       sharedWith: Option[SharedWith] = None,
@@ -32,12 +33,13 @@ case class InlineNote(usrId: UUID,
                       pos: InlineNote.Position,
                       anchors: Option[Seq[InlineNote.Anchor]] = None,
                       pageCoord: Option[PageCoord] = None,
+                      pageNumber: Option[Int] = None,
                       memeId: Option[String] = None,
                       timeFrom: TimeStamp = TIME_NOW,
                       timeThru: TimeStamp = INF_TIME) extends Annotation {
 
   /** Used by backend's MarksController when producing full-page view and share email. */
-  override def toFrontendJson: JsObject = Json.obj("id" -> id, "preview" -> pos.text, "type" -> "comment")
+  override def toFrontendJson: JsObject = super.toFrontendJson ++ Json.obj("preview" -> pos.text, "type" -> "comment")
 
   /**
     * Used by backend's MarksController when producing JSON for the Chrome extension.  `pageCoord` may not be

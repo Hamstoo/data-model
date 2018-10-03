@@ -141,6 +141,13 @@ class VectorEmbeddingsServiceTests extends AkkaMongoEnvironment("VectorEmbedding
     topWords.size shouldEqual 5
   }
 
+  it should "vectorize hyphenated words" ignore {
+    val word = "self-perpetuation"
+    val wordVec = vectorizer.dbCachedLookupFuture(Locale.ENGLISH, word).futureValue.get._1
+    wordVec.head shouldEqual 8.13e-5 +- 1e-6
+    wordVec(1) shouldEqual -1.70e-4 +- 1e-5
+  }
+
   it should "k-means vectorize" ignore {
     val txt = "otter european_otter otter otters otterlike toyota ford car"
     val topWords: Seq[WordMass] = vecSvc.text2TopWords(txt).futureValue._1

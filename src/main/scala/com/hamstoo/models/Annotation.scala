@@ -23,6 +23,7 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
   val markId: ObjectId
   val pos: Annotation.Position
   val pageCoord: Option[PageCoord]
+  val pageNumber: Option[Int]
   val memeId: Option[String]
   val timeFrom: TimeStamp
   val timeThru: TimeStamp
@@ -39,7 +40,7 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
     *               "type": "For example `comment` or `highlight`"
     *             }
     */
-  def toFrontendJson: JsObject
+  def toFrontendJson: JsObject = Json.obj("id" -> id)
 
   /**
     * Used by backend's MarksController when producing JSON for the Chrome extension.  `pageCoord` may not be
@@ -49,7 +50,8 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
   def toExtensionJson(implicit callingUserId: UUID): JsObject = Json.obj(
     "id" -> id,
     "color" -> (if (callingUserId == usrId) "orange" else "blue")) ++
-    pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x))
+    pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x)) ++
+    pageNumber.fold(Json.obj())(x => Json.obj("pageNumber" -> x))
 }
 
 object Annotation {
@@ -57,6 +59,7 @@ object Annotation {
   /**
     * Function-predicate that sorts 2 PageCoords in decreasing order.
     * First sort by `y`, then if they are equal, trying to make comparision by `x`.
+    * TODO: May want to incorporate pageNumber into this sorting algorithm in the future?
     */
   def sort(a: Annotation, b: Annotation): Boolean =
     PageCoord.sort(a.pageCoord, b.pageCoord).getOrElse(Position.sort(a.pos, b.pos))
