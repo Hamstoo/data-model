@@ -36,7 +36,8 @@ object UserSuggestion extends BSONHandlers {
       ){ emailOrUsername =>
         for {
           mbUserByUsername <- userDao.retrieveByUsername(emailOrUsername)
-          mbUser <- mbUserByUsername.fold(userDao.retrieveByEmail(emailOrUsername))(u => Future.successful(Some(u)))
+          mbUser <- mbUserByUsername
+                      .fold(userDao.retrieveByEmail(emailOrUsername).map(_.headOption))(u => Future.successful(Some(u)))
         } yield {
           new UserSuggestion(ownerUserId, ownerUsername, sharee, mbUser.flatMap(_.userData.username))
         }

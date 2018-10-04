@@ -46,7 +46,7 @@ class UserDaoTests
   }
 
   it should "(UNIT) retrieve user by email" in {
-    userDao.retrieveByEmail(email).futureValue.get shouldEqual user
+    userDao.retrieveByEmail(email).futureValue.head shouldEqual user
   }
 
   it should "(UNIT) retrieve user by UUID" in {

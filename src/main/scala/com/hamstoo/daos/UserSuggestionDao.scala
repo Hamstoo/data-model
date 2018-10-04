@@ -109,7 +109,7 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
   /** For when a new email address gets registered. */
   def updateUsernamesByEmail(email: String): Future[Int] = for {
     c <- dbColl()
-    mbU <- userDao.retrieveByEmail(email).map(_.flatMap(_.userData.username))
+    mbU <- userDao.retrieveByEmail(email).map(_.headOption.flatMap(_.userData.username))
     n <- mbU.fold(Future.successful(0)){ u =>
       c.update(d :~ SHAREE -> BSONRegex("^" + email + "$", "i"),
                d :~ "$set" -> (d :~ SHAREE_UNAME -> u),

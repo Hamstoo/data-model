@@ -88,9 +88,13 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
   def retrieveById(userId: UUID): Future[Option[User]] =
     dbColl().flatMap(_.find(d :~ ID -> userId.toString).one[User])
 
-  /** Retrieves user account data by email. */
-  def retrieveByEmail(email: String): Future[Option[User]] =
-    dbColl().flatMap(_.find(d :~ PEMAILx -> email).one[User])
+  /**
+    * Retrieves user account data by email address.  Technically, it's possible for two accounts to have the same
+    * email address.  For example, there can exist one "credentials" account along with another, separate, unlinked
+    * "social" account.  The default is to "link" such accounts, but they can be unlinked if the user so chooses.
+    */
+  def retrieveByEmail(email: String): Future[Seq[User]] =
+    dbColl().flatMap(_.find(d :~ PEMAILx -> email).coll[User, Seq]())
 
   /** Retrieves user account data by username. */
   def retrieveByUsername(username: String): Future[Option[User]] =
