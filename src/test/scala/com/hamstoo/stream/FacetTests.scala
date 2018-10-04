@@ -43,7 +43,7 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d) => agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.sum }
-    x shouldBe (95.00 +- 0.01)
+    x shouldBe (98.43 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {

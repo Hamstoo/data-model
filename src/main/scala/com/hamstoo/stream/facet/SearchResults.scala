@@ -133,15 +133,21 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
             // raw (syntactic?) relevances; coalesce0 means that we defer to mscore for isNaN'ness below if uscore is NaN
             val dbscore = Seq(ust.raw, pst.raw).map(math.max(_, 0.0).coalesce0).sum
 
-            val previewer = Previewer(rawQuery.value, cleanedQuery, mark.id)
+            // TODO: incorporate inline notes into search for preview text
+            val stext = parse(mark.mark.subj)
             val utext = parse(mark.mark.comment.getOrElse(""))
             val ptext = parse(pageQueryResult.mbR.fold("")(_.doctext))
-            val texts = utext + " " * PREVIEW_LENGTH + ptext
+            val texts = stext + " " * PREVIEW_LENGTH + utext + " " * PREVIEW_LENGTH + ptext
 
             val t0: TimeStamp = System.currentTimeMillis()
+            val previewer = Previewer(rawQuery.value, cleanedQuery, mark.id)
             val (phraseBoosts, previews) = if (WHICH_PREVIEW_TEXT ==  1) previewer(dbscore, texts)
-                                      else if (WHICH_PREVIEW_TEXT == -1) previewer.old(dbscore, texts) else DISABLED_PREVIEW
-            val (uPhraseBoost, pPhraseBoost) = (phraseBoosts * 0.5, phraseBoosts * 0.5)
+                                      else if (WHICH_PREVIEW_TEXT == -1) previewer.old(dbscore, texts)
+                                      else DISABLED_PREVIEW
+
+            // do not allow the phrase boost to be the only score, which can cause the mbRelevance multiplier to change
+            val pb = (st: ScoresAndText) => if (st.raw.coalesce0 ~= 0.0) 0.0 else phraseBoosts * 0.5
+            val Seq(uPhraseBoost, pPhraseBoost) = Seq(ust, pst).map(pb)
             val t1: TimeStamp = System.currentTimeMillis()
             logger.debug(f"Previewer[total] for ${mark.id} in ${t1 - t0} ms ($memoryString)")
 
@@ -152,7 +158,7 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
             // aggregated
             val pAggregate = pst.similarity + praw
             val mAggregate = ust.similarity + uraw
-            loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(p/m)=$pAggregate%.2f/$mAggregate%.2f text-search(p/m/u)=${pst.raw}%.2f/$mscore%.2f/${ust.raw}%.2f similarity(p/u)=${pst.similarity}%.2f/${ust.similarity}%.2f")
+            loggerI.trace(f"  (\u001b[2m${mark.id}\u001b[0m) scores: agg(p/m)=$pAggregate%.2f/$mAggregate%.2f phrase(p/u)=$pPhraseBoost%.2f/$uPhraseBoost%.2f text-search(p/m/u)=${pst.raw}%.2f/$mscore%.2f/${ust.raw}%.2f similarity(p/u)=${pst.similarity}%.2f/${ust.similarity}%.2f")
 
             // divy up the relevance into named buckets
             val amigos = (pAggregate.coalesce0 ~= 0.0, mAggregate.coalesce0 ~= 0.0, mark.score.isEmpty)
@@ -603,7 +609,7 @@ object SearchResults {
         logger.trace(f"Previewer[d] $markId in ${endTime - startTime} ms") // 1 ms
 
         // return number of matched phrases from first recursive iteration no matter what
-        (nMatchedPhrases, if (previewTexts.nonEmpty) previewTexts else {
+        (nMatchedPhrases * 4, if (previewTexts.nonEmpty) previewTexts else {
 
           // try harder to find something if there should be something to find (i.e. if dbSearchScore > 0)
           val prfxQuery = cleanedQuery.filter(_._1.length > MIN_PREFIX_LENGTH).map(kv => (kv._1.init, kv._2))
@@ -614,6 +620,7 @@ object SearchResults {
         })
 
         // IDEA: incremental runtime recompilation of dynamically typed languages as information is learned about runtime values (security?)
+        // A: Good idea... this is exactly what Julia does (per here: https://hamstoo.com/my-marks/ylzoIhZb7SbWehfA)
       }
     }
 
