@@ -131,6 +131,14 @@ object Highlight extends BSONHandlers with AnnotationInfo {
 
   val logger = Logger(getClass)
 
+  /** Translate from incoming API JSON; rename "position" field to "pos" and add in `usrId` and `markId` fields. */
+  def fromExtensionJson(json: JsObject, userId: UUID, markId: ObjectId): Highlight = {
+    import com.hamstoo.models.HighlightFormatters._
+    val base = Highlight(userId, markId = markId, pos = json("position").as[Highlight.Position],
+                         preview = json(Highlight.PRVW).as[Highlight.Preview])
+    Json.toJsObject(base).deepMerge(json - "position").as[Highlight]
+  }
+
   /**
     * XML XPath and text located at that path.  `index` is the character index where the highlighted text
     * begins relative to the text of XPath **and all of its descendant nodes**.  So if we have the following HTML
@@ -301,5 +309,5 @@ object HighlightFormatters {
   implicit val hlPosElemJFmt: OFormat[Highlight.PositionElement] = Json.format[Highlight.PositionElement]
   implicit val hlPosJFmt: OFormat[Highlight.Position] = Json.format[Highlight.Position]
   implicit val hlPrevJFmt: OFormat[Highlight.Preview] = Json.format[Highlight.Preview]
-  implicit val hlFmt: OFormat[Highlight] = Json.format[Highlight]
+  implicit val hlJFmt: OFormat[Highlight] = Json.format[Highlight]
 }

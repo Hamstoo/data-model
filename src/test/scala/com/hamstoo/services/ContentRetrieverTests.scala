@@ -33,13 +33,13 @@ class ContentRetrieverTests
     val page = contriever.retrieve(id, reprType, urlHTML).futureValue
     page shouldBe a [Page]
     import com.hamstoo.services.ContentRetriever.PageFunctions
-    page.getTitle shouldBe Some("Futures and Promises | Scala Documentation")
+    page.getTitle("") shouldBe Some("Futures and Promises | Scala Documentation")
   }
 
   it should "(UNIT) get PDF titles" in {
     val page = contriever.retrieve(id, reprType, urlPDF).futureValue
     import com.hamstoo.services.ContentRetriever.PageFunctions
-    page.getTitle shouldBe Some("Actors in Scala")
+    page.getTitle("") shouldBe Some("Actors in Scala")
   }
 
   // temporarily (?) disabling this test; perhaps we've been blacklisted (?)

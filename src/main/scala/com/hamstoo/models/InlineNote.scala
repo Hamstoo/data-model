@@ -47,13 +47,20 @@ case class InlineNote(usrId: UUID,
     * in the Chrome extension for re-locating highlights and notes on the page.
     */
   import InlineNoteFormatters._
-  override def toExtensionJson(implicit callingUserId: UUID) =
+  override def toExtensionJson(implicit callingUserId: UUID): JsObject =
     super.toExtensionJson ++
     Json.obj("pos" -> pos) ++
     anchors.toJson("anchors")
 }
 
 object InlineNote extends BSONHandlers with AnnotationInfo {
+
+  /** Translate from incoming API JSON; rename "position" field to "pos" and add in `usrId` and `markId` fields. */
+  def fromExtensionJson(json: JsObject, userId: UUID, markId: ObjectId): InlineNote = {
+    import com.hamstoo.models.InlineNoteFormatters._
+    val base = InlineNote(userId, markId = markId, pos = json("position").as[InlineNote.Position])
+    Json.toJsObject(base).deepMerge(json - "position").as[InlineNote]
+  }
 
   /**
     * Data class containing frontend comment data, that is directly serialised into and deserialized from JSON. Data
@@ -110,7 +117,9 @@ object InlineNote extends BSONHandlers with AnnotationInfo {
 }
 
 object InlineNoteFormatters {
+  import com.hamstoo.models.ShareableFormatters._
   implicit val pageCoordJFmt: OFormat[PageCoord] = PageCoord.jFormat
   implicit val posJFmt: OFormat[InlineNote.Position] = Json.format[InlineNote.Position]
   implicit val anchorJFmt: OFormat[InlineNote.Anchor] = Json.format[InlineNote.Anchor]
+  implicit val noteJFmt: OFormat[InlineNote] = Json.format[InlineNote]
 }

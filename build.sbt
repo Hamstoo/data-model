@@ -89,6 +89,9 @@ libraryDependencies ++= Seq(
   "io.monix" %% "monix-eval" % "3.0.0-RC1"
 )
 
+// Pdfclown 0.2.0 is not available in maven so it was added as jar-file dependency
+unmanagedBase := baseDirectory.value / "lib"
+
 pomIncludeRepository := { _ => false }
 
 pomExtra :=

@@ -595,23 +595,23 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
 
   /**
     * Updates a mark's subject and URL only.  No need to maintain history in this case because all info is preserved.
-    * Only marks with missing URL are selected and current subject is moved to URL field.
+    * Only marks with missing URL (or URL == subj) are selected and current subject is moved to URL field.
     */
-  def updateSubject(user: UUID, id: String, newSubj: String): Future[Int] = {
-    logger.debug(s"Updating subject '$newSubj' (and URL) for mark $id")
-    for {
-      c <- dbColl()
-      sel = d :~ USR -> user :~ ID -> id :~ curnt :~ URLx -> (d :~ "$exists" -> false)
-      doc <- c.find(sel, d :~ SUBJx -> 1 :~ "_id" -> 0).one[BSONDocument]
-      oldSubj = doc.get.getAs[BSONDocument](MARK).get.getAs[String](SUBJnox).getOrElse("")
-      _ = logger.info(s"Updating subject from '$oldSubj' to '$newSubj' for mark $id")
-      wr <- c.update(sel, d :~ "$set" -> (d :~ SUBJx -> newSubj :~ URLx -> oldSubj))
+  def updateSubject(user: UUID, id: String, newSubj: String): Future[Int] = for {
+    c <- dbColl()
+    _ = logger.debug(s"Updating subject '$newSubj' (and URL) for mark $id")
+    sel = d :~ USR -> user :~ ID -> id :~ curnt
+    doc <- c.find(sel, d :~ SUBJx -> 1 :~ URLx -> 1 :~ "_id" -> 0).one[BSONDocument]
+    mb = doc.get.getAs[MarkData](MARK).filter(m => m.url.isEmpty || m.url.contains(m.subj))
+    count <- if (mb.isEmpty) Future.successful(0) else for {
+      _ <- Future.unit
+      _ = logger.info(s"Updating subject from '${mb.get.subj}' to '$newSubj' for mark $id")
+      wr <- c.update(sel, d :~ "$set" -> (d :~ SUBJx -> newSubj :~ URLx -> mb.get.subj))
       _ <- wr.failIfError
-    } yield {
-      val count = wr.nModified
-      logger.debug(s"$count marks' subjects were successfully updated")
-      count
-    }
+    } yield wr.nModified
+  } yield {
+    logger.debug(s"$count marks' subjects were successfully updated")
+    count
   }
 
   /**

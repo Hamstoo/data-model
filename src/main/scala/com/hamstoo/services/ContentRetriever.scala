@@ -5,7 +5,6 @@ package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
 import java.net.URI
-import java.nio.ByteBuffer
 
 import akka.util.ByteString
 import com.gargoylesoftware.htmlunit._
@@ -13,17 +12,16 @@ import com.gargoylesoftware.htmlunit.html.HtmlPage
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Page
 import com.hamstoo.models.Representation.ReprType
-import com.hamstoo.utils.{MediaType, ObjectId}
-import org.apache.tika.metadata.{PDF, TikaCoreProperties}
+import com.hamstoo.utils.{MediaType, ObjectId, memoryString}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import play.api.Logger
-import play.api.libs.ws.ahc.cache.CacheableHttpResponseStatus
-import play.api.libs.ws.ahc.{AhcWSResponse, StandaloneAhcWSResponse}
 import play.api.libs.ws.{WSClient, WSResponse}
-import play.shaded.ahc.org.asynchttpclient.Response.ResponseBuilder
-import play.shaded.ahc.org.asynchttpclient.uri.Uri
-import play.shaded.ahc.org.asynchttpclient.{HttpResponseBodyPart, Response}
+import org.apache.tika.metadata.{PDF, TikaCoreProperties}
+import org.pdfclown.documents.Document
+import org.pdfclown.documents.contents.ContentScanner
+import org.pdfclown.documents.contents.objects.{ContainerObject, ShowText, Text}
+import org.pdfclown.files.File
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
@@ -63,7 +61,7 @@ object ContentRetriever {
   implicit class PageFunctions(private val page: Page) /*extends AnyVal*/ {
 
     /** Look for a RepresentationService that supports this mime type and let it construct a representation. */
-    def getTitle: Option[String] = MediaType(page.mimeType) match {
+    def getTitle(url: String): Option[String] = MediaType(page.mimeType) match {
 
       // using a different method here than in HTMLRepresentationService
       case mt if MediaTypeSupport.isHTML(mt) =>
@@ -72,16 +70,125 @@ object ContentRetriever {
           case _ => None
         }
 
-      // this is basically the same technique as in PDFRepresentationService
+      // this is basically the same technique as in PDFRepresentationService (update: getTitleFormerlyInPDFReprSvc)
       case mt if MediaTypeSupport.isPDF(mt) || MediaTypeSupport.isText(mt) || MediaTypeSupport.isMedia(mt) =>
-        val is: InputStream = new ByteArrayInputStream(page.content.toArray)
-        val (contentHandler, metadata, parseContext, parser) = TikaInstance()
-        parser.parse(is, contentHandler, metadata, parseContext)
-        val titleKey = if (MediaTypeSupport.isPDF(mt)) PDF.DOC_INFO_TITLE else TikaCoreProperties.TITLE
-        Option(metadata.get(titleKey)).filter(!_.isEmpty)
+        Option(getTitleFormerlyInPDFReprSvc(page, url)._1).filter(_.nonEmpty)
 
       case _ => None
     }
+  }
+
+  /**
+    * Moved from PDFRepresentationService so that PageFunctions.getTitle can do the same thing.
+    * Tries to parse the response body of an HTTP request as a PDF.
+    *
+    * We do not use `utf8String` for PDFs because some bytes are missing when covert byte array to UTF-8 string
+    * See also: https://stackoverflow.com/a/6684822/2988832
+    * As well PDF binary may use various encodings.
+    * See also: https://en.wikipedia.org/wiki/Portable_Document_Format#Encodings
+    */
+  def getTitleFormerlyInPDFReprSvc(page: Page, url: String)/*(implicit injector: Injector, ec: ExecutionContext)*/: (String, String, String) = {
+
+    // PDFs do not have page source that can be represented as text, so
+    // to save text in appropriate encoding it will be required to use Apache Tika
+    // deeply here to detect encoding of document
+    //   http://tika.apache.org/1.5/api/org/apache/tika/detect/EncodingDetector.html
+    // Below idea is the example but I am not sure if it is good because PDF might consist of
+    // scanned images or can consist images inside text.
+
+    // no loading from network here, should've already been done by ContentRetriever
+    // ignore mark.page here, it might be the same as the page argument but it also might not
+    //val byteArray = Some(page.content.toArray).getOrElse(mark.page.get.content.toArray)
+    val is: InputStream = new ByteArrayInputStream(page.content.toArray)
+
+    // TODO: should we OCR text in DOC images?
+    val (contentHandler, metadata, parseContext, parser) = TikaInstance()
+    parser.parse(is, contentHandler, metadata, parseContext)
+
+    // switch on mediaType
+    val mimeType = MediaType(page.mimeType)
+
+    // extract title from metadata and if it isEmpty then use filename as title, similar to how search engines work
+    // with PDF docs per here: https://helpx.adobe.com/acrobat/using/pdf-properties-metadata.html
+    val (titleKey, keywordsKey) = if (MediaTypeSupport.isPDF(mimeType))
+      PDF.DOC_INFO_TITLE -> PDF.DOC_INFO_KEY_WORDS
+    else
+      TikaCoreProperties.TITLE -> TikaCoreProperties.KEYWORDS
+
+    val doctext = if (MediaTypeSupport.isMedia(mimeType)) "" else contentHandler.toString.trim() // TODO: isMedia: OCR?
+
+    // using an Option here because metadata.get can return null
+    val header = Option(metadata.get(titleKey)).filter(_.nonEmpty)
+      .orElse {
+        // sometimes openPDFFindTitle returns titles without whitespace
+        // so we take first line from pdf file matching letters with title
+        val recursiveTitle = openPDFFindTitle(page, url)
+        val titleFromDocText = doctext.split("\\n").find(t => t.replaceAll(" ","")
+          .equals(recursiveTitle.getOrElse("")) && t.length > 5)
+        titleFromDocText.orElse(recursiveTitle)
+      }
+      .getOrElse(ContentRetriever.getNameFromFileName(url))
+
+    val metaKws = mimeType match {                             // no need to separate these w/ any punctuation
+      case mt if MediaTypeSupport.isMedia(mt) => metadata.names().map(metadata.get).distinct.mkString(" ")
+      case _ => Option(metadata.get(keywordsKey)).getOrElse("")
+    }
+
+    (header, doctext, metaKws)
+  }
+
+  /**
+    * Walks through text blocks of 1st page of a PDF searching for the text with the largest font size
+    * and proposes it as PDF doc title.
+    */
+  def openPDFFindTitle(page: Page, url: String): Option[String] = {
+
+    // open an existing PDF document, this line causes a "org.pdfclown.util.parsers.PostScriptParseException: PDF
+    // header not found." exception when the page isn't truly a PDF
+    val document: Document = new File(page.content.toArray).getDocument
+
+    // get the first page
+    val pdfPage: org.pdfclown.documents.Page = document.getPages.get(0)
+
+    // get the data structure backing the page
+    //val pageDictionary: PdfDictionary  = pdfPage.getBaseDataObject
+    //val pageContents: Contents  = page.getContents()
+    val page1: ContentScanner = new ContentScanner(pdfPage)
+
+    // iterates over PDF page text blocks and extracts required information from them
+    def extract(cs: ContentScanner, maxFontSize: Double = 0.0, title: String = ""): (Double, String) = {
+
+      // the call to moveNext on the following line can throw the following exception
+      // java.lang.NullPointerException
+      //  at org.pdfclown.documents.contents.fonts.SimpleFont.getBaseEncoding(SimpleFont.java:82)
+      //  ...
+      //  at org.pdfclown.documents.contents.ContentScanner.moveNext(ContentScanner.java:1345)
+      if (Option(cs).isEmpty || Try(!cs.moveNext).getOrElse(true)) (maxFontSize, title)
+      else cs.getCurrent match {
+
+        case content: ShowText =>
+          val fontSize = cs.getState.getFontSize
+
+          // TODO: figure out how to decode with spaces so that this "HybridCollaborativeFilteringwithAutoencoders"
+          // TODO:  would instead be this "Hybrid Collaborative Filtering with Autoencoders"
+          val text = cs.getState.getFont.decode(content.getText)
+          logger.debug(s"fontSize=$fontSize, text=${text.take(100)}")
+
+          val bNewTitle = maxFontSize < fontSize && text.length > 5 && text.length < 150
+          if (bNewTitle) extract(cs, fontSize, text) else extract(cs, maxFontSize, title)
+
+        case _: Text | _: ContainerObject => // scan the inner level (iterate tree depth)
+          val (a, b) = extract(cs.getChildLevel, maxFontSize, title)
+          extract(cs, a, b) // <- this line was originally missing! (see test code below)
+
+        case _ => // move to the next element of the ContentScanner (iterate tree breadth)
+          extract(cs, maxFontSize, title)
+      }
+    }
+
+    val (maxFontSize, title) = extract(page1)
+    logger.info(s"Found title '$title' with font size $maxFontSize in PDF $url ($memoryString)")
+    if (title.isEmpty) None else Some(title)
   }
 
   /** Used by PDFRepresentationService (repr-engine) and by MarksController (hamstoo). */
@@ -207,7 +314,7 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
   /** Convenience method as we're doing this in more than one place now. */
   def getTitle(url: String): Future[(String, Option[String])] = digest(url).map { case (redirectedUrl, response) =>
     redirectedUrl ->
-      Page("", ReprType.PRIVATE, response.bodyAsBytes.toArray).getTitle // ReprType doesn't matter here
+      Page("", ReprType.PRIVATE, response.bodyAsBytes.toArray).getTitle(redirectedUrl) // ReprType doesn't matter here
   }
 
   /**
