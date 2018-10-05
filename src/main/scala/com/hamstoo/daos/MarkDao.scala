@@ -805,10 +805,10 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     }
 
     if (reprInfo.isPrivate) insertRepr(markId, reprInfo)
-    else nonPrivateReprExists(markId, reprInfo.reprType) map { exists =>
-      if (exists) updateNonPrivateRepr(markId, reprInfo)
-      else insertRepr(markId, reprInfo)
-    }
+    else for {
+      exists <- nonPrivateReprExists(markId, reprInfo.reprType)
+      _ <- if (exists) updateNonPrivateRepr(markId, reprInfo) else insertRepr(markId, reprInfo)
+    } yield ()
   }
 
   /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */
