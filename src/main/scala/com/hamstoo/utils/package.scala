@@ -10,7 +10,7 @@ import com.hamstoo.models.Representation.Vec
 import monix.execution.Scheduler
 import org.joda.time.{DateTime, DateTimeZone}
 import play.api.Logger
-import play.api.libs.json.Json
+import play.api.libs.json.{JsObject, Json, Writes}
 import play.api.mvc.{Call, Request}
 import reactivemongo.api.BSONSerializationPack.Reader
 import reactivemongo.api.collections.GenericQueryBuilder
@@ -238,6 +238,10 @@ package object utils {
     def binaryPrefix: mutable.WrappedArray[Byte] = s.getBytes.take(URL_PREFIX_LENGTH)
 
     def binPrfxComplement: String = s.take(URL_PREFIX_COMPLEMENT_LENGTH)
+  }
+
+  implicit class ExtendedOption[T](private val mb: Option[T]) extends AnyVal {
+    def toJson(fieldName: String)(implicit w: Writes[T]): JsObject = mb.fold(Json.obj())(x => Json.obj(fieldName -> x))
   }
 
   implicit class ExtendedBytes(private val ary: Array[Byte]) extends AnyVal {

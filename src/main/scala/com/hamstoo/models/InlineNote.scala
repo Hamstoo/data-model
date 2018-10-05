@@ -6,7 +6,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.{INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{ExtendedOption, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import play.api.libs.json.{JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
@@ -50,7 +50,7 @@ case class InlineNote(usrId: UUID,
   override def toExtensionJson(implicit callingUserId: UUID) =
     super.toExtensionJson ++
     Json.obj("pos" -> pos) ++
-    anchors.fold(Json.obj())(x => Json.obj("anchors" -> x))
+    anchors.toJson("anchors")
 }
 
 object InlineNote extends BSONHandlers with AnnotationInfo {

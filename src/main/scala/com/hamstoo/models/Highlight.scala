@@ -6,7 +6,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.{INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
+import com.hamstoo.utils.{ExtendedOption, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import play.api.Logger
 import play.api.libs.json.{JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
@@ -31,8 +31,9 @@ import scala.util.matching.Regex
   *                    PDF.js renders the pages.  It loads pages progressively as the user navigates through pages.
   *                    So when extension tries to display annotation (both highlight and comment) on the page that
   *                    wasn't loaded yet, it can't find the annotation and tries to recover it.  To prevent that from
-  *                    happening we might add 'page' field for PDF annotations--to display annotations only when its
-  *                    page is loaded. [https://github.com/Hamstoo/chrome-extension/issues/55]
+  *                    happening we might add 'pageNumber' field for PDF annotations--to display annotations only when
+  *                    its page is loaded. [https://github.com/Hamstoo/chrome-extension/issues/55]
+  * @param endPageNumber  Highlights, unlike inline notes, can extend over multiple pages.
   */
 case class Highlight(usrId: UUID,
                      sharedWith: Option[SharedWith] = None,
@@ -43,6 +44,7 @@ case class Highlight(usrId: UUID,
                      pos: Highlight.Position,
                      pageCoord: Option[PageCoord] = None,
                      pageNumber: Option[Int] = None,
+                     endPageNumber: Option[Int] = None,
                      preview: Highlight.Preview,
                      memeId: Option[String] = None,
                      timeFrom: TimeStamp = TIME_NOW,
@@ -61,7 +63,8 @@ case class Highlight(usrId: UUID,
     */
   override def toExtensionJson(implicit callingUserId: UUID): JsObject =
     super.toExtensionJson ++
-    Json.obj("pos" -> pos, "preview" -> preview)
+    Json.obj("pos" -> pos, "preview" -> preview) ++
+    endPageNumber.toJson("endPageNumber")
 
   /** Defer to Highlight.Position. */
   def mergeSameElems(): Highlight = copy(pos = pos.mergeSameElems(preview.text))

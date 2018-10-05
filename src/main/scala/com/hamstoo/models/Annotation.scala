@@ -6,7 +6,7 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
-import com.hamstoo.utils.{ObjectId, TimeStamp}
+import com.hamstoo.utils.{ExtendedOption, ObjectId, TimeStamp}
 import play.api.libs.json.{JsObject, Json}
 
 /**
@@ -50,8 +50,8 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
   def toExtensionJson(implicit callingUserId: UUID): JsObject = Json.obj(
     "id" -> id,
     "color" -> (if (callingUserId == usrId) "orange" else "blue")) ++
-    pageCoord.fold(Json.obj())(x => Json.obj("pageCoord" -> x)) ++
-    pageNumber.fold(Json.obj())(x => Json.obj("pageNumber" -> x))
+    pageCoord.toJson("pageCoord") ++
+    pageNumber.toJson("pageNumber")
 }
 
 object Annotation {
