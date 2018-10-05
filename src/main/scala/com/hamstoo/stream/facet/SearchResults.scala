@@ -521,6 +521,7 @@ object SearchResults {
         logger.trace(f"Previewer[b] $markId (${rawText.length}) in ${endTime - startTime} ms") // 3 ms
         startTime = System.currentTimeMillis
 
+        // TODO: phrase search should ignore punctuation (e.g. commas)
         logger.trace(s"tcountsCmp: ${tcountsCmp.map(x => f"$x%.2f")}")
         val nMatchedPhrases = qcounts.takeRight(cleanedPhrasesSeq.size).sum
 
