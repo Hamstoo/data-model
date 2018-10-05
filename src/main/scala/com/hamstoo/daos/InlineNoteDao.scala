@@ -3,15 +3,12 @@
  */
 package com.hamstoo.daos
 
-import java.util.UUID
-
 import com.google.inject.{Inject, Singleton}
-import com.hamstoo.models.{InlineNote, PageCoord}
-import play.api.Logger
+import com.hamstoo.models.InlineNote
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
-
 import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
+
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
@@ -25,30 +22,9 @@ class InlineNoteDao @Inject()(implicit db: () => Future[DefaultDB],
                               userDao: UserDao,
                               pagesDao: PageDao) extends AnnotationDao[InlineNote]("inline note") {
 
-  import com.hamstoo.models.InlineNote._
   import com.hamstoo.utils._
 
   override def dbColl(): Future[BSONCollection] = db().map(_ collection "comments")
 
   Await.result(dbColl() map (_.indexesManager ensure indxs), 366 seconds)
-
-  /** Update timeThru on an existing inline note and insert a new one with modified values. */
-  def update(usr: UUID,
-             id: String,
-             pos: InlineNote.Position,
-             anchors: Option[Seq[InlineNote.Anchor]],
-             coord: Option[PageCoord]): Future[InlineNote] = for {
-    c <- dbColl()
-    now = TIME_NOW
-    sel = d :~ USR -> usr :~ ID -> id :~ curnt
-    wr <- c findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now), fetchNewObject = true)
-    ct = wr.result[InlineNote].get.copy(pos = pos,
-                                        anchors = anchors,
-                                        pageCoord = coord,
-                                        memeId = None,
-                                        timeFrom = now,
-                                        timeThru = Long.MaxValue)
-    wr <- c insert ct
-    _ <- wr failIfError
-  } yield ct
 }

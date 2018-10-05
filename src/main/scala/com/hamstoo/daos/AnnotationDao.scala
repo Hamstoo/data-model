@@ -14,8 +14,9 @@ import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson.BSONDocumentHandler
-
 import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
+import play.api.libs.json.{JsObject, Json}
+
 import scala.concurrent.Future
 
 /**
@@ -23,7 +24,7 @@ import scala.concurrent.Future
   * @param name name of annotation object like 'highlight' or 'inline note' for logging purpose only
   * @tparam A   this type param must be subtype of Annotation and have a defined BSONDocument handler
   */
-abstract class AnnotationDao[A <: Annotation: BSONDocumentHandler]
+abstract class AnnotationDao[A <:Annotation :BSONDocumentHandler]
                             (name: String)
                             (implicit db: () => Future[DefaultDB],
                              marksDao: MarkDao,
@@ -60,6 +61,18 @@ abstract class AnnotationDao[A <: Annotation: BSONDocumentHandler]
       annotation
     }
   }
+
+  /** Update timeThru on an existing highlight and insert a new one with modified values. */
+  def update(usr: UUID, id: String, json: JsObject): Future[A] = for {
+    c <- dbColl()
+    now = TIME_NOW
+    sel = d :~ USR -> usr :~ ID -> id :~ curnt
+    wr <- c.findAndUpdate(sel, d :~ "$set" -> (d :~ TIMETHRU -> now))
+    base = wr.result[A].get//.copy(timeFrom = now, timeThru = INF_TIME)
+    annot = base.mergeExtensionJson(json ++ Json.obj(TIMEFROM -> now, TIMETHRU -> INF_TIME)).asInstanceOf[A]
+    wr <- c.insert(annot)
+    _ <- wr.failIfError
+  } yield annot
 
   /** Now that user content has changed remove the mark's "user content" repr so that it will be recomputed. */
   private def updateUserContentReprInfo(annotation: A): Future[Unit] = for {

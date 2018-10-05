@@ -10,6 +10,7 @@ import com.hamstoo.models._
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import org.scalatest.OptionValues
+import play.api.libs.json.Json
 
 /**
   * Unit tests for all (basically CRUD) methods of MongoHighlightDao class
@@ -48,7 +49,9 @@ class HighlightDaoTests
 
   it should "(UNIT) update highlights" in {
     val newPos = Highlight.Position(Seq(Highlight.PositionElement("", "", 0)))
-    hlightsDao.update(h.usrId, h.id, pos = newPos, prv = h.preview, coord = h.pageCoord).futureValue.pos shouldEqual newPos
+    import com.hamstoo.models.HighlightFormatters._
+    val json = Json.obj("position" -> newPos, Highlight.PRVW -> h.preview, Highlight.PCOORD -> h.pageCoord)
+    hlightsDao.update(h.usrId, h.id, json).futureValue.pos shouldEqual newPos
   }
 
   it should "(UNIT) delete highlight" in {

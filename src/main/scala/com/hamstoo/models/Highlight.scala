@@ -8,7 +8,7 @@ import java.util.UUID
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.utils.{ExtendedOption, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import play.api.Logger
-import play.api.libs.json.{JsObject, Json, OFormat}
+import play.api.libs.json.{JsDefined, JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.util.matching.Regex
@@ -125,6 +125,16 @@ case class Highlight(usrId: UUID,
     val prvUnion = Highlight.Preview(hlA.preview.lead, prvUnionTxt, hlB.preview.tail)
     hlA.copy(pos = posUnion, preview = prvUnion, pageCoord = hlA.pageCoord.orElse(hlB.pageCoord))
   }
+
+  /** In this `fromExtensionJson` "position" field can be absent from incoming JSON. */
+  override def mergeExtensionJson(json: JsObject): Annotation = {
+    import com.hamstoo.models.HighlightFormatters._
+    val posJson: JsObject = json \ "position" match {
+      case JsDefined(x) => Json.obj(Highlight.POS -> x)
+      case _ => Json.obj()
+    }
+    Json.toJsObject(this).deepMerge(json - "position" ++ posJson).as[Highlight]
+  }
 }
 
 object Highlight extends BSONHandlers with AnnotationInfo {
@@ -134,9 +144,10 @@ object Highlight extends BSONHandlers with AnnotationInfo {
   /** Translate from incoming API JSON; rename "position" field to "pos" and add in `usrId` and `markId` fields. */
   def fromExtensionJson(json: JsObject, userId: UUID, markId: ObjectId): Highlight = {
     import com.hamstoo.models.HighlightFormatters._
-    val base = Highlight(userId, markId = markId, pos = json("position").as[Highlight.Position],
+    val base = Highlight(userId, markId = markId,
+                         pos = json("position").as[Highlight.Position],
                          preview = json(Highlight.PRVW).as[Highlight.Preview])
-    Json.toJsObject(base).deepMerge(json - "position").as[Highlight]
+    base.mergeExtensionJson(json).asInstanceOf[Highlight]
   }
 
   /**

@@ -7,7 +7,7 @@ import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
 import com.hamstoo.utils.{ExtendedOption, INF_TIME, ObjectId, TIME_NOW, TimeStamp, generateDbId}
-import play.api.libs.json.{JsObject, Json, OFormat}
+import play.api.libs.json._
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 /**
@@ -51,6 +51,16 @@ case class InlineNote(usrId: UUID,
     super.toExtensionJson ++
     Json.obj("pos" -> pos) ++
     anchors.toJson("anchors")
+
+  /** In this `fromExtensionJson` "position" field can be absent from incoming JSON. */
+  override def mergeExtensionJson(json: JsObject): Annotation = {
+    import com.hamstoo.models.InlineNoteFormatters._
+    val posJson: JsObject = json \ "position" match {
+      case JsDefined(x) => Json.obj(InlineNote.POS -> x)
+      case _ => Json.obj()
+    }
+    Json.toJsObject(this).deepMerge(json - "position" ++ posJson).as[InlineNote]
+  }
 }
 
 object InlineNote extends BSONHandlers with AnnotationInfo {
@@ -58,8 +68,9 @@ object InlineNote extends BSONHandlers with AnnotationInfo {
   /** Translate from incoming API JSON; rename "position" field to "pos" and add in `usrId` and `markId` fields. */
   def fromExtensionJson(json: JsObject, userId: UUID, markId: ObjectId): InlineNote = {
     import com.hamstoo.models.InlineNoteFormatters._
-    val base = InlineNote(userId, markId = markId, pos = json("position").as[InlineNote.Position])
-    Json.toJsObject(base).deepMerge(json - "position").as[InlineNote]
+    val base = InlineNote(userId, markId = markId,
+                          pos = json("position").as[InlineNote.Position])
+    base.mergeExtensionJson(json).asInstanceOf[InlineNote]
   }
 
   /**

@@ -9,6 +9,7 @@ import com.hamstoo.models.{InlineNote, User}
 import com.hamstoo.test.env.MongoEnvironment
 import com.hamstoo.test.{FlatSpecWithMatchers, FutureHandler}
 import org.scalatest.OptionValues
+import play.api.libs.json.Json
 
 /**
   * Unit tests for all (basically CRUD) methods of MongoInlineNoteDao class
@@ -39,7 +40,9 @@ class InlineNoteDaoTests
 
   it should "(UNIT) update inline note" in {
     val newPos = InlineNote.Position(Some("newtext"), "newpath", Some("newcss"), Some("newnodeval"), 0, 0)
-    notesDao.update(c.usrId, c.id, newPos, None, None).futureValue.pos shouldEqual newPos
+    import com.hamstoo.models.InlineNoteFormatters._
+    val json = Json.obj("position" -> newPos)
+    notesDao.update(c.usrId, c.id, json).futureValue.pos shouldEqual newPos
   }
 
   it should "(UNIT) delete inline note" in {
