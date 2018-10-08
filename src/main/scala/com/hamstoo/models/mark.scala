@@ -20,7 +20,7 @@ import org.jsoup.nodes.Element
 import org.jsoup.safety.Whitelist
 import play.api.Logger
 import play.api.libs.json.{Json, OFormat}
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, BSONObjectID, Macros}
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
@@ -37,12 +37,14 @@ import scala.util.matching.Regex
   * @param rating   the value assigned to the mark by the user, from 0.0 to 5.0
   * @param tags     a set of tags assigned to the mark by the user
   * @param comment  an optional text comment assigned to the mark by the user
+  * @param recId    An optional recommendation ID from whence this mark originated.
   */
 case class MarkData(subj: String,
                     url: Option[String],
                     rating: Option[Double] = None,
                     tags: Option[Set[String]] = None,
-                    comment: Option[String] = None) {
+                    comment: Option[String] = None,
+                    recId: Option[BSONObjectID] = None) {
 
   import MarkData._
 
@@ -693,8 +695,11 @@ object Mark extends BSONHandlers {
   }
 
   /**
-    * Expected rating for a mark including the number of other marks that went into generating it and when
-    * it was generated (and how long it was "active" for).
+    * Expected rating for a mark (or recommendation) including the number of other marks that went into generating it
+    * and when it was generated (and how long it was "active" for).
+    * @param id   This is a randomly generated alphanumeric ID, which is used by marks to reference their eratings.
+    *             It can also be a MongoDB BSONObjectID.stringify'ed specified by the user, which is used the same way
+    *             by Recommendations, but in which case the respective Recommendations have the same `_id` values.
     */
   case class ExpectedRating(id: String = generateDbId(Mark.ID_LENGTH),
                             value: Option[Double],
@@ -800,5 +805,7 @@ object Mark extends BSONHandlers {
   implicit val markDataBsonHandler: BSONDocumentHandler[MarkData] = Macros.handler[MarkData]
   implicit val reprRating: BSONDocumentHandler[ReprInfo] = Macros.handler[ReprInfo]
   implicit val entryBsonHandler: BSONDocumentHandler[Mark] = Macros.handler[Mark]
-  implicit val markDataJsonFormat: OFormat[MarkData] = Json.format[MarkData]
+
+  implicit val bsonObjIdJFmt: OFormat[BSONObjectID] = Json.format[BSONObjectID]
+  implicit val markDataJFmt: OFormat[MarkData] = Json.format[MarkData]
 }

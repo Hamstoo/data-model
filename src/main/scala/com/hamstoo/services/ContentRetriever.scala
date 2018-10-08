@@ -57,25 +57,24 @@ object ContentRetriever {
   /** Moved from hamstoo repo LinkageService class.  Used to take a MarkData as input and produce one as output. */
   def fixLink(url: String): String = Try(checkLink(url)).getOrElse("http://" + url)
 
-  /** Implicit MimeType class implementing a method which looks up a RepresentationService and calls its `process`. */
-  implicit class PageFunctions(private val page: Page) /*extends AnyVal*/ {
+  /**
+    * Look for a RepresentationService that supports this mime type and let it construct a representation.
+    * @param mbUrl  Not essential.  We simply use the URL as the title for PDFs when we can't o/w get one.
+    */
+  def getTitle(page: Page, mbUrl: Option[String] = None): Option[String] = MediaType(page.mimeType) match {
 
-    /** Look for a RepresentationService that supports this mime type and let it construct a representation. */
-    def getTitle(url: String): Option[String] = MediaType(page.mimeType) match {
+    // using a different method here than in HTMLRepresentationService
+    case mt if MediaTypeSupport.isHTML(mt) =>
+      ByteString(page.content.toArray).utf8String match {
+        case titleRgx(title) => Some(title.trim)
+        case _ => None
+      }
 
-      // using a different method here than in HTMLRepresentationService
-      case mt if MediaTypeSupport.isHTML(mt) =>
-        ByteString(page.content.toArray).utf8String match {
-          case titleRgx(title) => Some(title.trim)
-          case _ => None
-        }
+    // this is basically the same technique as in PDFRepresentationService (update: getTitleFormerlyInPDFReprSvc)
+    case mt if MediaTypeSupport.isPDF(mt) || MediaTypeSupport.isText(mt) || MediaTypeSupport.isMedia(mt) =>
+      Option(getTitleFormerlyInPDFReprSvc(page, mbUrl)._1).filter(_.nonEmpty)
 
-      // this is basically the same technique as in PDFRepresentationService (update: getTitleFormerlyInPDFReprSvc)
-      case mt if MediaTypeSupport.isPDF(mt) || MediaTypeSupport.isText(mt) || MediaTypeSupport.isMedia(mt) =>
-        Option(getTitleFormerlyInPDFReprSvc(page, url)._1).filter(_.nonEmpty)
-
-      case _ => None
-    }
+    case _ => None
   }
 
   /**
@@ -87,7 +86,7 @@ object ContentRetriever {
     * As well PDF binary may use various encodings.
     * See also: https://en.wikipedia.org/wiki/Portable_Document_Format#Encodings
     */
-  def getTitleFormerlyInPDFReprSvc(page: Page, url: String)/*(implicit injector: Injector, ec: ExecutionContext)*/: (String, String, String) = {
+  def getTitleFormerlyInPDFReprSvc(page: Page, mbUrl: Option[String]): (String, String, String) = {
 
     // PDFs do not have page source that can be represented as text, so
     // to save text in appropriate encoding it will be required to use Apache Tika
@@ -122,12 +121,12 @@ object ContentRetriever {
       .orElse {
         // sometimes openPDFFindTitle returns titles without whitespace
         // so we take first line from pdf file matching letters with title
-        val recursiveTitle = openPDFFindTitle(page, url)
+        val recursiveTitle = openPDFFindTitle(page, mbUrl)
         val titleFromDocText = doctext.split("\\n").find(t => t.replaceAll(" ","")
           .equals(recursiveTitle.getOrElse("")) && t.length > 5)
         titleFromDocText.orElse(recursiveTitle)
       }
-      .getOrElse(ContentRetriever.getNameFromFileName(url))
+      .getOrElse(ContentRetriever.getNameFromFileName(mbUrl.getOrElse("")))
 
     val metaKws = mimeType match {                             // no need to separate these w/ any punctuation
       case mt if MediaTypeSupport.isMedia(mt) => metadata.names().map(metadata.get).distinct.mkString(" ")
@@ -141,7 +140,7 @@ object ContentRetriever {
     * Walks through text blocks of 1st page of a PDF searching for the text with the largest font size
     * and proposes it as PDF doc title.
     */
-  def openPDFFindTitle(page: Page, url: String): Option[String] = {
+  def openPDFFindTitle(page: Page, mbUrl: Option[String] = None): Option[String] = {
 
     // open an existing PDF document, this line causes a "org.pdfclown.util.parsers.PostScriptParseException: PDF
     // header not found." exception when the page isn't truly a PDF
@@ -187,7 +186,7 @@ object ContentRetriever {
     }
 
     val (maxFontSize, title) = extract(page1)
-    logger.info(s"Found title '$title' with font size $maxFontSize in PDF $url ($memoryString)")
+    logger.info(s"Found title '$title' with font size $maxFontSize in PDF $mbUrl ($memoryString)")
     if (title.isEmpty) None else Some(title)
   }
 
@@ -313,8 +312,8 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
 
   /** Convenience method as we're doing this in more than one place now. */
   def getTitle(url: String): Future[(String, Option[String])] = digest(url).map { case (redirectedUrl, response) =>
-    redirectedUrl ->
-      Page("", ReprType.PRIVATE, response.bodyAsBytes.toArray).getTitle(redirectedUrl) // ReprType doesn't matter here
+    redirectedUrl ->                                                  // ReprType doesn't matter here
+      ContentRetriever.getTitle(Page("", ReprType.PRIVATE, response.bodyAsBytes.toArray), Some(redirectedUrl))
   }
 
   /**

@@ -6,9 +6,9 @@ package com.hamstoo.models
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf.nameOf
+import com.hamstoo.models.Representation.ReprType
 import com.hamstoo.utils.{TIME_NOW, TimeStamp}
-import play.api.libs.json.{JsObject, Json, OFormat}
-import reactivemongo.bson.{BSONDocumentHandler, Macros}
+import reactivemongo.bson.{BSONDocumentHandler, BSONObjectID, Macros}
 
 /**
   * A user recommendation object.  Recommendations are one source of content for a user's feed.
@@ -21,13 +21,16 @@ import reactivemongo.bson.{BSONDocumentHandler, Macros}
   *                and we want to put a markId in the subj field.
   * @param subj    The "title" tag of the URL (named `subj` to exemplify similarity to MarkData).
   * @param ts      The date when the recommendation was saved
+  * @param _id     "recommended solution is to provide an id yourself, using BSONObjectID.generate"
+  *                  https://stackoverflow.com/questions/39353496/get-id-after-insert-with-reactivemongo
   */
 case class Recommendation(userId: UUID,
                           source: String,
                           params: Map[String, String],
                           url: String,
                           subj: String = "",
-                          ts: TimeStamp = TIME_NOW) {
+                          ts: TimeStamp = TIME_NOW,
+                          _id: BSONObjectID = BSONObjectID.generate) {
 
   /**
     * Search terms, if they exist (e.g. the generation method may not have utilized search terms at all), that were
@@ -36,9 +39,15 @@ case class Recommendation(userId: UUID,
   def searchTerms: Set[String] =
     params.getOrElse(Recommendation.PARAM_SEARCH_TERMS, "").split(" ").map(_.trim.toLowerCase).filterNot(_.isEmpty).toSet
 
-  /** Used by backend's MarksController. */
-  import RecommendationFormatters._
-  def toJson: JsObject = Json.toJson(this).asInstanceOf[JsObject] - Recommendation.USR
+  /**
+    * Initial backend impl of My Recs page is copied from My Marks page, so using the same data structure also.
+    * `id` field is not used, but if user hovers over Subject in UI then it is visible as the link destination.
+    */
+  def toMark: Mark = {
+    val ri = ReprInfo("", ReprType.PUBLIC, expRating = Some(_id.stringify)) // allows for expRating lookup in db
+    val md = MarkData(subj, Some(url), recId = Some(_id))
+    Mark(userId, id = "mark-it", mark = md, timeFrom = ts, reprs = Seq(ri))
+  }
 }
 
 object Recommendation extends BSONHandlers {
@@ -52,8 +61,4 @@ object Recommendation extends BSONHandlers {
   val PARAM_SEARCH_TERMS: String = nameOf[Recommendation](_.searchTerms)
 
   implicit val recommendationHandler: BSONDocumentHandler[Recommendation] = Macros.handler[Recommendation]
-}
-
-object RecommendationFormatters {
-  implicit val recommendationJson: OFormat[Recommendation] = Json.format[Recommendation]
 }
