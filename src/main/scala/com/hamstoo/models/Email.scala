@@ -5,6 +5,17 @@ import com.hamstoo.utils.{TIME_NOW, TimeStamp}
 import play.api.libs.json.{JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
+
+/**
+  *
+  * When a user share a mark, an email is send to a recipient. After that, the recipient, can reply to that email.
+  *
+  * @param from
+  * @param to
+  * @param subject
+  * @param content
+  * @param ts
+  */
 case class Email (
                   from: String,
                   to: String,
@@ -20,7 +31,7 @@ object Email extends BSONHandlers {
 
   val fromEmail: String = nameOf[Email](_.from)
   val toEmail: String = nameOf[Email](_.to)
-  val subject: String = nameOf[Email](_.subject)
+  val emailSubject: String = nameOf[Email](_.subject)
   val TIMESTAMP: String = UserStats.TIMESTAMP;  assert(TIMESTAMP == nameOf[Email](_.ts))
 
   implicit val emailHandler: BSONDocumentHandler[Email] = Macros.handler[Email]
