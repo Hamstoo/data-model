@@ -223,9 +223,10 @@ object MarkData {
   val IMPORT_TAG = "Imported"
   val UPLOAD_TAG = "Uploaded"
   val SHARED_WITH_ME_TAG = "SharedWithMe"
+  val RECOMMENDATION_TAG = "Recommendation" // for marks that were originally recommendations
 
   /**
-    * Check string for validity and sanitize string from danger XSS content. By default it works with HTML based content.
+    * Check string for validity and sanitize string from dangerous XSS content. By default it works with HTML based content.
     * First of all in parse it, by attributes and then filter it by list of supported tags.
     * All example can be find in tests.
     * @param url  string that must be sanitized
