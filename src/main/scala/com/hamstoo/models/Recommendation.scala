@@ -30,7 +30,12 @@ case class Recommendation(userId: UUID,
                           url: String,
                           subj: String = "",
                           ts: TimeStamp = TIME_NOW,
-                          _id: BSONObjectID = BSONObjectID.generate) {
+                          _id: BSONObjectID = BSONObjectID.generate,
+                          var versions: Option[Map[String, String]] = None) {
+
+  // same technique as is used for Representations
+  versions = Some(versions.getOrElse(Map.empty[String, String])
+                    .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
 
   /**
     * Search terms, if they exist (e.g. the generation method may not have utilized search terms at all), that were
