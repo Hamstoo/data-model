@@ -63,7 +63,7 @@ class RepresentationDaoTests
 
     // save representation
     println(s"Creating 2 representations with IDs ${reprOrig.id} [${reprOrig.timeFrom}] and ${reprCopy.id} [${reprCopy.timeFrom}]")
-    val id: String = reprsDao.save(reprOrig).futureValue
+    val id: String = reprsDao.save1(reprOrig).futureValue
     println(s"Created representation ID $id")
 
     id should not equal null
@@ -71,7 +71,7 @@ class RepresentationDaoTests
     id shouldEqual reprOrig.id
 
     // saves representation copy
-    val id2: String = reprsDao.save(reprCopy).futureValue
+    val id2: String = reprsDao.save1(reprCopy.copy(timeFrom = TIME_NOW)).futureValue
     println(s"Updated representation 2 ID $id2")
     id shouldEqual id2
 
@@ -97,7 +97,7 @@ class RepresentationDaoTests
 
   it should "(UNIT) update representation" in {
     val repr2 = repr.copy(link = Some("link"), timeFrom = TIME_NOW)
-    reprsDao.update(repr2, repr2.timeFrom).futureValue shouldEqual repr2
+    reprsDao.update1(repr2).futureValue shouldEqual repr2
   }
 
   it should "(UNIT) retrieve all by id" in {

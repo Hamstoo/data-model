@@ -712,6 +712,10 @@ object Mark extends BSONHandlers {
     override def withTimeFrom(timeFrom: Long): ExpectedRating = this.copy(timeFrom = timeFrom)
   }
 
+  object ExpectedRating {
+    val DEFAULT_VALUE: Double = 2.5 // TODO: perhaps should use a user's average rating rather than this 2.5 const
+  }
+
   /**
     * Keep track of which URLs have identical content to other URLs, per user.  For example, the following 2 URLs:
     *  https://www.nature.com/articles/d41586-017-07522-z?utm_campaign=Data%2BElixir&utm_medium=email&utm_source=Data_Elixir_160

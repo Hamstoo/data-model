@@ -10,8 +10,6 @@ import com.hamstoo.utils.{ExtendedOption, INF_TIME, ObjectId, TIME_NOW, TimeStam
 import play.api.libs.json._
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
-import scala.util.Try
-
 /**
   * Data model of an inline note.  We refer to this as a "note" rather than a "comment" to help differentiate
   * between the two concepts, the latter being complementary user content.
@@ -57,7 +55,7 @@ case class InlineNote(usrId: UUID,
   /** In this `fromExtensionJson` "position" field can be absent from incoming JSON. */
   override def mergeExtensionJson(json: JsObject): Annotation = {
     import com.hamstoo.models.InlineNoteFormatters._
-    val posJson: JsObject = Try(json("position")).toOption.toJson(InlineNote.POS)
+    val posJson: JsObject = (json \ "position").toOption.toJson(InlineNote.POS)
     Json.toJsObject(this).deepMerge(json - "position" ++ posJson).as[InlineNote]
   }
 }

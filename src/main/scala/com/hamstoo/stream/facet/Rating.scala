@@ -5,7 +5,7 @@ package com.hamstoo.stream.facet
 
 import akka.stream.Materializer
 import com.google.inject.{Inject, Singleton}
-import com.hamstoo.models.Mark.MarkAux
+import com.hamstoo.models.Mark.{ExpectedRating, MarkAux}
 import com.hamstoo.stream.DataStream
 import com.hamstoo.stream.dataset.MarksStream
 
@@ -20,7 +20,8 @@ class Rating @Inject()(marks: MarksStream)(implicit mat: Materializer) extends D
 
   override val in: SourceType = {
     import com.hamstoo.stream.StreamDSL._
-    marks.rating.map(_.getOrElse(2.5)) // TODO: should this compute an average for the user rather than using 2.5 const?
+    // TODO: should this compute an average for the user rather than using this const?
+    marks.rating.map(_.getOrElse(ExpectedRating.DEFAULT_VALUE))
   }.out
 }
 
