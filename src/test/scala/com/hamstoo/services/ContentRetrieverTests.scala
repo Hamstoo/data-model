@@ -50,4 +50,10 @@ class ContentRetrieverTests
     // should load only 3 frames total
     elems._2 shouldBe 3
   }
+
+  it should "(UNIT) return redirected URL when following redirects, even for 301s" in {
+    val url = "http://www.scala-blogs.org/2008/01/maven-for-scala.html?showComment=1199730180000"
+    val (red, _) = contriever.getTitle(url).futureValue
+    red shouldBe "https://bvokpharm.net/erectile-dysfunction/viagra.html"
+  }
 }
