@@ -28,17 +28,17 @@ class ContentRetrieverTests
 
   "ContentRetriever" should "(UNIT) fail on bogus URL" in {
     val bogusURL = "http://string"
-    intercept[Exception] { contriever.retrieve(id, reprType, bogusURL).futureValue }
+    intercept[Exception] { contriever.retrieve(reprType, bogusURL).futureValue }
   }
 
   it should "(UNIT) succeed on non-bogus URL and be able to get its title" in {
-    val page = contriever.retrieve(id, reprType, urlHTML).futureValue
+    val page = contriever.retrieve(reprType, urlHTML).futureValue
     page shouldBe a [Page]
     ContentRetriever.getTitle(page) shouldBe Some("Futures and Promises | Scala Documentation")
   }
 
   it should "(UNIT) get PDF titles" in {
-    val page = contriever.retrieve(id, reprType, urlPDF).futureValue
+    val page = contriever.retrieve(reprType, urlPDF).futureValue
     ContentRetriever.getTitle(page) shouldBe Some("Actors in Scala")
   }
 

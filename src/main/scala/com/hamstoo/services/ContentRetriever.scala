@@ -59,9 +59,10 @@ object ContentRetriever {
 
   /**
     * Look for a RepresentationService that supports this mime type and let it construct a representation.
-    * @param mbUrl  Not essential.  We simply use the URL as the title for PDFs when we can't o/w get one.
+    * @param page  page.redirectedUrl is not essential.  We simply use the URL as the title for PDFs when we
+    *              can't o/w get one.
     */
-  def getTitle(page: Page, mbUrl: Option[String] = None): Option[String] = MediaType(page.mimeType) match {
+  def getTitle(page: Page): Option[String] = MediaType(page.mimeType) match {
 
     // using a different method here than in HTMLRepresentationService
     case mt if MediaTypeSupport.isHTML(mt) =>
@@ -72,7 +73,7 @@ object ContentRetriever {
 
     // this is basically the same technique as in PDFRepresentationService (update: getTitleFormerlyInPDFReprSvc)
     case mt if MediaTypeSupport.isPDF(mt) || MediaTypeSupport.isText(mt) || MediaTypeSupport.isMedia(mt) =>
-      Option(getTitleFormerlyInPDFReprSvc(page, mbUrl)._1).filter(_.nonEmpty)
+      Option(getTitleFormerlyInPDFReprSvc(page)._1).filter(_.nonEmpty)
 
     case _ => None
   }
@@ -86,7 +87,7 @@ object ContentRetriever {
     * As well PDF binary may use various encodings.
     * See also: https://en.wikipedia.org/wiki/Portable_Document_Format#Encodings
     */
-  def getTitleFormerlyInPDFReprSvc(page: Page, mbUrl: Option[String]): (String, String, String) = {
+  def getTitleFormerlyInPDFReprSvc(page: Page): (String, String, String) = {
 
     // PDFs do not have page source that can be represented as text, so
     // to save text in appropriate encoding it will be required to use Apache Tika
@@ -121,12 +122,12 @@ object ContentRetriever {
       .orElse {
         // sometimes openPDFFindTitle returns titles without whitespace
         // so we take first line from pdf file matching letters with title
-        val recursiveTitle = openPDFFindTitle(page, mbUrl)
+        val recursiveTitle = openPDFFindTitle(page, page.redirectedUrl)
         val titleFromDocText = doctext.split("\\n").find(t => t.replaceAll(" ","")
           .equals(recursiveTitle.getOrElse("")) && t.length > 5)
         titleFromDocText.orElse(recursiveTitle)
       }
-      .getOrElse(ContentRetriever.getNameFromFileName(mbUrl.getOrElse("")))
+      .getOrElse(ContentRetriever.getNameFromFileName(page.redirectedUrl.getOrElse("")))
 
     val metaKws = mimeType match {                             // no need to separate these w/ any punctuation
       case mt if MediaTypeSupport.isMedia(mt) => metadata.names().map(metadata.get).distinct.mkString(" ")
@@ -219,13 +220,15 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
   import ContentRetriever._
 
   /** Retrieve mime type and content (e.g. HTML) given a URL. */
-  def retrieve(markId: ObjectId, reprType: ReprType.Value, url: String): Future[Page] = {
+  def retrieve(reprType: ReprType.Value, url: String): Future[Page] = {
     val mediaType = MediaType(TikaInstance.detect(url))
     logger.debug(s"Retrieving URL '$url' with MIME type '${Try(mediaType)}'")
 
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
     for {
-      digested <- digest(url).map { case (_, wsResp) => Page(markId, reprType, wsResp.bodyAsBytes.toArray) }
+      digested <- digest(url).map { case (red, wsResp) =>
+                    Page("bogusMarkId", reprType, wsResp.bodyAsBytes.toArray, redirectedUrl = Some(red))
+                  }
       frameless <- if (!MediaTypeSupport.isHTML(mediaType)) Future.successful(digested)
                    else {
                      // `loadFrames` detects and loads individual frames and those in framesets
@@ -249,7 +252,7 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
     // takes Element instance as parameter and
     // sets loaded data into content of that Element instance of docJsoup val
     def loadFrame(frameElement: Element): Future[Element] = {
-      retrieve(page.markId, ReprType.withName(page.reprType), url + frameElement.attr("src")).map { page =>
+      retrieve(ReprType.withName(page.reprType), url + frameElement.attr("src")).map { page =>
         frameElement.html(ByteString(page.content.toArray).utf8String)
       }
     }
@@ -311,10 +314,10 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
   }
 
   /** Convenience method as we're doing this in more than one place now. */
-  def getTitle(url: String): Future[(String, Option[String])] = digest(url).map { case (redirectedUrl, response) =>
-    redirectedUrl ->                                                  // ReprType doesn't matter here
-      ContentRetriever.getTitle(Page("", ReprType.PRIVATE, response.bodyAsBytes.toArray), Some(redirectedUrl))
-  }
+  def getTitle(url: String): Future[(String, Option[String])] =
+    retrieve(ReprType.PRIVATE, url).map { page => // ReprType doesn't matter here
+      page.redirectedUrl.get -> ContentRetriever.getTitle(page)
+    }
 
   /**
     * Detects known WAFs and Captchas.
