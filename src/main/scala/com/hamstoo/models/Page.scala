@@ -39,7 +39,7 @@ object Page extends BSONHandlers {
 
   /** Another `apply` because "multiple overloaded alternatives of method apply [cannot] define default arguments." */
   def apply(markId: ObjectId, reprType: ReprType.Value, content: mutable.WrappedArray[Byte]): Page =
-    Page(markId, reprType, content)
+    Page(markId, reprType, content = content, redirectedUrl = None)
 
   val ID: String = com.hamstoo.models.Mark.ID;  assert(nameOf[Page](_.id) == ID)
   val MARK_ID: String = nameOf[Page](_.markId)
