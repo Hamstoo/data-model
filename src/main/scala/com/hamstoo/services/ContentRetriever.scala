@@ -4,7 +4,7 @@
 package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
-import java.net.URI
+import java.net.{URI, UnknownHostException}
 
 import akka.util.ByteString
 import com.google.inject.{Inject, Singleton}
@@ -292,19 +292,20 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
         // for-comprehension, which means this exception occurs outside of *all* of the desugared Future flatMaps.  To
         // remedy, this call either needs to not be the first Future in the for-comprehension (an odd limitation that
         // callers shouldn't really have to worry about) or be wrapped in a Try, as has been done here.
-        Try(httpClient.url(url).withFollowRedirects(false).get).fold(Future.failed, identity).flatMap { res =>
-          res.status match {
+        Try(httpClient.url(url).withFollowRedirects(false).get)
+          .fold(Future.failed, identity).flatMap { res => res.status match {
+
+            case Status.FORBIDDEN | Status.NOT_FOUND =>
+              Future.failed(new UnknownHostException(s"Received response status ${res.status} for: $url"))
 
             // withFollowRedirects follows only 301 and 302 redirects, but it also doesn't tell us where we've been
             // redirected to, so we handle 301/302 manually ourselves
             // We need to cover 308 - Permanent Redirect also. The new url can be found in "Location" header.
             case Status.MOVED_PERMANENTLY | Status.FOUND | Status.PERMANENT_REDIRECT =>
-
               res.header("Location") match {
                 case Some(newUrl) =>
                   logger.debug(s"Following ${res.status} redirect to: $newUrl")
                   recget(newUrl, depth + 1)
-
                 case _ => checkKnownProblems(url, res).map((url, _))
               }
 
