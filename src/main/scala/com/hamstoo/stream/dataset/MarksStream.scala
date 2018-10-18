@@ -83,7 +83,7 @@ object MarksStream {
     val hasQuery = mbQuery2Vecs.nonEmpty || labels.nonEmpty // e.g. if searching for marks with "SharedWithMe" label
     //val includeMarkRefs = mbSearchUserId1 != mbCallingUserId || hasQuery // old buggy impl (issue #339)
     val includeMarkRefs = mbSearchUserId1 == mbCallingUserId && hasQuery
-    logger.info(s"includeMarkRefs:$includeMarkRefs = usersEqual:${mbSearchUserId1 == mbCallingUserId} && hasQuery:$hasQuery")
+    logger.debug(s"includeMarkRefs:$includeMarkRefs = usersEqual:${mbSearchUserId1 == mbCallingUserId} && hasQuery:$hasQuery")
 
     def logMarks(whence: String)(ms: Traversable[Mark]): Traversable[Mark] =
       ms.map { m => loggerI.trace(s"$whence: ${m.id}/${m.markRef.map(_.markId)}"); m }

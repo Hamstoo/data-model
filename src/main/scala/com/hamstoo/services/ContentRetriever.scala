@@ -4,11 +4,9 @@
 package com.hamstoo.services
 
 import java.io.{ByteArrayInputStream, InputStream}
-import java.net.URI
+import java.net.{URI, UnknownHostException}
 
 import akka.util.ByteString
-import com.gargoylesoftware.htmlunit._
-import com.gargoylesoftware.htmlunit.html.HtmlPage
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Page
 import com.hamstoo.models.Representation.ReprType
@@ -16,6 +14,7 @@ import com.hamstoo.utils.{MediaType, ObjectId, memoryString}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import play.api.Logger
+import play.api.http.Status
 import play.api.libs.ws.{WSClient, WSResponse}
 import org.apache.tika.metadata.{PDF, TikaCoreProperties}
 import org.pdfclown.documents.Document
@@ -57,25 +56,25 @@ object ContentRetriever {
   /** Moved from hamstoo repo LinkageService class.  Used to take a MarkData as input and produce one as output. */
   def fixLink(url: String): String = Try(checkLink(url)).getOrElse("http://" + url)
 
-  /** Implicit MimeType class implementing a method which looks up a RepresentationService and calls its `process`. */
-  implicit class PageFunctions(private val page: Page) /*extends AnyVal*/ {
+  /**
+    * Look for a RepresentationService that supports this mime type and let it construct a representation.
+    * @param page  page.redirectedUrl is not essential.  We simply use the URL as the title for PDFs when we
+    *              can't o/w get one.
+    */
+  def getTitle(page: Page): Option[String] = MediaType(page.mimeType) match {
 
-    /** Look for a RepresentationService that supports this mime type and let it construct a representation. */
-    def getTitle(url: String): Option[String] = MediaType(page.mimeType) match {
+    // using a different method here than in HTMLRepresentationService
+    case mt if MediaTypeSupport.isHTML(mt) =>
+      ByteString(page.content.toArray).utf8String match {
+        case titleRgx(title) => Some(title.trim)
+        case _ => None
+      }
 
-      // using a different method here than in HTMLRepresentationService
-      case mt if MediaTypeSupport.isHTML(mt) =>
-        ByteString(page.content.toArray).utf8String match {
-          case titleRgx(title) => Some(title.trim)
-          case _ => None
-        }
+    // this is basically the same technique as in PDFRepresentationService (update: getTitleFormerlyInPDFReprSvc)
+    case mt if MediaTypeSupport.isPDF(mt) || MediaTypeSupport.isText(mt) || MediaTypeSupport.isMedia(mt) =>
+      Option(getTitleFormerlyInPDFReprSvc(page)._1).filter(_.nonEmpty)
 
-      // this is basically the same technique as in PDFRepresentationService (update: getTitleFormerlyInPDFReprSvc)
-      case mt if MediaTypeSupport.isPDF(mt) || MediaTypeSupport.isText(mt) || MediaTypeSupport.isMedia(mt) =>
-        Option(getTitleFormerlyInPDFReprSvc(page, url)._1).filter(_.nonEmpty)
-
-      case _ => None
-    }
+    case _ => None
   }
 
   /**
@@ -87,7 +86,7 @@ object ContentRetriever {
     * As well PDF binary may use various encodings.
     * See also: https://en.wikipedia.org/wiki/Portable_Document_Format#Encodings
     */
-  def getTitleFormerlyInPDFReprSvc(page: Page, url: String)/*(implicit injector: Injector, ec: ExecutionContext)*/: (String, String, String) = {
+  def getTitleFormerlyInPDFReprSvc(page: Page): (String, String, String) = {
 
     // PDFs do not have page source that can be represented as text, so
     // to save text in appropriate encoding it will be required to use Apache Tika
@@ -122,12 +121,12 @@ object ContentRetriever {
       .orElse {
         // sometimes openPDFFindTitle returns titles without whitespace
         // so we take first line from pdf file matching letters with title
-        val recursiveTitle = openPDFFindTitle(page, url)
+        val recursiveTitle = openPDFFindTitle(page, page.redirectedUrl)
         val titleFromDocText = doctext.split("\\n").find(t => t.replaceAll(" ","")
           .equals(recursiveTitle.getOrElse("")) && t.length > 5)
         titleFromDocText.orElse(recursiveTitle)
       }
-      .getOrElse(ContentRetriever.getNameFromFileName(url))
+      .getOrElse(ContentRetriever.getNameFromFileName(page.redirectedUrl.getOrElse("")))
 
     val metaKws = mimeType match {                             // no need to separate these w/ any punctuation
       case mt if MediaTypeSupport.isMedia(mt) => metadata.names().map(metadata.get).distinct.mkString(" ")
@@ -141,7 +140,7 @@ object ContentRetriever {
     * Walks through text blocks of 1st page of a PDF searching for the text with the largest font size
     * and proposes it as PDF doc title.
     */
-  def openPDFFindTitle(page: Page, url: String): Option[String] = {
+  def openPDFFindTitle(page: Page, mbUrl: Option[String] = None): Option[String] = {
 
     // open an existing PDF document, this line causes a "org.pdfclown.util.parsers.PostScriptParseException: PDF
     // header not found." exception when the page isn't truly a PDF
@@ -187,7 +186,7 @@ object ContentRetriever {
     }
 
     val (maxFontSize, title) = extract(page1)
-    logger.info(s"Found title '$title' with font size $maxFontSize in PDF $url ($memoryString)")
+    logger.info(s"Found title '$title' with font size $maxFontSize in PDF $mbUrl ($memoryString)")
     if (title.isEmpty) None else Some(title)
   }
 
@@ -220,13 +219,15 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
   import ContentRetriever._
 
   /** Retrieve mime type and content (e.g. HTML) given a URL. */
-  def retrieve(markId: ObjectId, reprType: ReprType.Value, url: String): Future[Page] = {
+  def retrieve(reprType: ReprType.Value, url: String): Future[Page] = {
     val mediaType = MediaType(TikaInstance.detect(url))
     logger.debug(s"Retrieving URL '$url' with MIME type '${Try(mediaType)}'")
 
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
     for {
-      digested <- digest(url).map { case (_, wsResp) => Page(markId, reprType, wsResp.bodyAsBytes.toArray) }
+      digested <- digest(url).map { case (red, wsResp) =>
+                    Page("bogusMarkId", reprType, wsResp.bodyAsBytes.toArray, redirectedUrl = Some(red))
+                  }
       frameless <- if (!MediaTypeSupport.isHTML(mediaType)) Future.successful(digested)
                    else {
                      // `loadFrames` detects and loads individual frames and those in framesets
@@ -250,7 +251,7 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
     // takes Element instance as parameter and
     // sets loaded data into content of that Element instance of docJsoup val
     def loadFrame(frameElement: Element): Future[Element] = {
-      retrieve(page.markId, ReprType.withName(page.reprType), url + frameElement.attr("src")).map { page =>
+      retrieve(ReprType.withName(page.reprType), url + frameElement.attr("src")).map { page =>
         frameElement.html(ByteString(page.content.toArray).utf8String)
       }
     }
@@ -291,17 +292,23 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
         // for-comprehension, which means this exception occurs outside of *all* of the desugared Future flatMaps.  To
         // remedy, this call either needs to not be the first Future in the for-comprehension (an odd limitation that
         // callers shouldn't really have to worry about) or be wrapped in a Try, as has been done here.
-        Try(httpClient.url(url).withFollowRedirects(true).get).fold(Future.failed, identity).flatMap { res =>
-          res.status match {
-            // withFollowRedirects follows only 301 and 302 redirects.
+        Try(httpClient.url(url).withFollowRedirects(false).get)
+          .fold(Future.failed, identity).flatMap { res => res.status match {
+
+            case Status.FORBIDDEN | Status.NOT_FOUND =>
+              Future.failed(new UnknownHostException(s"Received response status ${res.status} for: $url"))
+
+            // withFollowRedirects follows only 301 and 302 redirects, but it also doesn't tell us where we've been
+            // redirected to, so we handle 301/302 manually ourselves
             // We need to cover 308 - Permanent Redirect also. The new url can be found in "Location" header.
-            case 308 =>
+            case Status.MOVED_PERMANENTLY | Status.FOUND | Status.PERMANENT_REDIRECT =>
               res.header("Location") match {
                 case Some(newUrl) =>
+                  logger.debug(s"Following ${res.status} redirect to: $newUrl")
                   recget(newUrl, depth + 1)
-                case _ =>
-                  Future.successful((url, res))
+                case _ => checkKnownProblems(url, res).map((url, _))
               }
+
             case _ => checkKnownProblems(url, res).map((url, _))
           }
         }
@@ -312,10 +319,10 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
   }
 
   /** Convenience method as we're doing this in more than one place now. */
-  def getTitle(url: String): Future[(String, Option[String])] = digest(url).map { case (redirectedUrl, response) =>
-    redirectedUrl ->
-      Page("", ReprType.PRIVATE, response.bodyAsBytes.toArray).getTitle(redirectedUrl) // ReprType doesn't matter here
-  }
+  def getTitle(url: String): Future[(String, Option[String])] =
+    retrieve(ReprType.PRIVATE, url).map { page => // ReprType doesn't matter here
+      page.redirectedUrl.get -> ContentRetriever.getTitle(page)
+    }
 
   /**
     * Detects known WAFs and Captchas.

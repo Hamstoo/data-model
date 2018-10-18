@@ -19,7 +19,7 @@ case class ConfigModule(config: Config) extends BaseModule {
     */
   override def configure(): Unit = {
     logger.debug(s"Configuring module: ${classOf[ConfigModule].getName}")
-    bindConfigParams[String]("idfs.resource", "vectors.link", "mongodb.uri")
+    bindConfigParams[String]("idfs.resource", "vectors.link", "mongodb.uri", "yacy.url")
     IDFModel.ResourcePathOptional ?= None
   }
 
@@ -34,7 +34,7 @@ case class ConfigModule(config: Config) extends BaseModule {
   def bindConfigParams[T :Manifest](params: String*)
                                             (implicit cast: AnyRef => T = (a: AnyRef) => a.asInstanceOf[T]): Unit = {
     params.foreach { key =>
-      //if (config.hasPath(key)) // no, required!
+      //if (config.hasPath(key))
         bind[T].annotatedWith(Names.named(key)).toInstance(cast(config.getAnyRef(key)))
         //bindConstant().annotatedWith(Names.named(key)).to(config.get[String](key))
     }

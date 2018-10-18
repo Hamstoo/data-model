@@ -11,7 +11,6 @@ import play.api.Logger
 import play.api.libs.json.{JsObject, Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
-import scala.util.Try
 import scala.util.matching.Regex
 
 /**
@@ -130,7 +129,7 @@ case class Highlight(usrId: UUID,
   /** In this `fromExtensionJson` "position" field can be absent from incoming JSON. */
   override def mergeExtensionJson(json: JsObject): Annotation = {
     import com.hamstoo.models.HighlightFormatters._
-    val posJson: JsObject = Try(json("position")).toOption.toJson(Highlight.POS)
+    val posJson: JsObject = (json \ "position").toOption.toJson(Highlight.POS)
     Json.toJsObject(this).deepMerge(json - "position" ++ posJson).as[Highlight]
   }
 }

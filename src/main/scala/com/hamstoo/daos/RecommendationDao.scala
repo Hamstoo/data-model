@@ -39,10 +39,10 @@ class RecommendationDao @Inject()(implicit db: () => Future[DefaultDB]) {
   /** Insert one recommendation in MongoDB */
   def insert(recommendation: Recommendation): Future[Unit] = for {
     c <- dbColl()
-    _ = logger.info(s"Inserting: $recommendation")
+    _ = logger.debug(s"Inserting: $recommendation")
     wr <- c.insert(recommendation)
     _ <- wr.failIfError
-  } yield logger.info(s"Successfully inserted: $recommendation")
+  } yield logger.debug(s"Successfully inserted: $recommendation")
 
   /**
     * Get recommendations assigned to a user, saved in the past `nDaysBack` days.
@@ -53,7 +53,7 @@ class RecommendationDao @Inject()(implicit db: () => Future[DefaultDB]) {
     */
   def retrieve(userId: UUID, nDaysBack: Int = 100): Future[Seq[Recommendation]] = for {
     c <- dbColl()
-    _ = logger.info(s"Retrieving $nDaysBack days' recommendations for user $userId")
+    _ = logger.debug(s"Retrieving $nDaysBack days' recommendations for user $userId")
     pastDate = new DateTime().minusDays(nDaysBack).getMillis
     q = d :~ USR -> userId :~ TIMESTAMP -> (d :~ "$gte" -> pastDate)
     //r <- c.find(d :~ USR -> user.toString).sort(d :~ TIMESTAMP -> -1).coll[Recommendation, Seq]()

@@ -46,18 +46,18 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
   }
 
   /**
-    * Update representation
-    * @param repr  new representation
-    * @param now   time
+    * Update representation.  Relies on an appropriately set timeFrom in `repr`--i.e. not equal to
+    * existing repr's timeFrom.
+    * @param repr  new representation (w/ appropriate timeFrom)
     * @return      updated representation
     */
-  def update(repr: T, now: Long = TIME_NOW): Future[T] = {
+  def update1(repr: T): Future[T] = {
     logger.info(s"Updating existing $name with ID '${repr.id}' [${repr.timeFrom}/${repr.timeFrom.dt}]")
     for {
       c <- dbColl()
-      wr <- c.update(d :~ ID -> repr.id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> now)) // retire the old one
+      wr <- c.update(d :~ ID -> repr.id :~ curnt, d :~ "$set" -> (d :~ TIMETHRU -> repr.timeFrom)) // retire the old one
       _ <- wr failIfError; // semicolon wouldn't be necessary if used `wr.failIfError` (w/ the dot) instead--weird
-      updatedRepr <- insert(repr.withTimeFrom(now))
+      updatedRepr <- insert(repr)
     } yield {
       logger.debug(s"Successfully updated $name with ID '${repr.id}' [${repr.timeFrom}/${repr.timeFrom.dt}]")
       updatedRepr
@@ -69,7 +69,7 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
     * @param id        Representation ID to delete
     * @param timeFrom  `timeFrom` of representation to delete
     */
-  /*def delete(id: ObjectId, timeFrom: Long): Future[Unit] = {
+  /*def delete(id: ObjectId, timeFrom: TimeStamp): Future[Unit] = {
     logger.info(s"Deleting $name with ID '$id' [$timeFrom/${timeFrom.dt}]")
     for {
       c <- dbColl()
@@ -81,12 +81,14 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
 
   /**
     * Stores provided representation, optionally updating current state if repr ID already exists in database.
-    * @return  a `Future` repr ID of either updated or inserted repr
+    * Relies on an appropriately set timeFrom in `repr`--i.e. not equal to existing repr's timeFrom.
+    * @param repr  new representation (w/ appropriate timeFrom)
+    * @return      a `Future` repr ID of either updated or inserted repr
     */
-  def save(repr: T, now: Long = TIME_NOW): Future[ObjectId] = {
+  def save1(repr: T): Future[ObjectId] = {
     retrieve(repr.id).flatMap {
-      case Some(_) => update(repr, now = now)
-      case _       => insert(repr.withTimeFrom(now))
+      case Some(_) => update1(repr)
+      case _       => insert(repr)
     } map(_.id)
   }
 
