@@ -90,7 +90,10 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       c <- dbColl()
       now = TIME_NOW
       ms = marks.map(_.copy(timeFrom = now)).map(Mark.entryBsonHandler.write) // map each mark into a `BSONDocument`
+
+      // will need to change when we upgrade reactivemongo version past 0.12
       wr <- c.bulkInsert(ms, ordered = false)
+      //wr <- c.insert[BSONDocument](ordered = false).many(ms) // formerly "bulkInsert"
 
       // similar to ExtendedWriteResult.failIfError but (1) wr.ok won't always be false when there are errors from
       // a bulk insert and (2) wr is a MultiBulkWriteResult here, not a WriteResult
