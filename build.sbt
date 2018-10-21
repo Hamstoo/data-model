@@ -55,17 +55,17 @@ resolvers ++= Seq(
   "sonatype-releases" at "http://oss.sonatype.org/content/repositories/releases",
   "Atlassian Releases" at "https://maven.atlassian.com/public/")
 
-val reactiveMongoVersion = "0.12.5"
+val silhouetteVersion = "5.0.0"
+val reactiveMongoVersion = "0.12.5" // moving to previous version 0.12.5, because version 0.12.7 throws IndexNotFound error in tests
 val akkaVersion = "2.5.9"
 
 // dependencies
 libraryDependencies ++= Seq(
-  "com.mohiva" %% "play-silhouette" % "5.0.0",
-  "com.mohiva" %% "play-silhouette-persistence" % "5.0.0",
+  "com.mohiva" %% "play-silhouette" % silhouetteVersion,
+  "com.mohiva" %% "play-silhouette-persistence" % silhouetteVersion,
   "com.github.dwickern" %% "scala-nameof" % "1.0.3" % "provided",
   "joda-time" % "joda-time" % "2.9.9",
 
-  // moving to previous version 0.12.5, because version: 0.12.7 throw IndexNotFound error in tests
   "org.reactivemongo" %% "reactivemongo" % reactiveMongoVersion,
   "org.reactivemongo" %% "reactivemongo-akkastream" % reactiveMongoVersion,
 
