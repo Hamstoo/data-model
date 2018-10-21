@@ -31,7 +31,7 @@ object Discussion extends BSONHandlers {
 
   val from: String = nameOf[Discussion](_.interlocutor)
   val to: String = nameOf[Discussion](_.addressee)
-  val subject: String = nameOf[Discussion](_.topic)
+  val topic: String = nameOf[Discussion](_.topic)
   val TIMESTAMP: String = UserStats.TIMESTAMP;  assert(TIMESTAMP == nameOf[Discussion](_.ts))
 
   implicit val emailHandler: BSONDocumentHandler[Discussion] = Macros.handler[Discussion]

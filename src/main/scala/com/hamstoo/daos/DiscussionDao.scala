@@ -35,8 +35,8 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
   // indexes for this mongo collection
   private val indxs: Map[String, Index] =
     Index(from -> IndexType.Ascending :: to -> IndexType.Ascending ::
-          subject -> IndexType.Ascending :: TIMESTAMP -> IndexType.Descending :: Nil) %
-      s"bin-$from-1-$to-1-$subject-1-$TIMESTAMP-1" ::
+          topic -> IndexType.Ascending :: TIMESTAMP -> IndexType.Descending :: Nil) %
+      s"bin-$from-1-$to-1-$topic-1-$TIMESTAMP-1" ::
       Nil toMap;
   Await.result(dbColl() map (_.indexesManager ensure indxs), 134 seconds)
 
@@ -71,7 +71,7 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
   def retrieveBySender(email: String, subject: String): Future[Seq[Discussion]] = for {
     c <- dbColl()
     _ = logger.info(s"emails send by: $email with subject $subject")
-    q = d :~ from -> email :~ subject -> subject
+    q = d :~ from -> email :~ topic -> subject
     r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
@@ -97,7 +97,7 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
   def retrieveByRecipient(email: String, subject: String): Future[Seq[Discussion]] = for {
     c <- dbColl()
     _ = logger.info(s"emails received by: $email with subject $subject")
-    q = d :~ to -> email :~ subject -> subject
+    q = d :~ to -> email :~ topic -> subject
     r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
