@@ -50,12 +50,12 @@ case class InlineNote(usrId: UUID,
   override def toExtensionJson(implicit callingUserId: UUID): JsObject =
     super.toExtensionJson ++
     Json.obj("pos" -> pos) ++
-    anchors.toJson("anchors")
+    anchors.toJsOption("anchors")
 
   /** In this `fromExtensionJson` "position" field can be absent from incoming JSON. */
   override def mergeExtensionJson(json: JsObject): Annotation = {
     import com.hamstoo.models.InlineNoteFormatters._
-    val posJson: JsObject = (json \ "position").toOption.toJson(InlineNote.POS)
+    val posJson: JsObject = (json \ "position").toOption.toJsOption(InlineNote.POS)
     Json.toJsObject(this).deepMerge(json - "position" ++ posJson).as[InlineNote]
   }
 }

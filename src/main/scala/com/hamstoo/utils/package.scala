@@ -245,7 +245,7 @@ package object utils {
   }
 
   implicit class ExtendedOption[T](private val mb: Option[T]) extends AnyVal {
-    def toJson(fieldName: String)(implicit w: Writes[T]): JsObject = mb.fold(Json.obj())(x => Json.obj(fieldName -> x))
+    def toJsOption(fieldName: String)(implicit w: Writes[T]): JsObject = mb.fold(Json.obj())(x => Json.obj(fieldName -> x))
   }
 
   implicit class ExtendedBytes(private val ary: Array[Byte]) extends AnyVal {

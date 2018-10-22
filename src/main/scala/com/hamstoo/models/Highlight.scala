@@ -69,7 +69,8 @@ case class Highlight(usrId: UUID,
   override def toExtensionJson(implicit callingUserId: UUID): JsObject =
     super.toExtensionJson ++
     Json.obj("pos" -> pos, "preview" -> preview) ++
-    endPageNumber.toJson("endPageNumber")
+    endPageNumber.toJsOption("endPageNumber") ++
+    notFound.toJsOption("notFound")
 
   /** Defer to Highlight.Position. */
   def mergeSameElems(): Highlight = copy(pos = pos.mergeSameElems(preview.text))
@@ -134,7 +135,7 @@ case class Highlight(usrId: UUID,
   /** In this `fromExtensionJson` "position" field can be absent from incoming JSON. */
   override def mergeExtensionJson(json: JsObject): Annotation = {
     import com.hamstoo.models.HighlightFormatters._
-    val posJson: JsObject = (json \ "position").toOption.toJson(Highlight.POS)
+    val posJson: JsObject = (json \ "position").toOption.toJsOption(Highlight.POS)
     Json.toJsObject(this).deepMerge(json - "position" ++ posJson).as[Highlight]
   }
 }
