@@ -50,7 +50,7 @@ case class Recommendation(userId: UUID,
     */
   def toMark: Mark = {
     val ri = ReprInfo("", ReprType.PUBLIC, expRating = Some(_id.stringify)) // allows for expRating lookup in db
-    val md = MarkData(s"$subj [$source]", Some(url), tags = Some(Set(MarkData.RECOMMENDATION_TAG)), recId = Some(_id))
+    val md = MarkData(s"$subj [$source / $searchTerms]", Some(url), tags = Some(Set(MarkData.RECOMMENDATION_TAG)), recId = Some(_id))
     Mark(userId, id = "mark-it", mark = md, timeFrom = ts, reprs = Seq(ri))
   }
 }

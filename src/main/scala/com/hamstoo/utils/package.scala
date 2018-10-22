@@ -238,6 +238,10 @@ package object utils {
     def binaryPrefix: mutable.WrappedArray[Byte] = s.getBytes.take(URL_PREFIX_LENGTH)
 
     def binPrfxComplement: String = s.take(URL_PREFIX_COMPLEMENT_LENGTH)
+
+    /** Put some dots in the middle if the string is too long. */
+    def shorten(maxlen: Int = 150): String =
+      if (s.length > maxlen) s"${s.take(maxlen * 11 / 15)}...${s.takeRight(maxlen * 4 / 15)}" else s
   }
 
   implicit class ExtendedOption[T](private val mb: Option[T]) extends AnyVal {
