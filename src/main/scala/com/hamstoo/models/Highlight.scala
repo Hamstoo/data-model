@@ -34,6 +34,10 @@ import scala.util.matching.Regex
   *                    happening we might add 'pageNumber' field for PDF annotations--to display annotations only when
   *                    its page is loaded. [https://github.com/Hamstoo/chrome-extension/issues/55]
   * @param endPageNumber  Highlights, unlike inline notes, can extend over multiple pages.
+  * @param notFound  This field gets set to true by chrome-extension when we fail to locate a highlight upon
+  *                  returning to the URL on which it was originally produced.  Setting this to true lets the
+  *                  extension know that it doesn't have to repeatedly re-save the page source, which we would
+  *                  otherwise typically do when attempting to re-locate a highlight.
   */
 case class Highlight(usrId: UUID,
                      sharedWith: Option[SharedWith] = None,
@@ -47,6 +51,7 @@ case class Highlight(usrId: UUID,
                      endPageNumber: Option[Int] = None,
                      preview: Highlight.Preview,
                      memeId: Option[String] = None,
+                     notFound: Option[String] = None,
                      timeFrom: TimeStamp = TIME_NOW,
                      timeThru: TimeStamp = INF_TIME) extends Annotation {
 
