@@ -3,7 +3,7 @@
  */
 package com.hamstoo.stream
 
-import com.hamstoo.utils.{ExtendedTimeStamp, ObjectId, TimeStamp}
+import com.hamstoo.utils.{ExtendedString, ExtendedTimeStamp, ObjectId, TimeStamp}
 
 import scala.annotation.tailrec
 import scala.collection.immutable
@@ -87,9 +87,7 @@ case class Datum[+T](value: T, id: EntityId, sourceTime: TimeStamp, knownTime: T
 
   override def toString: String = this match {
     case Tick(time) => s"Tick(${time.tfmt})"
-    case _ =>
-      val vstr = s"$value"
-      s"${getClass.getSimpleName}(${if (vstr.length > 150) s"${vstr.take(110)}...${vstr.takeRight(40)}" else vstr}, $id, $sourceTime, $knownTime)"
+    case _ => s"${getClass.getSimpleName}(${value.toString.shorten()}, $id, $sourceTime, $knownTime)"
   }
 
   /** Same Datum, different value. */

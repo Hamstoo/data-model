@@ -229,6 +229,9 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
 
             mbPv.flatMap { pv =>
 
+              lazy val roughAggregate = uraw.coalesce0 + mscore.coalesce0 + praw.coalesce0
+              lazy val stringScores = f"p/m/u=$praw%.2f/$mscore%.2f/$uraw%.2f"
+
               // remove results with no preview/syntactic matches (unless score is really high), requires that all
               // fields (e.g. comments, highlights, inline notes) are being covered by MongoDB text search, which they
               // should be via user-content reprs' doctext
@@ -236,18 +239,23 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
               val mbPr = preview match {
 
                 case pr if pr.nonEmpty || WHICH_PREVIEW_TEXT == 0 =>
-                  loggerI.debug(s"Including mark ${mark.id} in search results; has preview text: '${pr.take(50)}...'")
-                  Some(pr)
+                  if (roughAggregate > 3.0) {
+                    loggerI.trace(s"Including mark ${mark.id} in search results; has preview text: '${pr.take(50)}...'")
+                    Some(pr)
+                  } else {
+                    loggerI.info(s"Excluding mark ${mark.id} from search results; low score ($stringScores) but has preview text: '${pr.take(50)}...'")
+                    None
+                  }
 
                 // mscore is really only used here to prevent FacetTests from returning all 0s
                 // (e.g. exclude search results containing "overcomingbias.com" when searching for "bias")
-                case _ if uraw.coalesce0 + mscore.coalesce0 + praw.coalesce0 < 10.0 =>
-                  if (uraw.coalesce0 + mscore.coalesce0 + praw.coalesce0 > 0.5)
-                    loggerI.debug(f"Excluding mark ${mark.id} from search results; no preview text: p/m/u=$praw%.2f/$mscore%.2f/$uraw%.2f")
+                case _ if roughAggregate < 15.0 =>
+                  if (roughAggregate > 1.0)
+                    loggerI.debug(f"Excluding mark ${mark.id} from search results; no preview text: $stringScores")
                   None
 
                 case _ =>
-                  loggerI.debug(f"Including mark ${mark.id} in search results; has database text matches: p/m/u=$praw%.2f/$mscore%.2f/$uraw%.2f")
+                  loggerI.trace(f"Including mark ${mark.id} in search results; has database text matches: $stringScores")
 
                   def withDots(s: String): String = if (s.length < PREVIEW_LENGTH) s else s"${s.take(PREVIEW_LENGTH)}..."
                   Some(Seq(ptext, utext).filter(_.nonEmpty).map(SearchResults.encode).map(withDots).mkString("<br>"))

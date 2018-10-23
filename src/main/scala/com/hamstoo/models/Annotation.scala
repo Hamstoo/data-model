@@ -50,8 +50,8 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
   def toExtensionJson(implicit callingUserId: UUID): JsObject = Json.obj(
     "id" -> id,
     "color" -> (if (callingUserId == usrId) "orange" else "blue")) ++
-    pageCoord.toJson("pageCoord") ++
-    pageNumber.toJson("pageNumber")
+    pageCoord.toJsOption("pageCoord") ++
+    pageNumber.toJsOption("pageNumber")
 
   /** Overwrite/patch `this` with JSON from the chrome-extension. */
   def mergeExtensionJson(json: JsObject): Annotation
