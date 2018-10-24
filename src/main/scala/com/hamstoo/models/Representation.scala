@@ -345,6 +345,7 @@ object Representation extends BSONHandlers {
   val DTXT: String = nameOf[Representation](_.doctext)
   val OTXT: String = nameOf[Representation](_.othtext)
   val KWORDS: String = nameOf[Representation](_.keywords)
+  val SENTIMENT: String = nameOf[Representation](_.sentiment)
   val N_WORDS: String = nameOf[Representation](_.nWords)
   val VECS: String = nameOf[Representation](_.vectors)
   assert(nameOf[Representation](_.score) == com.hamstoo.models.Mark.SCORE)
