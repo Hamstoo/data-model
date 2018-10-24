@@ -132,6 +132,7 @@ object FacetsModel {
     add[UserSimilarity]()
     add[ConfirmationBias]()
     add[EndowmentBias]()
+    add[Sentiment]()
   }
 
   /**
