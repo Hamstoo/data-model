@@ -54,6 +54,21 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
   Await.result(dbColl() map (_.indexesManager ensure indxs), 393 seconds)
 
   /**
+    * Update Representation.sentiment field.
+    * @param id  Repr ID as an ObjectId/String.
+    */
+  def updateSentiment(id: ObjectId, sent: Double): Future[Unit] = {
+    logger.info(f"Updating repr $id with sentiment $sent%.4f")
+    for {
+      c <- dbColl()
+      wr <- c.update(d :~ ID -> id :~ curnt, d :~ "$set" -> (d :~ SENTIMENT -> sent))
+      _ <- wr failIfError
+    } yield {
+      logger.debug(s"Successfully updated sentiment for repr $id")
+    }
+  }
+
+  /**
     * Given a set of Representation IDs and a query string, return a mapping from ID to
     * Representation instances. Also
     * returns a matching score (and in descending order of this score) as computed by Mongo
