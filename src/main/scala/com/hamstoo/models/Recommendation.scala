@@ -33,6 +33,8 @@ case class Recommendation(userId: UUID,
                           _id: BSONObjectID = BSONObjectID.generate,
                           var versions: Option[Map[String, String]] = None) {
 
+  import Recommendation._
+
   // same technique as is used for Representations
   versions = Some(versions.getOrElse(Map.empty[String, String])
                     .updated("data-model", Option(getClass.getPackage.getImplementationVersion).getOrElse("null")))
@@ -51,11 +53,14 @@ case class Recommendation(userId: UUID,
   def toMark: Mark = {
     val ri = ReprInfo("", ReprType.PUBLIC, expRating = Some(_id.stringify)) // allows for expRating lookup in db
     val md = MarkData(s"$subj [$source/${searchTerms.mkString(",")}]", Some(url), tags = Some(Set(MarkData.RECOMMENDATION_TAG)), recId = Some(_id))
-    Mark(userId, id = "mark-it", mark = md, timeFrom = ts, reprs = Seq(ri))
+    Mark(userId, id = DEFAULT_REC_TO_MARK_ID, mark = md, timeFrom = ts, reprs = Seq(ri))
   }
 }
 
 object Recommendation extends BSONHandlers {
+
+  // probably don't want to include Mark.ID_SUBJ_SEP (i.e. '-') chars in this string
+  val DEFAULT_REC_TO_MARK_ID = "mark_it"
 
   // field names for DAO usage
   val USR      : String =      Mark.USR;        assert(USR       == nameOf[Recommendation](_.userId))
