@@ -3,13 +3,14 @@
  */
 package com.hamstoo.models
 
-import java.net.URL
+import java.net.{URL, URLEncoder}
 import java.util.UUID
 
 import com.github.dwickern.macros.NameOf._
 import com.hamstoo.daos.{ImageDao, MarkDao, RepresentationDao}
 import com.hamstoo.models.Mark.MarkAux
 import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.utils
 import com.hamstoo.utils.{DurationMils, ExtendedString, INF_TIME, MediaType, MetaType, NON_IDS, ObjectId, TIME_NOW, TimeStamp, generateDbId}
 import org.apache.commons.text.StringEscapeUtils
 import org.commonmark.node._
@@ -465,6 +466,13 @@ case class Mark(override val userId: UUID,
   def created1(implicit markDao: MarkDao): Future[Option[TimeStamp]] =
     created.fold(markDao.retrieveCreationTime(id))(t => Future.successful(Some(t)))
 
+  /** Compose a mark's `id` with its `subj` so that we can include it in the mark's URL. */
+  def idWithSubj: String = id + ID_SUBJ_SEP + urlEncodedSubj
+  def urlEncodedSubj: String = {
+    val encodedSubj = utils.parseAN(mark.subj).replaceAll(" ", "_").take(100)
+    URLEncoder.encode(if (encodedSubj.isEmpty) "empty" else encodedSubj, "UTF-8")
+  }
+
   /** A mark has representable user content if it doesn't have a USER_CONTENT repr. */
   def representableUserContent: Boolean = !reprs.exists(_.isUserContent)
 
@@ -660,6 +668,18 @@ object Mark extends BSONHandlers {
 
   // probably a good idea to log this somewhere, and this seems like a good place for it to only happen once
   logger.info("data-model version " + Option(getClass.getPackage.getImplementationVersion).getOrElse("null"))
+
+  // a separator to separate a mark's `id` from its `subj` when composing its singleMark/FPV URL
+  val ID_SUBJ_SEP = "-"
+
+  /**
+    * If the mark's subj has been embedded in the URL then that part is ignored, if not then we respond
+    * with a permanent redirect to the subj-embedded URL.
+    */
+  def parseIdSubj(idSubj: String): (String, Option[String]) = {
+    val parts = idSubj.split(ID_SUBJ_SEP, 2)
+    (parts.head, parts.lift(1))
+  }
 
   case class RangeMils(begin: TimeStamp, end: TimeStamp)
 

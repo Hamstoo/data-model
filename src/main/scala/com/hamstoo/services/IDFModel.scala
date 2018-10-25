@@ -76,7 +76,7 @@ class IDFModel @Inject()(@Named("idfs.resource") zipFileResource: String,
       // try to ignore words containing punctuation or digits by assigning them MIN_IDF, note however that this
       // will include multiple-word terms, like european_otter, which *are* processed correctly by word vec code
       word match {
-        case utils.rgxAlpha(_*) => MIN_IDF
+        case utils.NOT_ALPHA_REGEX(_*) => MIN_IDF
         case _ => maxIdf
       }
     }))

@@ -10,6 +10,7 @@ import akka.util.ByteString
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.Page
 import com.hamstoo.models.Representation.ReprType
+import com.hamstoo.utils
 import com.hamstoo.utils.{MediaType, ObjectId, memoryString}
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
@@ -66,13 +67,13 @@ object ContentRetriever {
     // using a different method here than in HTMLRepresentationService
     case mt if MediaTypeSupport.isHTML(mt) =>
       ByteString(page.content.toArray).utf8String match {
-        case titleRgx(title) => Some(title.trim)
+        case titleRgx(title) => Some(utils.parse(title))
         case _ => None
       }
 
     // this is basically the same technique as in PDFRepresentationService (update: getTitleFormerlyInPDFReprSvc)
     case mt if MediaTypeSupport.isPDF(mt) || MediaTypeSupport.isText(mt) || MediaTypeSupport.isMedia(mt) =>
-      Option(getTitleFormerlyInPDFReprSvc(page)._1).filter(_.nonEmpty)
+      Option(getTitleFormerlyInPDFReprSvc(page)._1).filter(_.nonEmpty).map(utils.parse)
 
     case _ => None
   }
@@ -301,7 +302,7 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
             // withFollowRedirects follows only 301 and 302 redirects, but it also doesn't tell us where we've been
             // redirected to, so we handle 301/302 manually ourselves
             // We need to cover 308 - Permanent Redirect also. The new url can be found in "Location" header.
-            case Status.MOVED_PERMANENTLY | Status.FOUND | Status.PERMANENT_REDIRECT =>
+            case Status.MOVED_PERMANENTLY | Status.FOUND | Status.TEMPORARY_REDIRECT | Status.PERMANENT_REDIRECT =>
               res.header("Location") match {
                 case Some(newUrl) =>
                   logger.debug(s"Following ${res.status} redirect to: $newUrl")

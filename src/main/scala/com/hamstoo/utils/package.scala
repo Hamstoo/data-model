@@ -127,7 +127,11 @@ package object utils {
     }.getOrElse(uri)
   }
 
-  /** Used by backend: AuthController and MarksController. */
+  /**
+    * Used by backend: AuthController and MarksController.  Although in most cases those controllers don't want
+    * the "endpoint link" URL (which is what this returns) but rather the link that the user sees, which is
+    * defined in the frontend's app.routes.js.
+    */
   def endpoint2Link(endpoint: Call, forceSecure: Boolean = false)(implicit request: Request[_]): String =
     httpHost(forceSecure) + endpoint
   def httpHost(forceSecure: Boolean)(implicit request: Request[_]): String =
@@ -332,9 +336,10 @@ package object utils {
   val curnt: Producer[BSONElement] = com.hamstoo.models.Mark.TIMETHRU -> INF_TIME
 
   /** A couple regexes used in `parse` but that which may also be useful elsewhere. */
-  val rgxRepeatedSpace: Regex = raw"\s{2,}".r.unanchored
-  val rgxCRLFT: Regex = raw"[\n\r\t]".r.unanchored
-  val rgxAlpha: UnanchoredRegex = "[^a-zA-Z]".r.unanchored // TODO: https://github.com/Hamstoo/hamstoo/issues/68
+  val REPEATED_SPACE_REGEX: Regex = raw"\s{2,}".r.unanchored // kws: consecutive
+  val CRLFT_REGEX: Regex = raw"[\n\r\t]".r.unanchored
+  val NOT_ALPHA_REGEX: UnanchoredRegex = "[^a-zA-Z]".r.unanchored // TODO: https://github.com/Hamstoo/hamstoo/issues/68
+  val NOT_ALPHA_NUMERIC_REGEX: UnanchoredRegex = "[^a-zA-Z0-9]".r.unanchored
 
   /**
     * Mild string parsing.  Nothing too severe here as these parsed strings are what are stored in the database
@@ -344,7 +349,9 @@ package object utils {
     * included.  This last point is part of what leads to a 418,000-word English vocabulary in which the following
     * words are all found independently: "can't", "can't", and "can't".
     */
-  def parse(s: String): String = rgxRepeatedSpace.replaceAllIn(rgxCRLFT.replaceAllIn(s, " "), " ").trim
+  def parse0(s: String, inner: Regex): String = REPEATED_SPACE_REGEX.replaceAllIn(inner.replaceAllIn(s, " "), " ").trim
+  def parse(s: String): String = parse0(s, CRLFT_REGEX)
+  def parseAN(s: String): String = parse0(s, NOT_ALPHA_NUMERIC_REGEX)
 
   /**
     * `parse` should've already been applied, but use \s+ anyway, just to be safe.  Lowercase'izing to make
