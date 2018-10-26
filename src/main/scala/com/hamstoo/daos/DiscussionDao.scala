@@ -18,14 +18,12 @@ import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
 /**
-  *
-  * Discussion stored for sharing a mark
-  *  and the replies back
+  * Discussions are currently only replies sent to "share" emails, but in the future we may include a
+  * forum section down at the bottom of singleMark/FPV displaying these discussions.  Insertions into
+  * this database collection are triggered by an AWS Lambda function.
   */
-
 @Singleton
 class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
-
 
   val logger: Logger = Logger(getClass)
 
@@ -33,13 +31,13 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
   private def dbColl(): Future[BSONCollection] = db().map(_.collection("discussions"))
 
   // indexes for this mongo collection
+  // TODO: review whether indexes are being properly used
   private val indxs: Map[String, Index] =
-    Index(from -> IndexType.Ascending :: to -> IndexType.Ascending ::
-          topic -> IndexType.Ascending :: TIMESTAMP -> IndexType.Descending :: Nil) %
-      s"bin-$from-1-$to-1-$topic-1-$TIMESTAMP-1" ::
-      Nil toMap;
-  Await.result(dbColl() map (_.indexesManager ensure indxs), 134 seconds)
-
+    Index(FROM -> IndexType.Ascending :: TO -> IndexType.Ascending ::
+          SUBJECT -> IndexType.Ascending :: TIMESTAMP -> IndexType.Descending :: Nil) %
+      s"bin-$FROM-1-$TO-1-$SUBJECT-1-$TIMESTAMP-1" ::
+    Nil toMap;
+  Await.result(dbColl() map (_.indexesManager ensure indxs), 135 seconds)
 
   /** Insert one email in MongoDB */
   def insert(email: Discussion): Future[Unit] = for {
@@ -49,56 +47,35 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
       _ <- wr.failIfError
     } yield logger.info(s"Successfully inserted: $email")
 
-  /**
-    * retrieve all discussions provoked by user
-    * @param email
-    * @return
-    */
-  def retrieveBySender(email: String): Future[Seq[Discussion]] = for {
+  /** retrieve all discussions provoked by user */
+  def retrieveBySender(fromEmail: String): Future[Seq[Discussion]] = for {
     c <- dbColl()
-    _ = logger.info(s"emails send by: $email")
-    q = d :~ from -> email
+    _ = logger.info(s"Retrieving emails sent from $fromEmail")
+    q = d :~ FROM -> fromEmail
     r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
-  /**
-    * retrieve all discussions provoked by user having a specific topic
-    * and
-    * @param email
-    * @param subject
-    * @return
-    */
-  def retrieveBySender(email: String, subject: String): Future[Seq[Discussion]] = for {
+  /** retrieve all discussions provoked by user having a specific topic */
+  def retrieveBySender(fromEmail: String, subject: String): Future[Seq[Discussion]] = for {
     c <- dbColl()
-    _ = logger.info(s"emails send by: $email with subject $subject")
-    q = d :~ from -> email :~ topic -> subject
+    _ = logger.info(s"Retrieving emails sent from $fromEmail with subject '$subject'")
+    q = d :~ FROM -> fromEmail :~ SUBJECT -> subject
     r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
-  /**
-    * retrieve all discussions  addressed to a user
-    * @param email
-    * @return
-    */
-  def retrieveByRecipient(email: String): Future[Seq[Discussion]] = for {
+  /** retrieve all discussions addressed to a user */
+  def retrieveByRecipient(toEmail: String): Future[Seq[Discussion]] = for {
     c <- dbColl()
-    _ = logger.info(s"emails send by: $email")
-    q = d :~ to -> email
+    _ = logger.info(s"Retrieving emails sent to $toEmail")
+    q = d :~ TO -> toEmail
     r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
-  /**
-    * retrieve all discussions addressed to a user having a specific topic
-    * and
-    * @param email
-    * @param subject
-    * @return
-    */
-  def retrieveByRecipient(email: String, subject: String): Future[Seq[Discussion]] = for {
+  /** retrieve all discussions addressed to a user having a specific topic */
+  def retrieveByRecipient(toEmail: String, subject: String): Future[Seq[Discussion]] = for {
     c <- dbColl()
-    _ = logger.info(s"emails received by: $email with subject $subject")
-    q = d :~ to -> email :~ topic -> subject
+    _ = logger.info(s"Retrieving emails sent to $toEmail with subject '$subject'")
+    q = d :~ TO -> toEmail :~ SUBJECT -> subject
     r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
-
 }
