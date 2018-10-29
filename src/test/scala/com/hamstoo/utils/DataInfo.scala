@@ -32,7 +32,6 @@ object DataInfo {
   lazy val config: Config = ConfigFactory.parseString(s"""vectors.link = "http://localhost:5000"
                                                          |idfs.resource = idfs/text8.json.zip
                                                          |mongodb.uri = "mongodb://localhost:$mongoPort/hamstoo"
-                                                         |yacy.url = "http://localhost:8090"
                                                          |""".stripMargin)
 
   // create a Guice object graph configuration/module and instantiate it to an injector
