@@ -145,7 +145,7 @@ case class MarkData(subj: String,
               .foreach { ext0 =>
                 val ext = if (ext0.nonEmpty && ext0 != "*") ext0 else "png" // exclude "image/*", just guess
                 metaTags(MetaType.IMAGE) += "." + ext
-                logger.debug(s"Extension appended to `${MetaType.IMAGE}` meta tag: ${metaTags(MetaType.IMAGE)}")
+                logger.debug(s"File extension appended to `${MetaType.IMAGE}` meta tag: ${metaTags(MetaType.IMAGE)}")
               }
 
             val imgTags = Seq(
