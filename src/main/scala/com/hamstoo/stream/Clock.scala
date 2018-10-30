@@ -132,10 +132,20 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
     */
   private[this] var nullTickSent: Boolean = false
   private[this] val nullTick = Tick(0, 0)
+  private[this] var firstNonNullTickLogged = false
 
   // TODO: when nullTick gets filtered out must upstream demand be re-demanded or is upstream demand still present?
   // TODO:   this could be the cause of the Await.result problem above
-  override def out: SourceType = super.out.filter(_ != nullTick)
+  override def out: SourceType = super.out.filter { tick =>
+    if (tick == nullTick) {
+      logger.info("Filtering out clock's null tick")
+      false
+    } else {
+      if (!firstNonNullTickLogged) logger.info("Logging first non-null tick")
+      firstNonNullTickLogged = true
+      true
+    }
+  }
 }
 
 object Clock {

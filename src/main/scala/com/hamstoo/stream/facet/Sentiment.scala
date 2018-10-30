@@ -31,7 +31,7 @@ class Sentiment @Inject()(repredMarks: RepredMarks)(implicit mat: Materializer) 
 object Sentiment {
   // for some reason the way we compute sentiment values leads to lots of negatives, though perhaps not on
   // stage, in the future maybe we should correct for skew also
-  // > db.representations.find({sentiment:{$exists:1}}, {sentiment:1, _id:0})
+  // > db.representations.find({sentiment:{$exists:1, $ne:0}}, {sentiment:1, _id:0})
   // LOCAL:
   // { "sentiment" : -0.32608695652173914 }
   // { "sentiment" : -0.35873015873015873 }
@@ -40,15 +40,12 @@ object Sentiment {
   // { "sentiment" : -0.8 }
   // { "sentiment" : -0.4444444444444444 }
   // { "sentiment" : -0.8333333333333334 }
-  // { "sentiment" : 0 }
   // { "sentiment" : -0.3333333333333333 }
   // STAGE:
-  // { "sentiment" : 0 }
   // { "sentiment" : 0.14285714285714285 }
-  // { "sentiment" : 0 }
-  // { "sentiment" : 0 }
-  // { "sentiment" : 0 }
+  // { "sentiment" : -0.8275862068965517 }
+  // { "sentiment" : -1 }
   // { "sentiment" : 0.75 }
-  // { "sentiment" : 0 }
+  // { "sentiment" : -0.4444444444444444 }
   val DEFAULT_SENTIMENT: Double = 0.0
 }
