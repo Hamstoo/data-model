@@ -10,6 +10,7 @@ import com.google.inject.Inject
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TIME_NOW, TimeStamp}
 import org.joda.time.DateTime
 
+import scala.annotation.tailrec
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Promise}
 
@@ -78,8 +79,40 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
 
           // wait for `started` to be true before ticks start ticking
           if (!started.future.isCompleted) {
-            logger.info(s"Infinitely awaiting clock to start")
-            Await.result(started.future, Duration.Inf)
+            logger.info(s"Infinitely awaiting clock to start...")
+
+            //Await.result(started.future, Duration.Inf)
+
+            // sometimes Await'ing here doesn't work ...
+            // 2018-10-29 23:03:14,519 [info] c.h.s.Clock(153) - Constructing Clock(2017-01-01Z [1483.2288], 2018-10-29T23:03:14.518Z [1540.854194518], 100.0 days [8.64]) (hashCode=755499532)
+            // 2018-10-29 23:03:14,544 [info] c.h.s.Clock(153) - Sending clock's null tick
+            // 2018-10-29 23:03:14,545 [info] c.h.s.Clock(153) - Starting Clock(2017-01-01Z [1483.2288], 2018-10-29T23:03:14.518Z [1540.854194518], 100.0 days [8.64])
+            // 2018-10-29 23:03:14,546 [info] c.h.s.Clock(153) - Infinitely awaiting clock to start
+            // 2018-10-29 23:03:14,551 [debug] c.h.d.MarkDao(122) - Retrieving marks for user 99999999-9999-aaaa-aaaa-aaaaaaaaaaaa and tags Set() between 2017-02-05Z [1486.2528] and 2017-08-07Z [1502.064] (requireRepr=false)
+            // ...
+            // 2018-10-29 23:03:14,583 [debug] c.h.d.RepresentationDao(122) - Retrieved 0 representations given 0 IDs (0.007 seconds)
+            // java.util.concurrent.TimeoutException: Timeout occurred after 60004 milliseconds
+
+            // ... and sometimes it does ...
+            // 2018-10-29 19:46:49,739 [info] c.h.s.Clock(153) - Constructing Clock(2017-01-01T05Z [1483.2468], 2018-10-29T23:46:49.738Z [1540.856809738], 100.0 days [8.64]) (hashCode=1415138947)
+            // 2018-10-29 19:46:49,740 [info] c.h.s.Clock(153) - Sending clock's null tick
+            // 2018-10-29 19:46:49,742 [info] c.h.s.Clock(153) - Infinitely awaiting clock to start
+            // 2018-10-29 19:46:49,746 [info] c.h.s.Clock(153) - Starting Clock(2017-01-01T05Z [1483.2468], 2018-10-29T23:46:49.738Z [1540.856809738], 100.0 days [8.64])
+            // 2018-10-29 19:46:49,749 [debug] c.h.d.MarkDao(122) - Retrieving marks for user 99999999-9999-aaaa-aaaa-aaaaaaaaaaaa and tags Set() between 2016-08-06Z [1470.4416] and 2017-02-05Z [1486.2528] (requireRepr=false)
+
+            // ... which seems to have to do with "Infinitely" occurring after "Starting" race condition somehow ...
+            // TODO: ... or perhaps the whole nullTick thing isn't properly addressing the BroadcastHub issue?
+
+            @tailrec
+            def wait10(): Unit = {
+              Thread.sleep(10000)
+              if (!started.future.isCompleted) {
+                logger.info(s"Waiting another 10 seconds for clock to start...")
+                wait10()
+              }
+            }
+
+            wait10()
           }
 
           // would it ever make sense to have a clock Datum's knownTime be different from its sourceTime or val?
@@ -101,6 +134,9 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
     */
   private[this] var nullTickSent: Boolean = false
   private[this] val nullTick = Tick(0, 0)
+
+  // TODO: when nullTick gets filtered out must upstream demand be re-demanded or is upstream demand still present?
+  // TODO:   this could be the cause of the Await.result problem above
   override def out: SourceType = super.out.filter(_ != nullTick)
 }
 
