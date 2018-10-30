@@ -13,6 +13,7 @@ import org.joda.time.DateTime
 import scala.annotation.tailrec
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Promise}
+import scala.util.{Success, Try}
 
 /**
   * A mocked clock, implemented as an Akka Source.
@@ -104,12 +105,9 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
             // TODO: ... or perhaps the whole nullTick thing isn't properly addressing the BroadcastHub issue?
 
             @tailrec
-            def wait10(): Unit = {
-              Thread.sleep(10000)
-              if (!started.future.isCompleted) {
-                logger.info(s"Waiting another 10 seconds for clock to start...")
-                wait10()
-              }
+            def wait10(): Unit = Try(Await.result(started.future, 10 seconds)) match {
+              case Success(_) => logger.info("Done waiting for clock to start"); ()
+              case _ => logger.info(s"Waiting another 10 seconds for clock to start..."); wait10()
             }
 
             wait10()
