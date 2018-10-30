@@ -5,6 +5,7 @@ package com.hamstoo.stream.config
 
 import com.google.inject.name.Names
 import com.hamstoo.services.IDFModel
+import com.hamstoo.stream.InjectId
 import com.typesafe.config.{Config, ConfigValueFactory}
 
 /**
@@ -20,7 +21,7 @@ case class ConfigModule(config: Config) extends BaseModule {
   override def configure(): Unit = {
     logger.debug(s"Configuring module: ${classOf[ConfigModule].getName}")
     bindConfigParams[String]("idfs.resource", "vectors.link", "mongodb.uri")
-    classOf[Config] := config
+    InjectId[Config]("config") := config // <- must be @Named b/c hamstoo/GeneralModule also binds a Config instance
     IDFModel.ResourcePathOptional ?= None
   }
 
