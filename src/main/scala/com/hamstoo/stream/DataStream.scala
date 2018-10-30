@@ -320,6 +320,8 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I],
   // Note: This isn't working properly for some reason.  We aren't seeing the first couple MarksStream logs when
   // computing UserStats.  And then, nondeterministically, sometimes MarksStream misses the first clock tick causing
   // a timeout to occur.
+  // TODO: should this occur after clock has been started?
+  logger.info(s"Signaling demand from ${subject.getClass.getSimpleName} with Sink.ignore")
   val _: Future[Done] = subject.out
     .map { x => logger.debug(s"PreloadObserver.subject(${subject.getClass.getSimpleName}): ${x.knownTimeMax.tfmt}") }
     .runWith(Sink.ignore)
