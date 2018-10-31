@@ -34,7 +34,11 @@ import scala.util.{Failure, Success, Try}
 object ContentRetriever {
 
   val logger = Logger(classOf[ContentRetriever])
-  val titleRgx: Regex = "(?i)<title.*>([^<]+)</title>".r.unanchored
+
+  val TITLE_REGEX: Regex = "(?i)<title.*>([^<]+)</title>".r.unanchored
+
+  // alternatively search for some JavaScript variable named `title` or `blog_title` or whatever
+  val JS_TITLE_REGEX: Regex = raw"""var.+title\s*=\s*['"](.+)['"];""".r.unanchored
   
   // %s - variable to be changed by String.format (quoted to avoid regex errors)
   val REGEX_FIND_WORD = ".*%s.*"
@@ -67,7 +71,8 @@ object ContentRetriever {
     // using a different method here than in HTMLRepresentationService
     case mt if MediaTypeSupport.isHTML(mt) =>
       ByteString(page.content.toArray).utf8String match {
-        case titleRgx(title) => Some(utils.parse(title))
+        case TITLE_REGEX(title) => Some(utils.parse(title))
+        case JS_TITLE_REGEX(title) => Some(utils.parse(title))
         case _ => None
       }
 
@@ -227,6 +232,7 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
     // switched to using `digest` only and never using `retrieveBinary` (issue #205)
     for {
       digested <- digest(url).map { case (red, wsResp) =>
+                    //utils.cleanlyWriteFile("/tmp/digested.txt") { fp => fp.write(wsResp.body) }
                     Page("bogusMarkId", reprType, wsResp.bodyAsBytes.toArray, redirectedUrl = Some(red))
                   }
       frameless <- if (!MediaTypeSupport.isHTML(mediaType)) Future.successful(digested)
@@ -321,7 +327,8 @@ class ContentRetriever @Inject()(httpClient: WSClient)(implicit ec: ExecutionCon
 
   /** Convenience method as we're doing this in more than one place now. */
   def getTitle(url: String): Future[(String, Option[String])] =
-    retrieve(ReprType.PRIVATE, url).map { page => // ReprType doesn't matter here
+    // ReprType doesn't matter here
+    retrieve(ReprType.PRIVATE, url).map { page =>
       page.redirectedUrl.get -> ContentRetriever.getTitle(page)
     }
 
