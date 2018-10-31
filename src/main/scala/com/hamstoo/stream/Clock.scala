@@ -48,6 +48,12 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
   def start(): Unit = {
     logger.info(s"\033[33mStarting $this\033[0m")
     started.success {}
+
+    // TODO: maybe signal demand in here to ensure that Source.fromIterator.next gets triggered
+    /*logger.info(s"Signaling demand from ${getClass.getSimpleName} with Sink.ignore")
+    val _: Future[Done] = out
+      .map { x => logger.debug(s"Clock: ${x.knownTime.tfmt}") }
+      .runWith(Sink.ignore)*/
   }
 
   /** Source derived from an iterator, not a range, for one so that intervals may eventually be made irregular. */

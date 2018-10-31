@@ -313,14 +313,27 @@ abstract class PreloadObserver[-I, +O](subject: PreloadSource[I],
   // don't forget to observe the subject, which is the whole reason why we're here
   subject.registerPreloadObserver(this)
 
-  // must signal demand from primary `out` source, o/w there might not be any data produced by the `subject` to
-  // observe (`subject` is a PreloadSource, so it depends on the clock, which means there's no chance of Sink.ignore
-  // chewing through BroadcastHub subject.out's messages as they can't be constructed w/out clock)
-  // [https://blog.softwaremill.com/akka-streams-pitfalls-to-avoid-part-2-f93e60746c58]
+  //
+  // Must signal demand from primary `out` source; o/w there might not be any data produced by the `subject` to
+  // observe.  Here's what the dependency graph could now look like:
+  //
+  //    clock -> subject/PreloadSource -> Sink.ignore
+  //    clock -> this/PreloadObserver -> consumer
+  //
+  // The important thing to note here is that the PreloadObserver isn't hooked up to the PreloadSource through the
+  // typical functional chaining of streams.  Instead it uses Subject-Observer Pattern via its overridden `preload`
+  // method which waits to be signaled observerPipe.offer above.  So without this Sink.ignore the subject/PreloadSource
+  // could very well be completely consumer-less and thus never receive any stream demand.
+  //
+  // Also note that `subject` is a PreloadSource, so it depends on the clock, which means there's no chance of
+  // Sink.ignore chewing through BroadcastHub subject.out's messages as they can't be constructed w/out clock ticks.
+  //   [https://blog.softwaremill.com/akka-streams-pitfalls-to-avoid-part-2-f93e60746c58]
+  //
   // Note: This isn't working properly for some reason.  We aren't seeing the first couple MarksStream logs when
   // computing UserStats.  And then, nondeterministically, sometimes MarksStream misses the first clock tick causing
   // a timeout to occur.
-  // TODO: should this occur after clock has been started?
+  // TODO: Should this occur after clock has been started?  Also see "maybe signal demand" comment in Clock.scala.
+  //
   logger.info(s"Signaling demand from ${subject.getClass.getSimpleName} with Sink.ignore")
   val _: Future[Done] = subject.out
     .map { x => logger.debug(s"PreloadObserver.subject(${subject.getClass.getSimpleName}): ${x.knownTimeMax.tfmt}") }
