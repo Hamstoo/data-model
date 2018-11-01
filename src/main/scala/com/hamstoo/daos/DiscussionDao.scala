@@ -34,8 +34,8 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
   // TODO: indexes are too complex to be properly used by current queries
   private val indxs: Map[String, Index] =
     Index(SENDR -> IndexType.Ascending :: RECIP -> IndexType.Ascending ::
-          SUBJECT -> IndexType.Ascending :: TIMESTAMP -> IndexType.Descending :: Nil) %
-      s"bin-$SENDR-1-$RECIP-1-$SUBJECT-1-$TIMESTAMP-1" ::
+          MARKID -> IndexType.Ascending :: TIMESTAMP -> IndexType.Descending :: Nil) %
+      s"bin-$SENDR-1-$RECIP-1-$MARKID-1-$TIMESTAMP-1" ::
     Nil toMap;
   Await.result(dbColl() map (_.indexesManager ensure indxs), 135 seconds)
 
@@ -55,11 +55,11 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
     r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
-  /** retrieve all discussions provoked by user having a specific topic */
-  def retrieveBySender(fromEmail: String, subject: String): Future[Seq[Discussion]] = for {
+  /** retrieve all discussions provoked by user having a specific markId */
+  def retrieveBySender(fromEmail: String, markId: String): Future[Seq[Discussion]] = for {
     c <- dbColl()
-    _ = logger.info(s"Retrieving emails sent from $fromEmail with subject '$subject'")
-    q = d :~ SENDR -> fromEmail :~ SUBJECT -> subject
+    _ = logger.info(s"Retrieving emails sent from $fromEmail with subject '$markId'")
+    q = d :~ SENDR -> fromEmail :~ MARKID -> markId
     r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
@@ -71,11 +71,11 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
     r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
-  /** retrieve all discussions addressed to a user having a specific topic */
-  def retrieveByRecipient(toEmail: String, subject: String): Future[Seq[Discussion]] = for {
+  /** retrieve all discussions addressed to a user having a specific markId */
+  def retrieveByRecipient(toEmail: String, markId: String): Future[Seq[Discussion]] = for {
     c <- dbColl()
-    _ = logger.info(s"Retrieving emails sent to $toEmail with subject '$subject'")
-    q = d :~ RECIP -> toEmail :~ SUBJECT -> subject
+    _ = logger.info(s"Retrieving emails sent to $toEmail with subject '$markId'")
+    q = d :~ RECIP -> toEmail :~ MARKID -> markId
     r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 }

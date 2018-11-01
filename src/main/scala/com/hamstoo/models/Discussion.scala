@@ -40,7 +40,7 @@ object Discussion extends BSONHandlers {
 
   val SENDR: String = nameOf[Discussion](_.sender)
   val RECIP: String = nameOf[Discussion](_.recipient)
-  val SUBJECT: String = nameOf[Discussion](_.subject)
+  val MARKID: ObjectId = nameOf[Discussion](_.markId)
   val TIMESTAMP: String = UserStats.TIMESTAMP;  assert(TIMESTAMP == nameOf[Discussion](_.ts))
 
   implicit val discussionHandler: BSONDocumentHandler[Discussion] = Macros.handler[Discussion]
