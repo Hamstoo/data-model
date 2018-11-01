@@ -10,8 +10,10 @@ import com.google.inject.Inject
 import com.hamstoo.utils.{DurationMils, ExtendedDurationMils, ExtendedTimeStamp, TIME_NOW, TimeStamp}
 import org.joda.time.DateTime
 
+import scala.annotation.tailrec
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Promise}
+import scala.util.{Success, Try}
 
 /**
   * A mocked clock, implemented as an Akka Source.
@@ -46,6 +48,12 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
   def start(): Unit = {
     logger.info(s"\033[33mStarting $this\033[0m")
     started.success {}
+
+    // TODO: maybe signal demand in here to ensure that Source.fromIterator.next gets triggered
+    /*logger.info(s"Signaling demand from ${getClass.getSimpleName} with Sink.ignore")
+    val _: Future[Done] = out
+      .map { x => logger.debug(s"Clock: ${x.knownTime.tfmt}") }
+      .runWith(Sink.ignore)*/
   }
 
   /** Source derived from an iterator, not a range, for one so that intervals may eventually be made irregular. */
@@ -69,17 +77,46 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
 
         // send a nullTick that consumers won't ever see (due to the filter in `out`) but which will trigger
         // BroadcastHub's GraphStageLogic.createLogic if it didn't run upon hub construction (issue #340)
-        if (!nullTickSent) {
+        /*if (!nullTickSent) {
           logger.info(s"Sending clock's null tick")
           nullTickSent = true
           nullTick
 
-        } else {
+        } else {*/
 
           // wait for `started` to be true before ticks start ticking
           if (!started.future.isCompleted) {
-            logger.info(s"Infinitely awaiting clock to start")
-            Await.result(started.future, Duration.Inf)
+            logger.info(s"Infinitely awaiting clock to start...")
+
+            //Await.result(started.future, Duration.Inf)
+
+            // sometimes Await'ing here doesn't work ...
+            // 2018-10-29 23:03:14,519 [info] c.h.s.Clock(153) - Constructing Clock(2017-01-01Z [1483.2288], 2018-10-29T23:03:14.518Z [1540.854194518], 100.0 days [8.64]) (hashCode=755499532)
+            // 2018-10-29 23:03:14,544 [info] c.h.s.Clock(153) - Sending clock's null tick
+            // 2018-10-29 23:03:14,545 [info] c.h.s.Clock(153) - Starting Clock(2017-01-01Z [1483.2288], 2018-10-29T23:03:14.518Z [1540.854194518], 100.0 days [8.64])
+            // 2018-10-29 23:03:14,546 [info] c.h.s.Clock(153) - Infinitely awaiting clock to start
+            // 2018-10-29 23:03:14,551 [debug] c.h.d.MarkDao(122) - Retrieving marks for user 99999999-9999-aaaa-aaaa-aaaaaaaaaaaa and tags Set() between 2017-02-05Z [1486.2528] and 2017-08-07Z [1502.064] (requireRepr=false)
+            // ...
+            // 2018-10-29 23:03:14,583 [debug] c.h.d.RepresentationDao(122) - Retrieved 0 representations given 0 IDs (0.007 seconds)
+            // java.util.concurrent.TimeoutException: Timeout occurred after 60004 milliseconds
+
+            // ... and sometimes it does ...
+            // 2018-10-29 19:46:49,739 [info] c.h.s.Clock(153) - Constructing Clock(2017-01-01T05Z [1483.2468], 2018-10-29T23:46:49.738Z [1540.856809738], 100.0 days [8.64]) (hashCode=1415138947)
+            // 2018-10-29 19:46:49,740 [info] c.h.s.Clock(153) - Sending clock's null tick
+            // 2018-10-29 19:46:49,742 [info] c.h.s.Clock(153) - Infinitely awaiting clock to start
+            // 2018-10-29 19:46:49,746 [info] c.h.s.Clock(153) - Starting Clock(2017-01-01T05Z [1483.2468], 2018-10-29T23:46:49.738Z [1540.856809738], 100.0 days [8.64])
+            // 2018-10-29 19:46:49,749 [debug] c.h.d.MarkDao(122) - Retrieving marks for user 99999999-9999-aaaa-aaaa-aaaaaaaaaaaa and tags Set() between 2016-08-06Z [1470.4416] and 2017-02-05Z [1486.2528] (requireRepr=false)
+
+            // ... which seems to have to do with "Infinitely" occurring after "Starting" race condition somehow ...
+            // TODO: ... or perhaps the whole nullTick thing isn't properly addressing the BroadcastHub issue?
+
+            @tailrec
+            def wait10(): Unit = Try(Await.result(started.future, 10 seconds)) match {
+              case Success(_) => logger.info("Done waiting for clock to start"); ()
+              case _ => logger.info(s"Waiting another 10 seconds for clock to start..."); wait10()
+            }
+
+            wait10()
           }
 
           // would it ever make sense to have a clock Datum's knownTime be different from its sourceTime or val?
@@ -87,7 +124,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
           currentTime = math.min(currentTime + interval, end) // ensure we don't go beyond `end`
           logger.debug(s"\033[33mTICK: ${currentTime.tfmt}\033[0m")
           Tick(currentTime, previousTime)
-        }
+        //}
       }
     }
   }.named("Clock")
@@ -99,9 +136,22 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
     *   https://github.com/akka/akka/issues/25608
     *   https://github.com/fcrimins/akka/tree/wip-hub-deadlock-akka-stream
     */
-  private[this] var nullTickSent: Boolean = false
+  /*private[this] var nullTickSent: Boolean = false
   private[this] val nullTick = Tick(0, 0)
-  override def out: SourceType = super.out.filter(_ != nullTick)
+  private[this] var firstNonNullTickLogged = false*/
+
+  // TODO: when nullTick gets filtered out must upstream demand be re-demanded or is upstream demand still present?
+  // TODO:   this could be the cause of the Await.result problem above
+  /*override def out: SourceType = super.out.filter { tick =>
+    if (tick == nullTick) {
+      logger.info("Filtering out clock's null tick")
+      false
+    } else {
+      if (!firstNonNullTickLogged) logger.info("Logging first non-null tick")
+      firstNonNullTickLogged = true
+      true
+    }
+  }*/
 }
 
 object Clock {

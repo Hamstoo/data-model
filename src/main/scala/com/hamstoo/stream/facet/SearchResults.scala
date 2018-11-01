@@ -240,10 +240,10 @@ class SearchResults @Inject()(@Named(Query2Vecs.name) mbQuery2Vecs: Query2Vecs.t
 
                 case pr if pr.nonEmpty || WHICH_PREVIEW_TEXT == 0 =>
                   if (roughAggregate > 3.0) {
-                    loggerI.trace(s"Including mark ${mark.id} in search results; has preview text: '${pr.take(50)}...'")
+                    loggerI.trace(s"Including mark ${mark.id} in search results; has preview text: '${pr.take(100)}...'")
                     Some(pr)
                   } else {
-                    loggerI.info(s"Excluding mark ${mark.id} from search results; low score ($stringScores) but has preview text: '${pr.take(50)}...'")
+                    loggerI.info(s"Excluding mark ${mark.id} from search results; low score ($stringScores) but has preview text: '${pr.take(100)}...'")
                     None
                   }
 

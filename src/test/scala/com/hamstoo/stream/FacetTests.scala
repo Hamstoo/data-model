@@ -7,7 +7,7 @@ import java.util.UUID
 
 import akka.stream._
 import akka.stream.scaladsl.Sink
-import com.google.inject.{Inject, Injector, Provides, Singleton}
+import com.google.inject.{Injector, Provides, Singleton}
 import com.hamstoo.models.Mark.{MarkAux, RangeMils}
 import com.hamstoo.models._
 import com.hamstoo.models.Representation.{ReprType, UserVecEnum, Vec, VecEnum}
@@ -77,6 +77,10 @@ class FacetTests
     sumFacetValues[EndowmentBias] shouldBe (0.089 +- 0.001)
   }
 
+  it should "compute Sentiment" in {
+    sumFacetValues[Sentiment] shouldBe (0.52 +- 0.001)
+  }
+
   def sumFacetValues[A :ClassTag]: Double = {
     val facetName = classTag[A].runtimeClass.getSimpleName
     facetsSeq.filter(_._1 == facetName)
@@ -98,7 +102,7 @@ class FacetTests
       .map { d => logger.info(s"\033[37m$facetName (different users): $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
     x shouldBe (4.74 +- 0.01) // would be same as above 27.94 if not for access permissions
-    facetsDiffUsers.size shouldBe 16 // this value increases by 2 each time a facet is added to FacetsModel.Default
+    facetsDiffUsers.size shouldBe 18 // this value increases by 2 each time a facet is added to FacetsModel.Default
     scoreDiffUsers.size shouldBe 2
   }
 
@@ -135,7 +139,8 @@ class FacetTests
 
       // UserSimilarity only looks at the IDF-weighted vector of the reprs
       val vs = Map(VecEnum.IDF.toString -> Seq(ts.dt.getDayOfMonth.toDouble, 3.0, 2.0))
-      val r = baseRepr.copy(id = s"r_${ts.Gs}_$idSuffix", vectors = vs, doctext = subj)
+      val sent = Some((i.toDouble / nMarks) - 0.17)
+      val r = baseRepr.copy(id = s"r_${ts.Gs}_$idSuffix", vectors = vs, doctext = subj, sentiment = sent)
       val rating = if (i == 0) None else Some(i.toDouble)
       val aux = if (i == 2) None else Some(MarkAux(Some(Seq(RangeMils(0, i * 1000 * 60))), None, nOwnerVisits = Some(i)))
 

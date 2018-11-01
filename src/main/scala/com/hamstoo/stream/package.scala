@@ -60,6 +60,10 @@ package object stream {
     * Guice uses a (type, optional name) pair to uniquely identify bindings.  Instances of this class are that pair
     * _with_ the optional name.
     *
+    * For example, to use one of these things for binding inside a Module.configure method:
+    *   InjectId[Double]("name_key") := 2.5
+    *   InjectId[String]("name_key") := "some_value"
+    *
     * See also: `static <T> Key<T> get(Class<T> type, AnnotationStrategy annotationStrategy)` in Key.java
     *   In other words, Guice already has this concept, but the name value can't be made `final`/constant.
     */

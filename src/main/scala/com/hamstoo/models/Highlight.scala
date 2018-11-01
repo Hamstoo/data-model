@@ -51,7 +51,7 @@ case class Highlight(usrId: UUID,
                      endPageNumber: Option[Int] = None,
                      preview: Highlight.Preview,
                      memeId: Option[String] = None,
-                     notFound: Option[String] = None,
+                     notFound: Option[Boolean] = None,
                      timeFrom: TimeStamp = TIME_NOW,
                      timeThru: TimeStamp = INF_TIME) extends Annotation {
 
