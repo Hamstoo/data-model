@@ -83,6 +83,10 @@ case class UserData(firstName: Option[String] = None,
   }
 }
 
+case class ExcludedDomains(domain: String, counter: Int = 0) {
+  def isBannedForever(): Boolean = counter > 5
+}
+
 /**
   * Finally, the full User object that is stored in the database for each user.  Notice that this class
   * extends Silhouette's Identity trait.
@@ -90,7 +94,7 @@ case class UserData(firstName: Option[String] = None,
   * @param userData  A single base UserData object.
   * @param profiles  A list of linked social Profiles.
   */
-case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends Identity {
+case class User(id: UUID, userData: UserData, profiles: List[Profile], excludedDomains: Option[List[ExcludedDomains]] = None) extends Identity {
 
   /** Returns the Profile corresponding to the given LoginInfo. */
   def profileFor(loginInfo: LoginInfo): Option[Profile] = profiles.find(_.loginInfo == loginInfo)
@@ -130,7 +134,10 @@ object User extends BSONHandlers {
   val OA2NF: String = nameOf[Profile](_.oAuth2Info)
   val PLINFOx: String = PROFILES + "." + LINFO
   val PEMAILx: String = PROFILES + "." + nameOf[Profile](_.email)
+  val EXCLDOM: String = nameOf[User](_.excludedDomains)
+  val DOM: String = nameOf[ExcludedDomains](_.domain)
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
+  implicit val excludedDomainsHandler: BSONDocumentHandler[ExcludedDomains]= Macros.handler[ExcludedDomains]
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]
 }

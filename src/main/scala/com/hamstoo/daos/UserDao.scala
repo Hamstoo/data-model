@@ -50,6 +50,7 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
     Index(ID -> Ascending :: Nil, unique = true) % s"bin-$ID-1-uniq" ::
     Index(PEMAILx -> Ascending :: Nil) % s"bin-$PEMAILx-1" ::
     Index(UNAMELOWx -> Ascending :: Nil, unique = true) % s"bin-$UNAMELOWx-1-uniq" ::
+    Index(DOM -> Ascending :: Nil, unique = true) % s"bin-$DOM-1-uniq" ::
     Nil toMap;
   Await.result(dbColl().map(_.indexesManager.ensure(indxs)), 323 seconds)
 
@@ -119,6 +120,13 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
     upd = d :~ "$set" -> (d :~ s"$PROFILES.$$" -> profile)
     wr <- c.findAndUpdate(d :~ PLINFOx -> profile.loginInfo, upd, fetchNewObject = true)
   } yield wr.result[User].get
+
+  def updateExcludedDomains(userId: UUID, domainList: List[ExcludedDomains]) = for {
+    c <- dbColl()
+    u = d :~ ID -> userId.toString
+    upd = d :~ "$set" -> (d :~ "excludedDomains" -> domainList)
+    wr <- c.findAndUpdate(u, upd, fetchNewObject = true)
+  } yield  wr.result[User].get
 
   /** Sets one of user account profiles to 'confirmed' by login. */
   def confirm(loginInfo: LoginInfo): Future[User] = for {
