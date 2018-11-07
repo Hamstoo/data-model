@@ -102,11 +102,15 @@ object DomainAutomarkDeleteCount {
   * @param id        Unique ID.
   * @param userData  A single base UserData object.
   * @param profiles  A list of linked social Profiles.
+  * @param domainAutomarkDeleteCounts0  Sequence of domains that were automarked but then deleted and a deletion count.
+  * @param fbLiked  True if user Liked our site, false if user chose to 'Skip' Liking our site, None if user
+  *                 has not yet been queried by facebook-like-modal.html and forced to choose between the two.
   */
 case class User(id: UUID,
                 userData: UserData,
                 profiles: List[Profile],
-                domainAutomarkDeleteCounts0: Option[Seq[DomainAutomarkDeleteCount]] = None) extends Identity {
+                domainAutomarkDeleteCounts0: Option[Seq[DomainAutomarkDeleteCount]] = None,
+                fbLiked: Option[Boolean] = None) extends Identity {
 
   /** Returns the Profile corresponding to the given LoginInfo. */
   def profileFor(loginInfo: LoginInfo): Option[Profile] = profiles.find(_.loginInfo == loginInfo)
@@ -151,6 +155,7 @@ object User extends BSONHandlers {
   val PLINFOx: String = PROFILES + "." + LINFO
   val PEMAILx: String = PROFILES + "." + nameOf[Profile](_.email)
   val EXCLDOM: String = nameOf[User](_.domainAutomarkDeleteCounts)
+  val LIKED: String = nameOf[User](_.fbLiked)
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
   implicit val dadcHandler: BSONDocumentHandler[DomainAutomarkDeleteCount] = Macros.handler[DomainAutomarkDeleteCount]
