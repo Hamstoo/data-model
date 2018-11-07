@@ -120,6 +120,14 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
     wr <- c.findAndUpdate(d :~ PLINFOx -> profile.loginInfo, upd, fetchNewObject = true)
   } yield wr.result[User].get
 
+  /** Update the list of domains for which automarks were deleted (issue #364). */
+  def updateDomainAutomarkDeleteCounts(userId: UUID, domains: Seq[DomainAutomarkDeleteCount]): Future[User] = for {
+    c <- dbColl()
+    u = d :~ ID -> userId.toString
+    upd = d :~ "$set" -> (d :~ EXCLDOM -> domains) // TODO 364: should $push be used here instead?
+    wr <- c.findAndUpdate(u, upd, fetchNewObject = true)
+  } yield  wr.result[User].get
+
   /** Sets one of user account profiles to 'confirmed' by login. */
   def confirm(loginInfo: LoginInfo): Future[User] = for {
     c <- dbColl()

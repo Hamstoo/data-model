@@ -84,13 +84,29 @@ case class UserData(firstName: Option[String] = None,
 }
 
 /**
+  * Issue #364: If user repeatedly deletes automarks from a certain domain, then stop automarking that domain.
+  * @param domain  The automarked domain name.
+  * @param n  The number of timesa automarks of this domain have been deleted.
+  */
+case class DomainAutomarkDeleteCount(domain: String, n: Int = 0) {
+  def canBeAutomarked: Boolean = n < DomainAutomarkDeleteCount.MAX_AUTOMARK_DOMAIN_DELETES
+}
+
+object DomainAutomarkDeleteCount {
+  val MAX_AUTOMARK_DOMAIN_DELETES = 5
+}
+
+/**
   * Finally, the full User object that is stored in the database for each user.  Notice that this class
   * extends Silhouette's Identity trait.
   * @param id        Unique ID.
   * @param userData  A single base UserData object.
   * @param profiles  A list of linked social Profiles.
   */
-case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends Identity {
+case class User(id: UUID,
+                userData: UserData,
+                profiles: List[Profile],
+                domainAutomarkDeleteCounts0: Option[Seq[DomainAutomarkDeleteCount]] = None) extends Identity {
 
   /** Returns the Profile corresponding to the given LoginInfo. */
   def profileFor(loginInfo: LoginInfo): Option[Profile] = profiles.find(_.loginInfo == loginInfo)
@@ -109,6 +125,10 @@ case class User(id: UUID, userData: UserData, profiles: List[Profile]) extends I
 
   /** Returns a @username or UUID if username is absent--useful for logging. */
   def usernameId: String = userData.username.fold(id.toString)("@" + _)
+
+  /** Convenience interface to domainAutomarkDeleteCounts0. */
+  def domainAutomarkDeleteCounts: Seq[DomainAutomarkDeleteCount] =
+    domainAutomarkDeleteCounts0.getOrElse(Seq.empty[DomainAutomarkDeleteCount])
 }
 
 object User extends BSONHandlers {
@@ -130,7 +150,9 @@ object User extends BSONHandlers {
   val OA2NF: String = nameOf[Profile](_.oAuth2Info)
   val PLINFOx: String = PROFILES + "." + LINFO
   val PEMAILx: String = PROFILES + "." + nameOf[Profile](_.email)
+  val EXCLDOM: String = nameOf[User](_.domainAutomarkDeleteCounts)
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
+  implicit val dadcHandler: BSONDocumentHandler[DomainAutomarkDeleteCount] = Macros.handler[DomainAutomarkDeleteCount]
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]
 }
