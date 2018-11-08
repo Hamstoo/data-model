@@ -8,6 +8,7 @@ import com.hamstoo.utils.{TIME_NOW, TimeStamp}
 import com.mohiva.play.silhouette.api.util.PasswordInfo
 import com.mohiva.play.silhouette.api.{Identity, LoginInfo}
 import com.mohiva.play.silhouette.impl.providers.{OAuth1Info, OAuth2Info}
+import play.api.libs.json.{Json, OFormat}
 import reactivemongo.bson.{BSONDocumentHandler, Macros}
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -160,4 +161,13 @@ object User extends BSONHandlers {
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]
   implicit val dadcHandler: BSONDocumentHandler[DomainAutomarkDeleteCount] = Macros.handler[DomainAutomarkDeleteCount]
   implicit val userBsonHandler: BSONDocumentHandler[User] = Macros.handler[User]
+
+  implicit val pwordJFmt: OFormat[PasswordInfo] = Json.format[PasswordInfo]
+  implicit val oauth1JFmt: OFormat[OAuth1Info] = Json.format[OAuth1Info]
+  implicit val oauth2JFmt: OFormat[OAuth2Info] = Json.format[OAuth2Info]
+  implicit val profileJFmt: OFormat[Profile] = Json.format[Profile]
+  implicit val extOptsJFmt: OFormat[ExtensionOptions] = Json.format[ExtensionOptions]
+  implicit val udJFmt: OFormat[UserData] = Json.format[UserData]
+  implicit val dadcJFmt: OFormat[DomainAutomarkDeleteCount] = Json.format[DomainAutomarkDeleteCount]
+  implicit val userJFmt: OFormat[User] = Json.format[User]
 }
