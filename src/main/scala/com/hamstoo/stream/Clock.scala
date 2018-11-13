@@ -75,13 +75,6 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
       /** Iterator protocol. */
       override def next(): Tick = {
 
-
-
-        // Possible solution:
-        // https://github.com/Hamstoo/hamstoo/issues/340#issuecomment-436298987
-
-
-
         // send a nullTick that consumers won't ever see (due to the filter in `out`) but which will trigger
         // BroadcastHub's GraphStageLogic.createLogic if it didn't run upon hub construction (issue #340)
         /*if (!nullTickSent) {
