@@ -106,12 +106,14 @@ object DomainAutomarkDeleteCount {
   * @param domainAutomarkDeleteCounts0  Sequence of domains that were automarked but then deleted and a deletion count.
   * @param fbLiked  True if user Liked our site, false if user chose to 'Skip' Liking our site, None if user
   *                 has not yet been queried by facebook-like-modal.html and forced to choose between the two.
+  * @param showRecSources0  Set this to true to display recommendation sources in the UI to the given user.
   */
 case class User(id: UUID,
                 userData: UserData,
                 profiles: List[Profile],
                 domainAutomarkDeleteCounts0: Option[Seq[DomainAutomarkDeleteCount]] = None,
-                fbLiked: Option[Boolean] = None) extends Identity {
+                fbLiked: Option[Boolean] = None,
+                showRecSources0: Option[Boolean] = None) extends Identity {
 
   /** Returns the Profile corresponding to the given LoginInfo. */
   def profileFor(loginInfo: LoginInfo): Option[Profile] = profiles.find(_.loginInfo == loginInfo)
@@ -131,9 +133,11 @@ case class User(id: UUID,
   /** Returns a @username or UUID if username is absent--useful for logging. */
   def usernameId: String = userData.username.fold(id.toString)("@" + _)
 
-  /** Convenience interface to domainAutomarkDeleteCounts0. */
+  /** Convenience (non-Option) interfaces to domainAutomarkDeleteCounts0 and showRecSources0. */
   def domainAutomarkDeleteCounts: Seq[DomainAutomarkDeleteCount] =
     domainAutomarkDeleteCounts0.getOrElse(Seq.empty[DomainAutomarkDeleteCount])
+  def showRecSources: Boolean =
+    showRecSources0.getOrElse(false)
 }
 
 object User extends BSONHandlers {
