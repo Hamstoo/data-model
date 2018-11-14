@@ -185,6 +185,11 @@ class VectorEmbeddingsServiceTests extends AkkaMongoEnvironment("VectorEmbedding
     vectorizer.health.futureValue shouldEqual true
   }
 
+  it should "not return 500 on '/en/ndash' URI lookup" ignore {
+    // see comment in Vectorizer.dbCachedLookupFuture regarding this test
+    vectorizer.dbCachedLookupFuture(Locale.ENGLISH, "277&ndash").futureValue shouldBe None
+  }
+
   "principalAxes" should "compute principal axes" in {
     val v0 = Seq(10.0, 9.0, 9.0)
     val v1 = Seq(9.0, 10.0, 9.0)
