@@ -155,7 +155,7 @@ object User extends BSONHandlers {
   val OA2NF: String = nameOf[Profile](_.oAuth2Info)
   val PLINFOx: String = PROFILES + "." + LINFO
   val PEMAILx: String = PROFILES + "." + nameOf[Profile](_.email)
-  val EXCLDOM: String = nameOf[User](_.domainAutomarkDeleteCounts)
+  val EXCLDOM: String = nameOf[User](_.domainAutomarkDeleteCounts0)
   val LIKED: String = nameOf[User](_.fbLiked)
   implicit val extOptsHandler: BSONDocumentHandler[ExtensionOptions] = Macros.handler[ExtensionOptions]
   implicit val userDataHandler: BSONDocumentHandler[UserData] = Macros.handler[UserData]

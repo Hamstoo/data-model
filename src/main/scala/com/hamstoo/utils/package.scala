@@ -3,6 +3,7 @@
  */
 package com.hamstoo
 
+import java.net.URI
 import java.util.Locale
 
 import breeze.linalg.{DenseMatrix, DenseVector, svd}
@@ -137,6 +138,13 @@ package object utils {
   def httpHost(forceSecure: Boolean)(implicit request: Request[_]): String =
     s"http${if (request.secure || forceSecure) "s" else ""}://${request.host}"
   def httpHost(implicit request: Request[_]): String = httpHost(forceSecure = false)
+
+  /** https://stackoverflow.com/questions/9607903/get-domain-name-from-given-url */
+  def getDomainName(url: String): Option[String] = Try {
+    val uri: URI  = new URI(url)
+    val domain: String = uri.getHost
+    if (domain.startsWith("www.")) domain.substring(4) else domain
+  }.toOption
 
   /** Extended ReactiveMongo QueryBuilder */
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
