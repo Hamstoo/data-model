@@ -76,15 +76,17 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
       override def next(): Tick = {
 
         // send a nullTick that consumers won't ever see (due to the filter in `out`) but which will (should!) trigger
-        // BroadcastHub's GraphStageLogic.createLogic if it didn't run upon hub construction (issue #340)
-        if (!nullTickSent) {
-          logger.info(s"Sending clock's null tick")
-          nullTickSent = true
-          nullTick
+        // BroadcastHub's GraphStageLogic.createLogic if it didn't already run upon hub construction (issue #340)
+        if (nConsumerNullTickReceipts < nAttached) {
+          if (nConsumerNullTickReceipts == 0) logger.info(s"Sending clock's null tick")
+          else logger.warn(s"Sending clock's null tick again; only $nConsumerNullTickReceipts out of $nAttached consumers received the previous one")
+          nConsumerNullTickReceipts = 0
+          currentNullTick = Some(new NullTick(currentNullTick.fold(0L)(_.i + 1))) // increment
+          currentNullTick.get
 
         } else {
 
-          // wait for `started` to be true before ticks start ticking
+          // now that all consumers have received nullTicks, wait for `start` to be called before ticks start ticking
           if (!started.future.isCompleted) {
             logger.info(s"Infinitely awaiting clock to start...")
 
@@ -95,7 +97,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
             // 2018-10-29 23:03:14,544 [info] c.h.s.Clock(153) - Sending clock's null tick
             // 2018-10-29 23:03:14,545 [info] c.h.s.Clock(153) - Starting Clock(2017-01-01Z [1483.2288], 2018-10-29T23:03:14.518Z [1540.854194518], 100.0 days [8.64])
             // 2018-10-29 23:03:14,546 [info] c.h.s.Clock(153) - Infinitely awaiting clock to start
-            // 2018-10-29 23:03:14,551 [debug] c.h.d.MarkDao(122) - Retrieving marks for user 99999999-9999-aaaa-aaaa-aaaaaaaaaaaa and tags Set() between 2017-02-05Z [1486.2528] and 2017-08-07Z [1502.064] (requireRepr=false)
+            // 2018-10-29 23:03:14,551 [debug] c.h.d.MarkDao(122) - Retrieving marks for user 11111111-1111-aaaa-aaaa-aaaaaaaaaaaa and tags Set() between 2017-02-05Z [1486.2528] and 2017-08-07Z [1502.064] (requireRepr=false)
             // ...
             // 2018-10-29 23:03:14,583 [debug] c.h.d.RepresentationDao(122) - Retrieved 0 representations given 0 IDs (0.007 seconds)
             // java.util.concurrent.TimeoutException: Timeout occurred after 60004 milliseconds
@@ -105,7 +107,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
             // 2018-10-29 19:46:49,740 [info] c.h.s.Clock(153) - Sending clock's null tick
             // 2018-10-29 19:46:49,742 [info] c.h.s.Clock(153) - Infinitely awaiting clock to start
             // 2018-10-29 19:46:49,746 [info] c.h.s.Clock(153) - Starting Clock(2017-01-01T05Z [1483.2468], 2018-10-29T23:46:49.738Z [1540.856809738], 100.0 days [8.64])
-            // 2018-10-29 19:46:49,749 [debug] c.h.d.MarkDao(122) - Retrieving marks for user 99999999-9999-aaaa-aaaa-aaaaaaaaaaaa and tags Set() between 2016-08-06Z [1470.4416] and 2017-02-05Z [1486.2528] (requireRepr=false)
+            // 2018-10-29 19:46:49,749 [debug] c.h.d.MarkDao(122) - Retrieving marks for user 11111111-1111-aaaa-aaaa-aaaaaaaaaaaa and tags Set() between 2016-08-06Z [1470.4416] and 2017-02-05Z [1486.2528] (requireRepr=false)
 
             // ... which seems to have to do with "Infinitely" occurring after "Starting" race condition somehow ...
             // TODO: ... or perhaps the whole nullTick thing isn't properly addressing the BroadcastHub issue?
@@ -132,25 +134,37 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
   /**
     * We send a "null" timestamp, even before started.isCompleted, to trigger registration of BroadcastHub
     * consumers, if they happen to be too slow to register themselves on their own.
+    *
+    * Update: Simply sending a `nullTick` (and accounting for it with a `nullTickSent` variable) is not enough; we
+    * must also confirm that all of the attached consumers would have received it (if we weren't filtering it out
+    * in our overridden `out`).  This is why the `nullTickSent` accounting has been replaced with
+    * `nConsumerNullTickReceipts` accounting.
+    *
     * See also:
+    *   https://github.com/Hamstoo/hamstoo/issues/340#issuecomment-436298987
     *   https://github.com/akka/akka/issues/25608
     *   https://github.com/fcrimins/akka/tree/wip-hub-deadlock-akka-stream
     */
-  private[this] var nullTickSent: Boolean = false
-  private[this] val nullTick = Tick(0, 0)
+  class NullTick(val i: Long) extends Tick(i, i)
+  private[this] var currentNullTick: Option[NullTick] = None
+  private[this] var nConsumerNullTickReceipts = 0
   private[this] var firstNonNullTickLogged = false
 
-  // TODO: when nullTick gets filtered out must upstream demand be re-demanded or is upstream demand still present?
+  // TODO: when nullTick gets filtered out, must upstream demand be re-demanded or is upstream demand still present?
   // TODO:   this could be the cause of the Await.result problem above
-  override def out: SourceType = super.out.filter { tick =>
-    if (tick == nullTick) {
-      logger.info("Filtering out clock's null tick")
+  override def out: SourceType = super.out.filter {
+
+    case tick: NullTick =>
+      if (currentNullTick.contains(tick)) {
+        nConsumerNullTickReceipts += 1
+        logger.info(s"Filtering out clock's null tick #${tick.i} (nReceipts=$nConsumerNullTickReceipts)")
+      } else logger.info(s"Filtering out clock's (expired) null tick #${tick.i}")
       false
-    } else {
+
+    case _ =>
       if (!firstNonNullTickLogged) logger.info("Logging first non-null tick")
       firstNonNullTickLogged = true
       true
-    }
   }
 }
 
