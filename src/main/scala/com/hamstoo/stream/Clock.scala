@@ -75,14 +75,14 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
       /** Iterator protocol. */
       override def next(): Tick = {
 
-        // send a nullTick that consumers won't ever see (due to the filter in `out`) but which will trigger
+        // send a nullTick that consumers won't ever see (due to the filter in `out`) but which will (should!) trigger
         // BroadcastHub's GraphStageLogic.createLogic if it didn't run upon hub construction (issue #340)
-        /*if (!nullTickSent) {
+        if (!nullTickSent) {
           logger.info(s"Sending clock's null tick")
           nullTickSent = true
           nullTick
 
-        } else {*/
+        } else {
 
           // wait for `started` to be true before ticks start ticking
           if (!started.future.isCompleted) {
@@ -124,7 +124,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
           currentTime = math.min(currentTime + interval, end) // ensure we don't go beyond `end`
           logger.debug(s"\033[33mTICK: ${currentTime.tfmt}\033[0m")
           Tick(currentTime, previousTime)
-        //}
+        }
       }
     }
   }.named("Clock")
@@ -136,13 +136,13 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
     *   https://github.com/akka/akka/issues/25608
     *   https://github.com/fcrimins/akka/tree/wip-hub-deadlock-akka-stream
     */
-  /*private[this] var nullTickSent: Boolean = false
+  private[this] var nullTickSent: Boolean = false
   private[this] val nullTick = Tick(0, 0)
-  private[this] var firstNonNullTickLogged = false*/
+  private[this] var firstNonNullTickLogged = false
 
   // TODO: when nullTick gets filtered out must upstream demand be re-demanded or is upstream demand still present?
   // TODO:   this could be the cause of the Await.result problem above
-  /*override def out: SourceType = super.out.filter { tick =>
+  override def out: SourceType = super.out.filter { tick =>
     if (tick == nullTick) {
       logger.info("Filtering out clock's null tick")
       false
@@ -151,7 +151,7 @@ case class Clock(begin: TimeStamp, end: TimeStamp, private val interval: Duratio
       firstNonNullTickLogged = true
       true
     }
-  }*/
+  }
 }
 
 object Clock {
