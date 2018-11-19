@@ -791,10 +791,15 @@ object Mark extends BSONHandlers {
   val SUBJnox: String = nameOf[MarkData](_.subj)
   val SUBJx: String = MARK + "." + SUBJnox
   val URLx: String = MARK + "." + nameOf[MarkData](_.url)
-  val STARSx: String = MARK + "." + nameOf[MarkData](_.rating)
+  val STARSnox: String = nameOf[MarkData](_.rating)
+  val STARSx: String = MARK + "." + STARSnox
   val TAGSnox: String = nameOf[MarkData](_.tags)
   val TAGSx: String = MARK + "." + TAGSnox
   val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
+
+  val COMNTENCnox: String = nameOf[MarkData](_.commentEncoded)
+  val METATAGSnox: String = nameOf[MarkData](_.metaTags)
+  val DESC = "description" // <- meta tags key
 
   val REF: String = nameOf[Mark](_.markRef)
   val REFIDx: String = REF + "." + nameOf[MarkRef](_.markId)

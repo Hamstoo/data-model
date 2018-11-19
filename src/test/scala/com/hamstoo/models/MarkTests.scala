@@ -50,7 +50,7 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
   it should "(UNIT) meta" in {
 
     var m = withComment("<meta property=\"description\" content=\"testDescription\">")
-    m.metaTags shouldBe Map("description" -> "testDescription")
+    m.metaTags shouldBe Map(Mark.DESC -> "testDescription")
     m.commentEncoded shouldBe Some("")
 
     m = withComment("<meta name=\"testName\" content=\"testNameContent\">")
