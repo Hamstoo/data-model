@@ -285,7 +285,7 @@ case class MarkdownNodesVisitor() extends AbstractVisitor {
     val lit0 = text.getLiteral
 
     // find and wrap links
-    val lit1 = parseLinksInTextOrExtractUrl(lit0)
+    val lit1 = parseLinksInTextOrExtractUrl(lit0).get
 
     // process strikethrough, but if there were any embedded links then just punt on it
     val lit2 = parseStrikethrough(lit1) // TODO: Jsoup.parse
@@ -328,6 +328,7 @@ object MarkdownNodesVisitor {
 
     // the top of a Stack is its head position
     val strikes = mutable.Stack[(Int, Option[Int])]()
+
     def isOpen: Boolean = strikes.headOption.exists(_._2.isEmpty)
 
     // pad beginning and ending of string so that we can iterate each char by 4-tuples
@@ -373,6 +374,12 @@ object MarkdownNodesVisitor {
 
   }.getOrElse(html)
 
+  val IGNORE_TAGS_AND_FIND_URL_REGEX: Regex = (
+      "(?<!href=\")" + // ignore http pattern prepended by 'href=' expression
+      "((?:https?|ftp)://)" + // check protocol
+      "(([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" // allowed anything which is allowed in url
+    ).r
+
   /**
     * Find all embedded URLs and convert them to HTML <a> links (anchors). This regex is designed to ignore HTML link
     * tags. It doesn't need to ignore markdown links because those have already been processed into HTML at this point.
@@ -387,16 +394,12 @@ object MarkdownNodesVisitor {
     *   this function is also used to extract the url from text(i.e. DiscussionController)
     *   so, isUrlRequired is set as true, just simply return the url that matches to regex
     */
-  def parseLinksInTextOrExtractUrl(text: String, isUrlRequired: Boolean = false): String = {
-    val regexStr =
-      "(?<!href=\")" + // ignore http pattern prepended by 'href=' expression
-        "((?:https?|ftp)://)" + // check protocol
-        "(([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" // allowed anything which is allowed in url
-    val ignoreTagsAndFindLinksInText: Regex = regexStr.r
-    if(isUrlRequired)
-      ignoreTagsAndFindLinksInText.findFirstIn(text).get
+  def parseLinksInTextOrExtractUrl(text: String, isUrlRequired: Boolean = false): Option[String] = {
+    val regex = IGNORE_TAGS_AND_FIND_URL_REGEX
+    if (isUrlRequired)
+      regex.findFirstIn(text)
     else
-      ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\"" + m.group(0) + "\">" + m.group(0) + "</a>")
+      Some(regex.replaceAllIn(text, m => "<a href=\"" + m.group(0) + "\">" + m.group(0) + "</a>"))
   }
 }
 
