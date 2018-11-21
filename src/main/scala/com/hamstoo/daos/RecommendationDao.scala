@@ -57,6 +57,6 @@ class RecommendationDao @Inject()(implicit db: () => Future[DefaultDB]) {
     pastDate = new DateTime().minusDays(nDaysBack).getMillis
     q = d :~ USR -> userId :~ TIMESTAMP -> (d :~ "$gte" -> pastDate)
     //r <- c.find(d :~ USR -> user.toString).sort(d :~ TIMESTAMP -> -1).coll[Recommendation, Seq]()
-    r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Recommendation, Seq]()
+    r <- c.find(q, Option.empty[Recommendation]).sort(d :~ TIMESTAMP -> -1).coll[Recommendation, Seq]()
   } yield r
 }

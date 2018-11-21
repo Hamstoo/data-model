@@ -48,6 +48,6 @@ class WordVectorDao @Inject()(implicit db: () => Future[DefaultDB]) {
   /** Retrieves a `VectorEntry` by conceptnet-vectors URI. */
   def retrieve(uri: String): Future[Option[VectorEntry]] = for {
     c <- dbColl()
-    optVecEnt <- c.find(d :~ URI -> uri).one[VectorEntry]
+    optVecEnt <- c.find(d :~ URI -> uri, Option.empty[VectorEntry]).one[VectorEntry]
   } yield optVecEnt
 }

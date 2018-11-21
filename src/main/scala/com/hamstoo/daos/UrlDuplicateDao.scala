@@ -77,7 +77,7 @@ class UrlDuplicateDao @Inject()(implicit db: () => Future[DefaultDB]) {
     c <- dbColl()
     _ = logger.debug(s"Retrieving URL duplicates for $userId, URL: $url")
     sel = d :~ USRPRFX -> userId.toString.binPrfxComplement :~ URLPRFX -> url.binaryPrefix
-    candidates <- c.find(sel).coll[UrlDuplicate, Set]()
+    candidates <- c.find(sel, Option.empty[UrlDuplicate]).coll[UrlDuplicate, Set]()
   } yield {
     // narrow down candidates sets to non-indexed (non-prefix) values (there should really only be 1, but
     // we use `filter` rather than `find` anyway so that data errors are not hidden)

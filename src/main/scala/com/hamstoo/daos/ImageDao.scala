@@ -47,7 +47,7 @@ class ImageDao @Inject()(implicit db: () => Future[DefaultDB]) {
   def retrieve(idWithPossibleExt: String): Future[Option[Image]] = for {
     c <- dbColl()
     id = idWithPossibleExt.split('.').head
-    mbBson <- c.find(d :~ ID -> id).one[BSONDocument]
+    mbBson <- c.find(d :~ ID -> id, Option.empty[BSONDocument]).one[BSONDocument]
 
     // update database with width/height/mimeType of image, if not already there
     mbImg <- mbBson.fold(Future.successful(Option.empty[Image])) { bson =>
@@ -64,7 +64,7 @@ class ImageDao @Inject()(implicit db: () => Future[DefaultDB]) {
     c <- dbColl()
     _ = logger.info(s"Retrieving images for mark $markId")
     sel = d :~ MPRFX -> markId.binPrfxComplement :~ PICPRFX -> bytes.binaryPrefix
-    candidates <- c.find(sel).coll[Image, Set]()
+    candidates <- c.find(sel, Option.empty[Image]).coll[Image, Set]()
   } yield {
     // narrow down candidates sets to non-indexed (non-prefix) values (there should really only be 1, but
     // we use `filter` rather than `find` anyway so that data errors are not hidden)
