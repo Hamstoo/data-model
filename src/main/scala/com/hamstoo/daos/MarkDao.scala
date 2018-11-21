@@ -621,7 +621,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     * Merge two marks by setting their `timeThru`s to the time of execution and inserting a new mark with the
     * same `timeFrom`.
     */
-  def merge(oldMark: Mark, newMark: Mark, now: Long = TIME_NOW): Future[Mark] = {
+  def merge(oldMark: Mark, newMark: Mark, now: TimeStamp = TIME_NOW): Future[Mark] = {
     logger.debug(s"Merge marks (old: ${oldMark.id} and new: ${newMark.id}")
 
     for {
@@ -698,17 +698,17 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   }
 
   /** Updates `timeThru` of a set of current marks (selected by user and a list of IDs) to time of execution. */
-  def delete(user: UUID,
+  def delete(userId: UUID,
              ids: Seq[String],
-             now: Long = TIME_NOW,
+             now: TimeStamp = TIME_NOW,
              mergeId: Option[String] = None,
              ensureDeletion: Boolean = true): Future[Int] = {
-    logger.debug(s"Deleting marks for user $user: $ids")
+    logger.debug(s"Deleting marks for user $userId: $ids")
     for {
       c <- dbColl()
-      // selecting with `USR -> user` is important here for enforcing permissions
-      selM = d :~ USR -> user :~ ID -> (d :~ "$in" -> ids) :~ curnt
-      selR = d :~ USR -> user :~ REFIDx -> (d :~ "$in" -> ids) :~ curnt
+      // selecting with `USR -> userId` is important here for enforcing permissions
+      selM = d :~ USR -> userId :~ ID -> (d :~ "$in" -> ids) :~ curnt
+      selR = d :~ USR -> userId :~ REFIDx -> (d :~ "$in" -> ids) :~ curnt
       mrg = mergeId.map(d :~ MERGEID -> _).getOrElse(d)
       wr <- c.update(d :~ "$or" -> Seq(selM, selR), d :~ "$set" -> (d :~ TIMETHRU -> now :~ mrg), multi = true)
       _ <- wr.failIfError
@@ -725,13 +725,13 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   }
 
   /** Renames one tag in all user's marks (and MarkRefs) that have it. */
-  def updateTag(user: UUID, tag: String, rename: String): Future[Int] = {
-    logger.debug(s"Updating all '$tag' tags to '$rename' for user $user")
+  def updateTag(userId: UUID, tag: String, rename: String): Future[Int] = {
+    logger.debug(s"Updating all '$tag' tags to '$rename' for user $userId")
     Future.sequence {
       Seq(TAGSx, REFTAGSx).map { field =>
         for {
           c <- dbColl()
-          sel = d :~ USR -> user :~ field -> tag
+          sel = d :~ USR -> userId :~ field -> tag
           wr <- c.update(sel, d :~ "$set" -> (d :~ s"$field.$$" -> rename), multi = true)
           _ <- wr.failIfError
         } yield wr.nModified
@@ -744,13 +744,13 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   }
 
   /** Removes a tag from all user's marks (and MarkRefs) that have it. */
-  def deleteTag(user: UUID, tag: String): Future[Int] = {
-    logger.debug(s"Deleting tag '$tag' from all user's marks for user $user")
+  def deleteTag(userId: UUID, tag: String): Future[Int] = {
+    logger.debug(s"Deleting tag '$tag' from all user's marks for user $userId")
     Future.sequence {
       Seq(TAGSx, REFTAGSx).map { field =>
         for {
           c <- dbColl()
-          sel = d :~ USR -> user :~ field -> tag
+          sel = d :~ USR -> userId :~ field -> tag
           wr <- c.update(sel, d :~ "$pull" -> (d :~ field -> tag), multi = true)
           _ <- wr.failIfError
         } yield wr.nModified
@@ -815,15 +815,15 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
   }
 
   /** Returns true if a mark with the given URL was previously deleted.  Used to prevent autosaving in such cases. */
-  def isDeleted(user: UUID, url: String): Future[Boolean] = {
-    logger.debug(s"Checking if mark was deleted, for user $user and URL: $url")
+  def isDeleted(userId: UUID, url: String): Future[Boolean] = {
+    logger.debug(s"Checking if mark was deleted, for user $userId and URL: $url")
     for {
       c <- dbColl()
-      sel = d :~ USR -> user :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> (d :~ "$lt" -> INF_TIME)
+      sel = d :~ USR -> userId :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> (d :~ "$lt" -> INF_TIME)
       seq <- c.find(sel).coll[Mark, Seq]()
     } yield {
       val deleted = seq.exists(_.mark.url.contains(url))
-      logger.debug(s"Mark for user $user and URL $url: isDeleted = $deleted")
+      logger.debug(s"Mark for user $userId and URL $url: isDeleted = $deleted")
       seq.exists(_.mark.url.contains(url))
     }
   }

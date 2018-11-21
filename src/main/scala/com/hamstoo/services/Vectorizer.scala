@@ -103,7 +103,11 @@ class Vectorizer @Inject()(httpClient: WSClient,
     termRgx.findFirstMatchIn(term.toLowerCase(locale)).fold(fNone[(Vec, String)]) { mtch =>
 
       // `standardizedTerm` appears to have leading punctuation removed (was that the intent?)
-      val standardizedTerm = mtch.group(1).replaceAll("’", "'").replaceAll(s"($spcrRgx)+", "_")
+      val standardizedTerm0 = mtch.group(1).replaceAll("’", "'").replaceAll(s"($spcrRgx)+", "_")
+
+      // the "Bayes' Theorem" Wikipedia page used to contain the following text "ure Methods. 12 (4): 277&ndash, 8."
+      // and a lookup of the `/en/ndash` URI causes an exception and 500 response from the service for some reason
+      val standardizedTerm = if (standardizedTerm0 == "ndash") "-" else standardizedTerm0
 
       // `locale.getLanguage` should be a 2-letter language code, e.g. "en"
       // TODO: https://github.com/Hamstoo/hamstoo/issues/68
@@ -129,10 +133,10 @@ class Vectorizer @Inject()(httpClient: WSClient,
           Vectorizer.fCount += 1
           if (verbose) logger.trace(s"Fetching URI '$uri' from service API")
           for {
-            optVec <- fetch(false)
-            _ = if (verbose) logger.trace(s"Successful service API vector lookup for URI '$uri': ${optVec.map(_.take(3))}")
-            _ <- vectorsDao.addUri(uri, optVec)
-          } yield optVec.map(_ -> standardizedTerm)
+            mbVec <- fetch(false)
+            _ = if (verbose) logger.trace(s"Successful service API vector lookup for URI '$uri': ${mbVec.map(_.take(3))}")
+            _ <- vectorsDao.addUri(uri, mbVec)
+          } yield mbVec.map(_ -> standardizedTerm)
       }
     }
   }

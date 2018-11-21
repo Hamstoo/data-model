@@ -50,9 +50,10 @@ case class Recommendation(userId: UUID,
     * Initial backend impl of My Recs page is copied from My Marks page, so using the same data structure also.
     * `id` field is not used, but if user hovers over Subject in UI then it is visible as the link destination.
     */
-  def toMark: Mark = {
+  def toMark(showSource: Boolean): Mark = {
     val ri = ReprInfo("", ReprType.PUBLIC, expRating = Some(_id.stringify)) // allows for expRating lookup in db
-    val md = MarkData(s"$subj [$source/${searchTerms.mkString(",")}]", Some(url), tags = Some(Set(MarkData.RECOMMENDATION_TAG)), recId = Some(_id))
+    val src = if (showSource) s" [$source/${searchTerms.mkString(",")}]" else ""
+    val md = MarkData(s"$subj$src", Some(url), tags = Some(Set(MarkData.RECOMMENDATION_TAG)), recId = Some(_id))
     Mark(userId, id = DEFAULT_REC_TO_MARK_ID, mark = md, timeFrom = ts, reprs = Seq(ri))
   }
 }

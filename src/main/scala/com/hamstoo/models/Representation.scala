@@ -1,3 +1,6 @@
+/*
+ * Copyright (C) 2017-2018 Hamstoo, Inc. <https://www.hamstoo.com>
+ */
 package com.hamstoo.models
 
 import com.github.dwickern.macros.NameOf._

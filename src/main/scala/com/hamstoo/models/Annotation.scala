@@ -42,6 +42,9 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
     */
   def toFrontendJson: JsObject = Json.obj("id" -> id)
 
+  /** Convenience function to simply get the text of the highlight or inline note. */
+  def getText: String
+
   /**
     * Used by backend's MarksController when producing JSON for the Chrome extension.  `pageCoord` may not be
     * required here; it's currently only used for sorting (in FPV and share emails), but we may start using it

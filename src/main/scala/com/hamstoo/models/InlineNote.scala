@@ -40,6 +40,7 @@ case class InlineNote(usrId: UUID,
 
   /** Used by backend's MarksController when producing full-page view and share email. */
   override def toFrontendJson: JsObject = super.toFrontendJson ++ Json.obj("preview" -> pos.text, "type" -> "comment")
+  override def getText: String = pos.text.getOrElse("")
 
   /**
     * Used by backend's MarksController when producing JSON for the Chrome extension.  `pageCoord` may not be

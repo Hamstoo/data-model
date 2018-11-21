@@ -3,6 +3,7 @@
  */
 package com.hamstoo
 
+import java.net.URI
 import java.util.Locale
 
 import breeze.linalg.{DenseMatrix, DenseVector, svd}
@@ -138,6 +139,13 @@ package object utils {
     s"http${if (request.secure || forceSecure) "s" else ""}://${request.host}"
   def httpHost(implicit request: Request[_]): String = httpHost(forceSecure = false)
 
+  /** https://stackoverflow.com/questions/9607903/get-domain-name-from-given-url */
+  def getDomainName(url: String): Option[String] = Try {
+    val uri: URI  = new URI(url)
+    val domain: String = uri.getHost
+    if (domain.startsWith("www.")) domain.substring(4) else domain
+  }.toOption
+
   /** Extended ReactiveMongo QueryBuilder */
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
 
@@ -215,6 +223,9 @@ package object utils {
   // use this as its eratingId
   val NO_REPR_ERATING_ID = "norepr"
 
+  // if there aren't any other reprs with the current reprs' keywords to compute an ExpectedRating from then use this
+  val NO_KWS_ERATING_ID = "nokws"
+
   // if any of these strings are longer than Representation.ID_LENGTH it can cause a `marks` collection index to break,
   // MongoMarksDao.update[Public,Private]ReprId checks for this, see comment on com.hamstoo.utils.URL_PREFIX_LENGTH,
   // 2017-12-8 update - the offending index has since been removed
@@ -227,7 +238,7 @@ package object utils {
 
   // set of IDs that aren't really IDs so that we can filter them out when searching for things with "true" IDs
   val NON_IDS = Set("", FAILED_REPR_ID, TIMEOUT_REPR_ID, NONE_REPR_ID, CAPTCHA_REPR_ID, HTMLUNIT_REPR_ID,
-                    UPLOAD_REPR_ID, NO_REPR_ERATING_ID)
+                    UPLOAD_REPR_ID, NO_REPR_ERATING_ID, NO_KWS_ERATING_ID)
 
   /** Use the private ID when available, o/w use the public ID. */
   def reconcilePrivPub(priv: Option[String], pub: Option[String]): Option[String] =

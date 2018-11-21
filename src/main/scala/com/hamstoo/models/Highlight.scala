@@ -60,6 +60,7 @@ case class Highlight(usrId: UUID,
 
   /** Used by backend's MarksController when producing full-page view and share email. */
   override def toFrontendJson: JsObject = super.toFrontendJson ++ Json.obj("preview" -> preview, "type" -> "highlight")
+  override def getText: String = preview.text
 
   /**
     * Used by backend's MarksController when producing JSON for the Chrome extension.  `pageCoord` may not be

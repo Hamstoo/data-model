@@ -285,7 +285,7 @@ case class MarkdownNodesVisitor() extends AbstractVisitor {
     val lit0 = text.getLiteral
 
     // find and wrap links
-    val lit1 = parseLinksInText(lit0)
+    val lit1 = parseLinksInTextOrExtractUrl(lit0)
 
     // process strikethrough, but if there were any embedded links then just punt on it
     val lit2 = parseStrikethrough(lit1) // TODO: Jsoup.parse
@@ -309,7 +309,7 @@ case class MarkdownNodesVisitor() extends AbstractVisitor {
       node = next
     }
   }*/
-  
+
 }
 
 object MarkdownNodesVisitor {
@@ -383,14 +383,20 @@ object MarkdownNodesVisitor {
     *   1st part of 2nd regex part ((?:https?|ftp)://) checks protocol
     * (?<!href=") - this ignore condition should stay because commonmark.parser.parse(...) does not allocate <a>
     *   (anchor tag) from text as a separate node
+    *
+    *   this function is also used to extract the url from text(i.e. DiscussionController)
+    *   so, isUrlRequired is set as true, just simply return the url that matches to regex
     */
-  def parseLinksInText(text: String): String = {
+  def parseLinksInTextOrExtractUrl(text: String, isUrlRequired: Boolean = false): String = {
     val regexStr =
       "(?<!href=\")" + // ignore http pattern prepended by 'href=' expression
         "((?:https?|ftp)://)" + // check protocol
         "(([a-zA-Z0-‌​9\\-\\._\\?\\,\\'/\\+&am‌​p;%\\$#\\=~])*[^\\.\\,\\)\\(\\s])" // allowed anything which is allowed in url
     val ignoreTagsAndFindLinksInText: Regex = regexStr.r
-    ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\"" + m.group(0) + "\">" + m.group(0) + "</a>")
+    if(isUrlRequired)
+      ignoreTagsAndFindLinksInText.findFirstIn(text).get
+    else
+      ignoreTagsAndFindLinksInText.replaceAllIn(text, m => "<a href=\"" + m.group(0) + "\">" + m.group(0) + "</a>")
   }
 }
 
@@ -785,10 +791,15 @@ object Mark extends BSONHandlers {
   val SUBJnox: String = nameOf[MarkData](_.subj)
   val SUBJx: String = MARK + "." + SUBJnox
   val URLx: String = MARK + "." + nameOf[MarkData](_.url)
-  val STARSx: String = MARK + "." + nameOf[MarkData](_.rating)
+  val STARSnox: String = nameOf[MarkData](_.rating)
+  val STARSx: String = MARK + "." + STARSnox
   val TAGSnox: String = nameOf[MarkData](_.tags)
   val TAGSx: String = MARK + "." + TAGSnox
   val COMNTx: String = MARK + "." + nameOf[MarkData](_.comment)
+
+  val COMNTENCnox: String = nameOf[MarkData](_.commentEncoded)
+  val METATAGSnox: String = nameOf[MarkData](_.metaTags)
+  val DESC = "description" // <- meta tags key
 
   val REF: String = nameOf[Mark](_.markRef)
   val REFIDx: String = REF + "." + nameOf[MarkRef](_.markId)

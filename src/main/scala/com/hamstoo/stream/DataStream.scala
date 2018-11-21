@@ -78,6 +78,7 @@ abstract class ElemStream[+E](bufferSize: Int = ElemStream.DEFAULT_BUFFER_SIZE,
     hub.named(name) // `named` should be last, no matter what (b/c it's what the outside world sees)
   }
 
+  // count the number of consumers that have been attached to this stream (i.e. to this stream's BroadcastHub)
   protected var nAttached = 0
 
   /** `out` is now a method so that we can log when stuff gets attached. */
