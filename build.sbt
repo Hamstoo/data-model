@@ -55,7 +55,7 @@ resolvers ++= Seq(
   "sonatype-releases" at "http://oss.sonatype.org/content/repositories/releases",
   "Atlassian Releases" at "https://maven.atlassian.com/public/")
 
-val silhouetteVersion = "5.0.0"
+val silhouetteVersion = "5.0.6"
 val reactiveMongoVersion = "0.16.0" // moving to previous version 0.12.5, because version 0.12.7 throws IndexNotFound error in tests
 val akkaVersion = "2.5.17"
 
@@ -64,7 +64,7 @@ libraryDependencies ++= Seq(
   "com.mohiva" %% "play-silhouette" % silhouetteVersion,
   "com.mohiva" %% "play-silhouette-persistence" % silhouetteVersion,
   "com.github.dwickern" %% "scala-nameof" % "1.0.3" % "provided",
-  "joda-time" % "joda-time" % "2.9.9",
+  "joda-time" % "joda-time" % "2.10.1",
 
   "org.reactivemongo" %% "reactivemongo" % reactiveMongoVersion,
   "org.reactivemongo" %% "reactivemongo-akkastream" % reactiveMongoVersion,
@@ -73,20 +73,20 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
   "com.typesafe.akka" %% "akka-stream-testkit" % akkaVersion % Test,
 
-  "org.apache.commons" % "commons-text" % "1.1",
-  "com.atlassian.commonmark" % "commonmark" % "0.9.0",
-  "org.jsoup" % "jsoup" % "1.10.3",
-  "org.scalanlp" %% "breeze" % "0.13.1",
-  "org.scalanlp" %% "breeze-natives" % "0.13.1",
-  "org.apache.tika" % "tika-parsers" % "1.16",
-  "org.scalatest" %% "scalatest" % "3.0.4",
+  "org.apache.commons" % "commons-text" % "1.6",
+  "com.atlassian.commonmark" % "commonmark" % "0.12.1",
+  "org.jsoup" % "jsoup" % "1.11.3",
+  "org.scalanlp" %% "breeze" % "1.0-RC2",
+  "org.scalanlp" %% "breeze-natives" % "1.0-RC2",
+  "org.apache.tika" % "tika-parsers" % "1.18", 
+  "org.scalatest" %% "scalatest" % "3.2.0-SNAP10" % Test,
   "com.github.simplyscala" %% "scalatest-embedmongo" % "0.2.4",
-  "org.mockito" % "mockito-core" % "2.10.0" % "test",
-  "net.sourceforge.htmlunit" % "htmlunit" % "2.28",
+  "org.mockito" % "mockito-core" % "2.23.4" % "test",
+  "net.sourceforge.htmlunit" % "htmlunit" % "2.33",
   //"org.typelevel" %% "spire" % "0.15.0",
-  "com.google.inject" % "guice" % "4.2.0",
-  "net.codingwell" %% "scala-guice" % "4.1.1",
-  "io.monix" %% "monix-eval" % "3.0.0-RC1"
+  "com.google.inject" % "guice" % "4.2.2",
+  "net.codingwell" %% "scala-guice" % "4.2.1",
+  "io.monix" %% "monix-eval" % "3.0.0-8084549"
 )
 
 // Pdfclown 0.2.0 is not available in maven so it was added as jar-file dependency
