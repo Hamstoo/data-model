@@ -130,7 +130,8 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
 
-      seq <- c.find(d :~ sel, Option.empty[Mark]).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq](n = n)
+//      seq <- c.find(d :~ sel, Option.empty[Mark]).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq](n = n)
+      seq <- c.getMongoResults[Mark, Seq](d :~ sel, Option.empty[Mark],n, Some(d :~ TIMEFROM -> -1))
     } yield {
       logger.debug(s"Retrieved (insecure) ${seq.size} marks; first, at most, 5: ${seq.take(5).map(_.id)}")
       seq
@@ -316,7 +317,8 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ curnt
-      docs <- c.find(sel, Some(d :~ TAGSx -> 1 :~ REFTAGSx -> 1 :~ "_id" -> 0)).coll[BSONDocument, Set]()
+//      docs <- c.find(sel, Some(d :~ TAGSx -> 1 :~ REFTAGSx -> 1 :~ "_id" -> 0)).coll[BSONDocument, Set]()
+      docs <- c.getMongoResults[BSONDocument, Set](sel, Some(d :~ TAGSx -> 1 :~ REFTAGSx -> 1 :~ "_id" -> 0))
     } yield {
       val labels: Set[String] = Set(MARK, REF) flatMap { field: String =>
         for {
