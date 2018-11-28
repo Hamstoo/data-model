@@ -55,7 +55,7 @@ resolvers ++= Seq(
   "sonatype-releases" at "http://oss.sonatype.org/content/repositories/releases",
   "Atlassian Releases" at "https://maven.atlassian.com/public/")
 
-val silhouetteVersion = "5.0.6"
+val silhouetteVersion = "5.0.0"
 val reactiveMongoVersion = "0.16.0" // moving to previous version 0.12.5, because version 0.12.7 throws IndexNotFound error in tests
 val akkaVersion = "2.5.17"
 
@@ -79,7 +79,7 @@ libraryDependencies ++= Seq(
   "org.scalanlp" %% "breeze" % "1.0-RC2",
   "org.scalanlp" %% "breeze-natives" % "1.0-RC2",
   "org.apache.tika" % "tika-parsers" % "1.18", 
-  "org.scalatest" %% "scalatest" % "3.2.0-SNAP10" % Test,
+  "org.scalatest" %% "scalatest" % "3.2.0-SNAP1" % Test,
   "com.github.simplyscala" %% "scalatest-embedmongo" % "0.2.4",
   "org.mockito" % "mockito-core" % "2.23.4" % "test",
   "net.sourceforge.htmlunit" % "htmlunit" % "2.33",
