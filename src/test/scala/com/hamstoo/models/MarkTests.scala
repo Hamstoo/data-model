@@ -91,19 +91,19 @@ class MarkTests extends FlatSpecWithMatchers with OptionValues {
   it should "(UNIT) find embedded link with IP and tag it as <a> tag" in {
     val orig = "<p>hello " + ipLink0 + " </p>"
     val parsed = "<p>hello <a href=\"" + ipLink0 + "\">" + ipLink0 + "</a> </p>"
-    MarkdownNodesVisitor.parseLinksInTextOrExtractUrl(orig) shouldEqual parsed
+    MarkdownNodesVisitor.parseLinksInTextOrExtractUrl(orig) shouldEqual Some(parsed)
   }
 
   it should "(UNIT) find embedded link with domain name and tag it as <a> tag" in {
     val orig = "<p>hello " + domainLink + " </p>"
     val parsed = "<p>hello <a href=\"" + domainLink + "\">" + domainLink + "</a> </p>"
-    MarkdownNodesVisitor.parseLinksInTextOrExtractUrl(orig) shouldEqual parsed
+    MarkdownNodesVisitor.parseLinksInTextOrExtractUrl(orig) shouldEqual Some(parsed)
   }
 
   it should "(UNIT) skip <a> tagged link in function `embeddedLinksToHtmlLinks`" in {
     val orig = " <p>hello <a href=\"https://www.google.com\">I'm an inline-kinda link</a></p>"
     val parsed = " <p>hello <a href=\"https://www.google.com\">I'm an inline-kinda link</a></p>"
-    MarkdownNodesVisitor.parseLinksInTextOrExtractUrl(orig) shouldEqual parsed
+    MarkdownNodesVisitor.parseLinksInTextOrExtractUrl(orig) shouldEqual Some(parsed)
   }
 
   it should "(UNIT) skip and whitelist <a> tagged link in function `commentEncoded`" in {

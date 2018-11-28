@@ -185,7 +185,7 @@ object VectorEmbeddingsService {
   def keywords(wordsUnsorted: Seq[(String, Double)], mbIdfModel: Option[IDFModel] = None): Seq[String] = {
 
     // sort by `aggregateSimilarityScore` (descending)
-    val words = wordsUnsorted.sortBy(-_._2).filterNot(ws => Seq("http", "https").contains(ws._1))
+    val words = wordsUnsorted.sortBy(-_._2).filterNot(ws => Seq("http", "https", "div", "nbsp").contains(ws._1))
     if (logger.isDebugEnabled) {
       if (mbIdfModel.isDefined) words.foreach { case (w, s) => logger.debug(f"keywords: $w -> $s%.3f (idf=${mbIdfModel.get.transform(w)}%.2f})") }
       else words.foreach { case (w, s) => logger.debug(f"keywords: $w -> $s%.3f") }
