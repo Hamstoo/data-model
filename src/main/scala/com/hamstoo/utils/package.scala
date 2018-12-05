@@ -15,11 +15,13 @@ import play.api.libs.json.{JsObject, Json, Writes}
 import play.api.mvc.{Call, Request}
 import reactivemongo.api.BSONSerializationPack.{Reader, Writer}
 import reactivemongo.api.collections.{GenericCollection, GenericQueryBuilder, _}
-import reactivemongo.api.commands.WriteResult
+import reactivemongo.api.commands.{WriteConcern, WriteResult}
 import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
 import reactivemongo.api._
 import reactivemongo.api.collections.bson.BSONCollection
+import reactivemongo.api.commands.bson.BSONCommonWriteCommandsImplicits.WriteConcernWriter
 import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
+import views.html.helper.options
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
@@ -97,7 +99,7 @@ package object utils {
     */
   @tailrec
   final def getDbConnection(uri: String, nAttempts: Int = 5): (MongoConnection, String) = {
-    MongoConnection.parseURI(uri).map { parsedUri =>
+    MongoConnection.parseURI(s"$uri?writeConcernJ=false").map { parsedUri =>
       if (dbDriver.isEmpty)
         initDbDriver()
       // the below doesn't work bc/ the second parameter is used as the Akka actor name, which must be unique when testing
