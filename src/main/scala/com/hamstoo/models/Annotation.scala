@@ -24,6 +24,7 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
   val pos: Annotation.Position
   val pageCoord: Option[PageCoord]
   val pageNumber: Option[Int]
+  val windowName: Option[String]
   val memeId: Option[String]
   val timeFrom: TimeStamp
   val timeThru: TimeStamp
