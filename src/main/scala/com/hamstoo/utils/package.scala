@@ -99,7 +99,7 @@ package object utils {
     */
   @tailrec
   final def getDbConnection(uri: String, nAttempts: Int = 5): (MongoConnection, String) = {
-    MongoConnection.parseURI(s"$uri?writeConcernJ=false").map { parsedUri =>
+    MongoConnection.parseURI(uri).map { parsedUri =>
       if (dbDriver.isEmpty)
         initDbDriver()
       // the below doesn't work bc/ the second parameter is used as the Akka actor name, which must be unique when testing
