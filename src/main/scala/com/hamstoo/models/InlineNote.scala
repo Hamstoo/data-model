@@ -34,6 +34,7 @@ case class InlineNote(usrId: UUID,
                       anchors: Option[Seq[InlineNote.Anchor]] = None,
                       pageCoord: Option[PageCoord] = None,
                       pageNumber: Option[Int] = None,
+                      windowName: Option[String] = None,
                       memeId: Option[String] = None,
                       timeFrom: TimeStamp = TIME_NOW,
                       timeThru: TimeStamp = INF_TIME) extends Annotation {
