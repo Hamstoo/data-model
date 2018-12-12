@@ -55,7 +55,8 @@ trait Annotation extends Shareable { // (backend implementation of Shareable *An
     "id" -> id,
     "color" -> (if (callingUserId == usrId) "orange" else "blue")) ++
     pageCoord.toJsOption("pageCoord") ++
-    pageNumber.toJsOption("pageNumber")
+    pageNumber.toJsOption("pageNumber") ++
+    windowName.toJsOption("windowName")
 
   /** Overwrite/patch `this` with JSON from the chrome-extension. */
   def mergeExtensionJson(json: JsObject): Annotation
