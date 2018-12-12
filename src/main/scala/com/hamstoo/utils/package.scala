@@ -150,26 +150,6 @@ package object utils {
   }.toOption
 
 
-  /**
-    * using ExtendedQB.coll thorws warning
-    *  'trait GenericQueryBuilder in package collections is deprecated (since 0.16.0): Will be private/internal'
-    *  This could be an alternative
-    *  TODO replace usages of implicit coll function with getMongoResults
-    * @param col
-    */
-  implicit class ExtendedGC(private val col: BSONCollection) extends AnyVal{
-
-    def getMongoResults[E, C[_] <: Iterable[_]](s:BSONDocument, p: Option[E],
-                                                n: Int = -1, sortBy: Option[BSONDocument] = None )
-                                               (implicit r: Reader[E], w: Writer[E],
-                                                cbf: CanBuildFrom[C[_], E, C[E]],
-                                                ec: ExecutionContext): Future[C[E]] =
-      if(sortBy.isEmpty)
-        col.find(s,p).cursor[E]().collect[C](n, Cursor.FailOnError[C[E]]())
-      else
-        col.find(s,p).sort(sortBy.get).cursor[E]().collect[C](n, Cursor.FailOnError[C[E]]())
-
-  }
   /** Extended ReactiveMongo QueryBuilder */
   // https://javadoc.io/doc/org.reactivemongo/reactivemongo_2.12/0.16.0
   // genericQueryBuilder is deprecated. Probably we will have to refactor this using genericCollections
