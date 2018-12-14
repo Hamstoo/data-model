@@ -13,12 +13,15 @@ import org.joda.time.{DateTime, DateTimeZone}
 import play.api.Logger
 import play.api.libs.json.{JsObject, Json, Writes}
 import play.api.mvc.{Call, Request}
-import reactivemongo.api.BSONSerializationPack.Reader
-import reactivemongo.api.collections.GenericQueryBuilder
-import reactivemongo.api.commands.WriteResult
+import reactivemongo.api.BSONSerializationPack.{Reader, Writer}
+import reactivemongo.api.collections.{GenericCollection, GenericQueryBuilder, _}
+import reactivemongo.api.commands.{WriteConcern, WriteResult}
 import reactivemongo.api.indexes.{CollectionIndexesManager, Index}
 import reactivemongo.api._
+import reactivemongo.api.collections.bson.BSONCollection
+import reactivemongo.api.commands.bson.BSONCommonWriteCommandsImplicits.WriteConcernWriter
 import reactivemongo.bson.{BSONDocument, BSONElement, Producer}
+import views.html.helper.options
 
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
@@ -146,7 +149,10 @@ package object utils {
     if (domain.startsWith("www.")) domain.substring(4) else domain
   }.toOption
 
+
   /** Extended ReactiveMongo QueryBuilder */
+  // https://javadoc.io/doc/org.reactivemongo/reactivemongo_2.12/0.16.0
+  // genericQueryBuilder is deprecated. Probably we will have to refactor this using genericCollections
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
 
     /**

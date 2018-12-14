@@ -92,7 +92,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       ms = marks.map(_.copy(timeFrom = now)).map(Mark.entryBsonHandler.write) // map each mark into a `BSONDocument`
 
       // will need to change when we upgrade reactivemongo version past 0.12
-      wr <- c.bulkInsert(ms, ordered = false)
+      wr <- c.insert[BSONDocument]( ordered = false).many(ms)
       //wr <- c.insert[BSONDocument](ordered = false).many(ms) // formerly "bulkInsert"
 
       // similar to ExtendedWriteResult.failIfError but (1) wr.ok won't always be false when there are errors from
@@ -130,7 +130,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
 
-      seq <- c.find(d :~ sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq](n = n)
+      seq <- c.find(d :~ sel, Option.empty[Mark]).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq](n = n)
     } yield {
       logger.debug(s"Retrieved (insecure) ${seq.size} marks; first, at most, 5: ${seq.take(5).map(_.id)}")
       seq
@@ -160,7 +160,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     logger.debug(s"Retrieving mark history for $id")
     for {
       c <- dbColl()
-      seq <- c.find(d :~ ID -> id).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
+      seq <- c.find(d :~ ID -> id, Option.empty[Mark]).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
       //val filtered = seq.filter(_.isAuthorizedRead(user))
       logger.debug(s"${seq.size} historical marks were successfully retrieved")
@@ -210,7 +210,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     // find all marks with those URL prefixes (including MarkRefs which now have their URLs populated)
     c <- dbColl()
     prfxIn = d :~ "$in" -> urls.map(_.binaryPrefix)
-    seq <- c.find(d :~ USR -> user :~ URLPRFX -> prfxIn :~ curnt).coll[Mark, Seq]()
+    seq <- c.find(d :~ USR -> user :~ URLPRFX -> prfxIn :~ curnt, Option.empty[Mark]).coll[Mark, Seq]()
 
   } yield {
 
@@ -244,7 +244,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ hasTags(labels) :~ curnt
-      seq <- c.find(sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
+      seq <- c.find(sel, Option.empty[Mark]).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} tagged marks were successfully retrieved")
       seq
@@ -279,7 +279,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
 
-      seq <- c.find(sel).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
+      seq <- c.find(sel, Option.empty[Mark]).sort(d :~ TIMEFROM -> -1).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} marks were successfully retrieved")
       seq.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) }
@@ -302,7 +302,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       sel = d :~ USR -> user :~ REFIDx -> (d :~ "$exists" -> true) :~ curnt :~
                  begin.fold(d)(ts => d :~ TIMEFROM -> (d :~ "$gte" -> ts)) :~
                  end  .fold(d)(ts => d :~ TIMEFROM -> (d :~ "$lt"  -> ts))
-      seq <- c.find(sel).coll[Mark, Seq]()
+      seq <- c.find(sel, Option.empty[Mark]).coll[Mark, Seq]()
     } yield {
       logger.debug(s"${seq.size} referenced marks were successfully retrieved")
       seq//.map { m => m.copy(aux = m.aux.map(_.cleanRanges)) } // no longer returning Marks, so no need to cleanRanges
@@ -316,7 +316,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     for {
       c <- dbColl()
       sel = d :~ USR -> user :~ curnt
-      docs <- c.find(sel, d :~ TAGSx -> 1 :~ REFTAGSx -> 1 :~ "_id" -> 0).coll[BSONDocument, Set]()
+      docs <- c.find(sel, Some(d :~ TAGSx -> 1 :~ REFTAGSx -> 1 :~ "_id" -> 0)).coll[BSONDocument, Set]()
     } yield {
       val labels: Set[String] = Set(MARK, REF) flatMap { field: String =>
         for {
@@ -342,7 +342,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       c <- dbColl()
       sel = d :~ SHARED_WITH -> (d :~ "$exist" -> true)
 
-      marks <- c.find(sel).coll[Mark, Seq]()
+      marks <- c.find(sel, Option.empty[Mark]).coll[Mark, Seq]()
     } yield {
       logger.debug(s"Retrieved ${marks.size} sharable marks")
       marks
@@ -392,7 +392,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
                          searchScoreSelection :~
                          ids.fold(d)(seq => d :~ ID -> (d :~ "$in" -> seq))
 
-          dbColl().flatMap(_.find(sel, searchScoreProjection).coll[Mark, Seq]())
+          dbColl().flatMap(_.find(sel, Some(searchScoreProjection)).coll[Mark, Seq]())
         }
       }.map(_.flatten).map { set =>
         logger.debug(s"Search retrieved ${set.size} marks")
@@ -410,7 +410,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       .flatMapConcat { c =>
         import reactivemongo.akkastream.cursorProducer
         val btw = d :~ TIMEFROM -> (d :~ "$gte" -> begin :~ "$lt" -> end)
-        c.find(d :~ USR -> userId :~ curnt :~ btw).sort(d :~ TIMEFROM -> 1).cursor[Mark]().documentSource()
+        c.find(d :~ USR -> userId :~ curnt :~ btw, Option.empty[Mark]).sort(d :~ TIMEFROM -> 1).cursor[Mark]().documentSource()
       }
   }
 
@@ -489,7 +489,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     c <- dbColl()
     _ = logger.debug(s"findOrCreateMarkRef($user, $refId): begin")
 
-    mOld <- c.find(refSel(user, refId)).one[Mark]
+    mOld <- c.find(refSel(user, refId), Option.empty[Mark]).one[Mark]
     m <- if (mOld.isDefined) Future.successful(mOld.get) else {
 
       val ref = MarkRef(refId, tags = Some(Set(SHARED_WITH_ME_TAG))) // user can remove this tag later
@@ -604,7 +604,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     c <- dbColl()
     _ = logger.debug(s"Updating subject '$newSubj' (and URL) for mark $id")
     sel = d :~ USR -> user :~ ID -> id :~ curnt
-    doc <- c.find(sel, d :~ SUBJx -> 1 :~ URLx -> 1 :~ "_id" -> 0).one[BSONDocument]
+    doc <- c.find(sel, Some(d :~ SUBJx -> 1 :~ URLx -> 1 :~ "_id" -> 0)).one[BSONDocument]
     mb = doc.get.getAs[MarkData](MARK).filter(m => m.url.isEmpty || m.url.contains(m.subj))
     count <- if (mb.isEmpty) Future.successful(0) else for {
       _ <- Future.unit
@@ -801,7 +801,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
       c <- dbColl()
       _ = logger.debug(s"Checking for existence of non-private repr of type $reprType")
       sel = d :~ ID -> markId :~  REPR_TYPEx -> reprType.toString :~ curnt
-      opt <- c.find(sel).one[Mark]
+      opt <- c.find(sel, Option.empty[Mark]).one[Mark]
     } yield {
       logger.debug(s"Retrieved non-private repr $opt")
       opt.nonEmpty
@@ -820,7 +820,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     for {
       c <- dbColl()
       sel = d :~ USR -> userId :~ URLPRFX -> url.binaryPrefix :~ TIMETHRU -> (d :~ "$lt" -> INF_TIME)
-      seq <- c.find(sel).coll[Mark, Seq]()
+      seq <- c.find(sel,Option.empty[Mark]).coll[Mark, Seq]()
     } yield {
       val deleted = seq.exists(_.mark.url.contains(url))
       logger.debug(s"Mark for user $userId and URL $url: isDeleted = $deleted")
@@ -837,7 +837,7 @@ class MarkDao @Inject()(implicit db: () => Future[DefaultDB],
     for {
       c <- dbColl() // TODO: does this query require an index?  or is the "bin-$USR-1-$TIMETHRU-1" index sufficient?
       sel = d :~ USR -> userId :~ SUBJx -> subject :~ URLx -> (d :~ "$exists" -> false) :~ curnt
-      opt <- c.find(sel).one[Mark]
+      opt <- c.find(sel, Option.empty[Mark]).one[Mark]
     } yield {
       logger.debug(s"Searching for duplicate subject marks finished with result mark ${opt.map(_.id)}")
       opt

@@ -12,7 +12,7 @@ import com.hamstoo.utils._
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-import reactivemongo.bson.BSONRegex
+import reactivemongo.bson.{BSONDocument, BSONRegex}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
@@ -63,7 +63,7 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
     _ = logger.debug(s"Removing user suggestion: $ownerUserId / $sharee")
     sel = d :~ OWNER_ID -> ownerUserId :~
                sharee.fold(d :~ SHAREE -> (d :~ "$exists" -> false))(u => d :~ SHAREE -> BSONRegex(s"^$u$$", "i"))
-    wr <- c.remove(sel)
+    wr <- c.delete[BSONDocument](ordered = false).one(sel)
     _ <- wr.failIfError
   } yield {
     logger.debug(s"Removed ${wr.n} user suggestions")
@@ -92,7 +92,7 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
     ownerSel = if (ownerUsernamePrefix.isEmpty) d
                else d :~ OWNER_UNAME -> BSONRegex("^" + ownerUsernamePrefix + ".*", "i")
 
-    seq <- c.find(shareeSel :~ ownerSel).coll[UserSuggestion, Seq]()
+    seq <- c.find(shareeSel :~ ownerSel, Option.empty[UserSuggestion]).coll[UserSuggestion, Seq]()
 
   } yield {
     logger.debug(s"retrieveUserSuggestions retrieved ${seq.size} documents")

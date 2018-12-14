@@ -15,13 +15,13 @@ import com.hamstoo.stream.config.StreamModule
 import com.hamstoo.stream.facet.UserSimilarityOpt
 import org.joda.time.DateTime
 import play.api.Logger
-import reactivemongo.api.DefaultDB
+import reactivemongo.api.{DefaultDB, ReadConcern}
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
 import reactivemongo.bson._
-
 import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
+
 import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 import scala.util.Try
@@ -81,10 +81,12 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     for {
       cI <- importsColl()
       cE <- marksColl()
-      nUserTotalMarks <- cE.count(Some(d :~ Mark.USR -> userId.toString :~
+      // https://docs.mongodb.com/manual/reference/read-concern/
+      //http://reactivemongo.org/releases/0.1x/api/reactivemongo/api/collections/GenericCollection.html
+      nUserTotalMarks <- cE.count(selector = Some(d :~ Mark.USR -> userId.toString :~
                                             Mark.REF -> (d :~ "$exists" -> false) :~
-                                            curnt))
-      imports <- cI.find(d :~ U_ID -> userId.toString).one[BSONDocument]
+                                            curnt), limit = None, skip = 0, hint = None, readConcern =  ReadConcern.Local)
+      imports <- cI.find(d :~ U_ID -> userId.toString, Option.empty[BSONDocument]).one[BSONDocument]
 
       mbUserStats <- retrieve(userId)
       usims <- fut
@@ -153,7 +155,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
       }
 
       val nImported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
-      ProfileDots(nUserTotalMarks,
+      ProfileDots(nUserTotalMarks.toInt,
                   nImported,
                   days,
                   (0 /: days)(_ + _.nMarks),
@@ -180,7 +182,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
     logger.debug(s"Retrieving most recent UserStats for user $userId")
     for {
       c <- userstatsColl()
-      mb <- c.find(d :~ USR -> userId).sort(d :~ TIMESTAMP -> -1).one[UserStats]
+      mb <- c.find(d :~ USR -> userId, Option.empty[UserStats]).sort(d :~ TIMESTAMP -> -1).one[UserStats]
     } yield {
       logger.debug(s"${mb.size} UserStats were successfully retrieved")
       mb

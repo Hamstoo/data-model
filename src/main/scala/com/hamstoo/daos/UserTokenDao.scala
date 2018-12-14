@@ -13,8 +13,9 @@ import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.Ascending
-
 import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
+import reactivemongo.bson.BSONDocument
+
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
@@ -38,13 +39,13 @@ class UserTokenDao @Inject()(implicit db: () => Future[DefaultDB]) {
   /** Retrieves a token by token ID. */
   def retrieve(tokenId: UUID): Future[Option[UserToken]] = for {
     c <- dbColl()
-    optTkn <- c.find(d :~ ID -> tokenId.toString).one[UserToken]
+    optTkn <- c.find(d :~ ID -> tokenId.toString, Option.empty[UserToken]).one[UserToken]
   } yield optTkn
 
   /** Retrieves a token by user ID. */
   def retrieveByUserId(userId: UUID, isSignUp: Boolean): Future[Option[UserToken]] = for {
     c <- dbColl()
-    optTkn <- c.find(d :~ USR -> userId.toString :~ ISSIGNUP -> isSignUp).one[UserToken]
+    optTkn <- c.find(d :~ USR -> userId.toString :~ ISSIGNUP -> isSignUp, Option.empty[UserToken]).one[UserToken]
   } yield optTkn
 
   /** Updates a token by token ID. */
@@ -64,7 +65,7 @@ class UserTokenDao @Inject()(implicit db: () => Future[DefaultDB]) {
   /** Removes a token by id. */
   def remove(id: UUID): Future[Unit] = for {
     c <- dbColl()
-    wr <- c.remove(d :~ ID -> id.toString)
+    wr <- c.delete[BSONDocument](ordered = false).one(d :~ ID -> id.toString)
     _ <- wr.failIfError
   } yield ()
 }

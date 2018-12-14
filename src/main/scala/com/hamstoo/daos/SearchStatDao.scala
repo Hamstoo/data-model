@@ -6,12 +6,12 @@ package com.hamstoo.daos
 import com.google.inject.{Inject, Singleton}
 import com.hamstoo.models.SearchStats
 import com.hamstoo.models.SearchStats._
-import reactivemongo.api.DefaultDB
+import reactivemongo.api.{Cursor, DefaultDB}
 import reactivemongo.api.collections.bson.BSONCollection
 import reactivemongo.api.indexes.Index
 import reactivemongo.api.indexes.IndexType.{Ascending, Text}
-
 import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
+
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
 
@@ -43,7 +43,7 @@ class SearchStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
   def addClick(input: SearchStats): Future[Unit] = for {
     c <- dbColl()
     usr = input.userId.fold(d :~ USR -> (d :~ "$exists" -> false))(id => d :~ USR -> id)
-    seq <- c.find(d :~ usr :~ MARKID -> input.markId :~ QUERY -> input.query).coll[SearchStats, Seq]()
+    seq <- c.find(d :~ usr :~ MARKID -> input.markId :~ QUERY -> input.query, Option.empty[SearchStats]).coll[SearchStats, Seq]()
 
     // facet args must be identical, but note that *implicit*/default facet args may change over time
     mb = seq.find(x => x.facetArgs == input.facetArgs && x.labels == input.labels)

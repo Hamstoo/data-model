@@ -12,7 +12,7 @@ import com.mohiva.play.silhouette.persistence.daos.DelegableAuthInfoDAO
 import play.api.Logger
 import reactivemongo.api.DefaultDB
 import reactivemongo.api.collections.bson.BSONCollection
-import reactivemongo.bson.BSONDocument
+import reactivemongo.bson._
 
 import com.hamstoo.utils.ExecutionContext.CachedThreadPool.global
 import scala.concurrent.Future
@@ -39,7 +39,7 @@ abstract class AuthDao[A <: AuthInfo: ClassTag: TypeTag](implicit db: () => Futu
     */
   def find(loginInfo: LoginInfo): Future[Option[A]] = for {
     c <- dbColl()
-    optUser <- c.find(d :~ PLINFOx -> loginInfo).one[User]
+    optUser <- c.find(d :~ PLINFOx -> loginInfo, Option.empty[User]).one[User]
   } yield for {
     user <- optUser
     prof <- user.profiles find (_.loginInfo == loginInfo)

@@ -82,11 +82,11 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
 
   /** Retrieves user account data by login. */
   def retrieve(loginInfo: LoginInfo): Future[Option[User]] =
-    dbColl().flatMap(_.find(d :~ PLINFOx -> loginInfo).one[User])
+    dbColl().flatMap(_.find(d :~ PLINFOx -> loginInfo, Option.empty[User]).one[User])
 
   /** Retrieves user account data by user id. */
   def retrieveById(userId: UUID): Future[Option[User]] =
-    dbColl().flatMap(_.find(d :~ ID -> userId.toString).one[User])
+    dbColl().flatMap(_.find(d :~ ID -> userId.toString, Option.empty[User]).one[User])
 
   /**
     * Retrieves user account data by email address.  Technically, it's possible for two accounts to have the same
@@ -94,11 +94,11 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
     * "social" account.  The default is to "link" such accounts, but they can be unlinked if the user so chooses.
     */
   def retrieveByEmail(email: String): Future[Seq[User]] =
-    dbColl().flatMap(_.find(d :~ PEMAILx -> email).coll[User, Seq]())
+    dbColl().flatMap(_.find(d :~ PEMAILx -> email, Option.empty[User]).coll[User, Seq]())
 
   /** Retrieves user account data by username. */
   def retrieveByUsername(username: String): Future[Option[User]] =
-    dbColl().flatMap(_.find(d :~ UNAMELOWx -> username.toLowerCase).one[User])
+    dbColl().flatMap(_.find(d :~ UNAMELOWx -> username.toLowerCase, Option.empty[User]).one[User])
 
   /** Attaches provided `Profile` to user account by user id. */
   def link(userId: UUID, profile: Profile): Future[User] = for {
@@ -147,7 +147,7 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
   /** Removes user account by id. */
   def delete(userId: UUID): Future[Unit] = for {
     c <- dbColl()
-    wr <- c.remove(d :~ ID -> userId.toString)
+    wr <- c.delete[BSONDocument](ordered = false).one(d :~ ID -> userId.toString)
     _ <- wr.failIfError
   } yield ()
 
@@ -174,7 +174,7 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
   def retrieveGroup(ugId: ObjectId): Future[Option[UserGroup]] = for {
     c <- groupColl()
     _ = logger.debug(s"Retrieving user group $ugId")
-    opt <- c.find(d :~ ID -> ugId).one[UserGroup]
+    opt <- c.find(d :~ ID -> ugId, Option.empty[UserGroup]).one[UserGroup]
   } yield {
     if (opt.isDefined) logger.debug(s"Found user group $ugId")
     opt
@@ -186,7 +186,7 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
     */
   protected def retrieveGroup(ug: UserGroup): Future[Option[UserGroup]] = for {
     c <- groupColl()
-    found <- c.find(d :~ HASH -> UserGroup.hash(ug)).coll[UserGroup, Seq]()
+    found <- c.find(d :~ HASH -> UserGroup.hash(ug), Option.empty[UserGroup]).coll[UserGroup, Seq]()
   } yield found.find(x => x.userIds == ug.userIds && x.emails == ug.emails)
 
   /** Retrieve a list of usernames and email addresses that the given user has shared with, in that order. */
@@ -196,7 +196,7 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
     cMarks <- marksColl()
     sel = d :~ Mark.USR -> userId :~ curnt :~ SHARED_WITH -> (d :~ "$exists" -> 1)
     prj = d :~ Shareable.SHARED_WITH -> 1 :~ "_id" -> 0
-    sharedWiths <- cMarks.find(sel, prj).coll[BSONDocument, Seq]()
+    sharedWiths <- cMarks.find(sel, Some(prj)).coll[BSONDocument, Seq]()
 
     // traverse down through the data model hierarchy to get UserGroup IDs mapped to their most recent time stamps
     ugIds = sharedWiths.flatMap(_.getAs[SharedWith](SHARED_WITH).map { sw =>
@@ -206,12 +206,12 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
 
     // lookup the UserGroups given their IDs ("application-level join")
     cGroup <- groupColl()
-    ugs <- cGroup.find(d :~ ID -> (d :~ "$in" -> ug2TimeStamp.keys)).coll[UserGroup, Seq]()
+    ugs <- cGroup.find(d :~ ID -> (d :~ "$in" -> ug2TimeStamp.keys), Option.empty[UserGroup]).coll[UserGroup, Seq]()
     shareeUserIds = ugs.flatMap(_.userIds).flatten.toSet
 
     // get all the usernames of the shared-with users ("sharees")
     cUsers <- dbColl()
-    sharees <- cUsers.find(d :~ User.ID -> (d :~ "$in" -> shareeUserIds)).coll[User, Seq]()
+    sharees <- cUsers.find(d :~ User.ID -> (d :~ "$in" -> shareeUserIds), Option.empty[User]).coll[User, Seq]()
     shareeId2Username = sharees.flatMap(u => u.userData.username.map(u.id -> _)).toMap
 
   } yield {
@@ -230,7 +230,7 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
   /** Removes user group given ID. */
   def deleteGroup(groupId: ObjectId): Future[Unit] = for {
     c <- groupColl()
-    wr <- c.remove(d :~ ID -> groupId)
+    wr <- c.delete[BSONDocument](ordered = false).one(d :~ ID -> groupId)
     _ <- wr.failIfError
   } yield ()
 }
