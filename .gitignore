@@ -4,6 +4,7 @@
 *.iws
 # IntelliJ
 /out/
+.DS_Store
 ### SBT template
 target/
 lib_managed/
