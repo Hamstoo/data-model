@@ -78,7 +78,7 @@ libraryDependencies ++= Seq(
   "org.jsoup" % "jsoup" % "1.11.3",
   "org.scalanlp" %% "breeze" % "1.0-RC2",
   "org.scalanlp" %% "breeze-natives" % "1.0-RC2",
-  "org.apache.tika" % "tika-parsers" % "1.18", 
+  "org.apache.tika" % "tika-parsers" % "1.16",
   "org.scalatest" %% "scalatest" % "3.2.0-SNAP1" % Test,
   "com.github.simplyscala" %% "scalatest-embedmongo" % "0.2.4",
   "org.mockito" % "mockito-core" % "2.23.4" % "test",
