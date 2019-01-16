@@ -43,11 +43,11 @@ class FacetTests
     val x = facetsSeq.filter(_._1 == facetName)
       .map { d => logger.info(s"\033[37m$facetName: $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d) => agg + d._2.asInstanceOf[Datum[SearchResults.typ]].value._3.sum }
-    x shouldBe (97.99 +- 0.01)
+    x shouldBe (98.43 +- 0.01)
   }
 
   it should "compute AggregateSearchScore" in {
-    sumFacetValues[AggregateSearchScore] shouldBe (7.90 +- 0.01)
+    sumFacetValues[AggregateSearchScore] shouldBe (9.67 +- 0.01)
   }
 
   it should "compute Recency" in {
@@ -64,17 +64,17 @@ class FacetTests
   }
 
   it should "compute UserSimilarity" in {
-    sumFacetValues[UserSimilarity] shouldBe (2.85 +- 0.01)
+    sumFacetValues[UserSimilarity] shouldBe (3.49 +- 0.01)
   }
 
   it should "compute ConfirmationBias" in {
     // close to 0 b/c the RWT and RWTa vectors are nearly co-linear
-    sumFacetValues[ConfirmationBias] shouldBe (0.087 +- 0.001)
+    sumFacetValues[ConfirmationBias] shouldBe (0.089 +- 0.001)
   }
 
   it should "compute EndowmentBias" in {
     // same vectors as ConfirmationBias lead to the same answer
-    sumFacetValues[EndowmentBias] shouldBe (0.087 +- 0.001)
+    sumFacetValues[EndowmentBias] shouldBe (0.089 +- 0.001)
   }
 
   it should "compute Sentiment" in {
@@ -101,7 +101,7 @@ class FacetTests
     val x = scoreDiffUsers
       .map { d => logger.info(s"\033[37m$facetName (different users): $d\033[0m"); d }
       .foldLeft(0.0) { case (agg, d0) => d0._2 match { case d: Datum[Double] @unchecked => agg + d.value } }
-    x shouldBe (4.86 +- 0.01) // would be same as above 27.94 if not for access permissions
+    x shouldBe (4.74 +- 0.01) // would be same as above 27.94 if not for access permissions
     facetsDiffUsers.size shouldBe 18 // this value increases by 2 each time a facet is added to FacetsModel.Default
     scoreDiffUsers.size shouldBe 2
   }
