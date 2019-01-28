@@ -39,7 +39,7 @@ abstract class AuthDao[A <: AuthInfo: ClassTag: TypeTag](implicit db: () => Futu
     */
   def find(loginInfo: LoginInfo): Future[Option[A]] = for {
     c <- dbColl()
-    optUser <- c.find(d :~ PLINFOx -> loginInfo, Option.empty[User]).one[User]
+    optUser <- c.find(d :~ PLINFOx -> loginInfo).one[User]
   } yield for {
     user <- optUser
     prof <- user.profiles find (_.loginInfo == loginInfo)

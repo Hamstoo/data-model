@@ -149,10 +149,7 @@ package object utils {
     if (domain.startsWith("www.")) domain.substring(4) else domain
   }.toOption
 
-
   /** Extended ReactiveMongo QueryBuilder */
-  // https://javadoc.io/doc/org.reactivemongo/reactivemongo_2.12/0.16.0
-  // genericQueryBuilder is deprecated. Probably we will have to refactor this using genericCollections
   implicit class ExtendedQB(private val qb: GenericQueryBuilder[BSONSerializationPack.type]) extends AnyVal {
 
     /**

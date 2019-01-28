@@ -93,7 +93,7 @@ abstract class AnnotationDao[A <:Annotation :BSONDocumentHandler]
     logger.debug(s"Retrieving (insecure) ${name + "s"} for mark $markId")
     for {
       c <- dbColl()
-      seq <- c.find(d :~ MARKID -> markId :~ curnt, Option.empty[A]).coll[A, Seq]()
+      seq <- c.find(d :~ MARKID -> markId :~ curnt).coll[A, Seq]()
     } yield {
       logger.debug(s"${seq.size} (insecure) ${name + "s"} retrieved")
       seq
@@ -168,7 +168,7 @@ abstract class AnnotationDao[A <:Annotation :BSONDocumentHandler]
     //hls <- hlightsDao.retrieve(newMark.userId, newMark.id)
     //_ <- Future.sequence { hls.map(x => hlIntersectionSvc.add(x.copy(markId = oldMark.id))) }
 
-    newAnnotations <- c.find(d :~ USR -> newMark.userId :~ MARKID -> newMark.id :~ curnt, Option.empty[A]).coll[A, Seq]()
+    newAnnotations <- c.find(d :~ USR -> newMark.userId :~ MARKID -> newMark.id :~ curnt).coll[A, Seq]()
 
     // set each of the new mark's annotations' timeThrus to the current time (which is required because of the
     // bin-usrId-1-id-1-timeThru-1-uniq unique indexes on these collections) and then re-insert them into

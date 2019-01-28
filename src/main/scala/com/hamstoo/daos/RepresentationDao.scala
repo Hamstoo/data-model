@@ -95,7 +95,7 @@ class RepresentationDao @Inject()(implicit db: () => Future[DefaultDB])
       val searchScoreSelection = d :~ "$text" -> (d :~ "$search" -> query)
       val searchScoreProjection = d :~ SCORE -> (d :~ "$meta" -> "textScore")
 
-      c.find(sel :~ searchScoreSelection, Some(searchScoreProjection)).one[RSearchable]
+      c.find(sel :~ searchScoreSelection, searchScoreProjection).one[RSearchable]
     }}
   } yield {
     val flat = seq.flatten

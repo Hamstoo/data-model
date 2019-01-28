@@ -51,7 +51,7 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
     c <- dbColl()
     _ = logger.info(s"Retrieving emails sent from $fromEmail")
     q = d :~ SENDR -> fromEmail
-    r <- c.find(q, Option.empty[Discussion]).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
+    r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
   /** retrieve all discussions provoked by user having a specific markId */
@@ -59,7 +59,7 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
     c <- dbColl()
     _ = logger.info(s"Retrieving emails sent from $fromEmail with subject '$markId'")
     q = d :~ SENDR -> fromEmail :~ MARKID -> markId
-    r <- c.find(q, Option.empty[Discussion]).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
+    r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
   /** retrieve all discussions addressed to a user */
@@ -67,7 +67,7 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
     c <- dbColl()
     _ = logger.info(s"Retrieving emails sent to $toEmail")
     q = d :~ RECIP -> toEmail
-    r <- c.find(q, Option.empty[Discussion]).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
+    r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 
   /** retrieve all discussions addressed to a user having a specific markId */
@@ -75,6 +75,6 @@ class DiscussionDao @Inject()(implicit db: () => Future[DefaultDB]) {
     c <- dbColl()
     _ = logger.info(s"Retrieving emails sent to $toEmail with subject '$markId'")
     q = d :~ RECIP -> toEmail :~ MARKID -> markId
-    r <- c.find(q, Option.empty[Discussion]).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
+    r <- c.find(q).sort(d :~ TIMESTAMP -> -1).coll[Discussion, Seq]()
   } yield r
 }

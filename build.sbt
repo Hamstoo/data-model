@@ -55,9 +55,9 @@ resolvers ++= Seq(
   "sonatype-releases" at "http://oss.sonatype.org/content/repositories/releases",
   "Atlassian Releases" at "https://maven.atlassian.com/public/")
 
-val silhouetteVersion = "5.0.0"
-val reactiveMongoVersion = "0.16.0" // moving to previous version 0.12.5, because version 0.12.7 throws IndexNotFound error in tests
-val akkaVersion = "2.5.17"
+val silhouetteVersion = "5.0.7"
+val reactiveMongoVersion = "0.12.5" // moving to previous version 0.12.5, because version 0.12.7 throws IndexNotFound error in tests
+val akkaVersion = "2.5.9"
 
 // dependencies
 libraryDependencies ++= Seq(

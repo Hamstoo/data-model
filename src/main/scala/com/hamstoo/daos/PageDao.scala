@@ -95,7 +95,7 @@ class PageDao @Inject()(implicit db: () => Future[DefaultDB],
     _ = logger.debug(s"Retrieving $reprType representations for mark $markId")
     sel = d :~ MARK_ID -> markId :~ REPR_TYPE -> reprType.toString :~
                (if (bMissingReprId) d :~ REPR_ID -> (d :~ "$exists" -> false) else d)
-    seq <- c.find(sel, Option.empty[Page]).coll[Page, Seq]()
+    seq <- c.find(sel).coll[Page, Seq]()
   } yield {
     logger.debug(s"${seq.size} $reprType pages were retrieved for mark $markId")
     seq
@@ -105,7 +105,7 @@ class PageDao @Inject()(implicit db: () => Future[DefaultDB],
   def removeUserContentPage(markId: ObjectId): Future[Unit] = for {
     c <- dbColl()
     _ = logger.debug(s"Removing user-content page for mark $markId")
-    wr <- c.delete[BSONDocument](ordered = false).one(d :~ MARK_ID -> markId :~ REPR_TYPE -> ReprType.USER_CONTENT.toString)
+    wr <- c.remove(d :~ MARK_ID -> markId :~ REPR_TYPE -> ReprType.USER_CONTENT.toString)
     _ <- wr.failIfError
   } yield logger.debug(s"User-content page of mark $markId was deleted")
 }

@@ -37,61 +37,11 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   // default mongo version, override if needed
   def mongoVersion: Version = Version.V3_5_1
 
-  // these are default runtimeConfigs
-  // need them to pass them over
-  // is private in MongoEmbedDatabase.scala
-  private val runtimeConfigs = new RuntimeConfigBuilder()
-    .defaults(Command.MongoD)
-    .processOutput(ProcessOutput.getDefaultInstanceSilent())
-    .build()
-
   // mongodb uri and database name
-  def dbUri = s"mongodb://localhost:$mongoPort/hamstoo"
-
-
-  // get a MongoStarter instance
-  // is private in MongoEmbedDatabase.scala
-  def runtimeMongo(config: IRuntimeConfig): MongodStarter = MongodStarter.getInstance(config)
-
-  /**
-    * due the error
-    * CommandError[code=2, errmsg=cannot use 'j' option when a host does not have journaling enabled,
-    * doc: {
-    * "ok":0,
-    * "errmsg":"cannot use 'j' option when a host does not have journaling enabled",
-    * "code":2,
-    * "codeName":"BadValue"
-    * }]
-    *
-    * I had to take a diferrent approach
-    * https://github.com/flapdoodle-oss/de.flapdoodle.embed.mongo#custom-command-line-options
-    *
-    * replace protected mongoStart() from MongoEmbedDatabase.scala
-    *
-    * @param port
-    * @param version
-    * @param runtimeConfig
-    * @return
-    */
-  def startMongo(port: Int, version: Version, runtimeConfig: IRuntimeConfig) = runtimeMongo(runtimeConfig).prepare(
-    new MongodConfigBuilder()
-      .version(version)
-      .cmdOptions(new MongoCmdOptionsBuilder()
-        .syncDelay(0)
-        .useNoPrealloc(false)
-        .useSmallFiles(false)
-        .useNoJournal(false)
-        .build())
-      .net(new Net(port, Network.localhostIsIPv6()))
-      .build()
-  )
+  def dbUri = s"mongodb://localhost:$mongoPort/hamstoo?authMode=scram-sha1"
 
   // fongo (fake mongo) instance
-  lazy val fongo: MongodProps = {
-    println("start fmongo")
-    val mongodExe: MongodExecutable = startMongo(mongoPort, mongoVersion, runtimeConfigs)
-    MongodProps(mongodExe.start(), mongodExe)
-  }
+  lazy val fongo: MongodProps = mongoStart(mongoPort, mongoVersion)
 
   override def beforeAll(): Unit = {
     println(s"Starting MongoDB:$mongoVersion instance on port: ${DataInfo.mongoPort}")

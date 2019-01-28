@@ -63,7 +63,7 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
     _ = logger.debug(s"Removing user suggestion: $ownerUserId / $sharee")
     sel = d :~ OWNER_ID -> ownerUserId :~
                sharee.fold(d :~ SHAREE -> (d :~ "$exists" -> false))(u => d :~ SHAREE -> BSONRegex(s"^$u$$", "i"))
-    wr <- c.delete[BSONDocument](ordered = false).one(sel)
+    wr <- c.remove(sel)
     _ <- wr.failIfError
   } yield {
     logger.debug(s"Removed ${wr.n} user suggestions")
@@ -92,7 +92,7 @@ class UserSuggestionDao @Inject()(implicit val db: () => Future[DefaultDB], user
     ownerSel = if (ownerUsernamePrefix.isEmpty) d
                else d :~ OWNER_UNAME -> BSONRegex("^" + ownerUsernamePrefix + ".*", "i")
 
-    seq <- c.find(shareeSel :~ ownerSel, Option.empty[UserSuggestion]).coll[UserSuggestion, Seq]()
+    seq <- c.find(shareeSel :~ ownerSel).coll[UserSuggestion, Seq]()
 
   } yield {
     logger.debug(s"retrieveUserSuggestions retrieved ${seq.size} documents")

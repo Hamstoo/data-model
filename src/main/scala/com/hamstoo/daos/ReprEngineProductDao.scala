@@ -100,7 +100,7 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
     c <- dbColl()
     t0 = System.currentTimeMillis
     _ = logger.debug(s"Retrieving ${name}s (first 5): ${ids.take(5)}")
-    seq <- c.find(d :~ ID -> (d :~ "$in" -> ids) :~ curnt, Option.empty[T]).coll[T, Seq]()
+    seq <- c.find(d :~ ID -> (d :~ "$in" -> ids) :~ curnt).coll[T, Seq]()
   } yield {
     logger.debug(f"Retrieved ${seq.size} ${name}s given ${ids.size} IDs (${(System.currentTimeMillis - t0) / 1e3}%.3f seconds)")
     seq.map { repr => repr.id -> repr }.toMap
@@ -109,6 +109,6 @@ abstract class ReprEngineProductDao[T <: ReprEngineProduct[T]: BSONDocumentHandl
   /** Retrieves all representations, including previous versions, by ID. */
   def retrieveAll(id: ObjectId): Future[Seq[T]] = for {
     c <- dbColl()
-    seq <- c.find(d :~ ID -> id, Option.empty[T]).coll[T, Seq]()
+    seq <- c.find(d :~ ID -> id).coll[T, Seq]()
   } yield seq
 }
