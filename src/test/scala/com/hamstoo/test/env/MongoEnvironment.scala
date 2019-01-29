@@ -38,7 +38,7 @@ trait MongoEnvironment extends MongoEmbedDatabase with BeforeAndAfterAll {
   def mongoVersion: Version = Version.V3_5_1
 
   // mongodb uri and database name
-  def dbUri = s"mongodb://localhost:$mongoPort/hamstoo?authMode=scram-sha1"
+  def dbUri = s"mongodb://localhost:$mongoPort/hamstoo"
 
   // fongo (fake mongo) instance
   lazy val fongo: MongodProps = mongoStart(mongoPort, mongoVersion)
