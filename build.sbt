@@ -55,7 +55,7 @@ resolvers ++= Seq(
   "sonatype-releases" at "http://oss.sonatype.org/content/repositories/releases",
   "Atlassian Releases" at "https://maven.atlassian.com/public/")
 
-val silhouetteVersion = "5.0.7"
+val silhouetteVersion = "5.0.0"
 val reactiveMongoVersion = "0.12.5" // moving to previous version 0.12.5, because version 0.12.7 throws IndexNotFound error in tests
 val akkaVersion = "2.5.9"
 
@@ -84,7 +84,7 @@ libraryDependencies ++= Seq(
   "org.mockito" % "mockito-core" % "2.23.4" % "test",
   "net.sourceforge.htmlunit" % "htmlunit" % "2.33",
   //"org.typelevel" %% "spire" % "0.15.0",
-  "com.google.inject" % "guice" % "4.2.2",
+  "com.google.inject" % "guice" % "4.2.0",
   "net.codingwell" %% "scala-guice" % "4.2.1",
   "io.monix" %% "monix-eval" % "3.0.0-8084549"
 )

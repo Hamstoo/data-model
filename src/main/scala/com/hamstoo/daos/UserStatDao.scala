@@ -153,7 +153,7 @@ class UserStatDao @Inject()(implicit db: () => Future[DefaultDB]) {
       }
 
       val nImported = imports flatMap (_.getAs[Int](IMPT)) getOrElse 0
-      ProfileDots(nUserTotalMarks.toInt,
+      ProfileDots(nUserTotalMarks,
                   nImported,
                   days,
                   (0 /: days)(_ + _.nMarks),

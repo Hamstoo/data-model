@@ -122,12 +122,12 @@ class UserDao @Inject()(implicit db: () => Future[DefaultDB]) extends IdentitySe
 
   /** Update the list of domains for which automarks were deleted (issue #364). */
   def updateDomainAutomarkDeleteCounts(userId: UUID, domains: Seq[DomainAutomarkDeleteCount]):
-                                                                                Future[Unit] = for {
+                                                                                Future[Option[User]] = for {
     c <- dbColl()
     u = d :~ ID -> userId
     upd = d :~ "$set" -> (d :~ EXCLDOM -> domains) // TODO 364: should $push be used here instead?
-    wr <- c.update(u, upd)
-  } yield ()
+    wr <- c.findAndUpdate(u, upd, fetchNewObject = true)
+  } yield wr.result[User]
 
   /** Record Likes (and dislikes). */
   def postLike(userId: UUID, which: Boolean): Future[Option[User]] = for {
