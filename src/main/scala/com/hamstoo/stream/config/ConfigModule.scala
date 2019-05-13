@@ -12,7 +12,7 @@ import com.typesafe.config.{Config, ConfigValueFactory}
   * "A module is a collection of bindings"
   * "The modules are the building blocks of an injector, which is Guice's object-graph builder."
   */
-case class ConfigModule(config: Config) extends BaseModule {
+case class ConfigModule(config: Config, autoConfig: Boolean = true) extends BaseModule {
 
   /**
     * "To create bindings, extend AbstractModule and override its configure method.  In the method body, call
@@ -20,7 +20,8 @@ case class ConfigModule(config: Config) extends BaseModule {
     */
   override def configure(): Unit = {
     logger.debug(s"Configuring module: ${classOf[ConfigModule].getName}")
-    bindConfigParams[String]("idfs.resource", "vectors.link", "mongodb.uri")
+    if (autoConfig)
+      bindConfigParams[String]("idfs.resource", "vectors.link", "mongodb.uri")
     InjectId[Config]("config") := config // <- must be @Named b/c hamstoo/GeneralModule also binds a Config instance
     IDFModel.ResourcePathOptional ?= None
   }
