@@ -38,7 +38,7 @@ class AggregateSearchScore @Inject()(semWgt: AggregateSearchScore.SemanticWeight
 
     val relevance: DataStream[SearchRelevance] = searchResults("_3", classTag[SearchRelevance])
 
-    // weights along 2 spectrums (range between 0 and 2)
+    // weights along 2 spectra (range between 0 and 2)
     val w_sem = min(max(semWgt.value, 0), 1) * 2
     val w_usr = min(max(usrWgt.value, 0), 1) * 2
 

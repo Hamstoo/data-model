@@ -38,7 +38,7 @@ homepage := Some(url("https://github.com/Hamstoo/data-model"))
 // like this:
 //   "com.hamstoo" %% "data-model" % "version % "test" classifier "tests"
 publishArtifact in (Test, packageBin) := true
-val artifactoryHost = "***REMOVED***"
+val artifactoryHost = sys.env.getOrElse("ARTIFACTORY_HOST", "")
 publishTo := Some("Artifactory Realm" at s"http://$artifactoryHost:8081/artifactory/sbt-release-local")
 credentials += Credentials("Artifactory Realm", artifactoryHost, "admin", sys.env.getOrElse("ARTIFACTORY_PSW", ""))
 
